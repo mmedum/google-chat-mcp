@@ -15,6 +15,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+# hatchling reads `readme = "README.md"` from pyproject.toml when building the
+# project itself; the second `uv sync` installs the project, so the file has
+# to be present in the builder stage.
+COPY README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
