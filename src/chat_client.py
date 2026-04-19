@@ -58,10 +58,12 @@ class ChatClient:
         max_retries: int = 3,
         base_chat: str = "https://chat.googleapis.com/v1",
         base_people: str = "https://people.googleapis.com/v1",
+        base_oidc: str = "https://openidconnect.googleapis.com/v1",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_chat = base_chat
         self._base_people = base_people
+        self._base_oidc = base_oidc
         self._max_retries = max_retries
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_seconds),
@@ -204,6 +206,20 @@ class ChatClient:
             access_token=access_token,
             params={"personFields": "emailAddresses,names"},
             endpoint_label="people.get",
+        )
+
+    # ---------- OIDC / identity ----------
+
+    async def get_userinfo(self, access_token: str) -> dict[str, Any]:
+        """Fetch the OIDC /userinfo payload for the authenticated user.
+
+        Requires the `openid email profile` scope set (included in v2 scopes).
+        Returns {sub, email, email_verified, name, picture, ...}.
+        """
+        return await self._get(
+            f"{self._base_oidc}/userinfo",
+            access_token=access_token,
+            endpoint_label="oidc.userinfo",
         )
 
     # ---------- internals ----------

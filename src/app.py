@@ -34,6 +34,7 @@ from .models import (
     SpaceDetails,
     SpaceSummary,
     SpaceType,
+    WhoamiResult,
 )
 from .observability import (
     REGISTRY,
@@ -50,6 +51,7 @@ from .tools import (
     list_members_handler,
     list_spaces_handler,
     send_message_handler,
+    whoami_handler,
 )
 from .tools._common import AuthResolver, ToolContext
 
@@ -233,6 +235,19 @@ def build_app(
             _require_ctx(state),
             ListMembersInput(space_id=space_id, limit=limit),
         )
+
+    @mcp.tool(
+        name="whoami",
+        title="Authenticated user identity",
+        description=(
+            "Return the authenticated Google user's identity (sub, email, "
+            "display name). Useful as a first-call smoke test and for "
+            "self-identity queries. Reads from OIDC /userinfo."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def whoami() -> WhoamiResult:
+        return await whoami_handler(_require_ctx(state))
 
     # ---- resources ----
 

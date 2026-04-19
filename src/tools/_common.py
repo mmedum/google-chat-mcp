@@ -49,6 +49,13 @@ ToolName = Literal[
     "get_messages",
     "get_space",
     "list_members",
+    "whoami",
+    "get_thread",
+    "get_message",
+    "add_reaction",
+    "remove_reaction",
+    "list_reactions",
+    "search_messages",
 ]
 
 # Scope constants — shared by tool handlers and tests. Order matches the

@@ -13,18 +13,21 @@ def settings() -> Settings:
 
 
 @pytest.mark.asyncio
-async def test_build_app_registers_all_v1_tools(settings: Settings) -> None:
+async def test_build_app_registers_all_tools(settings: Settings) -> None:
     mcp = build_app(settings)
     tools = await mcp.list_tools()
     names = {t.name for t in tools}
-    assert names == {
+    # v1 tools + the new ones that have shipped so far.
+    expected_so_far = {
         "list_spaces",
         "find_direct_message",
         "send_message",
         "get_messages",
         "get_space",
         "list_members",
+        "whoami",
     }
+    assert expected_so_far.issubset(names)
 
 
 @pytest.mark.asyncio

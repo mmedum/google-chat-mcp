@@ -147,6 +147,15 @@ class ChatMessage(_Strict):
     thread_id: ThreadName
 
 
+class WhoamiResult(_Strict):
+    """Identity of the authenticated user."""
+
+    user_sub: str
+    email: EmailStr | None
+    display_name: str | None
+    picture_url: str | None = None
+
+
 # ---------- Chat API response shapes ----------
 # Pydantic validators for raw Google JSON. `extra="forbid"` catches additions
 # from Google — surfaced as an ApiValidationError and logged.
@@ -283,3 +292,14 @@ class _ChatMembershipResponse(_ChatBase):
 class _ChatMembershipsListResponse(_ChatBase):
     memberships: list[_ChatMembershipResponse] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class _UserInfoResponse(BaseModel):
+    """OIDC /userinfo payload. `extra="allow"` — Google adds locale, hd, etc. per account."""
+
+    model_config = ConfigDict(extra="allow")
+    sub: str
+    email: EmailStr | None = None
+    email_verified: bool | None = None
+    name: str | None = None
+    picture: str | None = None
