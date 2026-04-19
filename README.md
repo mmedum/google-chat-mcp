@@ -14,7 +14,7 @@ Before you start, you need:
 - A **Google Workspace domain** you administer (Internal-type OAuth apps bypass Google's app verification but restrict auth to users on your domain)
 - A **Google Cloud project** where you can enable APIs and create OAuth clients
 - **Docker + Docker Compose** on a host you control
-- A **public HTTPS hostname** pointing at the host (TLS terminated by your reverse proxy; port 8000 behind it)
+- A **public HTTPS hostname** pointing at the host for production — TLS terminated by your reverse proxy; port 8000 behind it. For local development, an ngrok tunnel is enough (see [Local development against Claude](#local-development-against-claude) below).
 - A **Claude account** that supports custom connectors
 
 ## Tools
@@ -121,6 +121,31 @@ uv run python -m src.server
 ```
 
 Pre-commit hooks install with `uv run pre-commit install`.
+
+## Local development against Claude
+
+Claude custom connectors call your `/mcp` endpoint from the public
+internet, so a pure `localhost` server won't work end-to-end. Front it
+with ngrok for the full development loop.
+
+1. Install ngrok and authenticate once (`ngrok config add-authtoken …`).
+2. Start the tunnel: `ngrok http 8000`. Copy the `https://<sub>.ngrok.app` URL it prints.
+3. In **Google Cloud Console** → your OAuth client → add
+   `<ngrok-url>/oauth/callback` to *Authorized redirect URIs* and the
+   bare hostname to *Authorized domains*.
+4. Run the server with `GCM_BASE_URL` matching the tunnel:
+
+    ```bash
+    export GCM_BASE_URL="https://<sub>.ngrok.app"
+    uv run python -m src.server
+    ```
+
+5. In Claude, add a custom connector at `<ngrok-url>/mcp`.
+
+**Free-tier ngrok URLs rotate on every restart**, so step 3 repeats
+each session. An [ngrok reserved domain](https://ngrok.com/docs/universal-gateway/domains/)
+(`ngrok http --domain=<your-stable-domain> 8000`) gives you a stable
+hostname so Google OAuth only needs to be configured once.
 
 ## Architecture at a glance
 
