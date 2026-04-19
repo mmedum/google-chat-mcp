@@ -72,12 +72,25 @@ class ChatClient:
 
     # ---------- Chat ----------
 
-    async def list_spaces(self, access_token: str) -> list[dict[str, Any]]:
-        """List spaces the user is a member of, following pagination."""
+    async def list_spaces(
+        self,
+        access_token: str,
+        limit: int,
+        space_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List spaces the user is a member of.
+
+        Stops paginating once ``limit`` entries are collected. ``space_type``
+        is passed through to Google's native ``filter`` param so the upstream
+        already narrows before any page lands.
+        """
         spaces: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
-            params: dict[str, str] = {"pageSize": "100"}
+            remaining = limit - len(spaces)
+            params: dict[str, str] = {"pageSize": str(min(remaining, 100))}
+            if space_type:
+                params["filter"] = f'spaceType = "{space_type}"'
             if page_token:
                 params["pageToken"] = page_token
             data = await self._get(
@@ -88,9 +101,43 @@ class ChatClient:
             )
             spaces.extend(data.get("spaces", []))
             page_token = data.get("nextPageToken")
-            if not page_token:
+            if not page_token or len(spaces) >= limit:
                 break
-        return spaces
+        return spaces[:limit]
+
+    async def get_space(self, access_token: str, space_id: str) -> dict[str, Any]:
+        """Fetch a single Space resource."""
+        return await self._get(
+            f"{self._base_chat}/{space_id}",
+            access_token=access_token,
+            endpoint_label="spaces.get",
+        )
+
+    async def list_members(
+        self,
+        access_token: str,
+        space_id: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """List memberships of a space, stopping once ``limit`` collected."""
+        members: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            remaining = limit - len(members)
+            params: dict[str, str] = {"pageSize": str(min(remaining, 100))}
+            if page_token:
+                params["pageToken"] = page_token
+            data = await self._get(
+                f"{self._base_chat}/{space_id}/members",
+                access_token=access_token,
+                params=params,
+                endpoint_label="spaces.members.list",
+            )
+            members.extend(data.get("memberships", []))
+            page_token = data.get("nextPageToken")
+            if not page_token or len(members) >= limit:
+                break
+        return members[:limit]
 
     async def find_direct_message(
         self, access_token: str, user_email: str

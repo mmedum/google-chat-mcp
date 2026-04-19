@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from ..models import SpaceSummary, _ChatSpaceResponse, _ChatSpacesListResponse
+from ..models import ListSpacesInput, SpaceSummary, _ChatSpaceResponse, _ChatSpacesListResponse
 from ._common import ToolContext, invoke_tool
 
 
-async def list_spaces_handler(ctx: ToolContext) -> list[SpaceSummary]:
-    """List all Chat spaces (DMs, group chats, named spaces) the user is in."""
+async def list_spaces_handler(ctx: ToolContext, payload: ListSpacesInput) -> list[SpaceSummary]:
+    """List Chat spaces (DMs, group chats, named spaces) the user is in."""
 
     async def body(access_token: str, _user_sub: str) -> list[SpaceSummary]:
-        raw = await ctx.client.list_spaces(access_token)
+        raw = await ctx.client.list_spaces(
+            access_token,
+            limit=payload.limit,
+            space_type=payload.space_type,
+        )
         spaces = _ChatSpacesListResponse(spaces=[_ChatSpaceResponse(**r) for r in raw]).spaces
         return [
             SpaceSummary(

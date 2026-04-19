@@ -27,7 +27,14 @@ from ..observability import (
 from ..rate_limit import ActiveUserTracker, TokenBucketLimiter
 from ..storage import Database, write_audit_row
 
-ToolName = Literal["list_spaces", "find_direct_message", "send_message", "get_messages"]
+ToolName = Literal[
+    "list_spaces",
+    "find_direct_message",
+    "send_message",
+    "get_messages",
+    "get_space",
+    "list_members",
+]
 
 
 class ToolContext:
