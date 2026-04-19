@@ -1,7 +1,7 @@
 -- Migration 001: initial schema.
 --
 -- Two tables; everything else (OAuth clients, upstream refresh tokens) is stored
--- by FastMCP's OAuthProxy in the disk-backed key-value store, encrypted with Fernet.
+-- by FastMCP's GoogleProvider in the disk-backed key-value store, encrypted with Fernet.
 --
 -- audit_log    - every tool invocation, 90-day retention (no message content)
 -- user_directory - id -> email cache from People API, 24h TTL

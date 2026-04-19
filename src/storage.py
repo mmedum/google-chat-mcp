@@ -1,7 +1,7 @@
 """SQLite persistence for audit_log + user_directory (email cache).
 
 The OAuth token store is separate — it lives in a disk-backed py-key-value
-store wrapped in Fernet encryption, managed entirely by FastMCP's OAuthProxy.
+store wrapped in Fernet encryption, managed entirely by FastMCP's GoogleProvider.
 """
 
 from __future__ import annotations

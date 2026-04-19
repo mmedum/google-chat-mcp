@@ -126,7 +126,7 @@ Pre-commit hooks install with `uv run pre-commit install`.
 
 ```
 Claude  ──HTTP─► FastMCP app (port 8000)
-                 ├── OAuthProxy  ◄─upstream OAuth─► Google (Chat, People APIs)
+                 ├── GoogleProvider  ◄─upstream OAuth─► Google (Chat, People APIs)
                  │      └── disk-backed KV store (Fernet-encrypted refresh tokens)
                  ├── Tools: list_spaces / find_direct_message / send_message / get_messages
                  │      └── shared httpx.AsyncClient (retry/backoff)
@@ -135,7 +135,7 @@ Claude  ──HTTP─► FastMCP app (port 8000)
                  └── /healthz /readyz /metrics
 ```
 
-FastMCP's `OAuthProxy` handles PKCE, state, upstream token refresh, and issuing the MCP-layer JWT that Claude stores. Refresh tokens never leave the server unencrypted.
+FastMCP's `GoogleProvider` (an `OAuthProxy` subclass) handles PKCE, state, upstream token refresh, and issuing the MCP-layer JWT that Claude stores. Refresh tokens never leave the server unencrypted.
 
 ## Operations
 
