@@ -21,18 +21,29 @@ through the OAuth flow on their first tool call.
 The user visits `https://myaccount.google.com/permissions`, finds the "Google Chat
 MCP" app, and removes it. Google invalidates the refresh token immediately.
 
-### Option B — admin-forced
+### Option B — admin-forced, all users
 
-From the host, wipe the user's entry from the OAuth proxy's key-value store:
+There is no reliable per-user wipe in v1: the OAuth proxy stores its state keyed by JWT `jti`, not by Google `sub`, so you cannot cleanly pick a single user's record from the key-value store without a lookup that this server doesn't expose.
 
-```bash
-docker compose exec mcp sh -c 'ls /var/lib/google-chat-mcp/oauth_store'
-# identify the user's JWT jti or OAuth client record
-docker compose exec mcp rm -f /var/lib/google-chat-mcp/oauth_store/<file>
-docker compose restart mcp
-```
+Two supported admin actions:
 
-Audit-log their activity before you delete anything:
+1. **Rotate the JWT signing key.** This invalidates every issued MCP bearer. All users reconnect on their next call. Works immediately and requires no per-user identification.
+
+    ```bash
+    python -c 'import secrets; print(secrets.token_urlsafe(48))' > secrets/jwt_signing_key
+    docker compose restart mcp
+    ```
+
+2. **Nuke the entire OAuth state.** Forces everyone to re-grant scopes in Google as well. More disruptive; use only when you want to cut all upstream refresh tokens.
+
+    ```bash
+    docker compose stop mcp
+    docker volume inspect google-chat-mcp_mcp_data  # confirm the volume you're about to touch
+    docker run --rm -v google-chat-mcp_mcp_data:/v alpine sh -c 'rm -rf /v/oauth_store/*'
+    docker compose up -d mcp
+    ```
+
+Export the user's audit-log activity first if you need it for record-keeping:
 
 ```bash
 docker compose exec mcp sqlite3 /var/lib/google-chat-mcp/app.sqlite \
@@ -40,37 +51,40 @@ docker compose exec mcp sqlite3 /var/lib/google-chat-mcp/app.sqlite \
    WHERE user_sub = '<sub>' ORDER BY timestamp DESC LIMIT 100;"
 ```
 
+For targeted per-user revocation, prefer Option A.
+
 ## Rotating the Fernet key
 
-Stored refresh tokens are encrypted at rest with Fernet. Rotate quarterly or
-on suspected compromise.
+Stored refresh tokens are encrypted at rest with Fernet. Rotate on suspected
+compromise (or on whatever cadence your policy demands).
+
+**v1 does not support in-place rotation.** Rotating the key without re-encrypting the existing store invalidates every persisted upstream token; all users reconnect through OAuth on their next call. For a small single-workspace deployment this is usually acceptable — it's an interruption, not a data loss.
+
+Procedure:
 
 1. Generate the new key: `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`.
-2. Stop the container: `docker compose stop mcp`.
-3. Write a one-shot re-encryption script that iterates every file in
-   `/var/lib/google-chat-mcp/oauth_store`, decrypts with the old key, re-encrypts
-   with the new key. py-key-value's `FernetEncryptionWrapper` stores values as
-   single tokens; decrypt/re-encrypt loop is ~20 lines.
-4. Replace `secrets/fernet_key` with the new key.
+2. Overwrite `secrets/fernet_key` with the new value.
+3. `docker compose stop mcp`.
+4. Wipe the old encrypted store so the container doesn't try to decrypt with the new key and crash: `docker run --rm -v google-chat-mcp_mcp_data:/v alpine sh -c 'rm -rf /v/oauth_store/*'`.
 5. `docker compose up -d mcp`.
+6. Users re-auth on their next Claude interaction.
 
-If you skip step 3, existing users will see their sessions invalidated and have
-to reconnect — acceptable for a small deployment; document which.
+If you need seamless rotation (no forced reconnects), you'll have to write a re-encryption script yourself: iterate every file in `/var/lib/google-chat-mcp/oauth_store`, decrypt with the old key, re-encrypt with the new key, then swap keys. py-key-value's `FernetEncryptionWrapper` stores values as individual tokens so it's tractable. This is out of scope for v1.
 
-## Restoring from backup
+## Backup and restore
 
-The app writes SQLite + KV store to the `mcp_data` named volume.
-`/var/backups/chat-mcp/` should hold a daily copy.
+**v1 does not set up backups for you.** The app writes SQLite + KV store to the `mcp_data` Docker volume; nothing in this repo copies that volume anywhere else. Set up your own backup on the host — `docker run --rm -v google-chat-mcp_mcp_data:/src -v /your/backup/path:/dst alpine tar czf /dst/$(date +%F).tgz -C /src .` from cron is enough for most deployments.
+
+Restore, assuming you have a tarball:
 
 ```bash
 docker compose stop mcp
-docker run --rm -v mcp_data:/v -v /var/backups/chat-mcp:/b alpine \
-  sh -c 'rm -rf /v/* && cp -a /b/<date>/* /v/'
+docker run --rm -v google-chat-mcp_mcp_data:/dst -v /your/backup/path:/src alpine \
+  sh -c 'rm -rf /dst/* && tar xzf /src/<date>.tgz -C /dst'
 docker compose up -d mcp
 ```
 
-Audit-log and directory-cache are in `app.sqlite`; OAuth state is in `oauth_store/`.
-Both must be restored together (they reference each other by user sub).
+Audit-log and directory-cache are in `app.sqlite`; OAuth state is in `oauth_store/`. Restore both together — they reference each other by user sub.
 
 ## Known failure modes
 

@@ -56,7 +56,7 @@ Key things NOT in the repo but often asked for:
 - **`— Claude` suffix** is appended inside `send_message_handler`, not by the client. If you change the tool's body, preserve the suffix.
 - **Pydantic `extra="forbid"` on Chat-API response models** is intentional. Schema drift surfaces as validation errors rather than silent drops. The fix is to add the new optional field to `src/models.py`, not to relax to `extra="ignore"`. Runbook (`docs/runbook.md`) covers this.
 
-## Tooling pins (as of 2026-04-19)
+## Tooling pins
 
 - Python 3.12 (locked in `.python-version`)
 - FastMCP `~= 3.2` (current 3.2.4)

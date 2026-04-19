@@ -6,7 +6,16 @@ Read incoming messages and reply to individuals or spaces without leaving Claude
 - **Transport:** streamable HTTP (Claude custom-connector compatible)
 - **Identity:** per-user OAuth 2.0 against Google Workspace (Internal user type)
 - **Hosting:** self-hosted Docker on your own server
-- **License:** Apache 2.0
+
+## Prerequisites
+
+Before you start, you need:
+
+- A **Google Workspace domain** you administer (Internal-type OAuth apps bypass Google's app verification but restrict auth to users on your domain)
+- A **Google Cloud project** where you can enable APIs and create OAuth clients
+- **Docker + Docker Compose** on a host you control
+- A **public HTTPS hostname** pointing at the host (TLS terminated by your reverse proxy; port 8000 behind it)
+- A **Claude account** that supports custom connectors
 
 ## Tools
 
@@ -89,6 +98,17 @@ In Claude, add a **custom connector**:
 
 On first use, Claude redirects you to Google, you grant the scopes, and Claude stores the bearer token for subsequent tool calls.
 
+## What you can ask Claude
+
+Once the connector is attached, natural-language prompts compose the four tools:
+
+- "What's new in the #eng space since this morning?" → `list_spaces` + `get_messages(since=...)`
+- "Send 'Ship it' to alice@example.com on Chat." → `find_direct_message` + `send_message`
+- "Reply to the last message in #launch with 'Done.'" → `get_messages` + `send_message(thread_name=...)`
+- "Summarise my unread DMs from today." → `list_spaces` + `get_messages` per DM
+
+Claude always asks before sending. The server appends `— Claude` to every outbound message so recipients know it wasn't typed by hand.
+
 ## Local development
 
 ```bash
@@ -124,3 +144,7 @@ See [`docs/runbook.md`](docs/runbook.md) for: onboarding, revoking a user, rotat
 ## Out of scope for v1
 
 Reactions, edits, deletes, card v2 formatting, membership management, space creation (beyond DM create), cross-space search, real-time push, app-as-bot identity, Postgres migration.
+
+## License
+
+Apache 2.0 — see [`LICENSE`](LICENSE).
