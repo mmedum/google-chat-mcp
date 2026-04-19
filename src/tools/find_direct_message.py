@@ -9,7 +9,7 @@ from fastmcp.exceptions import ToolError
 
 from ..chat_client import ChatApiError
 from ..models import DirectMessageResult, _ChatSpaceResponse
-from ._common import ToolContext, invoke_tool
+from ._common import CHAT_SPACES_READONLY, ToolContext, invoke_tool
 
 
 async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> DirectMessageResult:
@@ -30,4 +30,9 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
         space = _ChatSpaceResponse(**created)
         return DirectMessageResult(space_id=space.name)
 
-    return await invoke_tool("find_direct_message", ctx, body)
+    return await invoke_tool(
+        "find_direct_message",
+        ctx,
+        body,
+        required_scope=CHAT_SPACES_READONLY,
+    )

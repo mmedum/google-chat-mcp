@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..models import SpaceDetails, _ChatSpaceResponse
-from ._common import ToolContext, invoke_tool, space_display_name
+from ._common import CHAT_SPACES_READONLY, ToolContext, invoke_tool, space_display_name
 
 
 async def get_space_handler(ctx: ToolContext, space_id: str) -> SpaceDetails:
@@ -21,4 +21,10 @@ async def get_space_handler(ctx: ToolContext, space_id: str) -> SpaceDetails:
             create_time=s.create_time,
         )
 
-    return await invoke_tool("get_space", ctx, body, target_space_id=space_id)
+    return await invoke_tool(
+        "get_space",
+        ctx,
+        body,
+        target_space_id=space_id,
+        required_scope=CHAT_SPACES_READONLY,
+    )

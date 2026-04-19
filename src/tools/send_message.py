@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..models import SendMessageInput, SendMessageResult, _ChatMessageResponse
-from ._common import ToolContext, invoke_tool
+from ._common import CHAT_MESSAGES_CREATE, ToolContext, invoke_tool
 
 
 async def send_message_handler(ctx: ToolContext, payload: SendMessageInput) -> SendMessageResult:
@@ -28,4 +28,5 @@ async def send_message_handler(ctx: ToolContext, payload: SendMessageInput) -> S
         ctx,
         body,
         target_space_id=payload.space_id,
+        required_scope=CHAT_MESSAGES_CREATE,
     )

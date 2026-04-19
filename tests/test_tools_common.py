@@ -9,10 +9,148 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
+from fastmcp.exceptions import ToolError
+from src.chat_client import ChatApiError
 from src.models import ListSpacesInput
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
-from src.tools._common import AuthInfo, ToolContext, audit_user_sub
+from src.tools._common import (
+    AuthInfo,
+    ToolContext,
+    _format_missing_scope_message,
+    _is_missing_scope_error,
+    audit_user_sub,
+)
+
+
+def test_is_missing_scope_detects_aip193_reason() -> None:
+    exc = ChatApiError(
+        status_code=403,
+        message="Request had insufficient authentication scopes.",
+        endpoint="spaces.messages.create",
+        google_status="PERMISSION_DENIED",
+        google_reason="ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+    )
+    assert _is_missing_scope_error(exc) is True
+
+
+def test_is_missing_scope_detects_message_fallback() -> None:
+    # Google endpoint that doesn't populate details[].reason but sets status
+    # and includes the canonical phrase in the message.
+    exc = ChatApiError(
+        status_code=403,
+        message="Request had insufficient authentication scopes.",
+        endpoint="spaces.get",
+        google_status="PERMISSION_DENIED",
+        google_reason=None,
+    )
+    assert _is_missing_scope_error(exc) is True
+
+
+def test_is_missing_scope_false_for_generic_403() -> None:
+    exc = ChatApiError(
+        status_code=403,
+        message="The caller does not have permission",
+        endpoint="spaces.get",
+        google_status="PERMISSION_DENIED",
+        google_reason="IAM_PERMISSION_DENIED",
+    )
+    assert _is_missing_scope_error(exc) is False
+
+
+def test_is_missing_scope_false_for_non_403() -> None:
+    exc = ChatApiError(
+        status_code=404,
+        message="not found",
+        endpoint="spaces.get",
+    )
+    assert _is_missing_scope_error(exc) is False
+
+
+def test_format_missing_scope_message_names_scope() -> None:
+    scope = "https://www.googleapis.com/auth/chat.messages.reactions"
+    msg = _format_missing_scope_message(scope)
+    # Contract: the scope URL is in the message. Re-auth guidance follows.
+    assert scope in msg
+    assert "Missing required OAuth scope" in msg
+    assert "login" in msg
+
+
+@pytest.mark.asyncio
+async def test_invoke_tool_wraps_missing_scope_into_scope_named_toolerror(
+    tool_ctx: ToolContext,
+    mock_access_token,
+) -> None:
+    """End-to-end: Google 403 with insufficient-scope shape → ToolError naming the scope."""
+    from src.models import ListSpacesInput
+    from src.tools import list_spaces_handler
+
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        # Google's AIP-193 error envelope on a missing-scope 403.
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "Request had insufficient authentication scopes.",
+                        "status": "PERMISSION_DENIED",
+                        "details": [
+                            {
+                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                                "domain": "googleapis.com",
+                            }
+                        ],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ToolError) as exc_info:
+            await list_spaces_handler(tool_ctx, ListSpacesInput())
+    assert "chat.spaces.readonly" in str(exc_info.value)
+    assert "Missing required OAuth scope" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_invoke_tool_generic_403_stays_generic(
+    tool_ctx: ToolContext,
+    mock_access_token,
+) -> None:
+    """Non-scope 403 → current generic Google-error ToolError, no scope naming."""
+    from src.models import ListSpacesInput
+    from src.tools import list_spaces_handler
+
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "The caller does not have permission",
+                        "status": "PERMISSION_DENIED",
+                        "details": [
+                            {
+                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                "reason": "IAM_PERMISSION_DENIED",
+                            }
+                        ],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ToolError) as exc_info:
+            await list_spaces_handler(tool_ctx, ListSpacesInput())
+    # Generic error text, not the scope-named one.
+    assert "chat.spaces.readonly" not in str(exc_info.value)
+    assert "Google Chat API error" in str(exc_info.value)
 
 
 def test_audit_user_sub_hashes_with_pepper() -> None:

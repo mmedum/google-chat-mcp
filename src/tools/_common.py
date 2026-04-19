@@ -51,6 +51,16 @@ ToolName = Literal[
     "list_members",
 ]
 
+# Scope constants — shared by tool handlers and tests. Order matches the
+# v2 plan's tool-to-scope table. Naming: CHAT_<RESOURCE>_<VERB>.
+CHAT_MESSAGES_READONLY = "https://www.googleapis.com/auth/chat.messages.readonly"
+CHAT_MESSAGES_CREATE = "https://www.googleapis.com/auth/chat.messages.create"
+CHAT_MESSAGES_REACTIONS = "https://www.googleapis.com/auth/chat.messages.reactions"
+CHAT_SPACES_READONLY = "https://www.googleapis.com/auth/chat.spaces.readonly"
+CHAT_SPACES_CREATE = "https://www.googleapis.com/auth/chat.spaces.create"
+CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.readonly"
+DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
+
 
 class ToolContext:
     """Process-wide singletons injected into tool handlers at server startup."""
@@ -98,6 +108,38 @@ def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -
     return hmac.new(pepper, user_sub.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _is_missing_scope_error(exc: ChatApiError) -> bool:
+    """Detect Google's "insufficient scope" 403 from an AIP-193 error envelope.
+
+    Dual condition: prefer the typed reason code (error.details[].reason); fall
+    back to the textual status + message substring for endpoints whose error
+    envelope doesn't populate the reason.
+    """
+    if exc.status_code != 403:
+        return False
+    if exc.google_reason == "ACCESS_TOKEN_SCOPE_INSUFFICIENT":
+        return True
+    return (
+        exc.google_status == "PERMISSION_DENIED"
+        and "insufficient authentication scopes" in exc.message.lower()
+    )
+
+
+def _format_missing_scope_message(scope: str) -> str:
+    """Human-readable text for a missing-scope ToolError.
+
+    Format is stable: the scope URL appears between "scope: " and ". Re-run".
+    Clients that want machine-readable re-auth info can parse it out. FastMCP
+    3.2's ToolError doesn't carry structuredContent on isError results; when
+    upstream support arrives, this moves to a proper structured envelope.
+    """
+    return (
+        f"Missing required OAuth scope: {scope}. "
+        "Re-run `google-chat-mcp login` (stdio) or re-consent in your MCP "
+        "client (HTTPS) to grant this scope."
+    )
+
+
 async def _resolve_auth_via_fastmcp() -> AuthInfo:
     """HTTPS-transport resolver: pull sub + upstream token from the FastMCP request context."""
     token = get_access_token()
@@ -118,8 +160,15 @@ async def invoke_tool[T](
     body: Callable[[str, str], Awaitable[T]],
     *,
     target_space_id: str | None = None,
+    required_scope: str | None = None,
 ) -> T:
-    """Run a tool handler with audit, metrics, rate-limit, and auth context."""
+    """Run a tool handler with audit, metrics, rate-limit, and auth context.
+
+    `required_scope`, when provided, drives the missing-scope error wrapping:
+    on an upstream 403 matching Google's insufficient-scope shape, the user-
+    facing ToolError names the exact scope so the MCP client can prompt for
+    re-auth.
+    """
     auth = await (ctx.resolver() if ctx.resolver is not None else _resolve_auth_via_fastmcp())
     user_sub = auth.user_sub
     upstream_access_token = auth.access_token
@@ -138,7 +187,16 @@ async def invoke_tool[T](
         return result
     except ChatApiError as exc:
         error_code = f"google_{exc.status_code}"
-        logger.error("tool_upstream_error", tool=tool_name, status=exc.status_code)
+        logger.error(
+            "tool_upstream_error",
+            tool=tool_name,
+            status=exc.status_code,
+            google_status=exc.google_status,
+            google_reason=exc.google_reason,
+        )
+        if required_scope is not None and _is_missing_scope_error(exc):
+            error_code = "missing_scope"
+            raise ToolError(_format_missing_scope_message(required_scope)) from exc
         raise ToolError(f"Google Chat API error: {exc}") from exc
     except ToolError:
         error_code = "tool_error"

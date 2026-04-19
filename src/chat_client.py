@@ -26,10 +26,23 @@ from .observability import (
 class ChatApiError(RuntimeError):
     """Raised for non-recoverable errors from Google APIs."""
 
-    def __init__(self, status_code: int, message: str, endpoint: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        endpoint: str,
+        *,
+        google_status: str | None = None,
+        google_reason: str | None = None,
+    ) -> None:
         super().__init__(f"{endpoint} returned {status_code}: {message}")
         self.status_code = status_code
         self.endpoint = endpoint
+        self.message = message
+        # AIP-193 error envelope fields. Preserved so callers (invoke_tool) can
+        # distinguish insufficient-scope from other 403s without string-matching.
+        self.google_status = google_status
+        self.google_reason = google_reason
 
 
 class ChatClient:
@@ -316,14 +329,20 @@ class ChatClient:
                 )
                 await asyncio.sleep(sleep_for)
                 continue
-            message = _safe_error_message(resp)
+            message, google_status, google_reason = _parse_error_payload(resp)
             logger.error(
                 "upstream_error",
                 endpoint=endpoint_label,
                 status=resp.status_code,
                 url=_scrub_query(url, params),
             )
-            raise ChatApiError(resp.status_code, message, endpoint_label)
+            raise ChatApiError(
+                resp.status_code,
+                message,
+                endpoint_label,
+                google_status=google_status,
+                google_reason=google_reason,
+            )
 
 
 def _is_retryable(status: int) -> bool:
@@ -342,16 +361,36 @@ def _backoff_seconds(attempt: int, resp: httpx.Response) -> float:
     return min(base + jitter, 30.0)
 
 
-def _safe_error_message(resp: httpx.Response) -> str:
+def _parse_error_payload(resp: httpx.Response) -> tuple[str, str | None, str | None]:
+    """Pull (message, status, reason) from a Google error body (AIP-193 shape).
+
+    Returns:
+        message: human-readable error text (capped at 500 chars).
+        status: textual status like "PERMISSION_DENIED" (None if absent).
+        reason: first reason from error.details[].reason (None if absent).
+    """
     try:
         payload = resp.json()
     except ValueError:
-        return resp.text[:500]
-    if isinstance(payload, dict):
-        err = payload.get("error", {})
-        if isinstance(err, dict):
-            return str(err.get("message") or err)[:500]
-    return str(payload)[:500]
+        return resp.text[:500], None, None
+    if not isinstance(payload, dict):
+        return str(payload)[:500], None, None
+    err = payload.get("error", {})
+    if not isinstance(err, dict):
+        return str(payload)[:500], None, None
+    message = str(err.get("message") or err)[:500]
+    status_value = err.get("status")
+    status = str(status_value) if isinstance(status_value, str) else None
+    reason: str | None = None
+    details = err.get("details")
+    if isinstance(details, list):
+        for item in details:
+            if isinstance(item, dict):
+                item_reason = item.get("reason")
+                if isinstance(item_reason, str):
+                    reason = item_reason
+                    break
+    return message, status, reason
 
 
 def _scrub_query(url: str, params: Mapping[str, str] | None) -> str:
