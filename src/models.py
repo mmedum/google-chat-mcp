@@ -153,6 +153,31 @@ class GetThreadInput(_Strict):
     limit: Annotated[int, Field(ge=1, le=100)] = 50
 
 
+class ReactionSummary(_Strict):
+    emoji: str
+    count: Annotated[int, Field(ge=0)]
+
+
+class MessageDetails(_Strict):
+    """Single message with reaction summaries hydrated inline."""
+
+    message_id: MessageId
+    space_id: SpaceId
+    thread_id: ThreadName
+    sender_user_id: UserId
+    sender_email: EmailStr | None
+    sender_display_name: str | None
+    text: str
+    timestamp: datetime
+    last_update_time: datetime | None = None
+    reactions: list[ReactionSummary] = Field(default_factory=list)
+    reactions_paged: bool = False
+    """True when inline reactions were omitted (listing would be too large);
+    client should follow up with `list_reactions`. Inlined summaries stay
+    small — this signal is a forward-compatibility hook for messages with
+    many distinct reactions."""
+
+
 class WhoamiResult(_Strict):
     """Identity of the authenticated user."""
 

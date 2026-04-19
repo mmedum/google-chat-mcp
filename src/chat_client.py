@@ -196,6 +196,14 @@ class ChatClient:
         )
         return data.get("messages", [])[:limit]
 
+    async def get_message(self, access_token: str, message_name: str) -> dict[str, Any]:
+        """Fetch a single message by its full resource name (`spaces/{s}/messages/{m}`)."""
+        return await self._get(
+            f"{self._base_chat}/{message_name}",
+            access_token=access_token,
+            endpoint_label="spaces.messages.get",
+        )
+
     async def list_messages_by_thread(
         self,
         access_token: str,

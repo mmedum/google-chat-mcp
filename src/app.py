@@ -30,6 +30,8 @@ from .models import (
     ListMembersInput,
     ListSpacesInput,
     Member,
+    MessageDetails,
+    MessageId,
     SendMessageInput,
     SendMessageResult,
     SpaceDetails,
@@ -43,10 +45,15 @@ from .observability import (
     mcp_active_users,
 )
 from .rate_limit import ActiveUserTracker, TokenBucketLimiter
-from .resources import register_space_resource, register_thread_resource
+from .resources import (
+    register_message_resource,
+    register_space_resource,
+    register_thread_resource,
+)
 from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
     find_direct_message_handler,
+    get_message_handler,
     get_messages_handler,
     get_space_handler,
     get_thread_handler,
@@ -76,7 +83,7 @@ class _AppState:
     ctx: ToolContext | None = None
 
 
-def build_app(
+def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds statements. Splitting further fragments the wire-shape registration.
     settings: Settings,
     *,
     resolver: AuthResolver | None = None,
@@ -264,10 +271,25 @@ def build_app(
     async def get_thread(payload: GetThreadInput) -> list[ChatMessage]:
         return await get_thread_handler(_require_ctx(state), payload)
 
+    @mcp.tool(
+        name="get_message",
+        title="Get one Chat message",
+        description=(
+            "Fetch a single message by its resource name "
+            "(`spaces/{space}/messages/{message}`). Reaction summaries are "
+            "hydrated inline; `reactions_paged: true` signals the caller "
+            "should follow up with `list_reactions` for full detail."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def get_message(message_name: MessageId) -> MessageDetails:
+        return await get_message_handler(_require_ctx(state), message_name)
+
     # ---- resources ----
 
     register_space_resource(mcp, resolve_ctx=lambda: _require_ctx(state))
     register_thread_resource(mcp, resolve_ctx=lambda: _require_ctx(state))
+    register_message_resource(mcp, resolve_ctx=lambda: _require_ctx(state))
 
     # ---- HTTP-only custom routes ----
     # Registered only when an HTTPS auth provider is wired; stdio has no HTTP surface.
