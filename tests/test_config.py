@@ -24,8 +24,11 @@ def test_redirect_list_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_missing_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GCM_FERNET_KEY", raising=False)
+    # `_env_file=None` bypasses the repo-root .env a developer may keep for
+    # local `uv run`; the test asserts missing-secret behavior independent of
+    # that dev-only convenience. pydantic-settings accepts it dynamically.
     with pytest.raises(ValueError, match="fernet_key"):
-        Settings()  # type: ignore[call-arg]
+        Settings(_env_file=None)  # ty: ignore[unknown-argument]
 
 
 def test_oauth_scopes_include_required_set() -> None:
