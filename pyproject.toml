@@ -1,7 +1,7 @@
 [project]
 name = "google-chat-mcp"
 version = "0.1.0"
-description = "MCP server exposing Google Chat to Claude custom connectors."
+description = "MCP server exposing Google Chat to MCP-compatible clients."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.14,<3.15"

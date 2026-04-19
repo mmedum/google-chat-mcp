@@ -1,7 +1,7 @@
 """FastMCP entrypoint.
 
 Composition root: config, Google OAuth provider, SQLite, shared httpx client,
-four tools, custom routes (health, readiness, metrics).
+the tool handlers, and custom routes (health, readiness, metrics).
 """
 
 from __future__ import annotations
@@ -26,9 +26,14 @@ from .models import (
     ChatMessage,
     DirectMessageResult,
     GetMessagesInput,
+    ListMembersInput,
+    ListSpacesInput,
+    Member,
     SendMessageInput,
     SendMessageResult,
+    SpaceDetails,
     SpaceSummary,
+    SpaceType,
 )
 from .observability import (
     REGISTRY,
@@ -41,6 +46,8 @@ from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
     find_direct_message_handler,
     get_messages_handler,
+    get_space_handler,
+    list_members_handler,
     list_spaces_handler,
     send_message_handler,
 )
@@ -123,12 +130,20 @@ def build_app(settings: Settings) -> FastMCP:
     @mcp.tool(
         name="list_spaces",
         description=(
-            "List all Google Chat spaces (DMs, group chats, named spaces) "
-            "the authenticated user belongs to."
+            "List Google Chat spaces (DMs, group chats, named spaces) the "
+            "authenticated user belongs to. Defaults to 50 entries; pass "
+            "`limit` (1-200) to widen and `space_type` "
+            "('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow."
         ),
     )
-    async def list_spaces() -> list[SpaceSummary]:
-        return await list_spaces_handler(_require_ctx(state))
+    async def list_spaces(
+        space_type: SpaceType | None = None,
+        limit: int = 50,
+    ) -> list[SpaceSummary]:
+        return await list_spaces_handler(
+            _require_ctx(state),
+            ListSpacesInput(space_type=space_type, limit=limit),
+        )
 
     @mcp.tool(
         name="find_direct_message",
@@ -144,7 +159,7 @@ def build_app(settings: Settings) -> FastMCP:
         name="send_message",
         description=(
             "Post a text message to a Chat space (DM or room). Optional thread_name "
-            "replies to an existing thread. The server appends '— Claude' to the body."
+            "replies to an existing thread."
         ),
     )
     async def send_message(payload: SendMessageInput) -> SendMessageResult:
@@ -159,6 +174,30 @@ def build_app(settings: Settings) -> FastMCP:
     )
     async def get_messages(payload: GetMessagesInput) -> list[ChatMessage]:
         return await get_messages_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="get_space",
+        description=(
+            "Fetch details for a single Google Chat space by its ID. Use this "
+            "to identify unnamed DMs/group chats or confirm space metadata."
+        ),
+    )
+    async def get_space(space_id: str) -> SpaceDetails:
+        return await get_space_handler(_require_ctx(state), space_id)
+
+    @mcp.tool(
+        name="list_members",
+        description=(
+            "List members of a Google Chat space. Returns humans (with email "
+            "resolved via People API) and Google Groups, each tagged by `kind`. "
+            "Defaults to 50 entries; pass `limit` (1-200) to widen."
+        ),
+    )
+    async def list_members(space_id: str, limit: int = 50) -> list[Member]:
+        return await list_members_handler(
+            _require_ctx(state),
+            ListMembersInput(space_id=space_id, limit=limit),
+        )
 
     # ---- custom routes ----
 

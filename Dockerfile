@@ -29,7 +29,9 @@ RUN apt-get update \
  && apt-get -y upgrade \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp
+ && useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp \
+ && mkdir -p /var/lib/google-chat-mcp \
+ && chown mcp:mcp /var/lib/google-chat-mcp
 
 WORKDIR /app
 COPY --from=builder --chown=mcp:mcp /app /app

@@ -43,11 +43,12 @@ class Settings(BaseSettings):
     # `NoDecode` disables pydantic-settings' default JSON-decoding of complex env
     # values so our comma-separated string format reaches `_split_csv` unchanged.
     allowed_client_redirects: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: [
-            "https://claude.ai/api/mcp/auth_callback",
-            "https://claude.com/api/mcp/auth_callback",
-        ],
-        description="Post-auth redirect whitelist. Both Claude domains by default.",
+        default_factory=list,
+        description=(
+            "Post-auth redirect whitelist (CSV of absolute https:// URLs). "
+            "Set to your MCP client's callback URL — the server refuses "
+            "redirects to anything outside this list."
+        ),
     )
     directory_cache_ttl_seconds: int = Field(default=86_400, gt=0)
     audit_retention_days: int = Field(default=90, gt=0)

@@ -7,10 +7,18 @@ covers the failure mode.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 
 class _Strict(BaseModel):
@@ -27,14 +35,33 @@ SpaceId = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}$")]
 ThreadName = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/threads/{_ID}$")]
 MessageId = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/messages/{_ID}$")]
 UserId = Annotated[str, StringConstraints(pattern=rf"^users/{_ID}$")]
+GroupId = Annotated[str, StringConstraints(pattern=rf"^groups/{_ID}$")]
+MembershipName = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/members/{_ID}$")]
 
 SpaceType = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"]
+MemberKind = Literal["HUMAN", "GROUP"]
+MemberRole = Literal["ROLE_UNSPECIFIED", "ROLE_MEMBER", "ROLE_MANAGER"]
+MemberState = Literal["MEMBERSHIP_STATE_UNSPECIFIED", "JOINED", "INVITED", "NOT_A_MEMBER"]
+
+# Google's Chat API still returns pre-GA space-type names on spaces.list
+# alongside the current ones. Map them to the current literals so downstream
+# code (tools, tests, schema) can assume the canonical names.
+_LEGACY_SPACE_TYPE_ALIASES: dict[str, str] = {
+    "ROOM": "SPACE",
+    "DM": "DIRECT_MESSAGE",
+    "GROUP_DM": "GROUP_CHAT",
+}
 
 
 class SpaceSummary(_Strict):
     space_id: SpaceId
     type: SpaceType
     display_name: str
+
+
+class ListSpacesInput(_Strict):
+    space_type: SpaceType | None = None
+    limit: Annotated[int, Field(ge=1, le=200)] = 50
 
 
 class DirectMessageResult(_Strict):
@@ -57,6 +84,47 @@ class GetMessagesInput(_Strict):
     space_id: SpaceId
     since: datetime | None = None
     limit: Annotated[int, Field(ge=1, le=100)] = 20
+
+    @field_validator("since", mode="before")
+    @classmethod
+    def _parse_iso_since(cls, v: object) -> object:
+        # `_Strict` is strict=True, so Pydantic rejects JSON-string datetimes
+        # outright. LLM clients pass ISO strings — parse them here and treat
+        # naive timestamps as UTC (safer than the server's local TZ).
+        if isinstance(v, str):
+            normalized = v[:-1] + "+00:00" if v.endswith("Z") else v
+            try:
+                dt = datetime.fromisoformat(normalized)
+            except ValueError as exc:
+                raise ValueError(f"`since` must be ISO-8601; got {v!r}") from exc
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        return v
+
+
+class SpaceDetails(_Strict):
+    space_id: SpaceId
+    type: SpaceType
+    display_name: str
+    single_user_bot_dm: bool | None = None
+    external_user_allowed: bool | None = None
+    create_time: datetime | None = None
+
+
+class ListMembersInput(_Strict):
+    space_id: SpaceId
+    limit: Annotated[int, Field(ge=1, le=200)] = 50
+
+
+class Member(_Strict):
+    kind: MemberKind
+    # users/{id} for humans, groups/{id} for Google Groups.
+    member_id: str
+    display_name: str | None
+    # Populated for humans via People API (cached). Groups may surface an
+    # email if Google returns one; often None.
+    email: EmailStr | None
+    role: MemberRole
+    state: MemberState
 
 
 class ChatMessage(_Strict):
@@ -99,11 +167,38 @@ class _ChatMessageResponse(_ChatBase):
     text: str = ""
     formatted_text: str | None = Field(default=None, alias="formattedText")
     thread: _ChatThread
-    space: _ChatBase | None = None  # opaque; we don't use it
+    # The embedded space reference varies in shape — `_ChatBase` with
+    # `extra="forbid"` rejects it outright. We don't read any of its fields.
+    space: dict[str, object] | None = None
     argument_text: str | None = Field(default=None, alias="argumentText")
     fallback_text: str | None = Field(default=None, alias="fallbackText")
     thread_reply: bool | None = Field(default=None, alias="threadReply")
     client_assigned_message_id: str | None = Field(default=None, alias="clientAssignedMessageId")
+    # Opaque fields — we don't render them, but `extra="forbid"` would
+    # otherwise reject any message carrying them. Keep one-per-field so
+    # unexpected drift still surfaces (CLAUDE.md rule).
+    attachment: list[dict[str, object]] | None = None
+    cards_v2: list[dict[str, object]] | None = Field(default=None, alias="cardsV2")
+    cards: list[dict[str, object]] | None = None
+    emoji_reaction_summaries: list[dict[str, object]] | None = Field(
+        default=None, alias="emojiReactionSummaries"
+    )
+    accessory_widgets: list[dict[str, object]] | None = Field(
+        default=None, alias="accessoryWidgets"
+    )
+    attached_gifs: list[dict[str, object]] | None = Field(default=None, alias="attachedGifs")
+    annotations: list[dict[str, object]] | None = None
+    slash_command: dict[str, object] | None = Field(default=None, alias="slashCommand")
+    action_response: dict[str, object] | None = Field(default=None, alias="actionResponse")
+    matched_url: dict[str, object] | None = Field(default=None, alias="matchedUrl")
+    deletion_metadata: dict[str, object] | None = Field(default=None, alias="deletionMetadata")
+    quoted_message_metadata: dict[str, object] | None = Field(
+        default=None, alias="quotedMessageMetadata"
+    )
+    private_message_viewer: dict[str, object] | None = Field(
+        default=None, alias="privateMessageViewer"
+    )
+    delete_time: datetime | None = Field(default=None, alias="deleteTime")
 
 
 class _ChatSpaceResponse(_ChatBase):
@@ -128,8 +223,53 @@ class _ChatSpaceResponse(_ChatBase):
     )
     permission_settings: dict[str, object] | None = Field(default=None, alias="permissionSettings")
     customer: str | None = None
+    last_active_time: datetime | None = Field(default=None, alias="lastActiveTime")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _prefer_space_type_over_type(cls, data: object) -> object:
+        # Google's deprecated `type` field often returns "ROOM" as a catch-all
+        # regardless of whether the space is actually a DM or group chat; the
+        # canonical classification lives in `spaceType`. When both are present,
+        # overwrite `type` so `type_` reflects reality.
+        if not isinstance(data, dict):
+            return data
+        space_type = data.get("spaceType")  # ty: ignore[invalid-argument-type]
+        if isinstance(space_type, str) and space_type:
+            return {**data, "type": space_type}
+        return data
+
+    @field_validator("type_", mode="before")
+    @classmethod
+    def _normalize_legacy_space_type(cls, v: object) -> object:
+        # Covers the older shape where only `type` was returned, using the
+        # pre-GA aliases (ROOM / DM / GROUP_DM) before the Literal rejects them.
+        return _LEGACY_SPACE_TYPE_ALIASES.get(v, v) if isinstance(v, str) else v
 
 
 class _ChatSpacesListResponse(_ChatBase):
     spaces: list[_ChatSpaceResponse] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class _ChatGroup(_ChatBase):
+    # Google Group as a space member. `name` is `groups/{id}`.
+    name: GroupId
+    display_name: str | None = Field(default=None, alias="displayName")
+
+
+class _ChatMembershipResponse(_ChatBase):
+    name: MembershipName
+    state: MemberState = Field(alias="state")
+    role: MemberRole | None = None
+    create_time: datetime | None = Field(default=None, alias="createTime")
+    delete_time: datetime | None = Field(default=None, alias="deleteTime")
+    # Exactly one of `member` (human) or `groupMember` (Google Group) is
+    # populated per membership, per Google's response shape.
+    member: _ChatUser | None = None
+    group_member: _ChatGroup | None = Field(default=None, alias="groupMember")
+
+
+class _ChatMembershipsListResponse(_ChatBase):
+    memberships: list[_ChatMembershipResponse] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
