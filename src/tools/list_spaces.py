@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..models import ListSpacesInput, SpaceSummary, _ChatSpaceResponse, _ChatSpacesListResponse
-from ._common import ToolContext, invoke_tool
+from ._common import ToolContext, invoke_tool, space_display_name
 
 
 async def list_spaces_handler(ctx: ToolContext, payload: ListSpacesInput) -> list[SpaceSummary]:
@@ -17,20 +17,8 @@ async def list_spaces_handler(ctx: ToolContext, payload: ListSpacesInput) -> lis
         )
         spaces = _ChatSpacesListResponse(spaces=[_ChatSpaceResponse(**r) for r in raw]).spaces
         return [
-            SpaceSummary(
-                space_id=s.name,
-                type=s.type_,
-                display_name=s.display_name or _fallback_name(s),
-            )
+            SpaceSummary(space_id=s.name, type=s.type_, display_name=space_display_name(s))
             for s in spaces
         ]
 
     return await invoke_tool("list_spaces", ctx, body)
-
-
-def _fallback_name(s: _ChatSpaceResponse) -> str:
-    if s.type_ == "DIRECT_MESSAGE":
-        return "(direct message)"
-    if s.type_ == "GROUP_CHAT":
-        return "(group chat)"
-    return "(unnamed space)"

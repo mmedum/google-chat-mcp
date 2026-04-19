@@ -1,8 +1,8 @@
 """Tool: list_members — list members of a Chat space.
 
 Returns both human members (with People-API email resolution) and Google
-Group members. Email resolution reuses the 24h `DirectoryCache` that
-`get_messages` populates.
+Group members. Email resolution reuses the `ToolContext.directory_cache`
+that `get_messages` also populates.
 """
 
 from __future__ import annotations
@@ -18,12 +18,11 @@ from ..models import (
 from ..observability import logger
 from ..storage import DirectoryCache
 from ._common import ToolContext, invoke_tool
-from .get_messages import _fetch_person
+from ._directory import fetch_person
 
 
 async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> list[Member]:
     """List up to `payload.limit` members of `payload.space_id`."""
-    cache = DirectoryCache(ctx.db, ttl_seconds=ctx.directory_cache_ttl_seconds)
 
     async def body(access_token: str, _user_sub: str) -> list[Member]:
         raw = await ctx.client.list_members(
@@ -36,7 +35,7 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
         # the cold-cache path. Exceptions don't blank the batch: a single failed
         # lookup surfaces as email=None for that member, not a dropped row.
         results = await asyncio.gather(
-            *[_to_member(access_token, m, cache, ctx) for m in parsed],
+            *[_to_member(access_token, m, ctx) for m in parsed],
             return_exceptions=True,
         )
         out: list[Member] = []
@@ -57,12 +56,13 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
 async def _to_member(
     access_token: str,
     m: _ChatMembershipResponse,
-    cache: DirectoryCache,
     ctx: ToolContext,
 ) -> Member:
     role = m.role or "ROLE_UNSPECIFIED"
     if m.member is not None:
-        email, display_name = await _resolve_human(access_token, m.member.name, cache, ctx)
+        email, display_name = await _resolve_human(
+            access_token, m.member.name, ctx.directory_cache, ctx
+        )
         return Member(
             kind="HUMAN",
             member_id=m.member.name,
@@ -93,7 +93,7 @@ async def _resolve_human(
     cached = await cache.get(user_id)
     if cached is not None:
         return cached
-    fetched = await _fetch_person(access_token, user_id, ctx)
+    fetched = await fetch_person(ctx.client, access_token, user_id)
     if fetched is None:
         return None, None
     email, display_name = fetched

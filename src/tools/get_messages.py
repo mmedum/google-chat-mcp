@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC
-from typing import Any
 
 from ..models import (
     ChatMessage,
@@ -19,11 +18,11 @@ from ..models import (
 from ..observability import logger
 from ..storage import DirectoryCache
 from ._common import ToolContext, invoke_tool
+from ._directory import fetch_person
 
 
 async def get_messages_handler(ctx: ToolContext, payload: GetMessagesInput) -> list[ChatMessage]:
     """Read up to `payload.limit` messages from `space_id`, newest first."""
-    cache = DirectoryCache(ctx.db, ttl_seconds=ctx.directory_cache_ttl_seconds)
 
     async def body(access_token: str, _user_sub: str) -> list[ChatMessage]:
         since_iso = (
@@ -42,7 +41,7 @@ async def get_messages_handler(ctx: ToolContext, payload: GetMessagesInput) -> l
         # whole batch. We log the offender and skip it; the user sees partial
         # results rather than a blanket error.
         results = await asyncio.gather(
-            *[_enrich_sender(access_token, m, cache, ctx) for m in parsed],
+            *[_enrich_sender(access_token, m, ctx) for m in parsed],
             return_exceptions=True,
         )
         enriched: list[ChatMessage] = []
@@ -68,10 +67,9 @@ async def get_messages_handler(ctx: ToolContext, payload: GetMessagesInput) -> l
 async def _enrich_sender(
     access_token: str,
     msg: _ChatMessageResponse,
-    cache: DirectoryCache,
     ctx: ToolContext,
 ) -> ChatMessage:
-    email, display_name = await _resolve_sender(access_token, msg, cache, ctx)
+    email, display_name = await _resolve_sender(access_token, msg, ctx.directory_cache, ctx)
     create_time = msg.create_time
     ts = create_time.astimezone(UTC) if create_time.tzinfo else create_time.replace(tzinfo=UTC)
     return ChatMessage(
@@ -95,52 +93,10 @@ async def _resolve_sender(
     cached = await cache.get(user_id)
     if cached is not None:
         return cached
-    fetched = await _fetch_person(access_token, user_id, ctx)
+    fetched = await fetch_person(ctx.client, access_token, user_id)
     if fetched is None:
         return None, msg.sender.display_name
     email, display_name = fetched
     if email:
         await cache.put(user_id, email, display_name)
     return email, display_name or msg.sender.display_name
-
-
-async def _fetch_person(
-    access_token: str, user_id: str, ctx: ToolContext
-) -> tuple[str | None, str | None] | None:
-    """Hit People API for this user; return (email, display_name) or None on 404."""
-    data = await ctx.client.resolve_person(access_token, user_id)
-    if data is None:
-        return None
-    return _primary_email(data), _primary_name(data)
-
-
-def _primary_email(data: dict[str, Any]) -> str | None:
-    emails = data.get("emailAddresses")
-    if not isinstance(emails, list):
-        return None
-    return _pick_field(emails, "value")
-
-
-def _primary_name(data: dict[str, Any]) -> str | None:
-    names = data.get("names")
-    if not isinstance(names, list):
-        return None
-    return _pick_field(names, "displayName")
-
-
-def _pick_field(items: list[Any], field: str) -> str | None:
-    """Return `field` from the first dict marked primary; else from the first dict."""
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        meta = item.get("metadata")
-        if isinstance(meta, dict) and meta.get("primary"):
-            value = item.get(field)
-            if isinstance(value, str):
-                return value
-    for item in items:
-        if isinstance(item, dict):
-            value = item.get(field)
-            if isinstance(value, str):
-                return value
-    return None

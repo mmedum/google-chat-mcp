@@ -18,6 +18,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
 
 from ..chat_client import ChatApiError, ChatClient
+from ..models import _ChatSpaceResponse
 from ..observability import (
     logger,
     mcp_rate_limit_hits_total,
@@ -25,7 +26,7 @@ from ..observability import (
     mcp_tool_latency_seconds,
 )
 from ..rate_limit import ActiveUserTracker, TokenBucketLimiter
-from ..storage import Database, write_audit_row
+from ..storage import Database, DirectoryCache, write_audit_row
 
 ToolName = Literal[
     "list_spaces",
@@ -40,7 +41,14 @@ ToolName = Literal[
 class ToolContext:
     """Process-wide singletons injected into tool handlers at server startup."""
 
-    __slots__ = ("active_users", "client", "db", "directory_cache_ttl_seconds", "limiter")
+    __slots__ = (
+        "active_users",
+        "client",
+        "db",
+        "directory_cache",
+        "directory_cache_ttl_seconds",
+        "limiter",
+    )
 
     def __init__(
         self,
@@ -52,6 +60,7 @@ class ToolContext:
     ) -> None:
         self.client = client
         self.db = db
+        self.directory_cache = DirectoryCache(db, ttl_seconds=directory_cache_ttl_seconds)
         self.limiter = limiter
         self.active_users = active_users
         self.directory_cache_ttl_seconds = directory_cache_ttl_seconds
@@ -113,3 +122,14 @@ async def invoke_tool[T](
             latency_ms=latency_ms,
             error_code=error_code,
         )
+
+
+def space_display_name(s: _ChatSpaceResponse) -> str:
+    """Human-friendly label for a space: `displayName` if set, else a synthetic tag."""
+    if s.display_name:
+        return s.display_name
+    if s.type_ == "DIRECT_MESSAGE":
+        return "(direct message)"
+    if s.type_ == "GROUP_CHAT":
+        return "(group chat)"
+    return "(unnamed space)"
