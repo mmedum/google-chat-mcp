@@ -211,6 +211,70 @@ class ListReactionsInput(_Strict):
     page_token: str | None = None
 
 
+class SearchMessagesInput(_Strict):
+    space_id: SpaceId
+    """Required. The server will NOT search across spaces — the model should
+    direct the user to the Chat web UI for cross-space history."""
+
+    query: str | None = None
+    """Exact-substring (case-insensitive) match. Mutually exclusive with regex."""
+
+    regex: str | None = None
+    """Python regex (re.search). Mutually exclusive with query."""
+
+    created_after: datetime | None = None
+    """Lower bound on message createTime. Strongly recommended — an unbounded
+    scan of a large space hits the page cap and returns a partial result."""
+
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+    """Maximum matches returned. Scanning continues until this many hits or
+    the page cap is reached."""
+
+    max_pages: Annotated[int, Field(ge=1, le=50)] | None = None
+    """Hard ceiling on pages fetched. None → operator default (GCM_SEARCH_MAX_PAGES,
+    default 10)."""
+
+    @field_validator("created_after", mode="before")
+    @classmethod
+    def _parse_iso_created_after(cls, v: object) -> object:
+        if isinstance(v, str):
+            normalized = v[:-1] + "+00:00" if v.endswith("Z") else v
+            try:
+                dt = datetime.fromisoformat(normalized)
+            except ValueError as exc:
+                raise ValueError(f"`created_after` must be ISO-8601; got {v!r}") from exc
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        return v
+
+    @model_validator(mode="after")
+    def _exclusive_query_shape(self) -> SearchMessagesInput:
+        if (self.query is None) == (self.regex is None):
+            raise ValueError("Provide exactly one of `query` (exact substring) OR `regex`.")
+        if self.query is not None and not self.query.strip():
+            raise ValueError("`query` must be non-empty after strip.")
+        return self
+
+
+class SearchMatch(_Strict):
+    message_id: MessageId
+    thread_id: ThreadName
+    sender_user_id: UserId
+    text: str
+    timestamp: datetime
+    snippet: str
+    """Up to ~200 characters of `text` centered on the first match."""
+
+
+class SearchMessagesResult(_Strict):
+    matches: list[SearchMatch]
+    scanned: Annotated[int, Field(ge=0)]
+    """Total messages fetched from Google before filtering."""
+    cap_reached: bool
+    """True when scanning stopped at `max_pages` before finding `limit` matches.
+    Caller should either narrow the query, raise `created_after`, or accept
+    the partial result."""
+
+
 class ReactionEntry(_Strict):
     reaction_name: ReactionName
     emoji: str

@@ -10,6 +10,7 @@ from .list_members import list_members_handler
 from .list_reactions import list_reactions_handler
 from .list_spaces import list_spaces_handler
 from .remove_reaction import remove_reaction_handler
+from .search_messages import search_messages_handler
 from .send_message import send_message_handler
 from .whoami import whoami_handler
 
@@ -24,6 +25,7 @@ __all__ = [
     "list_reactions_handler",
     "list_spaces_handler",
     "remove_reaction_handler",
+    "search_messages_handler",
     "send_message_handler",
     "whoami_handler",
 ]

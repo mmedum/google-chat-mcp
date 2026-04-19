@@ -196,6 +196,42 @@ class ChatClient:
         )
         return data.get("messages", [])[:limit]
 
+    async def list_messages_page(
+        self,
+        access_token: str,
+        space_id: str,
+        *,
+        page_size: int = 100,
+        page_token: str | None = None,
+        created_after_iso: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """One page of messages, newest-first. Returns (messages, next_page_token).
+
+        Exposes Google's native page_token so search_messages can walk up to a
+        bounded page cap without pulling everything into memory at once.
+        """
+        params: dict[str, str] = {
+            "pageSize": str(min(page_size, 100)),
+            "orderBy": "createTime desc",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        if created_after_iso:
+            params["filter"] = f'createTime > "{created_after_iso}"'
+        data = await self._get(
+            f"{self._base_chat}/{space_id}/messages",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.list",
+        )
+        messages = data.get("messages", [])
+        next_token = data.get("nextPageToken")
+        if not isinstance(next_token, str) or not next_token:
+            next_token = None
+        if not isinstance(messages, list):
+            messages = []
+        return messages, next_token
+
     async def get_message(self, access_token: str, message_name: str) -> dict[str, Any]:
         """Fetch a single message by its full resource name (`spaces/{s}/messages/{m}`)."""
         return await self._get(

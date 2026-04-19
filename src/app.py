@@ -38,6 +38,8 @@ from .models import (
     MessageId,
     RemoveReactionInput,
     RemoveReactionResult,
+    SearchMessagesInput,
+    SearchMessagesResult,
     SendMessageInput,
     SendMessageResult,
     SpaceDetails,
@@ -68,6 +70,7 @@ from .tools import (
     list_reactions_handler,
     list_spaces_handler,
     remove_reaction_handler,
+    search_messages_handler,
     send_message_handler,
     whoami_handler,
 )
@@ -342,6 +345,22 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def list_reactions(payload: ListReactionsInput) -> ListReactionsResult:
         return await list_reactions_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="search_messages",
+        title="Search messages in a space",
+        description=(
+            "Client-side search over a single space's message history. "
+            "Always pass a target `space_id` and a `created_after` lower "
+            "bound — an unbounded scan of a large space hits the page cap "
+            "and returns a partial result. Provide exactly one of `query` "
+            "(exact substring, case-insensitive) or `regex` (Python re.search). "
+            "For org-wide history, direct the user to the Chat web UI."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def search_messages(payload: SearchMessagesInput) -> SearchMessagesResult:
+        return await search_messages_handler(_require_ctx(state), payload)
 
     # ---- resources ----
 
