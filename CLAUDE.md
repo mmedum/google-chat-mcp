@@ -58,20 +58,22 @@ Key things NOT in the repo but often asked for:
 
 ## Tooling pins
 
-- Python 3.12 (locked in `.python-version`)
+- Python 3.14 (locked in `.python-version`; pyproject pins `>=3.14,<3.15`)
 - FastMCP `~= 3.2` (current 3.2.4)
 - `ty == 0.0.31` (pinned exactly — it's 0.0.x beta, every patch can have breaking changes; no strict mode)
 - `ruff ~= 0.15`
-- Pydantic v2 with `extra="forbid"` + `strict=True` on every model
+- Pydantic v2: tool I/O models use `extra="forbid"` + `strict=True`; Chat API response models use `extra="forbid"` only so schema drift still surfaces
 
 ## Secrets
 
-Never commit secrets. Production reads from `/run/secrets/<name>`; local dev reads from `GCM_*` env vars. Missing secret → `Settings()` construction raises. Required:
+Never commit secrets. Production mounts Docker secrets at `/run/secrets/GCM_<name>`; local dev reads from `GCM_*` env vars. Missing secret → `Settings()` construction raises. Required (host file path / container path / env var name):
 
-- `google_client_id` / `GCM_GOOGLE_CLIENT_ID`
-- `google_client_secret` / `GCM_GOOGLE_CLIENT_SECRET`
-- `fernet_key` / `GCM_FERNET_KEY` — Fernet key for encrypting refresh-tokens at rest
-- `jwt_signing_key` / `GCM_JWT_SIGNING_KEY` — FastMCP JWT signing
+- `./secrets/google_client_id` → `/run/secrets/GCM_google_client_id` → `GCM_GOOGLE_CLIENT_ID`
+- `./secrets/google_client_secret` → `/run/secrets/GCM_google_client_secret` → `GCM_GOOGLE_CLIENT_SECRET`
+- `./secrets/fernet_key` → `/run/secrets/GCM_fernet_key` → `GCM_FERNET_KEY` (Fernet key for encrypting refresh tokens at rest)
+- `./secrets/jwt_signing_key` → `/run/secrets/GCM_jwt_signing_key` → `GCM_JWT_SIGNING_KEY` (FastMCP JWT signing)
+
+The `GCM_` prefix on the container mount is load-bearing: pydantic-settings applies `env_prefix` to `secrets_dir` lookups too, not just env vars. Keep `compose.yml`'s secret names in sync with that prefix.
 
 ## Tests
 

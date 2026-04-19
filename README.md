@@ -120,7 +120,9 @@ Responsible clients ask before sending. Messages are posted verbatim — no clie
 
 ```bash
 uv sync --extra dev
-cp .env.example .env      # or export GCM_* vars in your shell
+# Export the required GCM_* env vars (see "Set required env" above)
+# in your shell, or drop them into an .env at the repo root — pydantic-settings
+# auto-loads either.
 uv run pytest
 uv run ruff check .
 uv run ty check
