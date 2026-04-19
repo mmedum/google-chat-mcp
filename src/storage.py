@@ -26,6 +26,9 @@ class Database:
         conn = await aiosqlite.connect(self._path)
         conn.row_factory = aiosqlite.Row
         await conn.execute("PRAGMA foreign_keys = ON;")
+        # Wait up to 5s on a write lock before failing, so parallel audit writes
+        # don't crash each other with "database is locked".
+        await conn.execute("PRAGMA busy_timeout = 5000;")
         return conn
 
     @asynccontextmanager

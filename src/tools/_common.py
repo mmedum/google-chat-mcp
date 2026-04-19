@@ -61,7 +61,10 @@ async def invoke_tool[T](
     token = get_access_token()
     if token is None or not token.claims:
         raise ToolError("Not authenticated.")
-    user_sub = str(token.claims.get("sub") or "")
+    sub = token.claims.get("sub")
+    if not sub:
+        raise ToolError("Token is missing the 'sub' claim.")
+    user_sub = str(sub)
     upstream_access_token = token.token
     if not upstream_access_token:
         raise ToolError("No upstream access token available for this session.")

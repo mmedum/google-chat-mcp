@@ -179,6 +179,19 @@ def build_app(settings: Settings) -> FastMCP:
                 {"ready": False, "reason": f"db: {exc.__class__.__name__}"},
                 status_code=503,
             )
+        # Probe the OAuth disk KV store: write/read/delete a canary. Catches
+        # "volume unmounted" or "write-disabled" long before the first OAuth call
+        # would crash with a confusing stack trace.
+        probe = settings.kv_store_path / ".readyz_probe"
+        try:
+            settings.kv_store_path.mkdir(parents=True, exist_ok=True)
+            probe.write_text("ok")
+            probe.unlink()
+        except OSError as exc:
+            return JSONResponse(
+                {"ready": False, "reason": f"kv_store: {exc.__class__.__name__}"},
+                status_code=503,
+            )
         return JSONResponse({"ready": True})
 
     @mcp.custom_route("/metrics", methods=["GET"])

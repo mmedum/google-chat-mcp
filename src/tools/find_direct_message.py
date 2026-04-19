@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastmcp.exceptions import ToolError
 
+from ..chat_client import ChatApiError
 from ..models import DirectMessageResult, _ChatSpaceResponse
 from ._common import ToolContext, invoke_tool
 
@@ -21,7 +22,7 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
             return DirectMessageResult(space_id=space.name)
         try:
             created = await ctx.client.create_dm(access_token, user_email)
-        except Exception as exc:
+        except ChatApiError as exc:
             raise ToolError(
                 f"Could not find or create DM with {user_email}. "
                 f"Is the user in your Workspace directory?"

@@ -19,10 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
-RUN useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp \
- && apt-get update \
- && apt-get install --no-install-recommends -y curl \
- && rm -rf /var/lib/apt/lists/*
+RUN useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp
 
 WORKDIR /app
 COPY --from=builder --chown=mcp:mcp /app /app
@@ -34,6 +31,6 @@ USER mcp
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD curl -fsS http://localhost:8000/healthz || exit 1
+  CMD ["python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz',timeout=3).status==200 else 1)"]
 
 CMD ["python", "-m", "src.server"]

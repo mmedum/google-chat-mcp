@@ -16,6 +16,7 @@ from ..models import (
     GetMessagesInput,
     _ChatMessageResponse,
 )
+from ..observability import logger
 from ..storage import DirectoryCache
 from ._common import ToolContext, invoke_tool
 
@@ -37,9 +38,23 @@ async def get_messages_handler(ctx: ToolContext, payload: GetMessagesInput) -> l
             since_iso=since_iso,
         )
         parsed = [_ChatMessageResponse(**r) for r in raw_messages]
-        enriched = await asyncio.gather(
-            *[_enrich_sender(access_token, m, cache, ctx) for m in parsed]
+        # `return_exceptions=True`: one bad People-API lookup shouldn't blank the
+        # whole batch. We log the offender and skip it; the user sees partial
+        # results rather than a blanket error.
+        results = await asyncio.gather(
+            *[_enrich_sender(access_token, m, cache, ctx) for m in parsed],
+            return_exceptions=True,
         )
+        enriched: list[ChatMessage] = []
+        for msg, res in zip(parsed, results, strict=True):
+            if isinstance(res, BaseException):
+                logger.warning(
+                    "enrich_sender_failed",
+                    sender=msg.sender.name,
+                    error=type(res).__name__,
+                )
+                continue
+            enriched.append(res)
         return enriched
 
     return await invoke_tool(

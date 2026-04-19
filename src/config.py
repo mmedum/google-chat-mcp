@@ -66,7 +66,14 @@ class Settings(BaseSettings):
     @classmethod
     def _split_csv(cls, v: object) -> object:
         if isinstance(v, str):
-            return [s.strip() for s in v.split(",") if s.strip()]
+            v = [s.strip() for s in v.split(",") if s.strip()]
+        if isinstance(v, list):
+            for uri in v:
+                if not isinstance(uri, str) or not uri.startswith("https://"):
+                    raise ValueError(
+                        f"allowed_client_redirects entries must be absolute https:// URLs; "
+                        f"got {uri!r}"
+                    )
         return v
 
     @property

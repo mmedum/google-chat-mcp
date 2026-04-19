@@ -67,7 +67,7 @@ mcp_tool_latency_seconds = Histogram(
     "MCP tool latency.",
     labelnames=("tool",),
     registry=REGISTRY,
-    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    buckets=(0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 5.0, 10.0, 30.0),
 )
 mcp_google_api_calls_total = Counter(
     "mcp_google_api_calls_total",
@@ -80,7 +80,7 @@ mcp_google_api_latency_seconds = Histogram(
     "Upstream Google API latency.",
     labelnames=("endpoint",),
     registry=REGISTRY,
-    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    buckets=(0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 5.0, 10.0, 30.0),
 )
 mcp_rate_limit_hits_total = Counter(
     "mcp_rate_limit_hits_total",
