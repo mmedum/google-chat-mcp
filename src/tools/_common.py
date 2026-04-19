@@ -41,14 +41,7 @@ ToolName = Literal[
 class ToolContext:
     """Process-wide singletons injected into tool handlers at server startup."""
 
-    __slots__ = (
-        "active_users",
-        "client",
-        "db",
-        "directory_cache",
-        "directory_cache_ttl_seconds",
-        "limiter",
-    )
+    __slots__ = ("active_users", "client", "db", "directory_cache", "limiter")
 
     def __init__(
         self,
@@ -63,7 +56,6 @@ class ToolContext:
         self.directory_cache = DirectoryCache(db, ttl_seconds=directory_cache_ttl_seconds)
         self.limiter = limiter
         self.active_users = active_users
-        self.directory_cache_ttl_seconds = directory_cache_ttl_seconds
 
 
 async def invoke_tool[T](

@@ -1,7 +1,7 @@
 """FastMCP entrypoint.
 
 Composition root: config, Google OAuth provider, SQLite, shared httpx client,
-four tools, custom routes (health, readiness, metrics).
+the tool handlers, and custom routes (health, readiness, metrics).
 """
 
 from __future__ import annotations

@@ -101,10 +101,6 @@ class GetMessagesInput(_Strict):
         return v
 
 
-class GetSpaceInput(_Strict):
-    space_id: SpaceId
-
-
 class SpaceDetails(_Strict):
     space_id: SpaceId
     type: SpaceType
