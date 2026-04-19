@@ -1,0 +1,46 @@
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: google-chat-mcp:local
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      GCM_BASE_URL: "${GCM_BASE_URL:?set to https://<your-host> — the public URL of this MCP server}"
+      GCM_DATA_DIR: "/var/lib/google-chat-mcp"
+      GCM_LOG_LEVEL: "${GCM_LOG_LEVEL:-INFO}"
+      # Client redirect whitelist — both Claude domains by default.
+      GCM_ALLOWED_CLIENT_REDIRECTS: "${GCM_ALLOWED_CLIENT_REDIRECTS:-https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback}"
+      GCM_RATE_LIMIT_PER_MINUTE: "${GCM_RATE_LIMIT_PER_MINUTE:-60}"
+      # Disable FastMCP's boot-time pypi version check: it adds a network dep
+      # to startup and leaks deployment timing via pypi.org access logs.
+      FASTMCP_CHECK_FOR_UPDATES: "off"
+    secrets:
+      - google_client_id
+      - google_client_secret
+      - fernet_key
+      - jwt_signing_key
+    volumes:
+      - mcp_data:/var/lib/google-chat-mcp
+    mem_limit: 512m
+    cpus: 1.0
+    user: "1000:1000"
+    read_only: false  # SQLite + key-value store write to /var/lib/google-chat-mcp
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  google_client_id:
+    file: ./secrets/google_client_id
+  google_client_secret:
+    file: ./secrets/google_client_secret
+  fernet_key:
+    file: ./secrets/fernet_key
+  jwt_signing_key:
+    file: ./secrets/jwt_signing_key
+
+volumes:
+  mcp_data:
+    driver: local
