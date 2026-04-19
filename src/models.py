@@ -8,7 +8,7 @@ covers the failure mode.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -72,12 +72,22 @@ class SendMessageInput(_Strict):
     space_id: SpaceId
     text: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
     thread_name: ThreadName | None = None
+    dry_run: bool = False
+    """Render the payload without posting. For ungated Agent-SDK loops and
+    MCP clients running with `bypassPermissions`: preview, inspect, then
+    re-invoke without `dry_run` to actually post."""
 
 
 class SendMessageResult(_Strict):
-    message_id: MessageId
+    # `message_id` and `thread_id` are None on a dry-run result — nothing was
+    # created, so there's no resource name yet. On a real post both are set.
+    message_id: MessageId | None = None
     space_id: SpaceId
-    thread_id: ThreadName
+    thread_id: ThreadName | None = None
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+    """On dry-run, the exact JSON body that would have been POSTed to
+    spaces.messages.create. On a real post, None."""
 
 
 class GetMessagesInput(_Strict):

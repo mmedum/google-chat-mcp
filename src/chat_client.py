@@ -162,11 +162,7 @@ class ChatClient:
         thread_name: str | None = None,
     ) -> dict[str, Any]:
         """Post a message. `thread_name` is a reply target (`spaces/X/threads/Y`)."""
-        params: dict[str, str] = {}
-        body: dict[str, Any] = {"text": text}
-        if thread_name:
-            body["thread"] = {"name": thread_name}
-            params["messageReplyOption"] = "REPLY_MESSAGE_OR_FAIL"
+        body, params = _build_send_message_body(text=text, thread_name=thread_name)
         return await self._post(
             f"{self._base_chat}/{space_id}/messages",
             access_token=access_token,
@@ -343,6 +339,22 @@ class ChatClient:
                 google_status=google_status,
                 google_reason=google_reason,
             )
+
+
+def _build_send_message_body(
+    *, text: str, thread_name: str | None
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Pure builder for the spaces.messages.create request body + query params.
+
+    Shared by the real POST path and `send_message`'s dry_run branch; dry/real
+    parity is a test assertion — if this function returns X, a live POST sends X.
+    """
+    params: dict[str, str] = {}
+    body: dict[str, Any] = {"text": text}
+    if thread_name:
+        body["thread"] = {"name": thread_name}
+        params["messageReplyOption"] = "REPLY_MESSAGE_OR_FAIL"
+    return body, params
 
 
 def _is_retryable(status: int) -> bool:
