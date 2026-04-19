@@ -1,0 +1,7 @@
+ignored:
+  # We intentionally `apt-get -y upgrade` in the runtime stage to pull Debian
+  # security fixes at build time; Trivy is the source of truth for image CVEs,
+  # not hadolint's style rules.
+  - DL3005  # Do not use apt-get upgrade
+  - DL3008  # Pin versions in apt-get install
+failure-threshold: error
