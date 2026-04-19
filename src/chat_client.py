@@ -196,6 +196,30 @@ class ChatClient:
         )
         return data.get("messages", [])[:limit]
 
+    async def list_messages_by_thread(
+        self,
+        access_token: str,
+        space_id: str,
+        thread_name: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List messages in a specific thread, oldest-first (natural reading order).
+
+        Uses the documented filter grammar: `thread.name=spaces/{s}/threads/{t}`.
+        """
+        params: dict[str, str] = {
+            "pageSize": str(min(limit, 100)),
+            "filter": f'thread.name = "{thread_name}"',
+            "orderBy": "createTime asc",
+        }
+        data = await self._get(
+            f"{self._base_chat}/{space_id}/messages",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.list",
+        )
+        return data.get("messages", [])[:limit]
+
     # ---------- People ----------
 
     async def resolve_person(self, access_token: str, user_id: str) -> dict[str, Any] | None:

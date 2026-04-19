@@ -7,5 +7,6 @@ wrappers around the equivalent tool handler.
 """
 
 from .space import register_space_resource
+from .thread import register_thread_resource
 
-__all__ = ["register_space_resource"]
+__all__ = ["register_space_resource", "register_thread_resource"]

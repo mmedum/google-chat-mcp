@@ -147,6 +147,12 @@ class ChatMessage(_Strict):
     thread_id: ThreadName
 
 
+class GetThreadInput(_Strict):
+    space_id: SpaceId
+    thread_name: ThreadName
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
 class WhoamiResult(_Strict):
     """Identity of the authenticated user."""
 

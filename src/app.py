@@ -26,6 +26,7 @@ from .models import (
     ChatMessage,
     DirectMessageResult,
     GetMessagesInput,
+    GetThreadInput,
     ListMembersInput,
     ListSpacesInput,
     Member,
@@ -42,12 +43,13 @@ from .observability import (
     mcp_active_users,
 )
 from .rate_limit import ActiveUserTracker, TokenBucketLimiter
-from .resources import register_space_resource
+from .resources import register_space_resource, register_thread_resource
 from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
     find_direct_message_handler,
     get_messages_handler,
     get_space_handler,
+    get_thread_handler,
     list_members_handler,
     list_spaces_handler,
     send_message_handler,
@@ -249,9 +251,23 @@ def build_app(
     async def whoami() -> WhoamiResult:
         return await whoami_handler(_require_ctx(state))
 
+    @mcp.tool(
+        name="get_thread",
+        title="Read a Chat thread",
+        description=(
+            "Read all messages in a single thread, oldest-first. Provide the "
+            "parent `space_id` and the `thread_name` "
+            "(`spaces/{space}/threads/{thread}`). Default limit 50 (max 100)."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def get_thread(payload: GetThreadInput) -> list[ChatMessage]:
+        return await get_thread_handler(_require_ctx(state), payload)
+
     # ---- resources ----
 
     register_space_resource(mcp, resolve_ctx=lambda: _require_ctx(state))
+    register_thread_resource(mcp, resolve_ctx=lambda: _require_ctx(state))
 
     # ---- HTTP-only custom routes ----
     # Registered only when an HTTPS auth provider is wired; stdio has no HTTP surface.
