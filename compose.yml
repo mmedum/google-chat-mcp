@@ -11,17 +11,17 @@ services:
       GCM_BASE_URL: "${GCM_BASE_URL:?set to https://<your-host> — the public URL of this MCP server}"
       GCM_DATA_DIR: "/var/lib/google-chat-mcp"
       GCM_LOG_LEVEL: "${GCM_LOG_LEVEL:-INFO}"
-      # Client redirect whitelist — both Claude domains by default.
-      GCM_ALLOWED_CLIENT_REDIRECTS: "${GCM_ALLOWED_CLIENT_REDIRECTS:-https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback}"
+      # Client redirect whitelist — set to your MCP client's OAuth callback URL.
+      GCM_ALLOWED_CLIENT_REDIRECTS: "${GCM_ALLOWED_CLIENT_REDIRECTS:?set to your MCP client's callback URL(s), CSV}"
       GCM_RATE_LIMIT_PER_MINUTE: "${GCM_RATE_LIMIT_PER_MINUTE:-60}"
       # Disable FastMCP's boot-time pypi version check: it adds a network dep
       # to startup and leaks deployment timing via pypi.org access logs.
       FASTMCP_CHECK_FOR_UPDATES: "off"
     secrets:
-      - google_client_id
-      - google_client_secret
-      - fernet_key
-      - jwt_signing_key
+      - GCM_google_client_id
+      - GCM_google_client_secret
+      - GCM_fernet_key
+      - GCM_jwt_signing_key
     volumes:
       - mcp_data:/var/lib/google-chat-mcp
     mem_limit: 512m
@@ -32,13 +32,16 @@ services:
       - no-new-privileges:true
 
 secrets:
-  google_client_id:
+  # pydantic-settings applies `env_prefix="GCM_"` to `secrets_dir` lookups,
+  # so the mount path inside the container must be `/run/secrets/GCM_<name>`
+  # even though the host-side file keeps the bare name documented in README.
+  GCM_google_client_id:
     file: ./secrets/google_client_id
-  google_client_secret:
+  GCM_google_client_secret:
     file: ./secrets/google_client_secret
-  fernet_key:
+  GCM_fernet_key:
     file: ./secrets/fernet_key
-  jwt_signing_key:
+  GCM_jwt_signing_key:
     file: ./secrets/jwt_signing_key
 
 volumes:
