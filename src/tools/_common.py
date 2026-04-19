@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
@@ -29,6 +30,17 @@ from ..observability import (
 )
 from ..rate_limit import ActiveUserTracker, TokenBucketLimiter
 from ..storage import Database, DirectoryCache, write_audit_row
+
+
+@dataclass(slots=True, frozen=True)
+class AuthInfo:
+    """Resolved auth for a single tool call: upstream Google token + user sub."""
+
+    access_token: str
+    user_sub: str
+
+
+AuthResolver = Callable[[], Awaitable[AuthInfo]]
 
 ToolName = Literal[
     "list_spaces",
@@ -51,6 +63,7 @@ class ToolContext:
         "db",
         "directory_cache",
         "limiter",
+        "resolver",
     )
 
     def __init__(
@@ -62,6 +75,7 @@ class ToolContext:
         audit_pepper: bytes | None = None,
         audit_hash_user_sub: bool = True,
         directory_cache_ttl_seconds: int = 86_400,
+        resolver: AuthResolver | None = None,
     ) -> None:
         if audit_hash_user_sub and audit_pepper is None:
             raise ValueError("audit_pepper required when audit_hash_user_sub is True")
@@ -72,6 +86,7 @@ class ToolContext:
         self.active_users = active_users
         self.audit_pepper = audit_pepper
         self.audit_hash_user_sub = audit_hash_user_sub
+        self.resolver = resolver
 
 
 def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -> str:
@@ -83,6 +98,20 @@ def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -
     return hmac.new(pepper, user_sub.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+async def _resolve_auth_via_fastmcp() -> AuthInfo:
+    """HTTPS-transport resolver: pull sub + upstream token from the FastMCP request context."""
+    token = get_access_token()
+    if token is None or not token.claims:
+        raise ToolError("Not authenticated.")
+    sub = token.claims.get("sub")
+    if not sub:
+        raise ToolError("Token is missing the 'sub' claim.")
+    upstream_access_token = token.token
+    if not upstream_access_token:
+        raise ToolError("No upstream access token available for this session.")
+    return AuthInfo(access_token=upstream_access_token, user_sub=str(sub))
+
+
 async def invoke_tool[T](
     tool_name: ToolName,
     ctx: ToolContext,
@@ -91,16 +120,9 @@ async def invoke_tool[T](
     target_space_id: str | None = None,
 ) -> T:
     """Run a tool handler with audit, metrics, rate-limit, and auth context."""
-    token = get_access_token()
-    if token is None or not token.claims:
-        raise ToolError("Not authenticated.")
-    sub = token.claims.get("sub")
-    if not sub:
-        raise ToolError("Token is missing the 'sub' claim.")
-    user_sub = str(sub)
-    upstream_access_token = token.token
-    if not upstream_access_token:
-        raise ToolError("No upstream access token available for this session.")
+    auth = await (ctx.resolver() if ctx.resolver is not None else _resolve_auth_via_fastmcp())
+    user_sub = auth.user_sub
+    upstream_access_token = auth.access_token
 
     if not await ctx.limiter.allow(user_sub):
         mcp_rate_limit_hits_total.inc()

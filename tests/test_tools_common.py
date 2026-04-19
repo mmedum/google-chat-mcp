@@ -12,7 +12,7 @@ import respx
 from src.models import ListSpacesInput
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
-from src.tools._common import ToolContext, audit_user_sub
+from src.tools._common import AuthInfo, ToolContext, audit_user_sub
 
 
 def test_audit_user_sub_hashes_with_pepper() -> None:
@@ -48,6 +48,47 @@ def test_tool_context_rejects_hash_enabled_without_pepper(
             audit_pepper=None,
             audit_hash_user_sub=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_resolver_override_path_preferred_over_fastmcp(
+    chat_client,
+    tmp_path: Path,
+) -> None:
+    """When ctx.resolver is set, invoke_tool uses it and never calls FastMCP's dep."""
+    from src.rate_limit import ActiveUserTracker, TokenBucketLimiter
+
+    async def fake_resolver() -> AuthInfo:
+        return AuthInfo(access_token="from-resolver", user_sub="stdio-user-42")
+
+    async with lifespan_database(tmp_path / "test.sqlite") as db:
+        ctx = ToolContext(
+            client=chat_client,
+            db=db,
+            limiter=TokenBucketLimiter(capacity=60),
+            active_users=ActiveUserTracker(),
+            audit_pepper=b"pepper",
+            audit_hash_user_sub=True,
+            resolver=fake_resolver,
+        )
+        with respx.mock(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(
+                return_value=httpx.Response(200, json={"spaces": []})
+            )
+            # No mock_access_token patch — if invoke_tool called FastMCP's get_access_token
+            # here, the real impl would hit a FastMCP request-context guard and raise.
+            await list_spaces_handler(ctx, ListSpacesInput())
+        # Upstream request carried the resolver-provided token.
+        auth_header = route.calls.last.request.headers.get("authorization")
+        assert auth_header == "Bearer from-resolver"
+
+        async with db.cursor() as conn:
+            cur = await conn.execute("SELECT user_sub FROM audit_log ORDER BY id DESC LIMIT 1")
+            row = await cur.fetchone()
+    assert row is not None
+    # The sub logged is the resolver's, hashed by the configured pepper.
+    expected = hmac.new(b"pepper", b"stdio-user-42", hashlib.sha256).hexdigest()
+    assert row["user_sub"] == expected
 
 
 @pytest.mark.asyncio
