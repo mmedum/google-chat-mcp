@@ -106,7 +106,7 @@ async def test_find_direct_message_creates_on_404(tool_ctx: ToolContext, mock_ac
 
 
 @pytest.mark.asyncio
-async def test_send_message_appends_claude_suffix(tool_ctx: ToolContext, mock_access_token) -> None:
+async def test_send_message_posts_body_verbatim(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
         respx.mock(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
@@ -118,7 +118,7 @@ async def test_send_message_appends_claude_suffix(tool_ctx: ToolContext, mock_ac
                     "name": "spaces/AAA/messages/M.1",
                     "sender": {"name": "users/111"},
                     "createTime": "2026-04-19T10:00:00Z",
-                    "text": "hi\n\n— Claude",
+                    "text": "hi",
                     "thread": {"name": "spaces/AAA/threads/T.1"},
                 },
             )
@@ -127,9 +127,11 @@ async def test_send_message_appends_claude_suffix(tool_ctx: ToolContext, mock_ac
             tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi")
         )
     assert out.message_id == "spaces/AAA/messages/M.1"
-    # Body sent upstream ends with the suffix.
-    sent_body = route.calls[0].request.content.decode()
-    assert "— Claude" in sent_body
+    # Body is sent verbatim — no client-identifying suffix.
+    import json
+
+    sent_body = json.loads(route.calls[0].request.content.decode())
+    assert sent_body["text"] == "hi"
 
 
 @pytest.mark.asyncio

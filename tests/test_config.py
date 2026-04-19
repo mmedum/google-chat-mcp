@@ -6,16 +6,17 @@ import pytest
 from src.config import GOOGLE_OAUTH_SCOPES, Settings
 
 
-def test_default_redirects_include_both_claude_domains() -> None:
+def test_default_redirects_is_empty() -> None:
+    # The server is intentionally client-agnostic: no hardcoded callbacks.
+    # Operators must set GCM_ALLOWED_CLIENT_REDIRECTS for their MCP client.
     s = Settings()  # type: ignore[call-arg]
-    assert "https://claude.ai/api/mcp/auth_callback" in s.allowed_client_redirects
-    assert "https://claude.com/api/mcp/auth_callback" in s.allowed_client_redirects
+    assert s.allowed_client_redirects == []
 
 
 def test_redirect_list_parses_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "GCM_ALLOWED_CLIENT_REDIRECTS",
-        "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,https://staging.test/cb",
+        "https://first.example.com/cb,https://second.example.com/cb,https://staging.test/cb",
     )
     s = Settings()  # type: ignore[call-arg]
     assert len(s.allowed_client_redirects) == 3

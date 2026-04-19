@@ -6,10 +6,10 @@ scannable; every procedure assumes you are on the host running `docker compose`.
 ## Onboarding the first user
 
 1. Deploy the server with GCP project + secrets in place (see [README](../README.md)).
-2. In Claude, add a custom connector pointing at `https://<your-host>/mcp`.
-3. Claude opens the OAuth consent screen — because the OAuth app is **Internal**,
+2. In your MCP client, add a custom connector pointing at `https://<your-host>/mcp`.
+3. The client opens the OAuth consent screen — because the OAuth app is **Internal**,
    only users on your Workspace domain can proceed.
-4. After grant, Claude stores the MCP bearer and can call the four tools.
+4. After grant, the client stores the MCP bearer and can call the tools.
 
 There is no admin-side user registration. Every Workspace user self-onboards
 through the OAuth flow on their first tool call.
@@ -18,8 +18,9 @@ through the OAuth flow on their first tool call.
 
 ### Option A — user-initiated (recommended)
 
-The user visits `https://myaccount.google.com/permissions`, finds the "Google Chat
-MCP" app, and removes it. Google invalidates the refresh token immediately.
+The user visits `https://myaccount.google.com/permissions`, finds the
+"MCP for Google Chat" app, and removes it. Google invalidates the
+refresh token immediately.
 
 ### Option B — admin-forced, all users
 
@@ -67,7 +68,7 @@ Procedure:
 3. `docker compose stop mcp`.
 4. Wipe the old encrypted store so the container doesn't try to decrypt with the new key and crash: `docker run --rm -v google-chat-mcp_mcp_data:/v alpine sh -c 'rm -rf /v/oauth_store/*'`.
 5. `docker compose up -d mcp`.
-6. Users re-auth on their next Claude interaction.
+6. Users re-auth on their next MCP-client interaction.
 
 If you need seamless rotation (no forced reconnects), you'll have to write a re-encryption script yourself: iterate every file in `/var/lib/google-chat-mcp/oauth_store`, decrypt with the old key, re-encrypt with the new key, then swap keys. py-key-value's `FernetEncryptionWrapper` stores values as individual tokens so it's tractable. This is out of scope for v1.
 
@@ -107,8 +108,8 @@ tradeoff is explicit.
 
 FastMCP's OAuth Proxy issues JWTs signed with `GCM_JWT_SIGNING_KEY`. If the
 signing key changes, every existing token becomes invalid. Users reconnect
-automatically on the next call (Claude re-initiates OAuth). Expected when you
-rotate the signing key.
+automatically on the next call (the MCP client re-initiates OAuth). Expected
+when you rotate the signing key.
 
 ### `find_direct_message` fails with 403 or 404
 
@@ -132,7 +133,7 @@ Scrape `GET /metrics`. The metrics that tend to move first:
 | `mcp_tool_calls_total{status="error"}` | Rising = tools failing. Check `mcp_google_api_calls_total{status_code}` to find which upstream call broke. |
 | `mcp_tool_latency_seconds` (P95) | Rising tail usually means Google-side slowness; check `mcp_google_api_latency_seconds`. |
 | `mcp_rate_limit_hits_total` | Hot user or runaway loop. |
-| `mcp_active_users` | Flat-to-zero during business hours = server is isolated from Claude; check `/readyz` and the reverse proxy. |
+| `mcp_active_users` | Flat-to-zero during business hours = server is isolated from any MCP client; check `/readyz` and the reverse proxy. |
 
 ## Health endpoints
 
