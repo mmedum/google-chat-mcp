@@ -125,9 +125,14 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/chat.messages",
     "https://www.googleapis.com/auth/chat.messages.readonly",
+    # Split from the umbrella `chat.messages` (Google *restricted* tier, annual CASA).
+    # .create + .reactions are both *sensitive* tier (3-5 day self-service verification)
+    # and cover the v2 tool surface (send_message, add/remove/list_reactions).
+    "https://www.googleapis.com/auth/chat.messages.create",
+    "https://www.googleapis.com/auth/chat.messages.reactions",
     "https://www.googleapis.com/auth/chat.spaces.readonly",
+    # Retained for find_direct_message's create-on-miss path (spaces.setup).
     "https://www.googleapis.com/auth/chat.spaces.create",
     "https://www.googleapis.com/auth/chat.memberships.readonly",
     "https://www.googleapis.com/auth/directory.readonly",

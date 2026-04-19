@@ -35,14 +35,21 @@ def test_missing_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_oauth_scopes_include_required_set() -> None:
     required = {
-        "https://www.googleapis.com/auth/chat.messages",
         "https://www.googleapis.com/auth/chat.messages.readonly",
+        "https://www.googleapis.com/auth/chat.messages.create",
+        "https://www.googleapis.com/auth/chat.messages.reactions",
         "https://www.googleapis.com/auth/chat.spaces.readonly",
         "https://www.googleapis.com/auth/chat.spaces.create",
         "https://www.googleapis.com/auth/chat.memberships.readonly",
         "https://www.googleapis.com/auth/directory.readonly",
     }
     assert required.issubset(set(GOOGLE_OAUTH_SCOPES))
+
+
+def test_umbrella_chat_messages_scope_dropped() -> None:
+    # v2 replaces the restricted-tier umbrella with narrower sensitive-tier scopes.
+    # Regression guard against anyone reintroducing it.
+    assert "https://www.googleapis.com/auth/chat.messages" not in GOOGLE_OAUTH_SCOPES
 
 
 def test_secret_fields_are_secretstr() -> None:
