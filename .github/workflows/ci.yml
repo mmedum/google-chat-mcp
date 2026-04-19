@@ -78,8 +78,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
+          # Pin the Trivy CLI explicitly; trivy-action v0.35.0 bundles 0.69.3
+          # and nags about newer releases in its scan output. Bump when a
+          # newer version ships.
+          version: v0.70.0
           image-ref: google-chat-mcp:ci
           severity: HIGH,CRITICAL
           exit-code: "1"

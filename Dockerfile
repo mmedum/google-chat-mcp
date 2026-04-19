@@ -23,7 +23,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
-RUN useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp
+# Apply Debian security updates at build time so the image ships with current
+# fixes rather than whatever shipped in the base tag on its cut date.
+RUN apt-get update \
+ && apt-get -y upgrade \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp
 
 WORKDIR /app
 COPY --from=builder --chown=mcp:mcp /app /app
