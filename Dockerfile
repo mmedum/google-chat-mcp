@@ -2,7 +2,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.11 AS uv
 
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 COPY --from=uv /uv /uvx /usr/local/bin/
 WORKDIR /app
 ENV UV_LINK_MODE=copy \
@@ -22,7 +22,7 @@ COPY README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 # Apply Debian security updates at build time so the image ships with current
 # fixes rather than whatever shipped in the base tag on its cut date.
 RUN apt-get update \
