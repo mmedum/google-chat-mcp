@@ -25,6 +25,7 @@ def _env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GCM_GOOGLE_CLIENT_SECRET", "test-client-secret")
     monkeypatch.setenv("GCM_FERNET_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("GCM_JWT_SIGNING_KEY", "test-jwt-signing-key-at-least-32-bytes-long")
+    monkeypatch.setenv("GCM_AUDIT_PEPPER", "test-audit-pepper-not-a-real-secret")
 
 
 @pytest_asyncio.fixture
@@ -49,6 +50,8 @@ async def tool_ctx(db: Database, chat_client: ChatClient) -> AsyncIterator[ToolC
         db=db,
         limiter=TokenBucketLimiter(capacity=60),
         active_users=ActiveUserTracker(),
+        audit_pepper=b"test-audit-pepper-not-a-real-secret",
+        audit_hash_user_sub=True,
     )
 
 

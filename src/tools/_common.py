@@ -10,6 +10,8 @@ Every handler goes through `invoke_tool` which:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import time
 from collections.abc import Awaitable, Callable
 from typing import Literal
@@ -41,7 +43,15 @@ ToolName = Literal[
 class ToolContext:
     """Process-wide singletons injected into tool handlers at server startup."""
 
-    __slots__ = ("active_users", "client", "db", "directory_cache", "limiter")
+    __slots__ = (
+        "active_users",
+        "audit_hash_user_sub",
+        "audit_pepper",
+        "client",
+        "db",
+        "directory_cache",
+        "limiter",
+    )
 
     def __init__(
         self,
@@ -49,13 +59,28 @@ class ToolContext:
         db: Database,
         limiter: TokenBucketLimiter,
         active_users: ActiveUserTracker,
+        audit_pepper: bytes | None = None,
+        audit_hash_user_sub: bool = True,
         directory_cache_ttl_seconds: int = 86_400,
     ) -> None:
+        if audit_hash_user_sub and audit_pepper is None:
+            raise ValueError("audit_pepper required when audit_hash_user_sub is True")
         self.client = client
         self.db = db
         self.directory_cache = DirectoryCache(db, ttl_seconds=directory_cache_ttl_seconds)
         self.limiter = limiter
         self.active_users = active_users
+        self.audit_pepper = audit_pepper
+        self.audit_hash_user_sub = audit_hash_user_sub
+
+
+def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -> str:
+    """Return the sub as stored in audit_log — HMAC-SHA256 hex when hashing is on."""
+    if not hash_enabled:
+        return user_sub
+    if pepper is None:
+        raise ValueError("pepper required when hashing is enabled")
+    return hmac.new(pepper, user_sub.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 async def invoke_tool[T](
@@ -105,9 +130,14 @@ async def invoke_tool[T](
         status_label = "ok" if success else "error"
         mcp_tool_calls_total.labels(tool_name, status_label).inc()
         mcp_tool_latency_seconds.labels(tool_name).observe(latency_ms / 1000.0)
+        audit_sub = audit_user_sub(
+            user_sub or "unknown",
+            pepper=ctx.audit_pepper,
+            hash_enabled=ctx.audit_hash_user_sub,
+        )
         await write_audit_row(
             ctx.db,
-            user_sub=user_sub or "unknown",
+            user_sub=audit_sub,
             tool_name=tool_name,
             target_space_id=target_space_id,
             success=success,

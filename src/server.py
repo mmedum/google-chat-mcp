@@ -59,18 +59,18 @@ def build_auth(settings: Settings) -> GoogleProvider:
     kv_store = DiskStore(directory=str(settings.kv_store_path))
     encrypted_store = FernetEncryptionWrapper(
         key_value=kv_store,
-        fernet=Fernet(settings.fernet_key.encode()),
+        fernet=Fernet(settings.fernet_key.get_secret_value().encode()),
     )
     return GoogleProvider(
-        client_id=settings.google_client_id,
-        client_secret=settings.google_client_secret,
+        client_id=settings.google_client_id.get_secret_value(),
+        client_secret=settings.google_client_secret.get_secret_value(),
         base_url=settings.base_url,
         redirect_path="/oauth/callback",
         required_scopes=list(GOOGLE_OAUTH_SCOPES),
         valid_scopes=list(GOOGLE_OAUTH_SCOPES),
         allowed_client_redirect_uris=list(settings.allowed_client_redirects),
         client_storage=encrypted_store,
-        jwt_signing_key=settings.jwt_signing_key,
+        jwt_signing_key=settings.jwt_signing_key.get_secret_value(),
         require_authorization_consent=True,
     )
 
@@ -101,6 +101,12 @@ def build_app(settings: Settings) -> FastMCP:
                 db=db,
                 limiter=limiter,
                 active_users=active_users,
+                audit_pepper=(
+                    settings.audit_pepper.get_secret_value().encode("utf-8")
+                    if settings.audit_pepper is not None
+                    else None
+                ),
+                audit_hash_user_sub=settings.audit_hash_user_sub,
                 directory_cache_ttl_seconds=settings.directory_cache_ttl_seconds,
             )
             # Prune once at startup — the periodic loop first fires 24h from now,

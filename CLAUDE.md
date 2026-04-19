@@ -66,14 +66,17 @@ Key things NOT in the repo but often asked for:
 
 ## Secrets
 
-Never commit secrets. Production mounts Docker secrets at `/run/secrets/GCM_<name>`; local dev reads from `GCM_*` env vars. Missing secret → `Settings()` construction raises. Required (host file path / container path / env var name):
+Never commit secrets. Production mounts Docker secrets at `/run/secrets/GCM_<name>`; local dev reads from `GCM_*` env vars. Missing secret → `Settings()` construction raises. Secret fields are `pydantic.SecretStr`; read them via `.get_secret_value()`. Required (host file path / container path / env var name):
 
 - `./secrets/google_client_id` → `/run/secrets/GCM_google_client_id` → `GCM_GOOGLE_CLIENT_ID`
 - `./secrets/google_client_secret` → `/run/secrets/GCM_google_client_secret` → `GCM_GOOGLE_CLIENT_SECRET`
 - `./secrets/fernet_key` → `/run/secrets/GCM_fernet_key` → `GCM_FERNET_KEY` (Fernet key for encrypting refresh tokens at rest)
 - `./secrets/jwt_signing_key` → `/run/secrets/GCM_jwt_signing_key` → `GCM_JWT_SIGNING_KEY` (FastMCP JWT signing)
+- `./secrets/audit_pepper` → `/run/secrets/GCM_audit_pepper` → `GCM_AUDIT_PEPPER` (HMAC-SHA256 key for hashing `user_sub` in audit_log; required when `GCM_AUDIT_HASH_USER_SUB` is true, the default)
 
 The `GCM_` prefix on the container mount is load-bearing: pydantic-settings applies `env_prefix` to `secrets_dir` lookups too, not just env vars. Keep `compose.yml`'s secret names in sync with that prefix.
+
+Set `GCM_AUDIT_HASH_USER_SUB=false` to disable hashing and store raw Google subs in `audit_log` (audit rows become joinable with other identity-keyed systems at the cost of leaking a stable user ID if the DB is exposed).
 
 ## Tests
 

@@ -35,7 +35,24 @@ def configure_logging(level: str = "INFO") -> None:
 
 
 _SENSITIVE_KEYS = frozenset(
-    {"access_token", "refresh_token", "authorization", "client_secret", "fernet_key", "bearer"}
+    {
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "client_secret",
+        "fernet_key",
+        "jwt_signing_key",
+        "audit_pepper",
+        "bearer",
+        "cookie",
+        "set-cookie",
+        "id_token",
+        "code",
+        "state",
+        "email",
+        "user_sub",
+        "sub",
+    }
 )
 
 

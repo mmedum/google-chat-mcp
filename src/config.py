@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -52,16 +52,40 @@ class Settings(BaseSettings):
     )
     directory_cache_ttl_seconds: int = Field(default=86_400, gt=0)
     audit_retention_days: int = Field(default=90, gt=0)
+    audit_hash_user_sub: bool = Field(
+        default=True,
+        description=(
+            "Hash the user `sub` with HMAC-SHA256 before writing to audit_log. "
+            "Set to False to keep raw Google subs (joinable with external identity "
+            "systems, but leaks a stable user identifier if the DB is exposed)."
+        ),
+    )
     http_timeout_seconds: float = Field(default=10.0, gt=0)
     http_max_retries: int = Field(default=3, ge=0, le=10)
 
     # Secrets: required. Pydantic raises ValidationError if absent from both
     # /run/secrets and env. The field names must match the Docker secret filenames
-    # (google_client_id, google_client_secret, fernet_key, jwt_signing_key).
-    google_client_id: str = Field(..., min_length=1)
-    google_client_secret: str = Field(..., min_length=1)
-    fernet_key: str = Field(..., min_length=1)
-    jwt_signing_key: str = Field(..., min_length=1)
+    # (google_client_id, google_client_secret, fernet_key, jwt_signing_key, audit_pepper).
+    google_client_id: SecretStr = Field(..., min_length=1)
+    google_client_secret: SecretStr = Field(..., min_length=1)
+    fernet_key: SecretStr = Field(..., min_length=1)
+    jwt_signing_key: SecretStr = Field(..., min_length=1)
+    audit_pepper: SecretStr | None = Field(
+        default=None,
+        description=(
+            "HMAC-SHA256 key for `user_sub` hashing in audit_log. Required when "
+            "audit_hash_user_sub is True (the default)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_audit_pepper(self) -> Settings:
+        if self.audit_hash_user_sub and self.audit_pepper is None:
+            raise ValueError(
+                "audit_pepper is required when audit_hash_user_sub is True. "
+                "Set GCM_AUDIT_PEPPER (or GCM_AUDIT_HASH_USER_SUB=false to store raw sub)."
+            )
+        return self
 
     @field_validator("allowed_client_redirects", mode="before")
     @classmethod

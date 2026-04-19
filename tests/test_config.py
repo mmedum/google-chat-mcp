@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 from src.config import GOOGLE_OAUTH_SCOPES, Settings
 
 
@@ -42,3 +43,36 @@ def test_oauth_scopes_include_required_set() -> None:
         "https://www.googleapis.com/auth/directory.readonly",
     }
     assert required.issubset(set(GOOGLE_OAUTH_SCOPES))
+
+
+def test_secret_fields_are_secretstr() -> None:
+    s = Settings()  # type: ignore[call-arg]
+    assert isinstance(s.google_client_id, SecretStr)
+    assert isinstance(s.google_client_secret, SecretStr)
+    assert isinstance(s.fernet_key, SecretStr)
+    assert isinstance(s.jwt_signing_key, SecretStr)
+    assert isinstance(s.audit_pepper, SecretStr)
+
+
+def test_secret_fields_mask_in_model_dump() -> None:
+    s = Settings()  # type: ignore[call-arg]
+    dumped = s.model_dump()
+    # SecretStr masks to `**********` in model_dump (not the raw value).
+    for key in ("google_client_id", "google_client_secret", "fernet_key", "jwt_signing_key"):
+        assert "test-" not in str(dumped[key]), (
+            f"{key} leaked raw secret into model_dump: {dumped[key]!r}"
+        )
+
+
+def test_audit_pepper_required_when_hashing_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GCM_AUDIT_PEPPER", raising=False)
+    with pytest.raises(ValueError, match="audit_pepper is required"):
+        Settings(_env_file=None)  # ty: ignore[unknown-argument]
+
+
+def test_audit_pepper_optional_when_hashing_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GCM_AUDIT_PEPPER", raising=False)
+    monkeypatch.setenv("GCM_AUDIT_HASH_USER_SUB", "false")
+    s = Settings(_env_file=None)  # ty: ignore[unknown-argument]
+    assert s.audit_hash_user_sub is False
+    assert s.audit_pepper is None
