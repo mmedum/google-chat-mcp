@@ -283,7 +283,7 @@ async def _audit_prune_loop(db: Database, retention_days: int) -> None:
 
 
 def main() -> None:
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings.from_env()
     configure_logging(settings.log_level)
     app = build_app(settings)
     app.run(transport="http", host="0.0.0.0", port=8000)  # noqa: S104

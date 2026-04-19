@@ -8,8 +8,9 @@ exist, so env vars take over in development.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -77,6 +78,16 @@ class Settings(BaseSettings):
             "audit_hash_user_sub is True (the default)."
         ),
     )
+
+    @classmethod
+    def from_env(cls) -> Settings:
+        """Construct from `GCM_*` env vars + `/run/secrets/GCM_*` (HTTPS transport)."""
+        return cls()  # type: ignore[call-arg]
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> Settings:
+        """Construct from an explicit mapping, bypassing env/secrets auto-load (stdio transport)."""
+        return cls(_env_file=None, **values)  # ty: ignore[unknown-argument]
 
     @model_validator(mode="after")
     def _validate_audit_pepper(self) -> Settings:

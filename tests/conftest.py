@@ -18,7 +18,7 @@ from src.tools._common import ToolContext
 
 @pytest.fixture(autouse=True)
 def _env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Baseline env for Settings(): every required var satisfied."""
+    """Baseline env for Settings.from_env(): every required var satisfied."""
     monkeypatch.setenv("GCM_BASE_URL", "https://mcp.example.test")
     monkeypatch.setenv("GCM_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("GCM_GOOGLE_CLIENT_ID", "test-client-id")
