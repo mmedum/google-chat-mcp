@@ -204,6 +204,53 @@ class ChatClient:
             endpoint_label="spaces.messages.get",
         )
 
+    async def add_reaction(
+        self, access_token: str, message_name: str, unicode_emoji: str
+    ) -> dict[str, Any]:
+        """Add a unicode-emoji reaction to a message."""
+        return await self._post(
+            f"{self._base_chat}/{message_name}/reactions",
+            access_token=access_token,
+            json={"emoji": {"unicode": unicode_emoji}},
+            endpoint_label="spaces.messages.reactions.create",
+        )
+
+    async def delete_reaction(self, access_token: str, reaction_name: str) -> dict[str, Any]:
+        """Delete a reaction by its full resource name."""
+        return await self._delete(
+            f"{self._base_chat}/{reaction_name}",
+            access_token=access_token,
+            endpoint_label="spaces.messages.reactions.delete",
+        )
+
+    async def list_reactions(
+        self,
+        access_token: str,
+        message_name: str,
+        *,
+        limit: int = 50,
+        page_token: str | None = None,
+        emoji_filter: str | None = None,
+        user_filter: str | None = None,
+    ) -> dict[str, Any]:
+        """List reactions on a message. Optional server-side filter on emoji + user."""
+        params: dict[str, str] = {"pageSize": str(min(limit, 200))}
+        if page_token:
+            params["pageToken"] = page_token
+        filters: list[str] = []
+        if emoji_filter:
+            filters.append(f'emoji.unicode = "{emoji_filter}"')
+        if user_filter:
+            filters.append(f'user.name = "{user_filter}"')
+        if filters:
+            params["filter"] = " AND ".join(filters)
+        return await self._get(
+            f"{self._base_chat}/{message_name}/reactions",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.reactions.list",
+        )
+
     async def list_messages_by_thread(
         self,
         access_token: str,
@@ -330,6 +377,19 @@ class ChatClient:
             access_token,
             json=json,
             params=params,
+            endpoint_label=endpoint_label,
+        )
+
+    async def _delete(
+        self,
+        url: str,
+        access_token: str,
+        endpoint_label: str = "",
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE",
+            url,
+            access_token,
             endpoint_label=endpoint_label,
         )
 

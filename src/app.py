@@ -23,15 +23,21 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from .chat_client import ChatClient
 from .config import Settings
 from .models import (
+    AddReactionInput,
+    AddReactionResult,
     ChatMessage,
     DirectMessageResult,
     GetMessagesInput,
     GetThreadInput,
     ListMembersInput,
+    ListReactionsInput,
+    ListReactionsResult,
     ListSpacesInput,
     Member,
     MessageDetails,
     MessageId,
+    RemoveReactionInput,
+    RemoveReactionResult,
     SendMessageInput,
     SendMessageResult,
     SpaceDetails,
@@ -52,13 +58,16 @@ from .resources import (
 )
 from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
+    add_reaction_handler,
     find_direct_message_handler,
     get_message_handler,
     get_messages_handler,
     get_space_handler,
     get_thread_handler,
     list_members_handler,
+    list_reactions_handler,
     list_spaces_handler,
+    remove_reaction_handler,
     send_message_handler,
     whoami_handler,
 )
@@ -284,6 +293,55 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def get_message(message_name: MessageId) -> MessageDetails:
         return await get_message_handler(_require_ctx(state), message_name)
+
+    @mcp.tool(
+        name="add_reaction",
+        title="Add a reaction",
+        description=(
+            "Add a Unicode emoji reaction to a message. Idempotent — re-adding "
+            "the same (emoji, user) combination is a no-op on the Chat API."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
+    async def add_reaction(payload: AddReactionInput) -> AddReactionResult:
+        return await add_reaction_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="remove_reaction",
+        title="Remove a reaction",
+        description=(
+            "Delete a reaction. Provide either `reaction_name` (direct delete "
+            "by full resource name) OR the tuple "
+            "(`message_name` + `emoji` + `user_email`) — the latter looks up "
+            "the reaction server-side via filter. `removed: false` means "
+            "the lookup matched zero reactions (already gone)."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
+    async def remove_reaction(payload: RemoveReactionInput) -> RemoveReactionResult:
+        return await remove_reaction_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="list_reactions",
+        title="List reactions on a message",
+        description=(
+            "List reactions on a single message. Default limit 50 (max 200); "
+            "paginate via `page_token` / `next_page_token`."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def list_reactions(payload: ListReactionsInput) -> ListReactionsResult:
+        return await list_reactions_handler(_require_ctx(state), payload)
 
     # ---- resources ----
 

@@ -158,6 +158,70 @@ class ReactionSummary(_Strict):
     count: Annotated[int, Field(ge=0)]
 
 
+# Reaction resources are named like spaces/{s}/messages/{m}/reactions/{r}.
+ReactionName = Annotated[
+    str, StringConstraints(pattern=rf"^spaces/{_ID}/messages/{_ID}/reactions/{_ID}$")
+]
+
+
+class AddReactionInput(_Strict):
+    message_name: MessageId
+    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)]
+    """Unicode emoji. Custom-emoji reactions are out of scope for v2 — pass the
+    unicode glyph (single char or ZWJ sequence)."""
+
+
+class AddReactionResult(_Strict):
+    reaction_name: ReactionName
+    emoji: str
+    user_id: UserId
+
+
+class RemoveReactionInput(_Strict):
+    """Either `reaction_name` (exact delete) or (`message_name` + `emoji` + `user_email`)
+    (lookup-and-delete). Mutually exclusive."""
+
+    reaction_name: ReactionName | None = None
+    message_name: MessageId | None = None
+    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)] | None = None
+    user_email: EmailStr | None = None
+
+    @model_validator(mode="after")
+    def _require_one_shape(self) -> RemoveReactionInput:
+        has_direct = self.reaction_name is not None
+        has_lookup = (
+            self.message_name is not None and self.emoji is not None and self.user_email is not None
+        )
+        if has_direct == has_lookup:
+            raise ValueError(
+                "Provide either reaction_name OR (message_name + emoji + user_email), not both."
+            )
+        return self
+
+
+class RemoveReactionResult(_Strict):
+    reaction_name: ReactionName | None
+    removed: bool
+    """False when the lookup-by-(emoji, user) path matched zero reactions."""
+
+
+class ListReactionsInput(_Strict):
+    message_name: MessageId
+    limit: Annotated[int, Field(ge=1, le=200)] = 50
+    page_token: str | None = None
+
+
+class ReactionEntry(_Strict):
+    reaction_name: ReactionName
+    emoji: str
+    user_id: UserId
+
+
+class ListReactionsResult(_Strict):
+    reactions: list[ReactionEntry]
+    next_page_token: str | None = None
+
+
 class MessageDetails(_Strict):
     """Single message with reaction summaries hydrated inline."""
 
