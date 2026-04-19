@@ -72,9 +72,7 @@ async def test_resolver_override_path_preferred_over_fastmcp(
             resolver=fake_resolver,
         )
         with respx.mock(base_url="https://chat.test/v1") as mock:
-            route = mock.get("/spaces").mock(
-                return_value=httpx.Response(200, json={"spaces": []})
-            )
+            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
             # No mock_access_token patch — if invoke_tool called FastMCP's get_access_token
             # here, the real impl would hit a FastMCP request-context guard and raise.
             await list_spaces_handler(ctx, ListSpacesInput())
