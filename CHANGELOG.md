@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-04-21
+## [0.3.2] - 2026-04-21
 
-Adds five new tools — space creation, membership mutation, and people
-resolution — plus the integration-test harness that landed ahead of the
-release. **Two new sensitive-tier OAuth scopes** in this release; deployers
-re-consent once. Supersedes an unreleased [0.3.0] cut that only covered
-space creation; the combined surface ships as a single version.
+Closes the v0.3.x train: seven new tools across space creation, membership
+mutation, people resolution, and message lifecycle. Ships everything from
+the unreleased [0.3.0] (space creation) and [0.3.1] (membership + people
+search) cuts as a single version — no intermediate tags. **Three new OAuth
+scopes** total (two sensitive, one restricted); one re-consent round
+covers all three.
 
 ### Added
 - `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
@@ -44,24 +45,39 @@ space creation; the combined surface ships as a single version.
   `list_members` resolve `sender_email` without another People API call.
   Contact-ID hits surface but do NOT back-fill — different namespace,
   would poison `users/{id}` lookups.
+- `update_message(message_name, text, dry_run)` — replace the text of a
+  message you previously sent (`spaces.messages.patch` with
+  `updateMask=text`). Text-only edits — cards / attachments stay
+  untouched. 1-4096 chars (cap mirrors `send_message` for project-wide
+  consistency).
+- `delete_message(message_name, dry_run)` — delete a message by full
+  resource name. Idempotent: double-delete returns `deleted=false` on
+  404 / non-scope 403 (mirrors `remove_member` shape). Missing-scope
+  403s still raise.
 - **Integration test harness** (merged in PR #13 ahead of this release):
   HTTPS and stdio transports now exercised end-to-end in CI; stdout-
   hygiene regression guard covers the full stdio serve path.
 
 ### Changed (breaking for deployers)
-- **OAuth scopes**: two new entries in `GOOGLE_OAUTH_SCOPES`.
+- **OAuth scopes**: three new entries in `GOOGLE_OAUTH_SCOPES`.
   - `https://www.googleapis.com/auth/chat.memberships` (sensitive tier) —
     `add_member` + `remove_member`.
   - `https://www.googleapis.com/auth/contacts.readonly` (sensitive tier) —
     `search_people` consumer-Gmail fallback.
+  - `https://www.googleapis.com/auth/chat.messages` (**restricted tier**) —
+    `update_message` + `delete_message`. Re-introduces the umbrella
+    scope that v0.2.0 explicitly dropped — Google's narrower
+    `.create` / `.readonly` scopes don't authorize patch + delete.
 
   Every HTTPS deployer updates the OAuth consent screen; every user
   re-consents on next MCP call. Stdio users re-run `google-chat-mcp logout &&
   google-chat-mcp login`.
 - **Internal Workspace apps (`External → Internal` in the OAuth consent
-  screen) skip Google's sensitive-tier verification entirely.** Deployers
-  publishing internally — the primary audience — don't file paperwork;
-  just declare the scopes.
+  screen) skip Google's verification entirely** — both sensitive AND
+  restricted tiers. Deployers publishing internally — the primary
+  audience — don't file paperwork; just declare the scopes. Public-
+  published apps with the `chat.messages` scope need annual CASA review;
+  the runbook covers the deployer trade-off.
 
 ### Documented
 - `docs/runbook.md`: new "People API non-self resolution caveats" section
@@ -74,7 +90,10 @@ space creation; the combined surface ships as a single version.
   and the `add_member` idempotent-by-nature behavior (HTTP 200 with
   existing record rather than 409). Runbook is the authoritative source
   for admin-console paths; see those entries for exact navigation.
-- `docs/gcp-setup.md`: updated scope list.
+- `docs/runbook.md`: new section on the `chat.messages` restricted-tier
+  scope — CASA-review trade-off for public-published apps; Internal-app
+  deployers skip.
+- `docs/gcp-setup.md`: updated scope list with all three v0.3.x additions.
 
 ### Internal
 - `ChatClient.create_dm` is now a thin delegate over an internal
@@ -84,6 +103,9 @@ space creation; the combined surface ships as a single version.
 - `DirectoryCache.put_many` + `workspace_user_id` helper — bulk writer
   keyed on `users/{id}` with a regex gate that filters contact-ID
   resource names before any cache write.
+- `ChatClient._patch` helper alongside `_post` / `_delete`; pure
+  `_build_update_message_body` builder for dry/real parity on
+  `update_message`.
 
 ## [0.2.1] - 2026-04-20
 
@@ -205,7 +227,7 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.1...HEAD
-[0.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.1
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.2
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
