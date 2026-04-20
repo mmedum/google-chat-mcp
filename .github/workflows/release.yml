@@ -52,6 +52,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Feed the tag-derived version to hatch-vcs inside the container;
+          # the .git/ dir isn't in the Docker build context so VCS detection
+          # can't run at build time. metadata-action's {{version}} strips
+          # the leading `v` so this matches the git tag value (`0.2.0`).
+          build-args: |
+            PACKAGE_VERSION=${{ steps.meta.outputs.version }}
           # Attestations: public repos auto-get provenance mode=max; setting
           # it explicitly makes the workflow self-documenting. sbom=true
           # generates an SPDX SBOM alongside the image manifest.
