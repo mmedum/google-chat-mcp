@@ -15,6 +15,7 @@ from ..models import (
     SearchPeopleInput,
     SearchPeopleResult,
 )
+from ..observability import logger
 from ..storage import workspace_user_id
 from ._common import (
     CONTACTS_READONLY,
@@ -27,18 +28,24 @@ from ._common import (
 from ._directory import primary_email, primary_name
 
 
-class _MissingScope:
-    """Sentinel: the upstream source returned a missing-scope 403.
+class _SourceFailure:
+    """Sentinel: one upstream source errored. Carries the original exception so
+    the handler can decide whether to raise (all sources gone) or degrade
+    (still have hits from the other source).
 
-    Using a class rather than re-raising inside `_safe_search` so
-    `asyncio.gather` doesn't propagate ExceptionGroup on scope
-    mismatches; each task resolves to either a list of persons or
-    this sentinel.
+    Using a class instead of re-raising inside `_safe_search` avoids
+    `asyncio.gather` propagating one task's exception and throwing away
+    the other task's success — the hybrid-lookup contract says one
+    source's failure must not mask another's hits.
     """
+
+    def __init__(self, exc: ChatApiError) -> None:
+        self.exc = exc
+        self.missing_scope = _is_missing_scope_error(exc)
 
 
 _SearchFn = Callable[[str, str, int], Awaitable[list[dict[str, Any]]]]
-_SourceResult = list[dict[str, Any]] | _MissingScope
+_SourceResult = list[dict[str, Any]] | _SourceFailure
 
 
 async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) -> SearchPeopleResult:
@@ -68,13 +75,25 @@ async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) ->
         )
 
         sources_succeeded: list[PeopleSearchSource] = []
-        scope_missing: list[PeopleSearchSource] = []
+        failures: list[tuple[PeopleSearchSource, _SourceFailure]] = []
         hits_by_name: dict[str, PersonHit] = {}
         cache_writes: list[tuple[str, str, str | None]] = []
 
         for source, outcome in zip(sources_attempted, results, strict=True):
-            if isinstance(outcome, _MissingScope):
-                scope_missing.append(source)
+            if isinstance(outcome, _SourceFailure):
+                failures.append((source, outcome))
+                if not outcome.missing_scope:
+                    # Non-scope errors still degrade (one source dying must
+                    # not mask another source's hits), but operators need to
+                    # see the upstream status in logs to diagnose — e.g.
+                    # the Workspace-admin "directory sharing disabled" 403.
+                    logger.warning(
+                        "search_people_source_error",
+                        source=source,
+                        upstream_status=outcome.exc.status_code,
+                        google_status=outcome.exc.google_status,
+                        message=outcome.exc.message,
+                    )
                 continue
             sources_succeeded.append(source)
             for person in outcome:
@@ -101,11 +120,15 @@ async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) ->
                     # everything and let the gate enforce the invariant.
                     cache_writes.append((resource_name, email, display_name))
 
-        if scope_missing and not sources_succeeded:
-            # Every requested source failed with missing-scope — surface it
-            # so the caller can re-consent rather than silently returning
-            # empty.
-            raise ToolError(_format_missing_scope_message(_scope_for(scope_missing[0])))
+        if failures and not sources_succeeded:
+            # Every requested source errored. Pick the message: all
+            # missing-scope → the re-consent prompt (user-fixable);
+            # otherwise aggregate the upstream messages so the admin can
+            # see what actually broke.
+            if all(f.missing_scope for _, f in failures):
+                raise ToolError(_format_missing_scope_message(_scope_for(failures[0][0])))
+            reasons = "; ".join(f"{source}: {f.exc.message}" for source, f in failures)
+            raise ToolError(f"search_people: all sources failed ({reasons})")
 
         if cache_writes:
             await ctx.directory_cache.put_many(cache_writes)
@@ -124,13 +147,17 @@ async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) ->
 async def _safe_search(
     fn: _SearchFn, access_token: str, payload: SearchPeopleInput
 ) -> _SourceResult:
-    """Call one upstream search; translate missing-scope 403s into a sentinel."""
+    """Call one upstream search; return a sentinel on any ChatApiError.
+
+    Both scope-denials and other 403s (e.g. Workspace admin has disabled
+    directory sharing) count as per-source failures — the caller layer
+    decides whether to raise (all failed) or degrade (at least one
+    succeeded).
+    """
     try:
         return await fn(access_token, payload.query, payload.limit)
     except ChatApiError as exc:
-        if _is_missing_scope_error(exc):
-            return _MissingScope()
-        raise
+        return _SourceFailure(exc)
 
 
 def _scope_for(source: PeopleSearchSource) -> str:

@@ -176,6 +176,77 @@ async def test_one_source_missing_scope_continues_with_the_other(
 
 
 @pytest.mark.asyncio
+async def test_directory_sharing_disabled_degrades_to_contacts(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """Workspace admin has disabled directory sharing → 403 without the
+    missing-scope reason. The hybrid must still return CONTACTS hits rather
+    than failing the whole call."""
+    with (
+        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "The G Suite domain admin has disabled external directory sharing.",
+                        "status": "PERMISSION_DENIED",
+                    }
+                },
+            )
+        )
+        mock.get(url__regex=r".*people:searchContacts.*").mock(
+            return_value=httpx.Response(
+                200,
+                json={"results": [{"person": _person("people/c1", "jg@example.com", "Jesper")}]},
+            )
+        )
+        result = await search_people_handler(
+            tool_ctx,
+            SearchPeopleInput(query="jesper"),  # ty: ignore[missing-argument]
+        )
+    assert result.sources_succeeded == ["CONTACTS"]
+    assert result.total_returned == 1
+    assert result.people[0].email == "jg@example.com"
+
+
+@pytest.mark.asyncio
+async def test_all_sources_non_scope_error_raises_with_reasons(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """When every source fails with a non-scope error (network, admin
+    config, etc), raise with the upstream messages — the admin needs
+    to see what actually broke, not a misleading re-consent prompt."""
+    directory_error = httpx.Response(
+        403,
+        json={
+            "error": {
+                "code": 403,
+                "message": "directory sharing disabled",
+                "status": "PERMISSION_DENIED",
+            }
+        },
+    )
+    contacts_error = httpx.Response(500, json={"error": {"code": 500, "message": "internal error"}})
+    with (
+        respx.mock(base_url="https://people.test/v1", assert_all_called=False) as mock,
+        mock_access_token(),
+    ):
+        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(return_value=directory_error)
+        # _request has a 5xx retry loop (max_retries=3) before ChatApiError
+        # propagates. respx returns the same response for each retry.
+        mock.get(url__regex=r".*people:searchContacts.*").mock(return_value=contacts_error)
+        with pytest.raises(ToolError, match="all sources failed"):
+            await search_people_handler(
+                tool_ctx,
+                SearchPeopleInput(query="x"),  # ty: ignore[missing-argument]
+            )
+
+
+@pytest.mark.asyncio
 async def test_all_sources_missing_scope_raises(tool_ctx: ToolContext, mock_access_token) -> None:
     """If every requested source is missing-scope, raise (don't silently empty)."""
     missing_scope = httpx.Response(
