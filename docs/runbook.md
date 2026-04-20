@@ -274,4 +274,87 @@ above), and for destructive paths that depend on a reliable email
 match (`remove_member` in v0.3.1), only offering the by-resource-name
 shape.
 
+## search_people returns zero DIRECTORY hits for Workspace users
+
+Symptom: `search_people` for a known-present Workspace user returns an
+empty list or only `CONTACTS`-tagged hits, even though the target is
+clearly in the caller's domain directory. Typical error in server
+logs: `people.searchDirectoryPeople returned 403: The G Suite domain
+admin has disabled external directory sharing`.
+
+**Cause:** `people:searchDirectoryPeople` is gated by two *separate*
+admin settings — don't confuse them:
+
+1. **Directory sharing → Contact sharing (internal)** — controls
+   whether domain members can see each other in directory search.
+   Enabling this is necessary but not sufficient for our MCP server.
+2. **External directory sharing** — governs whether third-party
+   OAuth apps (which is what our Cloud-project OAuth client is, from
+   Google's perspective) can read directory data on behalf of
+   authenticated users. The default **"Authenticated user basic
+   profile fields"** option only lets the app read the caller's OWN
+   profile — all profile info of other users in the organization is
+   withheld, which surfaces as zero-hit queries.
+
+**Fix — pick one (ranked by security posture, cleanest first):**
+
+1. **Allow-list the specific OAuth client.** `admin.google.com →
+   Security → API controls → App access control → Google Services →
+   Contacts API → "Restricted but trust this specific app"` and paste
+   the Cloud project's OAuth client ID. Surgical — only your MCP
+   server gets directory access; other OAuth apps stay restricted.
+2. **Widen external directory sharing.** `admin.google.com → Apps →
+   Google Workspace → Directory → Directory settings → External
+   directory sharing → Share all info` (or "Share only domain
+   profiles" if a narrower disclosure is preferred). Broadest fix;
+   opens directory reads to any OAuth app granted `directory.readonly`.
+3. **Accept the limitation.** `DIRECTORY` source returns empty for
+   non-self queries; CONTACTS fallback covers people the caller has
+   personally corresponded with. Document for callers.
+
+Propagation is typically 1-5 minutes. Verify with a fresh
+`search_people` call — `sources_succeeded` should now contain
+`"DIRECTORY"` and `people` should contain the teammate.
+
+**Workaround for non-admins:** fall back to `search_people` with
+`sources=["CONTACTS"]` — the caller's personal contacts + "other
+contacts" auto-populated from Chat interactions. Coverage is narrower
+(only people the caller has actually corresponded with) but works
+regardless of Workspace-level directory-sharing posture.
+
+## add_member returns a membership_name when the user is already present
+
+Symptom: `add_member` on a user who's already a member of the target
+space returns a successful `AddMemberResult` with a populated
+`membership_name` rather than the `ToolError("already a member")`
+the unit tests exercise.
+
+**Cause:** Google's Chat `spaces.members.create` is idempotent-by-nature
+in practice — duplicate adds return HTTP 200 with the *existing*
+membership record rather than 409 `ALREADY_EXISTS`. The 409 path is
+documented and reachable (older Workspace editions, some edge cases),
+so the handler still wraps it into a `ToolError`, but the common-case
+observation is that Google just returns the existing record.
+
+**Not a bug:** the handler code correctly handles both shapes. If you
+care about detecting the idempotent case specifically, compare the
+returned `membership_name`'s membership ID against the user's known
+Google numeric ID before + after — a no-change ID is the signal, not
+the response status. In most agent flows this distinction doesn't
+matter; treat a successful `add_member` as "user is in the space now",
+whether they were there a second ago or not.
+
+## search_people on consumer Gmail accounts
+
+Consumer `@gmail.com` accounts have no Workspace directory.
+`DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE` / `..._CONTACT` both 403 for
+these callers. `search_people` transparently drops the DIRECTORY
+source and returns only `CONTACTS` hits — inspect
+`sources_succeeded` on the result to confirm.
+
+No admin action is available. If a consumer-Gmail caller needs to
+resolve a Workspace user they've never corresponded with, the email
+has to be pasted manually — there is no other upstream path that
+respects the per-user privacy boundary.
+
 Point your uptime monitor at `/readyz`.

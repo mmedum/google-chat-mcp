@@ -22,12 +22,14 @@ from fastmcp.server.dependencies import get_access_token
 
 from ..chat_client import ChatApiError, ChatClient
 from ..config import (
+    CHAT_MEMBERSHIPS,
     CHAT_MEMBERSHIPS_READONLY,
     CHAT_MESSAGES_CREATE,
     CHAT_MESSAGES_REACTIONS,
     CHAT_MESSAGES_READONLY,
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
+    CONTACTS_READONLY,
     DIRECTORY_READONLY,
     OPENID_SCOPE,
 )
@@ -68,18 +70,23 @@ ToolName = Literal[
     "search_messages",
     "create_group_chat",
     "create_space",
+    "add_member",
+    "remove_member",
+    "search_people",
 ]
 
 # Scope constants re-exported from `src/config.py` so tool handlers + tests
 # can import from one module. Explicit `__all__` prevents ruff from treating
 # the transitive re-exports as unused.
 __all__ = [
+    "CHAT_MEMBERSHIPS",
     "CHAT_MEMBERSHIPS_READONLY",
     "CHAT_MESSAGES_CREATE",
     "CHAT_MESSAGES_REACTIONS",
     "CHAT_MESSAGES_READONLY",
     "CHAT_SPACES_CREATE",
     "CHAT_SPACES_READONLY",
+    "CONTACTS_READONLY",
     "DIRECTORY_READONLY",
     "OPENID_SCOPE",
     "AuthInfo",
