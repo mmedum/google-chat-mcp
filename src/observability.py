@@ -20,10 +20,9 @@ def configure_logging(
 
     `stream` defaults to stdout (HTTPS transport). Stdio transport passes
     `sys.stderr` — stdout in that mode is reserved for JSON-RPC frames, and
-    any non-protocol byte there corrupts the MCP stream. The stream is wired
-    into both stdlib logging (for third-party libs like httpx) AND structlog's
-    own `PrintLoggerFactory`; structlog bypasses stdlib logging by default,
-    so configuring only `logging.basicConfig` is not enough.
+    any non-protocol byte there corrupts the MCP stream. structlog has its
+    own logger factory and does not route through stdlib logging, so both
+    sinks must be pointed at `stream` for the redirection to be complete.
     """
     effective_stream = stream if stream is not None else sys.stdout
     logging.basicConfig(

@@ -76,3 +76,18 @@ def _patch_access_token(
 def mock_access_token():
     """Yield a context-manager that patches fastmcp's get_access_token."""
     return _patch_access_token
+
+
+def person_payload(email: str, display_name: str | None = None) -> dict[str, object]:
+    """Build a People-API `people.get` response body with primary email + name.
+
+    `emailAddresses` is always present; `names` only when `display_name` is
+    supplied — lets tests simulate the real-world pattern where non-self
+    Workspace users return emailAddresses=null (see project_people_api_resolution.md).
+    """
+    payload: dict[str, object] = {
+        "emailAddresses": [{"metadata": {"primary": True}, "value": email}],
+    }
+    if display_name is not None:
+        payload["names"] = [{"metadata": {"primary": True}, "displayName": display_name}]
+    return payload

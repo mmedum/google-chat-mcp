@@ -17,6 +17,8 @@ from src.tools import (
 )
 from src.tools._common import ToolContext
 
+from tests.conftest import person_payload
+
 
 def _reaction_obj(rid: str, unicode_emoji: str, user_name: str) -> dict[str, object]:
     return {
@@ -194,24 +196,10 @@ async def test_remove_reaction_by_filter_list_then_delete(
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [{"metadata": {"primary": True}, "value": "bob@example.com"}],
-                    "names": [{"metadata": {"primary": True}, "displayName": "Bob"}],
-                },
-            )
+            return_value=httpx.Response(200, json=person_payload("bob@example.com", "Bob"))
         )
         mock.get("https://people.test/v1/people/222").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [
-                        {"metadata": {"primary": True}, "value": "alice@example.com"}
-                    ],
-                    "names": [{"metadata": {"primary": True}, "displayName": "Alice"}],
-                },
-            )
+            return_value=httpx.Response(200, json=person_payload("alice@example.com", "Alice"))
         )
         del_route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r42").mock(
             return_value=httpx.Response(200, json={})
@@ -253,14 +241,7 @@ async def test_remove_reaction_by_filter_email_case_insensitive(
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [
-                        {"metadata": {"primary": True}, "value": "Alice@Example.com"}
-                    ],
-                },
-            )
+            return_value=httpx.Response(200, json=person_payload("Alice@Example.com"))
         )
         del_route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r1").mock(
             return_value=httpx.Response(200, json={})
@@ -319,14 +300,7 @@ async def test_remove_reaction_by_filter_no_email_match(
             )
         )
         mock.get("https://people.test/v1/people/999").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [
-                        {"metadata": {"primary": True}, "value": "someone.else@example.com"}
-                    ],
-                },
-            )
+            return_value=httpx.Response(200, json=person_payload("someone.else@example.com"))
         )
         del_route = mock.delete(url__regex=r".*/reactions/.*")
         out = await remove_reaction_handler(

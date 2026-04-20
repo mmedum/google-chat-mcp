@@ -140,9 +140,6 @@ async def test_find_direct_message_rejects_invalid_email_at_tool_boundary(
     assert result.is_error is True
     assert result.content
     text = result.content[0].text
-    # Pydantic's EmailStr validator surfaces "email address" / "@" wording;
-    # either form of the message is acceptable — the point is that the tool
-    # layer rejected it, not Google.
     assert "email" in text.lower() or "@" in text
 
 

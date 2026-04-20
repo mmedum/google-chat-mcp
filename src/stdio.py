@@ -54,6 +54,19 @@ _GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 _GOOGLE_REVOKE = "https://oauth2.googleapis.com/revoke"
 _GOOGLE_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 
+
+def _relax_oauthlib_token_scope() -> None:
+    """Apply Google's documented workaround for oauthlib's strict scope check.
+
+    Google canonicalizes `email`/`profile` aliases into their `userinfo.*` URL
+    forms on the token-endpoint response; without this, oauthlib's strict
+    comparison rejects the response (on initial login) and emits warnings on
+    every `Credentials.refresh()` (on serve). `setdefault` so an operator's
+    explicit choice still wins.
+    """
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
+
 # Placeholder Fernet key for stdio mode. `Settings.fernet_key` is a required
 # SecretStr with `min_length=1`; stdio bypasses GoogleProvider so the value
 # is never used. Using a constant avoids burning RNG entropy on every
@@ -258,12 +271,7 @@ def cmd_login(args: argparse.Namespace) -> int:
         print(f"error: {client_secret_path} does not exist or is not a file", file=sys.stderr)
         return 2
 
-    # Google canonicalizes the `email` / `profile` aliases into
-    # `https://www.googleapis.com/auth/userinfo.{email,profile}` URLs on the
-    # token-endpoint response. oauthlib's strict scope check raises on that
-    # mismatch; Google's own Python quickstarts set this env var as the
-    # documented workaround.
-    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+    _relax_oauthlib_token_scope()
 
     flow = InstalledAppFlow.from_client_secrets_file(
         client_secret_path, scopes=list(GOOGLE_OAUTH_SCOPES)
@@ -382,10 +390,7 @@ def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
     """
     tmp_data_dir = _ensure_config_dir() / "data"
     tmp_data_dir.mkdir(exist_ok=True)
-    # mkdir honors umask (typically 0o755); force 0o700 to match the parent
-    # config dir's invariant. The 0700 parent already gates other local
-    # users out, so this is defense-in-depth for the audit DB.
-    tmp_data_dir.chmod(0o700)
+    tmp_data_dir.chmod(0o700)  # match the parent config dir's 0700 invariant
     return Settings.from_mapping(
         {
             "base_url": "http://127.0.0.1/stdio",
@@ -412,11 +417,7 @@ def cmd_serve(_args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    # Same scope-normalization workaround as `cmd_login`: Google returns
-    # canonicalized `userinfo.{email,profile}` URLs on refresh, and oauthlib's
-    # strict check would otherwise raise on the mismatch during every
-    # Credentials.refresh() in the stdio resolver.
-    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+    _relax_oauthlib_token_scope()
     configure_logging(os.environ.get("GCM_LOG_LEVEL", "INFO"), stream=sys.stderr)
     identity = store.load()
     resolver = _build_stdio_resolver(store, identity)

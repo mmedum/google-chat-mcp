@@ -13,15 +13,11 @@ from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool, space_id
 
 
 async def add_reaction_handler(ctx: ToolContext, payload: AddReactionInput) -> AddReactionResult:
-    """Add a reaction.
+    """Add a reaction — presented as idempotent.
 
-    Presents as idempotent: Chat API's `spaces.messages.reactions.create` returns
-    HTTP 409 "already created" on a duplicate (emoji, user, message) tuple rather
-    than silently no-oping, so we catch the 409 and look up the existing reaction
-    via the server-side-filtered `reactions.list` on `(emoji.unicode, user.name)`.
-    If the lookup finds it, we return success with the existing reaction_name;
-    otherwise (vanishingly rare: reaction deleted between create and list) we
-    re-raise the 409.
+    Chat API returns 409 on a duplicate (emoji, user, message) rather than
+    no-op'ing; on 409 we recover by resolving the existing reaction via a
+    server-side-filtered `reactions.list` on (emoji.unicode, user.name).
     """
     space_id = space_id_from_message_name(payload.message_name)
 
