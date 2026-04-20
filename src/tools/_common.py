@@ -24,6 +24,7 @@ from ..chat_client import ChatApiError, ChatClient
 from ..config import (
     CHAT_MEMBERSHIPS,
     CHAT_MEMBERSHIPS_READONLY,
+    CHAT_MESSAGES,
     CHAT_MESSAGES_CREATE,
     CHAT_MESSAGES_REACTIONS,
     CHAT_MESSAGES_READONLY,
@@ -73,6 +74,8 @@ ToolName = Literal[
     "add_member",
     "remove_member",
     "search_people",
+    "update_message",
+    "delete_message",
 ]
 
 # Scope constants re-exported from `src/config.py` so tool handlers + tests
@@ -81,6 +84,7 @@ ToolName = Literal[
 __all__ = [
     "CHAT_MEMBERSHIPS",
     "CHAT_MEMBERSHIPS_READONLY",
+    "CHAT_MESSAGES",
     "CHAT_MESSAGES_CREATE",
     "CHAT_MESSAGES_REACTIONS",
     "CHAT_MESSAGES_READONLY",

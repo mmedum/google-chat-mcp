@@ -283,6 +283,31 @@ class ChatClient:
             endpoint_label="spaces.messages.get",
         )
 
+    async def update_message(
+        self, access_token: str, message_name: str, text: str
+    ) -> dict[str, Any]:
+        """Edit the text of a message via PATCH `spaces.messages.patch`.
+
+        `updateMask=text` scopes the patch to the text field only —
+        attachments, cards, and other fields are left untouched.
+        """
+        body = _build_update_message_body(text=text)
+        return await self._patch(
+            f"{self._base_chat}/{message_name}",
+            access_token=access_token,
+            json=body,
+            params={"updateMask": "text"},
+            endpoint_label="spaces.messages.patch",
+        )
+
+    async def delete_message(self, access_token: str, message_name: str) -> dict[str, Any]:
+        """Delete a message via DELETE `spaces.messages.delete`."""
+        return await self._delete(
+            f"{self._base_chat}/{message_name}",
+            access_token=access_token,
+            endpoint_label="spaces.messages.delete",
+        )
+
     async def add_reaction(
         self, access_token: str, message_name: str, unicode_emoji: str
     ) -> dict[str, Any]:
@@ -537,6 +562,23 @@ class ChatClient:
             endpoint_label=endpoint_label,
         )
 
+    async def _patch(
+        self,
+        url: str,
+        access_token: str,
+        json: Mapping[str, Any],
+        params: _QueryParams | None = None,
+        endpoint_label: str = "",
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PATCH",
+            url,
+            access_token,
+            json=json,
+            params=params,
+            endpoint_label=endpoint_label,
+        )
+
     async def _delete(
         self,
         url: str,
@@ -639,6 +681,16 @@ def _build_setup_space_body(
         ],
     }
     return body
+
+
+def _build_update_message_body(*, text: str) -> dict[str, Any]:
+    """Pure builder for the `spaces.messages.patch` request body.
+
+    Text-only edits — `updateMask=text` is set on the URL by the caller,
+    not the body. Shared by real-PATCH and `update_message`'s dry_run
+    branch (same dry/real-parity contract as `_build_send_message_body`).
+    """
+    return {"text": text}
 
 
 def _build_send_message_body(

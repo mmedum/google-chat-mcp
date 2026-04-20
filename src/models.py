@@ -182,6 +182,40 @@ class PersonHit(_Strict):
     source: PeopleSearchSource
 
 
+class UpdateMessageInput(_Strict):
+    """Edit the text of a message you previously sent.
+
+    Text-only — cards / attachments are out of scope (Google's
+    `messages.patch` accepts those only via app-auth, not user-auth).
+    The 4096-char cap mirrors `SendMessageInput` for project-wide
+    consistency; Google's real limit is higher but a uniform bound
+    keeps agent flows predictable.
+    """
+
+    message_name: MessageId
+    text: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    dry_run: bool = False
+
+
+class UpdateMessageResult(_Strict):
+    message_name: MessageId
+    text: str
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
+class DeleteMessageInput(_Strict):
+    message_name: MessageId
+    dry_run: bool = False
+
+
+class DeleteMessageResult(_Strict):
+    message_name: MessageId
+    deleted: bool
+    """False on idempotent re-delete (404 NOT_FOUND or non-scope 403)."""
+    dry_run: bool = False
+
+
 class SearchPeopleResult(_Strict):
     people: list[PersonHit]
     total_returned: Annotated[int, Field(ge=0)]
