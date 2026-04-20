@@ -322,6 +322,28 @@ contacts" auto-populated from Chat interactions. Coverage is narrower
 (only people the caller has actually corresponded with) but works
 regardless of Workspace-level directory-sharing posture.
 
+## add_member returns a membership_name when the user is already present
+
+Symptom: `add_member` on a user who's already a member of the target
+space returns a successful `AddMemberResult` with a populated
+`membership_name` rather than the `ToolError("already a member")`
+the unit tests exercise.
+
+**Cause:** Google's Chat `spaces.members.create` is idempotent-by-nature
+in practice — duplicate adds return HTTP 200 with the *existing*
+membership record rather than 409 `ALREADY_EXISTS`. The 409 path is
+documented and reachable (older Workspace editions, some edge cases),
+so the handler still wraps it into a `ToolError`, but the common-case
+observation is that Google just returns the existing record.
+
+**Not a bug:** the handler code correctly handles both shapes. If you
+care about detecting the idempotent case specifically, compare the
+returned `membership_name`'s membership ID against the user's known
+Google numeric ID before + after — a no-change ID is the signal, not
+the response status. In most agent flows this distinction doesn't
+matter; treat a successful `add_member` as "user is in the space now",
+whether they were there a second ago or not.
+
 ## search_people on consumer Gmail accounts
 
 Consumer `@gmail.com` accounts have no Workspace directory.
