@@ -134,10 +134,6 @@ filterwarnings = [
 [tool.coverage.run]
 branch = true
 source = ["src"]
-# server.py is the composition root: OAuth provider wiring + lifespan + route
-# mounting. Exercised end-to-end by a running server, not by unit tests. Cover
-# it once an integration-test harness is added.
-omit = ["src/server.py", "src/stdio.py"]
 
 [tool.coverage.report]
 exclude_lines = [
