@@ -258,6 +258,13 @@ def cmd_login(args: argparse.Namespace) -> int:
         print(f"error: {client_secret_path} does not exist or is not a file", file=sys.stderr)
         return 2
 
+    # Google canonicalizes the `email` / `profile` aliases into
+    # `https://www.googleapis.com/auth/userinfo.{email,profile}` URLs on the
+    # token-endpoint response. oauthlib's strict scope check raises on that
+    # mismatch; Google's own Python quickstarts set this env var as the
+    # documented workaround.
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
     flow = InstalledAppFlow.from_client_secrets_file(
         client_secret_path, scopes=list(GOOGLE_OAUTH_SCOPES)
     )
