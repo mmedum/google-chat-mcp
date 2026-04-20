@@ -1,6 +1,8 @@
 """MCP tool handlers. Imported and registered by `src.app`."""
 
 from .add_reaction import add_reaction_handler
+from .create_group_chat import create_group_chat_handler
+from .create_space import create_space_handler
 from .find_direct_message import find_direct_message_handler
 from .get_message import get_message_handler
 from .get_messages import get_messages_handler
@@ -16,6 +18,8 @@ from .whoami import whoami_handler
 
 __all__ = [
     "add_reaction_handler",
+    "create_group_chat_handler",
+    "create_space_handler",
     "find_direct_message_handler",
     "get_message_handler",
     "get_messages_handler",

@@ -68,6 +68,50 @@ class DirectMessageResult(_Strict):
     space_id: SpaceId
 
 
+class CreateGroupChatInput(_Strict):
+    """Create an unnamed multi-person DM (`spaceType=GROUP_CHAT`).
+
+    Google doesn't allow `displayName` on this space type, so the caller
+    cannot set one. `member_emails` excludes the caller — Google adds the
+    authenticated user implicitly. Bounds are a UX cap, not Google's
+    (Google allows 49 members in addition to the caller).
+    """
+
+    member_emails: Annotated[list[EmailStr], Field(min_length=2, max_length=20)]
+    dry_run: bool = False
+
+
+class CreateGroupChatResult(_Strict):
+    space_id: SpaceId | None = None
+    """None on a dry-run result (nothing created yet); set on a real post."""
+    member_count: Annotated[int, Field(ge=0)]
+    """Members POSTed to spaces.setup — does NOT include the caller."""
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+    """Dry-run only: the exact body that would be POSTed to spaces.setup."""
+
+
+class CreateSpaceInput(_Strict):
+    """Create a named space (`spaceType=SPACE`, `displayName` required).
+
+    `member_emails` excludes the caller. Google allows an empty member
+    list on SPACE creation, but we require at least one — a space of one
+    is not a useful primitive from an agent flow.
+    """
+
+    member_emails: Annotated[list[EmailStr], Field(min_length=1, max_length=20)]
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    dry_run: bool = False
+
+
+class CreateSpaceResult(_Strict):
+    space_id: SpaceId | None = None
+    display_name: str
+    member_count: Annotated[int, Field(ge=0)]
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
 class SendMessageInput(_Strict):
     space_id: SpaceId
     text: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
