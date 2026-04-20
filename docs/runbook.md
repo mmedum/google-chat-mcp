@@ -239,4 +239,39 @@ rejections, permission prompts) here so the next upgrade knows.
 - `/healthz` — process is up. Always 200 if the container is serving.
 - `/readyz` — DB reachable. 503 means SQLite is locked or the volume dropped.
 
+## People API resolution caveats
+
+Several read-side tools resolve `users/{id}` → email + display name via
+Google's People API (`people.get`). In practice, **only the authenticated
+user (self) resolves reliably**; non-self Workspace users almost always
+come back with `emailAddresses=null` and `names=null`, even when the
+caller has `directory.readonly` granted.
+
+**What this affects:**
+
+- `list_members` and `get_messages` — `email` / `sender_email` and
+  `display_name` / `sender_display_name` are frequently `null` for
+  anyone other than the caller. Treat nullability as the common case,
+  not the edge case.
+- `remove_reaction` by `(message, emoji, user_email)` — the tool
+  server-filters on emoji and resolves each reactor's email via People
+  API. When People API returns `null` for a reactor, the email-match
+  step silently skips that reactor, and the tool can report
+  `removed=false` even when the target reaction is present. If you
+  hit this, fall back to the direct-delete shape: pass the full
+  `reaction_name` (fetch it via `list_reactions`).
+
+**Why it happens:** Google scopes People-API visibility to the
+directory membership of the caller's own contacts + their own
+profile. Workspace directory visibility doesn't help here — that's a
+separate API (`admin.directory.users`) with a heavier scope we don't
+request.
+
+**Don't try to "fix" it:** widening to the Admin Directory scope would
+require a Workspace-admin install and doesn't belong in a per-user
+tool. The right response is clear nullability in the docs (done
+above), and for destructive paths that depend on a reliable email
+match (`remove_member` in v0.3.1), only offering the by-resource-name
+shape.
+
 Point your uptime monitor at `/readyz`.

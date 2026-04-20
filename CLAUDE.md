@@ -11,10 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Both entry points share `src/app.py::build_app(settings, resolver=, auth=)` — tool and resource registration is transport-agnostic. Per-user OAuth throughout; no service account, no domain-wide delegation, no centralized app (each deployer owns their Google app, their tokens, their rollout).
 
-Thirteen tools, three resources:
+Fifteen tools, three resources:
 
 - Tools (read-side): `list_spaces`, `find_direct_message`, `get_messages`, `get_space`, `list_members`, `whoami`, `get_thread`, `get_message`, `list_reactions`, `search_messages` (space-scoped, client-side exact/regex).
-- Tools (write-side): `send_message` (optional `dry_run: true` previews the payload without posting), `add_reaction`, `remove_reaction` (by resource name OR server-side-filtered `(message, emoji, user)`).
+- Tools (write-side): `send_message` (optional `dry_run: true` previews the payload without posting), `add_reaction`, `remove_reaction` (by resource name OR server-side-filtered `(message, emoji, user)`), `create_group_chat` (unnamed multi-person DM; 2-20 members; `dry_run`), `create_space` (named space; 1-20 members; `display_name` required; `dry_run`).
 - Resources: `gchat://spaces/{id}`, `gchat://spaces/{id}/messages/{id}`, `gchat://spaces/{id}/threads/{id}` — same content shape as the matching `get_*` tools.
 
 `send_message` posts the body verbatim — no server-side suffix is appended. Missing-scope 403s from Google are wrapped as a `ToolError` that names the exact scope URL (see `_is_missing_scope_error` + `_format_missing_scope_message` in `src/tools/_common.py`).
@@ -42,9 +42,9 @@ Pre-commit hooks: `uv run pre-commit install`.
 
 Composition split across three entry-point files and one shared builder:
 
-- `src/app.py::build_app(settings, *, resolver=None, auth=None) -> FastMCP` — transport-agnostic. Registers all 13 tools + 3 resources, wires the `ToolContext` lifespan. NOT coverage-excluded (pure function, unit-tested in `tests/test_app.py`).
-- `src/server.py` — HTTPS entry. Builds `GoogleProvider`, calls `build_app(settings, auth=provider)`, mounts `/healthz`/`/readyz`/`/metrics`, runs HTTP transport. Coverage-excluded (composition root).
-- `src/stdio.py` — stdio entry. argparse CLI (`login`, `logout`, default `serve`); loopback OAuth + local token store; calls `build_app(settings, resolver=<local-resolver>)`. Coverage-excluded.
+- `src/app.py::build_app(settings, *, resolver=None, auth=None) -> FastMCP` — transport-agnostic. Registers all 15 tools + 3 resources, wires the `ToolContext` lifespan. Unit-tested in `tests/test_app.py`.
+- `src/server.py` — HTTPS entry. Builds `GoogleProvider`, calls `build_app(settings, auth=provider)`, mounts `/healthz`/`/readyz`/`/metrics`, runs HTTP transport. Unit-tested in `tests/test_server.py`; full stack exercised in `tests/test_integration_https.py`.
+- `src/stdio.py` — stdio entry. argparse CLI (`login`, `logout`, default `serve`); loopback OAuth + local token store; calls `build_app(settings, resolver=<local-resolver>)`. Full stack exercised in `tests/test_integration_stdio.py` via a real subprocess.
 
 ```
 MCP client ──(HTTPS OR stdio)──► src/app.py::build_app
@@ -114,4 +114,7 @@ Pytest + pytest-asyncio + respx. `tests/conftest.py` provides:
 - `db`, `chat_client`, `tool_ctx` — fresh instances per test
 - `mock_access_token` — patches `src.tools._common.get_access_token` to return a fake upstream token; use this in every test that touches a tool handler
 
-`src/server.py` and `src/stdio.py` are excluded from coverage (composition roots — wiring + OS-level run, need integration tests not unit tests). `src/app.py` is NOT excluded: `build_app` is a pure function and `tests/test_app.py` asserts tool registration, MCP annotations, server identity, and resource templates. Add an integration harness in a follow-up PR for the excluded files.
+`src/app.py::build_app` is unit-tested in `tests/test_app.py` (tool registration, MCP annotations, server identity, resource templates). The two composition roots are covered via `tests/test_server.py` (direct unit tests for `build_auth` + `main`) and two integration harnesses:
+
+- `tests/test_integration_https.py` — ASGI-in-process driver for `/healthz`, `/readyz`, `/metrics`, and one tool call through `fastmcp.Client`, wired with a stub `TokenVerifier`.
+- `tests/test_integration_stdio.py` — spawns `python -m src.stdio serve` as a real subprocess under fastmcp's `StdioTransport`, with a stdlib `HTTPServer` stub for Chat API calls. `GCM_TEST_AUTH_STUB=1` on `cmd_serve` swaps the loopback-refresh resolver for a fixed stub so no real OAuth is needed. Any `print()` or misdirected structlog on stdout would break the JSON-RPC handshake before the test's first assertion — that's the stdout-hygiene regression guard.
