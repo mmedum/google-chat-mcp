@@ -33,7 +33,6 @@ jobs:
             code:
               - 'src/**'
               - 'tests/**'
-              - 'migrations/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - 'Dockerfile'
