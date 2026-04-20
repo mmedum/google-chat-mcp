@@ -11,11 +11,12 @@ import asyncio
 import random
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any, Self
+from typing import Any, Literal, Self
 from urllib.parse import urlencode
 
 import httpx
 
+from .models import SpaceType
 from .observability import (
     logger,
     mcp_google_api_calls_total,
@@ -145,10 +146,47 @@ class ChatClient:
 
     async def create_dm(self, access_token: str, user_email: str) -> dict[str, Any]:
         """Create a DM space with the given user via `spaces.setup`."""
-        body = {
-            "space": {"spaceType": "DIRECT_MESSAGE"},
-            "memberships": [{"member": {"name": f"users/{user_email}", "type": "HUMAN"}}],
-        }
+        return await self._setup_space(
+            access_token,
+            space_type="DIRECT_MESSAGE",
+            display_name=None,
+            member_emails=[user_email],
+        )
+
+    async def setup_space(
+        self,
+        access_token: str,
+        *,
+        space_type: Literal["SPACE", "GROUP_CHAT"],
+        display_name: str | None,
+        member_emails: list[str],
+    ) -> dict[str, Any]:
+        """Create a SPACE or GROUP_CHAT via `spaces.setup`.
+
+        Wraps the internal builder so callers can't accidentally POST a
+        `DIRECT_MESSAGE` from a tool handler — the DM path has its own
+        `create_dm` method and a different Pydantic input model.
+        """
+        return await self._setup_space(
+            access_token,
+            space_type=space_type,
+            display_name=display_name,
+            member_emails=member_emails,
+        )
+
+    async def _setup_space(
+        self,
+        access_token: str,
+        *,
+        space_type: SpaceType,
+        display_name: str | None,
+        member_emails: list[str],
+    ) -> dict[str, Any]:
+        body = _build_setup_space_body(
+            space_type=space_type,
+            display_name=display_name,
+            member_emails=member_emails,
+        )
         return await self._post(
             f"{self._base_chat}/spaces:setup",
             access_token=access_token,
@@ -483,6 +521,32 @@ class ChatClient:
                 google_status=google_status,
                 google_reason=google_reason,
             )
+
+
+def _build_setup_space_body(
+    *,
+    space_type: SpaceType,
+    display_name: str | None,
+    member_emails: list[str],
+) -> dict[str, Any]:
+    """Pure builder for the `spaces.setup` request body.
+
+    `displayName` is included **only** when ``space_type == "SPACE"`` AND
+    ``display_name`` is set. Google 400s on a displayName for DIRECT_MESSAGE
+    or GROUP_CHAT, so the check is load-bearing — the tool I/O models cap
+    it from above, this is the last-mile guard. Shared by real-post and
+    dry_run paths (same invariant as `_build_send_message_body`).
+    """
+    space: dict[str, Any] = {"spaceType": space_type}
+    if space_type == "SPACE" and display_name is not None:
+        space["displayName"] = display_name
+    body: dict[str, Any] = {
+        "space": space,
+        "memberships": [
+            {"member": {"name": f"users/{email}", "type": "HUMAN"}} for email in member_emails
+        ],
+    }
+    return body
 
 
 def _build_send_message_body(

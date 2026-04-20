@@ -66,6 +66,8 @@ ToolName = Literal[
     "remove_reaction",
     "list_reactions",
     "search_messages",
+    "create_group_chat",
+    "create_space",
 ]
 
 # Scope constants re-exported from `src/config.py` so tool handlers + tests

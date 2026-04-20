@@ -27,6 +27,10 @@ from .models import (
     AddReactionInput,
     AddReactionResult,
     ChatMessage,
+    CreateGroupChatInput,
+    CreateGroupChatResult,
+    CreateSpaceInput,
+    CreateSpaceResult,
     DirectMessageResult,
     GetMessagesInput,
     GetThreadInput,
@@ -62,6 +66,8 @@ from .resources import (
 from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
     add_reaction_handler,
+    create_group_chat_handler,
+    create_space_handler,
     find_direct_message_handler,
     get_message_handler,
     get_messages_handler,
@@ -202,6 +208,45 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def find_direct_message(user_email: EmailStr) -> DirectMessageResult:
         return await find_direct_message_handler(_require_ctx(state), user_email)
+
+    @mcp.tool(
+        name="create_group_chat",
+        title="Create a group chat",
+        description=(
+            "Create an unnamed multi-person DM (`GROUP_CHAT`) with 2-20 members. "
+            "`member_emails` excludes the caller — Google adds the authenticated "
+            "user implicitly. Google rejects `displayName` on this space type; "
+            "use `create_space` if you need a named room. Set `dry_run=true` to "
+            "preview the request body without posting."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    )
+    async def create_group_chat(payload: CreateGroupChatInput) -> CreateGroupChatResult:
+        return await create_group_chat_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="create_space",
+        title="Create a named space",
+        description=(
+            "Create a named space (`SPACE`) with 1-20 initial members and a "
+            "required `display_name`. `member_emails` excludes the caller — "
+            "Google adds the authenticated user implicitly. Set `dry_run=true` "
+            "to preview the request body without posting."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    )
+    async def create_space(payload: CreateSpaceInput) -> CreateSpaceResult:
+        return await create_space_handler(_require_ctx(state), payload)
 
     @mcp.tool(
         name="send_message",

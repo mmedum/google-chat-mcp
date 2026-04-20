@@ -13,7 +13,7 @@ prompts in your MCP client of choice.
 Two transports ship in this repo:
 
 - **Stdio** (recommended for individual users) — install from source with
-  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.1`,
+  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.0`,
   run a one-time OAuth login against your own Google account, then launch
   the server as a subprocess under Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
@@ -29,6 +29,8 @@ service accounts, no domain-wide delegation, no publishing step.
 |---|---|---|
 | `list_spaces` | List DMs, group chats, named spaces. Optional `limit` and `space_type` | `chat.spaces.readonly` |
 | `find_direct_message` | Resolve an email to a DM space ID (creates one on miss) | `chat.spaces.readonly` + `chat.spaces.create` |
+| `create_group_chat` | Create an unnamed group chat with 2-20 members; `dry_run` previews the body | `chat.spaces.create` |
+| `create_space` | Create a named space (`display_name` required, 1-20 members); `dry_run` previews the body | `chat.spaces.create` |
 | `send_message` | Post a text message. Optional `thread_name` reply; `dry_run` previews the payload without posting | `chat.messages.create` |
 | `get_messages` | Read recent messages, newest-first. Senders resolved via People API (24h cache) | `chat.messages.readonly` |
 | `get_space` | Fetch one space by ID | `chat.spaces.readonly` |
@@ -85,7 +87,7 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 
 ```bash
 # From a tagged release (preferred):
-uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.1
+uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.0
 
 # Or from a local clone for dev / custom builds:
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
