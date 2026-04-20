@@ -13,7 +13,7 @@ prompts in your MCP client of choice.
 Two transports ship in this repo:
 
 - **Stdio** (recommended for individual users) — install from source with
-  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.0`,
+  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.1`,
   run a one-time OAuth login against your own Google account, then launch
   the server as a subprocess under Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
@@ -85,7 +85,7 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 
 ```bash
 # From a tagged release (preferred):
-uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.0
+uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.1
 
 # Or from a local clone for dev / custom builds:
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp

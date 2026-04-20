@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-20
+
+Patch release — release-infrastructure improvements, ops hygiene, and a
+GHCR description fix. No application-level or tool-surface changes.
+
+### Fixed
+- GHCR package page now displays the repository description. The
+  multi-arch index was missing the
+  `org.opencontainers.image.description` annotation (labels only land
+  on per-arch image configs, not on the index GHCR reads). Release
+  workflow now emits annotations at both manifest and index level.
+
+### Changed
+- **Release builds skip QEMU.** `release.yml` runs a matrix of native
+  per-arch jobs (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for
+  arm64) with push-by-digest + a dedicated `docker-merge` job that
+  assembles the manifest list. Wall-clock: ~5-8 min → ~3-4 min per
+  release.
+- **`compose.yml` defaults to the published image**
+  (`ghcr.io/mmedum/google-chat-mcp:0.2`). `docker compose up -d` from
+  a fresh clone pulls the release artefact instead of rebuilding.
+  Commented `build:` block kept for local dev.
+- **Gitleaks scope narrowed to the PR/push diff** (was: full history
+  on every CI run). PR-iteration scans go from ~5 min (hitting the
+  timeout) to <30 s.
+- **Dependabot** now covers `uv` (pyproject + uv.lock) and `docker`
+  (base images) alongside the existing `github-actions` ecosystem.
+
+### Security
+- Release workflow verifies SBOM + provenance attestations landed on
+  the multi-arch index after push. Catches silent regressions in
+  buildx referrer-following rather than shipping un-attested images.
+
+### Added
+- `CONTRIBUTING.md` at repo root; `.github/pull_request_template.md`;
+  issue forms for bug reports and feature requests; issue-config that
+  redirects security reports to GitHub Security Advisories.
+- README badges for CI status, latest release, container image,
+  license, and Python version.
+
 ## [0.2.0] - 2026-04-20
 
 Ground-up v2 rewrite. Two transports (HTTPS + stdio), 13 tools + 3 resources,
@@ -87,5 +127,6 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
