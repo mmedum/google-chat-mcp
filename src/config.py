@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = Field(default=10.0, gt=0)
     http_max_retries: int = Field(default=3, ge=0, le=10)
 
+    # Upstream base URLs — default to Google but overridable so integration
+    # tests can point ChatClient at a local mock server. Not load-bearing in
+    # production; don't set these outside tests.
+    chat_api_base: str = Field(default="https://chat.googleapis.com/v1")
+    people_api_base: str = Field(default="https://people.googleapis.com/v1")
+
     # Secrets: required. Pydantic raises ValidationError if absent from both
     # /run/secrets and env. The field names must match the Docker secret filenames
     # (google_client_id, google_client_secret, fernet_key, jwt_signing_key, audit_pepper).

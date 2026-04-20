@@ -38,7 +38,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from .app import build_app
 from .config import GOOGLE_OAUTH_SCOPES, Settings
 from .observability import configure_logging
-from .tools._common import AuthInfo
+from .tools._common import AuthInfo, AuthResolver
 
 # ---------- constants ----------
 
@@ -391,36 +391,65 @@ def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
     tmp_data_dir = _ensure_config_dir() / "data"
     tmp_data_dir.mkdir(exist_ok=True)
     tmp_data_dir.chmod(0o700)  # match the parent config dir's 0700 invariant
-    return Settings.from_mapping(
-        {
-            "base_url": "http://127.0.0.1/stdio",
-            "data_dir": str(tmp_data_dir),
-            "log_level": os.environ.get("GCM_LOG_LEVEL", "INFO"),
-            "allowed_client_redirects": [],
-            "google_client_id": identity.get("client_id", "unused-in-stdio"),
-            "google_client_secret": identity.get("client_secret", "unused-in-stdio"),
-            "fernet_key": _STDIO_FERNET_PLACEHOLDER,
-            "jwt_signing_key": "unused-in-stdio" * 4,
-            "audit_pepper": _load_or_create_audit_pepper().hex(),
-            # stdio is single-user; hashing adds no privacy beyond local disk.
-            "audit_hash_user_sub": False,
-        }
-    )
+    mapping: dict[str, Any] = {
+        "base_url": "http://127.0.0.1/stdio",
+        "data_dir": str(tmp_data_dir),
+        "log_level": os.environ.get("GCM_LOG_LEVEL", "INFO"),
+        "allowed_client_redirects": [],
+        "google_client_id": identity.get("client_id", "unused-in-stdio"),
+        "google_client_secret": identity.get("client_secret", "unused-in-stdio"),
+        "fernet_key": _STDIO_FERNET_PLACEHOLDER,
+        "jwt_signing_key": "unused-in-stdio" * 4,
+        "audit_pepper": _load_or_create_audit_pepper().hex(),
+        # stdio is single-user; hashing adds no privacy beyond local disk.
+        "audit_hash_user_sub": False,
+    }
+    # Integration-test overrides for upstream base URLs (see Settings fields).
+    # Read from the same GCM_-prefixed env vars pydantic-settings would use in
+    # HTTPS mode, since stdio constructs Settings via from_mapping and bypasses
+    # auto-env-loading.
+    if base := os.environ.get("GCM_CHAT_API_BASE"):
+        mapping["chat_api_base"] = base
+    if base := os.environ.get("GCM_PEOPLE_API_BASE"):
+        mapping["people_api_base"] = base
+    return Settings.from_mapping(mapping)
+
+
+def _stub_auth_resolver() -> AuthResolver:
+    """Test-only resolver that short-circuits OAuth entirely.
+
+    Activated when ``GCM_TEST_AUTH_STUB=1`` is set on ``cmd_serve``. Returns
+    a fixed ``AuthInfo`` with no token refresh. Not wired through Settings —
+    deliberately so this path can't be turned on accidentally in a config
+    file. The only supported use is the stdio integration harness; see
+    ``tests/test_integration_stdio.py``.
+    """
+
+    async def resolver() -> AuthInfo:
+        return AuthInfo(access_token="test-upstream-access-token", user_sub="test-user")  # noqa: S106
+
+    return resolver
 
 
 def cmd_serve(_args: argparse.Namespace) -> int:
-    store = _open_store()
-    if not store.exists():
-        print(
-            "error: no local credentials. Run `google-chat-mcp login "
-            "--client-secret <path>` first.",
-            file=sys.stderr,
-        )
-        return 2
-    _relax_oauthlib_token_scope()
+    test_auth_stub = os.environ.get("GCM_TEST_AUTH_STUB") == "1"
+    if not test_auth_stub:
+        store = _open_store()
+        if not store.exists():
+            print(
+                "error: no local credentials. Run `google-chat-mcp login "
+                "--client-secret <path>` first.",
+                file=sys.stderr,
+            )
+            return 2
+        _relax_oauthlib_token_scope()
     configure_logging(os.environ.get("GCM_LOG_LEVEL", "INFO"), stream=sys.stderr)
-    identity = store.load()
-    resolver = _build_stdio_resolver(store, identity)
+    if test_auth_stub:
+        resolver: AuthResolver = _stub_auth_resolver()
+        identity: dict[str, Any] = {}
+    else:
+        identity = store.load()  # type: ignore[unbound]
+        resolver = _build_stdio_resolver(store, identity)  # type: ignore[unbound]
     settings = _build_stdio_settings(identity)
     app = build_app(settings, resolver=resolver)
     app.run()  # Default transport is stdio.
