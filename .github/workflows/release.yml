@@ -36,14 +36,13 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           # `latest` is gated on the default branch so a patch release on an
           # older line doesn't steal the pointer.
+          # docker/metadata-action auto-derives the standard OCI labels
+          # (source, licenses, description, title, revision, version, url,
+          # created) from the GitHub repo context — no need to restate.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.description=MCP server exposing Google Chat to MCP-compatible clients
       - id: build
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
