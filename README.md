@@ -167,12 +167,11 @@ docker compose up -d
 docker compose logs -f mcp
 ```
 
-To consume the published image instead of building locally, edit
-`compose.yml`: comment out the `build:` block on the `mcp` service and set
-`image: ghcr.io/mmedum/google-chat-mcp:0.2.0` (or `:latest`). Then
-`docker compose up -d` pulls the multi-arch image (`linux/amd64` +
-`linux/arm64`), published with SBOM and SLSA provenance attestations on
-every `v*.*.*` tag.
+`compose.yml` pulls the published multi-arch image
+(`ghcr.io/mmedum/google-chat-mcp:0.2`) by default — `linux/amd64` +
+`linux/arm64`, published with SBOM and SLSA provenance attestations on
+every `v*.*.*` tag. For local dev builds, swap the `image:` line for
+the commented `build:` block in `compose.yml`.
 
 ### 4. Connect your MCP client
 
