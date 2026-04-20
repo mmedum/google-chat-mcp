@@ -117,6 +117,8 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             client = ChatClient(
                 timeout_seconds=settings.http_timeout_seconds,
                 max_retries=settings.http_max_retries,
+                base_chat=settings.chat_api_base,
+                base_people=settings.people_api_base,
             )
             limiter = TokenBucketLimiter(capacity=settings.rate_limit_per_minute)
             active_users = ActiveUserTracker()
