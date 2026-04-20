@@ -1,15 +1,39 @@
-"""Shared sender-resolution helper for message-returning tools (get_messages, get_thread)."""
+"""Shared sender-resolution + timestamp-coerce for message-returning tools."""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC
+from datetime import UTC, datetime
 
 from ..models import ChatMessage, _ChatMessageResponse
 from ..observability import logger
-from ..storage import DirectoryCache
 from ._common import ToolContext
 from ._directory import fetch_person
+
+
+def ensure_utc(ts: datetime) -> datetime:
+    """Return `ts` in UTC, treating naive timestamps as already-UTC."""
+    return ts.astimezone(UTC) if ts.tzinfo else ts.replace(tzinfo=UTC)
+
+
+async def resolve_sender(
+    ctx: ToolContext,
+    access_token: str,
+    msg: _ChatMessageResponse,
+) -> tuple[str | None, str | None]:
+    """Resolve `msg.sender.name` to `(email, display_name)` via the directory cache."""
+    user_id = msg.sender.name
+    cache = ctx.directory_cache
+    cached = await cache.get(user_id)
+    if cached is not None:
+        return cached
+    fetched = await fetch_person(ctx.client, access_token, user_id)
+    if fetched is None:
+        return None, msg.sender.display_name
+    email, display_name = fetched
+    if email:
+        await cache.put(user_id, email, display_name)
+    return email, display_name or msg.sender.display_name
 
 
 async def enrich_messages(
@@ -17,10 +41,10 @@ async def enrich_messages(
     ctx: ToolContext,
     access_token: str,
 ) -> list[ChatMessage]:
-    """Resolve senders to email + display name in parallel; drop rows that fail lookup.
+    """Resolve senders in parallel; drop rows whose People-API lookup raises.
 
-    `return_exceptions=True`: one bad People-API lookup mustn't blank the whole
-    batch. Failures are logged and skipped — the caller sees a partial result.
+    `return_exceptions=True`: one bad lookup mustn't blank the whole batch.
+    Failures are logged and skipped — the caller sees a partial result.
     """
     results = await asyncio.gather(
         *[_enrich_sender(access_token, m, ctx) for m in parsed],
@@ -44,34 +68,13 @@ async def _enrich_sender(
     msg: _ChatMessageResponse,
     ctx: ToolContext,
 ) -> ChatMessage:
-    email, display_name = await _resolve_sender(access_token, msg, ctx.directory_cache, ctx)
-    create_time = msg.create_time
-    ts = create_time.astimezone(UTC) if create_time.tzinfo else create_time.replace(tzinfo=UTC)
+    email, display_name = await resolve_sender(ctx, access_token, msg)
     return ChatMessage(
         message_id=msg.name,
         sender_user_id=msg.sender.name,
         sender_email=email,
         sender_display_name=display_name or msg.sender.display_name,
         text=msg.text,
-        timestamp=ts,
+        timestamp=ensure_utc(msg.create_time),
         thread_id=msg.thread.name,
     )
-
-
-async def _resolve_sender(
-    access_token: str,
-    msg: _ChatMessageResponse,
-    cache: DirectoryCache,
-    ctx: ToolContext,
-) -> tuple[str | None, str | None]:
-    user_id = msg.sender.name
-    cached = await cache.get(user_id)
-    if cached is not None:
-        return cached
-    fetched = await fetch_person(ctx.client, access_token, user_id)
-    if fetched is None:
-        return None, msg.sender.display_name
-    email, display_name = fetched
-    if email:
-        await cache.put(user_id, email, display_name)
-    return email, display_name or msg.sender.display_name

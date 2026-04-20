@@ -10,6 +10,7 @@ from pydantic import TypeAdapter
 
 from ..models import ChatMessage, GetThreadInput
 from ..tools import get_thread_handler
+from ._common import ensure_child_name, ensure_space_name
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -39,14 +40,12 @@ def register_thread_resource(mcp: FastMCP, resolve_ctx: Callable[[], ToolContext
     )
     async def thread_resource(space_id: str, thread_id: str) -> list[ResourceContent]:
         ctx: ToolContext = resolve_ctx()
-        full_space = space_id if space_id.startswith("spaces/") else f"spaces/{space_id}"
-        thread_name = (
-            thread_id
-            if thread_id.startswith(f"{full_space}/threads/")
-            else f"{full_space}/threads/{thread_id}"
-        )
         messages = await get_thread_handler(
-            ctx, GetThreadInput(space_id=full_space, thread_name=thread_name)
+            ctx,
+            GetThreadInput(
+                space_id=ensure_space_name(space_id),
+                thread_name=ensure_child_name(space_id, thread_id, "threads"),
+            ),
         )
         body = _MESSAGES_ADAPTER.dump_json(messages).decode("utf-8")
         return [ResourceContent(body, mime_type="application/json")]

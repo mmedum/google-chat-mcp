@@ -5,15 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import ListReactionsInput, ListReactionsResult, ReactionEntry
-from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool
+from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool, space_id_from_message_name
 
 
 async def list_reactions_handler(
     ctx: ToolContext, payload: ListReactionsInput
 ) -> ListReactionsResult:
     """List reactions on a message. Pagination via page_token / next_page_token."""
-    parts = payload.message_name.split("/")
-    space_id = "/".join(parts[:2]) if len(parts) >= 2 else payload.message_name
+    space_id = space_id_from_message_name(payload.message_name)
 
     async def body(access_token: str, _user_sub: str) -> ListReactionsResult:
         raw = await ctx.client.list_reactions(

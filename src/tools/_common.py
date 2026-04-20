@@ -21,6 +21,16 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
 
 from ..chat_client import ChatApiError, ChatClient
+from ..config import (
+    CHAT_MEMBERSHIPS_READONLY,
+    CHAT_MESSAGES_CREATE,
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES_READONLY,
+    CHAT_SPACES_CREATE,
+    CHAT_SPACES_READONLY,
+    DIRECTORY_READONLY,
+    OPENID_SCOPE,
+)
 from ..models import _ChatSpaceResponse
 from ..observability import (
     logger,
@@ -58,15 +68,27 @@ ToolName = Literal[
     "search_messages",
 ]
 
-# Scope constants — shared by tool handlers and tests. Order matches the
-# v2 plan's tool-to-scope table. Naming: CHAT_<RESOURCE>_<VERB>.
-CHAT_MESSAGES_READONLY = "https://www.googleapis.com/auth/chat.messages.readonly"
-CHAT_MESSAGES_CREATE = "https://www.googleapis.com/auth/chat.messages.create"
-CHAT_MESSAGES_REACTIONS = "https://www.googleapis.com/auth/chat.messages.reactions"
-CHAT_SPACES_READONLY = "https://www.googleapis.com/auth/chat.spaces.readonly"
-CHAT_SPACES_CREATE = "https://www.googleapis.com/auth/chat.spaces.create"
-CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.readonly"
-DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
+# Scope constants re-exported from `src/config.py` so tool handlers + tests
+# can import from one module. Explicit `__all__` prevents ruff from treating
+# the transitive re-exports as unused.
+__all__ = [
+    "CHAT_MEMBERSHIPS_READONLY",
+    "CHAT_MESSAGES_CREATE",
+    "CHAT_MESSAGES_REACTIONS",
+    "CHAT_MESSAGES_READONLY",
+    "CHAT_SPACES_CREATE",
+    "CHAT_SPACES_READONLY",
+    "DIRECTORY_READONLY",
+    "OPENID_SCOPE",
+    "AuthInfo",
+    "AuthResolver",
+    "ToolContext",
+    "ToolName",
+    "audit_user_sub",
+    "invoke_tool",
+    "space_display_name",
+    "space_id_from_message_name",
+]
 
 
 class ToolContext:
@@ -104,6 +126,15 @@ class ToolContext:
         self.audit_pepper = audit_pepper
         self.audit_hash_user_sub = audit_hash_user_sub
         self.resolver = resolver
+
+
+def space_id_from_message_name(message_name: str) -> str:
+    """Extract `spaces/{S}` from a `spaces/{S}/messages/{M}` resource name.
+
+    Trusts that the caller already validated the shape via `MessageId` — the
+    tool input layer rejects malformed values upstream.
+    """
+    return message_name.rsplit("/messages/", 1)[0]
 
 
 def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -> str:

@@ -121,19 +121,33 @@ class Settings(BaseSettings):
         return self.data_dir / "oauth_store"
 
 
+# Scope constants — single source of truth. Referenced by `GOOGLE_OAUTH_SCOPES`
+# below and by each tool's `invoke_tool(..., required_scope=...)` call in
+# `src/tools/_common.py`. Adding a new scope? Put it here first.
+OPENID_SCOPE = "openid"
+EMAIL_SCOPE = "email"
+PROFILE_SCOPE = "profile"
+CHAT_MESSAGES_READONLY = "https://www.googleapis.com/auth/chat.messages.readonly"
+# Split from the umbrella `chat.messages` (Google *restricted* tier, annual CASA).
+# .create + .reactions are both *sensitive* tier (3-5 day self-service verification)
+# and cover the v2 tool surface (send_message, add/remove/list_reactions).
+CHAT_MESSAGES_CREATE = "https://www.googleapis.com/auth/chat.messages.create"
+CHAT_MESSAGES_REACTIONS = "https://www.googleapis.com/auth/chat.messages.reactions"
+CHAT_SPACES_READONLY = "https://www.googleapis.com/auth/chat.spaces.readonly"
+# Retained for find_direct_message's create-on-miss path (spaces.setup).
+CHAT_SPACES_CREATE = "https://www.googleapis.com/auth/chat.spaces.create"
+CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.readonly"
+DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
+
 GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/chat.messages.readonly",
-    # Split from the umbrella `chat.messages` (Google *restricted* tier, annual CASA).
-    # .create + .reactions are both *sensitive* tier (3-5 day self-service verification)
-    # and cover the v2 tool surface (send_message, add/remove/list_reactions).
-    "https://www.googleapis.com/auth/chat.messages.create",
-    "https://www.googleapis.com/auth/chat.messages.reactions",
-    "https://www.googleapis.com/auth/chat.spaces.readonly",
-    # Retained for find_direct_message's create-on-miss path (spaces.setup).
-    "https://www.googleapis.com/auth/chat.spaces.create",
-    "https://www.googleapis.com/auth/chat.memberships.readonly",
-    "https://www.googleapis.com/auth/directory.readonly",
+    OPENID_SCOPE,
+    EMAIL_SCOPE,
+    PROFILE_SCOPE,
+    CHAT_MESSAGES_READONLY,
+    CHAT_MESSAGES_CREATE,
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_SPACES_READONLY,
+    CHAT_SPACES_CREATE,
+    CHAT_MEMBERSHIPS_READONLY,
+    DIRECTORY_READONLY,
 )

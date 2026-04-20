@@ -13,6 +13,7 @@ from ..models import (
     _ChatMessageResponse,
 )
 from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool
+from ._messages import ensure_utc
 
 _DEFAULT_MAX_PAGES = 10
 _SNIPPET_CONTEXT_CHARS = 80
@@ -67,11 +68,7 @@ async def search_messages_handler(
                         thread_id=msg.thread.name,
                         sender_user_id=msg.sender.name,
                         text=msg.text,
-                        timestamp=(
-                            msg.create_time.astimezone(UTC)
-                            if msg.create_time.tzinfo
-                            else msg.create_time.replace(tzinfo=UTC)
-                        ),
+                        timestamp=ensure_utc(msg.create_time),
                         snippet=_extract_snippet(msg.text, snippet_start),
                     )
                 )

@@ -101,19 +101,8 @@ async def test_remove_reaction_by_filter_list_then_delete(
         respx.mock() as mock,
         mock_access_token(),
     ):
-        # People-API resolve (users/email form); fetch_person behavior.
-        mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [
-                        {"value": "alice@example.com", "metadata": {"primary": True}}
-                    ],
-                    "names": [{"displayName": "Alice"}],
-                },
-            )
-        )
-        # Filtered list returns one hit.
+        # The Chat API's reactions.list filter accepts users/{email} directly;
+        # no People-API round-trip happens.
         list_route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
             return_value=httpx.Response(
                 200,
@@ -150,17 +139,6 @@ async def test_remove_reaction_by_filter_no_match(tool_ctx: ToolContext, mock_ac
         respx.mock(assert_all_called=False) as mock,
         mock_access_token(),
     ):
-        mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "emailAddresses": [
-                        {"value": "alice@example.com", "metadata": {"primary": True}}
-                    ],
-                    "names": [{"displayName": "Alice"}],
-                },
-            )
-        )
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
             return_value=httpx.Response(200, json={"reactions": []})
         )

@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from ..models import AddReactionInput, AddReactionResult
-from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool
+from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool, space_id_from_message_name
 
 
 async def add_reaction_handler(ctx: ToolContext, payload: AddReactionInput) -> AddReactionResult:
     """Add a reaction. Idempotent — re-adding the same (emoji, user) is a no-op on the Chat API."""
-    # spaces/{SPACE}/messages/{MSG} → "spaces/{SPACE}". Audit tagging only.
-    parts = payload.message_name.split("/")
-    space_id = "/".join(parts[:2]) if len(parts) >= 2 else payload.message_name
+    space_id = space_id_from_message_name(payload.message_name)
 
     async def body(access_token: str, _user_sub: str) -> AddReactionResult:
         raw = await ctx.client.add_reaction(access_token, payload.message_name, payload.emoji)

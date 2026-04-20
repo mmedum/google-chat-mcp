@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import UTC
-
 from ..models import (
     MessageDetails,
     ReactionSummary,
     _ChatMessageResponse,
 )
-from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool
-from ._directory import fetch_person
+from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool, space_id_from_message_name
+from ._messages import ensure_utc, resolve_sender
 
 # If a message has more distinct reaction emoji than this, omit the inline
 # summary and set `reactions_paged=True` so the caller knows to use
@@ -20,23 +18,13 @@ _INLINE_REACTIONS_CAP = 25
 
 
 async def get_message_handler(ctx: ToolContext, message_name: str) -> MessageDetails:
-    """Fetch a single message. `message_name` is the full `spaces/{s}/messages/{m}`.
-
-    `space_id` is derived from the message name for audit tagging; the Chat API
-    already enforces that the message belongs to its parent space.
-    """
-    # spaces/{SPACE}/messages/{MSG} → "spaces/{SPACE}". Validated by the
-    # MessageId Pydantic constraint at the tool input layer, so we can trust
-    # the structure here.
-    parts = message_name.split("/")
-    space_id = "/".join(parts[:2]) if len(parts) >= 2 else message_name
+    """Fetch a single message. `message_name` is the full `spaces/{s}/messages/{m}`."""
+    space_id = space_id_from_message_name(message_name)
 
     async def body(access_token: str, _user_sub: str) -> MessageDetails:
         raw = await ctx.client.get_message(access_token, message_name)
         msg = _ChatMessageResponse(**raw)
-        email, display_name = await _resolve_sender(access_token, msg, ctx)
-        create_time = msg.create_time
-        ts = create_time.astimezone(UTC) if create_time.tzinfo else create_time.replace(tzinfo=UTC)
+        email, display_name = await resolve_sender(ctx, access_token, msg)
         reactions, paged = _summarize_reactions(msg.emoji_reaction_summaries)
         return MessageDetails(
             message_id=msg.name,
@@ -46,7 +34,7 @@ async def get_message_handler(ctx: ToolContext, message_name: str) -> MessageDet
             sender_email=email,
             sender_display_name=display_name or msg.sender.display_name,
             text=msg.text,
-            timestamp=ts,
+            timestamp=ensure_utc(msg.create_time),
             last_update_time=msg.last_update_time,
             reactions=reactions,
             reactions_paged=paged,
@@ -95,19 +83,3 @@ def _summarize_reactions(
     if len(summaries) > _INLINE_REACTIONS_CAP:
         return [], True
     return summaries, False
-
-
-async def _resolve_sender(
-    access_token: str, msg: _ChatMessageResponse, ctx: ToolContext
-) -> tuple[str | None, str | None]:
-    user_id = msg.sender.name
-    cached = await ctx.directory_cache.get(user_id)
-    if cached is not None:
-        return cached
-    fetched = await fetch_person(ctx.client, access_token, user_id)
-    if fetched is None:
-        return None, msg.sender.display_name
-    email, display_name = fetched
-    if email:
-        await ctx.directory_cache.put(user_id, email, display_name)
-    return email, display_name or msg.sender.display_name

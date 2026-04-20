@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from fastmcp.resources import ResourceContent
 
 from ..tools import get_space_handler
+from ._common import ensure_space_name
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -35,9 +36,7 @@ def register_space_resource(mcp: FastMCP, resolve_ctx: Callable[[], ToolContext]
     )
     async def space_resource(space_id: str) -> list[ResourceContent]:
         ctx: ToolContext = resolve_ctx()
-        # URI param is the bare ID; the Chat API expects the `spaces/{id}` resource name.
-        full_name = space_id if space_id.startswith("spaces/") else f"spaces/{space_id}"
-        details = await get_space_handler(ctx, full_name)
+        details = await get_space_handler(ctx, ensure_space_name(space_id))
         # Explicit ResourceContent so mime_type propagates to the wire envelope;
         # FastMCP's str auto-wrap defaults to text/plain regardless of decorator hint.
         return [ResourceContent(details.model_dump_json(), mime_type="application/json")]
