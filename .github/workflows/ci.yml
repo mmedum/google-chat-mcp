@@ -33,7 +33,6 @@ jobs:
             code:
               - 'src/**'
               - 'tests/**'
-              - 'migrations/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - 'Dockerfile'
@@ -139,3 +138,23 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: true
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # Full history so gitleaks can scan prior commits on push.
+          fetch-depth: 0
+      - name: Install gitleaks
+        # Direct install with a pinned tag; avoids the third-party
+        # gitleaks-action wrapper and its GITHUB_TOKEN / comment-posting surface.
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan working tree and history
+        run: gitleaks detect --source . --verbose --redact --exit-code 1

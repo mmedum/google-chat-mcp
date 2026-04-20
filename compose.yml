@@ -22,6 +22,7 @@ services:
       - GCM_google_client_secret
       - GCM_fernet_key
       - GCM_jwt_signing_key
+      - GCM_audit_pepper
     volumes:
       - mcp_data:/var/lib/google-chat-mcp
     mem_limit: 512m
@@ -43,6 +44,8 @@ secrets:
     file: ./secrets/fernet_key
   GCM_jwt_signing_key:
     file: ./secrets/jwt_signing_key
+  GCM_audit_pepper:
+    file: ./secrets/audit_pepper
 
 volumes:
   mcp_data:

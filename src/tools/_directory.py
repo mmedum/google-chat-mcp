@@ -8,9 +8,12 @@ private helpers.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..chat_client import ChatClient
+
+if TYPE_CHECKING:
+    from ._common import ToolContext
 
 
 async def fetch_person(
@@ -23,6 +26,27 @@ async def fetch_person(
     if data is None:
         return None
     return primary_email(data), primary_name(data)
+
+
+async def resolve_email_cached(
+    ctx: ToolContext,
+    access_token: str,
+    user_id: str,
+) -> str | None:
+    """Resolve `users/{id}` → primary email, using `ctx.directory_cache` to dedup
+    People-API round-trips across callers in the same process.
+    """
+    cached = await ctx.directory_cache.get(user_id)
+    if cached is not None:
+        email, _ = cached
+        return email
+    fetched = await fetch_person(ctx.client, access_token, user_id)
+    if fetched is None:
+        return None
+    email, display_name = fetched
+    if email:
+        await ctx.directory_cache.put(user_id, email, display_name)
+    return email
 
 
 def primary_email(data: dict[str, Any]) -> str | None:

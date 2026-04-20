@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..models import ListSpacesInput, SpaceSummary, _ChatSpaceResponse, _ChatSpacesListResponse
-from ._common import ToolContext, invoke_tool, space_display_name
+from ._common import CHAT_SPACES_READONLY, ToolContext, invoke_tool, space_display_name
 
 
 async def list_spaces_handler(ctx: ToolContext, payload: ListSpacesInput) -> list[SpaceSummary]:
@@ -21,4 +21,4 @@ async def list_spaces_handler(ctx: ToolContext, payload: ListSpacesInput) -> lis
             for s in spaces
         ]
 
-    return await invoke_tool("list_spaces", ctx, body)
+    return await invoke_tool("list_spaces", ctx, body, required_scope=CHAT_SPACES_READONLY)

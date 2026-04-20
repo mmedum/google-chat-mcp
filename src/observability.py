@@ -5,18 +5,30 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
-from typing import Any
+from typing import Any, TextIO
 
 import structlog
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 
-def configure_logging(level: str = "INFO") -> None:
-    """Configure structlog to emit JSON to stdout, suppressing sensitive keys."""
+def configure_logging(
+    level: str = "INFO",
+    *,
+    stream: TextIO | None = None,
+) -> None:
+    """Configure structlog to emit JSON, suppressing sensitive keys.
+
+    `stream` defaults to stdout (HTTPS transport). Stdio transport passes
+    `sys.stderr` — stdout in that mode is reserved for JSON-RPC frames, and
+    any non-protocol byte there corrupts the MCP stream. structlog has its
+    own logger factory and does not route through stdlib logging, so both
+    sinks must be pointed at `stream` for the redirection to be complete.
+    """
+    effective_stream = stream if stream is not None else sys.stdout
     logging.basicConfig(
         level=level.upper(),
         format="%(message)s",
-        stream=sys.stdout,
+        stream=effective_stream,
     )
     structlog.configure(
         processors=[
@@ -30,12 +42,30 @@ def configure_logging(level: str = "INFO") -> None:
         wrapper_class=structlog.make_filtering_bound_logger(
             getattr(logging, level.upper(), logging.INFO)
         ),
+        logger_factory=structlog.PrintLoggerFactory(file=effective_stream),
         cache_logger_on_first_use=True,
     )
 
 
 _SENSITIVE_KEYS = frozenset(
-    {"access_token", "refresh_token", "authorization", "client_secret", "fernet_key", "bearer"}
+    {
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "client_secret",
+        "fernet_key",
+        "jwt_signing_key",
+        "audit_pepper",
+        "bearer",
+        "cookie",
+        "set-cookie",
+        "id_token",
+        "code",
+        "state",
+        "email",
+        "user_sub",
+        "sub",
+    }
 )
 
 

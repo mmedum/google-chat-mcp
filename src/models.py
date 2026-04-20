@@ -8,7 +8,7 @@ covers the failure mode.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -72,12 +72,22 @@ class SendMessageInput(_Strict):
     space_id: SpaceId
     text: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
     thread_name: ThreadName | None = None
+    dry_run: bool = False
+    """Render the payload without posting. For ungated Agent-SDK loops and
+    MCP clients running with `bypassPermissions`: preview, inspect, then
+    re-invoke without `dry_run` to actually post."""
 
 
 class SendMessageResult(_Strict):
-    message_id: MessageId
+    # `message_id` and `thread_id` are None on a dry-run result — nothing was
+    # created, so there's no resource name yet. On a real post both are set.
+    message_id: MessageId | None = None
     space_id: SpaceId
-    thread_id: ThreadName
+    thread_id: ThreadName | None = None
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+    """On dry-run, the exact JSON body that would have been POSTed to
+    spaces.messages.create. On a real post, None."""
 
 
 class GetMessagesInput(_Strict):
@@ -137,6 +147,174 @@ class ChatMessage(_Strict):
     thread_id: ThreadName
 
 
+class GetThreadInput(_Strict):
+    space_id: SpaceId
+    thread_name: ThreadName
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class ReactionSummary(_Strict):
+    emoji: str
+    count: Annotated[int, Field(ge=0)]
+
+
+# Reaction resources are named like spaces/{s}/messages/{m}/reactions/{r}.
+ReactionName = Annotated[
+    str, StringConstraints(pattern=rf"^spaces/{_ID}/messages/{_ID}/reactions/{_ID}$")
+]
+
+
+class AddReactionInput(_Strict):
+    message_name: MessageId
+    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)]
+    """Unicode emoji. Custom-emoji reactions are out of scope for v2 — pass the
+    unicode glyph (single char or ZWJ sequence)."""
+
+
+class AddReactionResult(_Strict):
+    reaction_name: ReactionName
+    emoji: str
+    user_id: UserId
+
+
+class RemoveReactionInput(_Strict):
+    """Either `reaction_name` (exact delete) or (`message_name` + `emoji` + `user_email`)
+    (lookup-and-delete). Mutually exclusive."""
+
+    reaction_name: ReactionName | None = None
+    message_name: MessageId | None = None
+    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)] | None = None
+    user_email: EmailStr | None = None
+
+    @model_validator(mode="after")
+    def _require_one_shape(self) -> RemoveReactionInput:
+        has_direct = self.reaction_name is not None
+        has_lookup = (
+            self.message_name is not None and self.emoji is not None and self.user_email is not None
+        )
+        if has_direct == has_lookup:
+            raise ValueError(
+                "Provide either reaction_name OR (message_name + emoji + user_email), not both."
+            )
+        return self
+
+
+class RemoveReactionResult(_Strict):
+    reaction_name: ReactionName | None
+    removed: bool
+    """False when the lookup-by-(emoji, user) path matched zero reactions."""
+
+
+class ListReactionsInput(_Strict):
+    message_name: MessageId
+    limit: Annotated[int, Field(ge=1, le=200)] = 50
+    page_token: str | None = None
+
+
+class SearchMessagesInput(_Strict):
+    space_id: SpaceId
+    """Required. The server will NOT search across spaces — the model should
+    direct the user to the Chat web UI for cross-space history."""
+
+    query: str | None = None
+    """Exact-substring (case-insensitive) match. Mutually exclusive with regex."""
+
+    regex: str | None = None
+    """Python regex (re.search). Mutually exclusive with query."""
+
+    created_after: datetime | None = None
+    """Lower bound on message createTime. Strongly recommended — an unbounded
+    scan of a large space hits the page cap and returns a partial result."""
+
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+    """Maximum matches returned. Scanning continues until this many hits or
+    the page cap is reached."""
+
+    max_pages: Annotated[int, Field(ge=1, le=50)] | None = None
+    """Hard ceiling on pages fetched. None → operator default (GCM_SEARCH_MAX_PAGES,
+    default 10)."""
+
+    @field_validator("created_after", mode="before")
+    @classmethod
+    def _parse_iso_created_after(cls, v: object) -> object:
+        if isinstance(v, str):
+            normalized = v[:-1] + "+00:00" if v.endswith("Z") else v
+            try:
+                dt = datetime.fromisoformat(normalized)
+            except ValueError as exc:
+                raise ValueError(f"`created_after` must be ISO-8601; got {v!r}") from exc
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        return v
+
+    @model_validator(mode="after")
+    def _exclusive_query_shape(self) -> SearchMessagesInput:
+        if (self.query is None) == (self.regex is None):
+            raise ValueError("Provide exactly one of `query` (exact substring) OR `regex`.")
+        if self.query is not None and not self.query.strip():
+            raise ValueError("`query` must be non-empty after strip.")
+        return self
+
+
+class SearchMatch(_Strict):
+    message_id: MessageId
+    thread_id: ThreadName
+    sender_user_id: UserId
+    text: str
+    timestamp: datetime
+    snippet: str
+    """Up to ~200 characters of `text` centered on the first match."""
+
+
+class SearchMessagesResult(_Strict):
+    matches: list[SearchMatch]
+    scanned: Annotated[int, Field(ge=0)]
+    """Total messages fetched from Google before filtering."""
+    cap_reached: bool
+    """True when scanning stopped at `max_pages` before finding `limit` matches.
+    Caller should either narrow the query, raise `created_after`, or accept
+    the partial result."""
+
+
+class ReactionEntry(_Strict):
+    reaction_name: ReactionName
+    emoji: str
+    user_id: UserId
+
+
+class ListReactionsResult(_Strict):
+    reactions: list[ReactionEntry]
+    next_page_token: str | None = None
+
+
+class MessageDetails(_Strict):
+    """Single message with reaction summaries hydrated inline."""
+
+    message_id: MessageId
+    space_id: SpaceId
+    thread_id: ThreadName
+    sender_user_id: UserId
+    sender_email: EmailStr | None
+    sender_display_name: str | None
+    text: str
+    timestamp: datetime
+    last_update_time: datetime | None = None
+    reactions: list[ReactionSummary] = Field(default_factory=list)
+    reactions_paged: bool = False
+    """True when inline reactions were omitted (listing would be too large);
+    client should follow up with `list_reactions`. Inlined summaries stay
+    small — this signal is a forward-compatibility hook for messages with
+    many distinct reactions."""
+
+
+class WhoamiResult(_Strict):
+    """Identity of the authenticated user."""
+
+    user_sub: str
+    email: EmailStr | None
+    display_name: str | None
+    picture_url: str | None = None
+
+
 # ---------- Chat API response shapes ----------
 # Pydantic validators for raw Google JSON. `extra="forbid"` catches additions
 # from Google — surfaced as an ApiValidationError and logged.
@@ -180,7 +358,7 @@ class _ChatMessageResponse(_ChatBase):
     attachment: list[dict[str, object]] | None = None
     cards_v2: list[dict[str, object]] | None = Field(default=None, alias="cardsV2")
     cards: list[dict[str, object]] | None = None
-    emoji_reaction_summaries: list[dict[str, object]] | None = Field(
+    emoji_reaction_summaries: list[_ChatEmojiReactionSummary] | None = Field(
         default=None, alias="emojiReactionSummaries"
     )
     accessory_widgets: list[dict[str, object]] | None = Field(
@@ -273,3 +451,55 @@ class _ChatMembershipResponse(_ChatBase):
 class _ChatMembershipsListResponse(_ChatBase):
     memberships: list[_ChatMembershipResponse] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class _ChatCustomEmoji(_ChatBase):
+    uid: str | None = None
+    name: str | None = None
+
+
+class _ChatEmoji(_ChatBase):
+    """Emoji object in Chat API reactions. Either `unicode` or `custom_emoji` is set."""
+
+    unicode: str | None = None
+    custom_emoji: _ChatCustomEmoji | None = Field(default=None, alias="customEmoji")
+
+    @property
+    def display(self) -> str | None:
+        """Pick the unicode glyph, falling back to a custom-emoji uid/name."""
+        if self.unicode:
+            return self.unicode
+        if self.custom_emoji is not None:
+            return self.custom_emoji.uid or self.custom_emoji.name
+        return None
+
+
+class _ChatEmojiReactionSummary(_ChatBase):
+    """Entry in a message's `emojiReactionSummaries` array."""
+
+    emoji: _ChatEmoji
+    reaction_count: int = Field(default=0, alias="reactionCount")
+
+
+class _ChatReactionResponse(_ChatBase):
+    """One reaction resource (create / list element)."""
+
+    name: str
+    user: _ChatUser
+    emoji: _ChatEmoji
+
+
+class _ChatReactionsListResponse(_ChatBase):
+    reactions: list[_ChatReactionResponse] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class _UserInfoResponse(BaseModel):
+    """OIDC /userinfo payload. `extra="allow"` — Google adds locale, hd, etc. per account."""
+
+    model_config = ConfigDict(extra="allow")
+    sub: str
+    email: EmailStr | None = None
+    email_verified: bool | None = None
+    name: str | None = None
+    picture: str | None = None

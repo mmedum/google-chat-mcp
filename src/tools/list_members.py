@@ -17,7 +17,7 @@ from ..models import (
 )
 from ..observability import logger
 from ..storage import DirectoryCache
-from ._common import ToolContext, invoke_tool
+from ._common import CHAT_MEMBERSHIPS_READONLY, ToolContext, invoke_tool
 from ._directory import fetch_person
 
 
@@ -50,7 +50,13 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
             out.append(res)
         return out
 
-    return await invoke_tool("list_members", ctx, body, target_space_id=payload.space_id)
+    return await invoke_tool(
+        "list_members",
+        ctx,
+        body,
+        target_space_id=payload.space_id,
+        required_scope=CHAT_MEMBERSHIPS_READONLY,
+    )
 
 
 async def _to_member(

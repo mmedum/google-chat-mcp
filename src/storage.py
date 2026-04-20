@@ -13,7 +13,7 @@ from pathlib import Path
 
 import aiosqlite
 
-_MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+_MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 
 class Database:

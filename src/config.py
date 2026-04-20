@@ -8,10 +8,11 @@ exist, so env vars take over in development.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -52,16 +53,50 @@ class Settings(BaseSettings):
     )
     directory_cache_ttl_seconds: int = Field(default=86_400, gt=0)
     audit_retention_days: int = Field(default=90, gt=0)
+    audit_hash_user_sub: bool = Field(
+        default=True,
+        description=(
+            "Hash the user `sub` with HMAC-SHA256 before writing to audit_log. "
+            "Set to False to keep raw Google subs (joinable with external identity "
+            "systems, but leaks a stable user identifier if the DB is exposed)."
+        ),
+    )
     http_timeout_seconds: float = Field(default=10.0, gt=0)
     http_max_retries: int = Field(default=3, ge=0, le=10)
 
     # Secrets: required. Pydantic raises ValidationError if absent from both
     # /run/secrets and env. The field names must match the Docker secret filenames
-    # (google_client_id, google_client_secret, fernet_key, jwt_signing_key).
-    google_client_id: str = Field(..., min_length=1)
-    google_client_secret: str = Field(..., min_length=1)
-    fernet_key: str = Field(..., min_length=1)
-    jwt_signing_key: str = Field(..., min_length=1)
+    # (google_client_id, google_client_secret, fernet_key, jwt_signing_key, audit_pepper).
+    google_client_id: SecretStr = Field(..., min_length=1)
+    google_client_secret: SecretStr = Field(..., min_length=1)
+    fernet_key: SecretStr = Field(..., min_length=1)
+    jwt_signing_key: SecretStr = Field(..., min_length=1)
+    audit_pepper: SecretStr | None = Field(
+        default=None,
+        description=(
+            "HMAC-SHA256 key for `user_sub` hashing in audit_log. Required when "
+            "audit_hash_user_sub is True (the default)."
+        ),
+    )
+
+    @classmethod
+    def from_env(cls) -> Settings:
+        """Construct from `GCM_*` env vars + `/run/secrets/GCM_*` (HTTPS transport)."""
+        return cls()  # type: ignore[call-arg]
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> Settings:
+        """Construct from an explicit mapping, bypassing env/secrets auto-load (stdio transport)."""
+        return cls(_env_file=None, **values)  # ty: ignore[unknown-argument]
+
+    @model_validator(mode="after")
+    def _validate_audit_pepper(self) -> Settings:
+        if self.audit_hash_user_sub and self.audit_pepper is None:
+            raise ValueError(
+                "audit_pepper is required when audit_hash_user_sub is True. "
+                "Set GCM_AUDIT_PEPPER (or GCM_AUDIT_HASH_USER_SUB=false to store raw sub)."
+            )
+        return self
 
     @field_validator("allowed_client_redirects", mode="before")
     @classmethod
@@ -86,14 +121,33 @@ class Settings(BaseSettings):
         return self.data_dir / "oauth_store"
 
 
+# Scope constants — single source of truth. Referenced by `GOOGLE_OAUTH_SCOPES`
+# below and by each tool's `invoke_tool(..., required_scope=...)` call in
+# `src/tools/_common.py`. Adding a new scope? Put it here first.
+OPENID_SCOPE = "openid"
+EMAIL_SCOPE = "email"
+PROFILE_SCOPE = "profile"
+CHAT_MESSAGES_READONLY = "https://www.googleapis.com/auth/chat.messages.readonly"
+# Split from the umbrella `chat.messages` (Google *restricted* tier, annual CASA).
+# .create + .reactions are both *sensitive* tier (3-5 day self-service verification)
+# and cover the v2 tool surface (send_message, add/remove/list_reactions).
+CHAT_MESSAGES_CREATE = "https://www.googleapis.com/auth/chat.messages.create"
+CHAT_MESSAGES_REACTIONS = "https://www.googleapis.com/auth/chat.messages.reactions"
+CHAT_SPACES_READONLY = "https://www.googleapis.com/auth/chat.spaces.readonly"
+# Retained for find_direct_message's create-on-miss path (spaces.setup).
+CHAT_SPACES_CREATE = "https://www.googleapis.com/auth/chat.spaces.create"
+CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.readonly"
+DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
+
 GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/chat.messages",
-    "https://www.googleapis.com/auth/chat.messages.readonly",
-    "https://www.googleapis.com/auth/chat.spaces.readonly",
-    "https://www.googleapis.com/auth/chat.spaces.create",
-    "https://www.googleapis.com/auth/chat.memberships.readonly",
-    "https://www.googleapis.com/auth/directory.readonly",
+    OPENID_SCOPE,
+    EMAIL_SCOPE,
+    PROFILE_SCOPE,
+    CHAT_MESSAGES_READONLY,
+    CHAT_MESSAGES_CREATE,
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_SPACES_READONLY,
+    CHAT_SPACES_CREATE,
+    CHAT_MEMBERSHIPS_READONLY,
+    DIRECTORY_READONLY,
 )

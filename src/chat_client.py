@@ -26,10 +26,23 @@ from .observability import (
 class ChatApiError(RuntimeError):
     """Raised for non-recoverable errors from Google APIs."""
 
-    def __init__(self, status_code: int, message: str, endpoint: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        endpoint: str,
+        *,
+        google_status: str | None = None,
+        google_reason: str | None = None,
+    ) -> None:
         super().__init__(f"{endpoint} returned {status_code}: {message}")
         self.status_code = status_code
         self.endpoint = endpoint
+        self.message = message
+        # AIP-193 error envelope fields. Preserved so callers (invoke_tool) can
+        # distinguish insufficient-scope from other 403s without string-matching.
+        self.google_status = google_status
+        self.google_reason = google_reason
 
 
 class ChatClient:
@@ -45,10 +58,12 @@ class ChatClient:
         max_retries: int = 3,
         base_chat: str = "https://chat.googleapis.com/v1",
         base_people: str = "https://people.googleapis.com/v1",
+        base_oidc: str = "https://openidconnect.googleapis.com/v1",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_chat = base_chat
         self._base_people = base_people
+        self._base_oidc = base_oidc
         self._max_retries = max_retries
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_seconds),
@@ -149,11 +164,7 @@ class ChatClient:
         thread_name: str | None = None,
     ) -> dict[str, Any]:
         """Post a message. `thread_name` is a reply target (`spaces/X/threads/Y`)."""
-        params: dict[str, str] = {}
-        body: dict[str, Any] = {"text": text}
-        if thread_name:
-            body["thread"] = {"name": thread_name}
-            params["messageReplyOption"] = "REPLY_MESSAGE_OR_FAIL"
+        body, params = _build_send_message_body(text=text, thread_name=thread_name)
         return await self._post(
             f"{self._base_chat}/{space_id}/messages",
             access_token=access_token,
@@ -185,6 +196,121 @@ class ChatClient:
         )
         return data.get("messages", [])[:limit]
 
+    async def list_messages_page(
+        self,
+        access_token: str,
+        space_id: str,
+        *,
+        page_size: int = 100,
+        page_token: str | None = None,
+        created_after_iso: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """One page of messages, newest-first. Returns (messages, next_page_token).
+
+        Exposes Google's native page_token so search_messages can walk up to a
+        bounded page cap without pulling everything into memory at once.
+        """
+        params: dict[str, str] = {
+            "pageSize": str(min(page_size, 100)),
+            "orderBy": "createTime desc",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        if created_after_iso:
+            params["filter"] = f'createTime > "{created_after_iso}"'
+        data = await self._get(
+            f"{self._base_chat}/{space_id}/messages",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.list",
+        )
+        messages = data.get("messages", [])
+        next_token = data.get("nextPageToken")
+        if not isinstance(next_token, str) or not next_token:
+            next_token = None
+        if not isinstance(messages, list):
+            messages = []
+        return messages, next_token
+
+    async def get_message(self, access_token: str, message_name: str) -> dict[str, Any]:
+        """Fetch a single message by its full resource name (`spaces/{s}/messages/{m}`)."""
+        return await self._get(
+            f"{self._base_chat}/{message_name}",
+            access_token=access_token,
+            endpoint_label="spaces.messages.get",
+        )
+
+    async def add_reaction(
+        self, access_token: str, message_name: str, unicode_emoji: str
+    ) -> dict[str, Any]:
+        """Add a unicode-emoji reaction to a message."""
+        return await self._post(
+            f"{self._base_chat}/{message_name}/reactions",
+            access_token=access_token,
+            json={"emoji": {"unicode": unicode_emoji}},
+            endpoint_label="spaces.messages.reactions.create",
+        )
+
+    async def delete_reaction(self, access_token: str, reaction_name: str) -> dict[str, Any]:
+        """Delete a reaction by its full resource name."""
+        return await self._delete(
+            f"{self._base_chat}/{reaction_name}",
+            access_token=access_token,
+            endpoint_label="spaces.messages.reactions.delete",
+        )
+
+    async def list_reactions(
+        self,
+        access_token: str,
+        message_name: str,
+        *,
+        limit: int = 50,
+        page_token: str | None = None,
+        emoji_filter: str | None = None,
+        user_filter: str | None = None,
+    ) -> dict[str, Any]:
+        """List reactions on a message. Optional server-side filter on emoji + user."""
+        params: dict[str, str] = {"pageSize": str(min(limit, 200))}
+        if page_token:
+            params["pageToken"] = page_token
+        filters: list[str] = []
+        if emoji_filter:
+            filters.append(f'emoji.unicode = "{emoji_filter}"')
+        if user_filter:
+            filters.append(f'user.name = "{user_filter}"')
+        if filters:
+            params["filter"] = " AND ".join(filters)
+        return await self._get(
+            f"{self._base_chat}/{message_name}/reactions",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.reactions.list",
+        )
+
+    async def list_messages_by_thread(
+        self,
+        access_token: str,
+        space_id: str,
+        thread_name: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List messages in a specific thread, oldest-first (natural reading order).
+
+        Uses the documented filter grammar: `thread.name=spaces/{s}/threads/{t}`.
+        """
+        params: dict[str, str] = {
+            "pageSize": str(min(limit, 100)),
+            "filter": f'thread.name = "{thread_name}"',
+            "orderBy": "createTime asc",
+        }
+        data = await self._get(
+            f"{self._base_chat}/{space_id}/messages",
+            access_token=access_token,
+            params=params,
+            endpoint_label="spaces.messages.list",
+        )
+        return data.get("messages", [])[:limit]
+
     # ---------- People ----------
 
     async def resolve_person(self, access_token: str, user_id: str) -> dict[str, Any] | None:
@@ -195,6 +321,20 @@ class ChatClient:
             access_token=access_token,
             params={"personFields": "emailAddresses,names"},
             endpoint_label="people.get",
+        )
+
+    # ---------- OIDC / identity ----------
+
+    async def get_userinfo(self, access_token: str) -> dict[str, Any]:
+        """Fetch the OIDC /userinfo payload for the authenticated user.
+
+        Requires the `openid email profile` scope set (included in v2 scopes).
+        Returns {sub, email, email_verified, name, picture, ...}.
+        """
+        return await self._get(
+            f"{self._base_oidc}/userinfo",
+            access_token=access_token,
+            endpoint_label="oidc.userinfo",
         )
 
     # ---------- internals ----------
@@ -276,6 +416,19 @@ class ChatClient:
             endpoint_label=endpoint_label,
         )
 
+    async def _delete(
+        self,
+        url: str,
+        access_token: str,
+        endpoint_label: str = "",
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE",
+            url,
+            access_token,
+            endpoint_label=endpoint_label,
+        )
+
     async def _request(
         self,
         method: str,
@@ -316,14 +469,36 @@ class ChatClient:
                 )
                 await asyncio.sleep(sleep_for)
                 continue
-            message = _safe_error_message(resp)
+            message, google_status, google_reason = _parse_error_payload(resp)
             logger.error(
                 "upstream_error",
                 endpoint=endpoint_label,
                 status=resp.status_code,
                 url=_scrub_query(url, params),
             )
-            raise ChatApiError(resp.status_code, message, endpoint_label)
+            raise ChatApiError(
+                resp.status_code,
+                message,
+                endpoint_label,
+                google_status=google_status,
+                google_reason=google_reason,
+            )
+
+
+def _build_send_message_body(
+    *, text: str, thread_name: str | None
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Pure builder for the spaces.messages.create request body + query params.
+
+    Shared by the real POST path and `send_message`'s dry_run branch; dry/real
+    parity is a test assertion — if this function returns X, a live POST sends X.
+    """
+    params: dict[str, str] = {}
+    body: dict[str, Any] = {"text": text}
+    if thread_name:
+        body["thread"] = {"name": thread_name}
+        params["messageReplyOption"] = "REPLY_MESSAGE_OR_FAIL"
+    return body, params
 
 
 def _is_retryable(status: int) -> bool:
@@ -342,16 +517,36 @@ def _backoff_seconds(attempt: int, resp: httpx.Response) -> float:
     return min(base + jitter, 30.0)
 
 
-def _safe_error_message(resp: httpx.Response) -> str:
+def _parse_error_payload(resp: httpx.Response) -> tuple[str, str | None, str | None]:
+    """Pull (message, status, reason) from a Google error body (AIP-193 shape).
+
+    Returns:
+        message: human-readable error text (capped at 500 chars).
+        status: textual status like "PERMISSION_DENIED" (None if absent).
+        reason: first reason from error.details[].reason (None if absent).
+    """
     try:
         payload = resp.json()
     except ValueError:
-        return resp.text[:500]
-    if isinstance(payload, dict):
-        err = payload.get("error", {})
-        if isinstance(err, dict):
-            return str(err.get("message") or err)[:500]
-    return str(payload)[:500]
+        return resp.text[:500], None, None
+    if not isinstance(payload, dict):
+        return str(payload)[:500], None, None
+    err = payload.get("error", {})
+    if not isinstance(err, dict):
+        return str(payload)[:500], None, None
+    message = str(err.get("message") or err)[:500]
+    status_value = err.get("status")
+    status = str(status_value) if isinstance(status_value, str) else None
+    reason: str | None = None
+    details = err.get("details")
+    if isinstance(details, list):
+        for item in details:
+            if isinstance(item, dict):
+                item_reason = item.get("reason")
+                if isinstance(item_reason, str):
+                    reason = item_reason
+                    break
+    return message, status, reason
 
 
 def _scrub_query(url: str, params: Mapping[str, str] | None) -> str:

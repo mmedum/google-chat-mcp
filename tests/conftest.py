@@ -18,13 +18,14 @@ from src.tools._common import ToolContext
 
 @pytest.fixture(autouse=True)
 def _env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Baseline env for Settings(): every required var satisfied."""
+    """Baseline env for Settings.from_env(): every required var satisfied."""
     monkeypatch.setenv("GCM_BASE_URL", "https://mcp.example.test")
     monkeypatch.setenv("GCM_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("GCM_GOOGLE_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("GCM_GOOGLE_CLIENT_SECRET", "test-client-secret")
     monkeypatch.setenv("GCM_FERNET_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("GCM_JWT_SIGNING_KEY", "test-jwt-signing-key-at-least-32-bytes-long")
+    monkeypatch.setenv("GCM_AUDIT_PEPPER", "test-audit-pepper-not-a-real-secret")
 
 
 @pytest_asyncio.fixture
@@ -49,6 +50,8 @@ async def tool_ctx(db: Database, chat_client: ChatClient) -> AsyncIterator[ToolC
         db=db,
         limiter=TokenBucketLimiter(capacity=60),
         active_users=ActiveUserTracker(),
+        audit_pepper=b"test-audit-pepper-not-a-real-secret",
+        audit_hash_user_sub=True,
     )
 
 
@@ -73,3 +76,18 @@ def _patch_access_token(
 def mock_access_token():
     """Yield a context-manager that patches fastmcp's get_access_token."""
     return _patch_access_token
+
+
+def person_payload(email: str, display_name: str | None = None) -> dict[str, object]:
+    """Build a People-API `people.get` response body with primary email + name.
+
+    `emailAddresses` is always present; `names` only when `display_name` is
+    supplied — lets tests simulate the real-world pattern where non-self
+    Workspace users return emailAddresses=null (see project_people_api_resolution.md).
+    """
+    payload: dict[str, object] = {
+        "emailAddresses": [{"metadata": {"primary": True}, "value": email}],
+    }
+    if display_name is not None:
+        payload["names"] = [{"metadata": {"primary": True}, "displayName": display_name}]
+    return payload
