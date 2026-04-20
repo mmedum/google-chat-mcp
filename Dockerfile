@@ -14,12 +14,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 # .git/ is excluded from the build context, so hatch-vcs can't derive the
-# version at build time. Override via the env var setuptools-scm honours;
-# hatch-vcs delegates to the same machinery. Placed AFTER the dependency
-# sync so bumping PACKAGE_VERSION only invalidates the project-install
-# layer below, not the expensive dependency layer above.
-ARG PACKAGE_VERSION=0.0.0+docker-local
-ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_GOOGLE_CHAT_MCP=${PACKAGE_VERSION}
+# version at build time. Override via setuptools-scm's global fallback env
+# var (the per-package `_FOR_<NAME>` form gets dropped by uv's build
+# isolation — unknown why; the global form is fine here because the
+# container only builds one package). Placed AFTER the dependency sync so
+# bumping PACKAGE_VERSION only invalidates the project-install layer
+# below, not the expensive dependency layer above.
+ARG PACKAGE_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${PACKAGE_VERSION}
 
 COPY src/ ./src/
 # hatchling reads `readme = "README.md"` from pyproject.toml when building the
