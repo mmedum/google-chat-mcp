@@ -145,7 +145,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          # Full history so gitleaks can scan prior commits on push.
+          # Full history is needed so a PR scan can resolve origin/<base>
+          # and a push scan can resolve the ${before}..${after} range.
           fetch-depth: 0
       - name: Install gitleaks
         # Direct install with a pinned tag; avoids the third-party
@@ -156,5 +157,40 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
-      - name: Scan working tree and history
-        run: gitleaks detect --source . --verbose --redact --exit-code 1
+      - name: Scan
+        # Diff-scope scanning: PRs scan only commits the branch adds vs the
+        # base; pushes scan only the pushed range. Both are O(commits-in-PR)
+        # rather than O(repo-history), keeping the job comfortably under the
+        # 5-min timeout even as history grows. Any leak already in merged
+        # history will have been flagged on its original PR.
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          case "$EVENT" in
+            pull_request)
+              RANGE="origin/${BASE_REF}..HEAD"
+              ;;
+            push)
+              # A brand-new branch push has before=000...; fall through to
+              # a working-tree-only scan so the job doesn't attempt to
+              # resolve a non-existent range.
+              if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+                RANGE=""
+              else
+                RANGE="${BEFORE}..${AFTER}"
+              fi
+              ;;
+            *)
+              RANGE=""
+              ;;
+          esac
+          if [ -n "$RANGE" ]; then
+            echo "Scanning commit range: $RANGE"
+            gitleaks detect --source . --redact --exit-code 1 --log-opts="$RANGE"
+          else
+            echo "No commit range (new branch or manual dispatch) — scanning working tree only"
+            gitleaks detect --source . --redact --exit-code 1 --no-git
+          fi
