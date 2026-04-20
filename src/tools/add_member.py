@@ -15,12 +15,14 @@ async def add_member_handler(ctx: ToolContext, payload: AddMemberInput) -> AddMe
     `payload.dry_run=True` builds the request body without POSTing.
     Rate-limit bucket + audit row still fire.
 
-    Duplicate-member handling: Google returns 409 ALREADY_EXISTS if the user
-    is already in the space. That surfaces as a `ToolError("already a
-    member")` rather than an idempotent success — the caller's intent
-    ("invite this person") is a no-op semantically, but the membership_name
-    shape differs depending on who added the user (the original inviter,
-    not the current caller), so we can't faithfully return it.
+    Duplicate-member handling: in practice Google's `spaces.members.create`
+    is idempotent-by-nature — duplicate adds typically return HTTP 200 with
+    the existing membership record, so `AddMemberResult.membership_name` is
+    populated even when the user was already present. Older Workspace
+    editions / some edge cases still return 409 ALREADY_EXISTS, which the
+    handler wraps into a `ToolError("already a member")`. Both branches
+    live; see `docs/runbook.md` ("add_member returns a membership_name
+    when the user is already present") for the operator-facing framing.
     """
     user_email = str(payload.user_email)
 

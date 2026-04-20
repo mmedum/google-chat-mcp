@@ -57,11 +57,13 @@ async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) ->
     another People API call. Contact-ID hits don't back-fill — different
     namespace, would poison the cache.
 
-    Failure handling: if one source returns missing-scope, drop it and
-    continue. If BOTH sources requested fail with missing-scope, raise a
-    ToolError pointing the caller at the scope(s) they're missing —
-    distinguishing "no scope" from "genuine no matches" is the one case
-    where an error beats an empty list.
+    Failure handling: a per-source ChatApiError (any status — missing-scope,
+    admin-disabled directory sharing, 5xx) is treated as a source failure
+    that drops out of the result; remaining sources still contribute hits.
+    If EVERY requested source fails, the handler raises — a missing-scope-
+    only failure set maps to the re-consent prompt (user-fixable); any
+    mixed or non-scope failure set aggregates the upstream reasons so an
+    operator can see what actually broke.
     """
 
     async def body(access_token: str, _user_sub: str) -> SearchPeopleResult:

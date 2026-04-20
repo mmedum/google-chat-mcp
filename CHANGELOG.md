@@ -24,10 +24,11 @@ space creation; the combined surface ships as a single version.
   (`spaceType=SPACE`); 1-20 initial members; `display_name` required.
   Same scope as above.
 - `add_member(space_id, user_email, dry_run)` — invite a user to a space
-  via `spaces.members.create`. 409 `ALREADY_EXISTS` from Google surfaces
-  as a `ToolError` naming the user (not an idempotent success — the
-  existing membership_name belongs to the original inviter and would
-  mislead callers).
+  via `spaces.members.create`. In practice Google returns HTTP 200 with
+  the existing membership record on duplicate adds (idempotent-by-nature);
+  the older 409 `ALREADY_EXISTS` path is still wrapped as a `ToolError`
+  for Workspace editions that surface it. See the runbook for the
+  operator-facing framing.
 - `remove_member(membership_name, dry_run)` — delete a membership by
   full resource name. Idempotent: double-delete returns `removed=false`
   on 404 NOT_FOUND or 403 PERMISSION_DENIED. Missing-scope 403s are
@@ -67,11 +68,12 @@ space creation; the combined surface ships as a single version.
   — non-self Workspace users return `email=null, display_name=null` in
   practice; affects `remove_reaction`'s filter path and `sender_email`
   nullability throughout the read-side tools.
-- `docs/runbook.md`: new "search_people: directory sharing must be enabled
-  by Workspace admin" and "consumer Gmail fallback path" sections. Admin
-  action (`admin.google.com → Apps → Google Workspace → Directory →
-  Directory sharing`) is required for `DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE`
-  to return non-empty results for non-admin users.
+- `docs/runbook.md`: new sections covering `search_people` operational
+  quirks — the External directory sharing admin toggle that gates
+  `searchDirectoryPeople`, the consumer-Gmail `CONTACTS`-only fallback,
+  and the `add_member` idempotent-by-nature behavior (HTTP 200 with
+  existing record rather than 409). Runbook is the authoritative source
+  for admin-console paths; see those entries for exact navigation.
 - `docs/gcp-setup.md`: updated scope list.
 
 ### Internal
