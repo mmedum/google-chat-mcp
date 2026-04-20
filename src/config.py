@@ -146,6 +146,10 @@ CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.re
 # Write-side membership scope: add_member / remove_member (v0.3.1).
 # Google sensitive tier; deployers re-consent on upgrade.
 CHAT_MEMBERSHIPS = "https://www.googleapis.com/auth/chat.memberships"
+# Message lifecycle (update + delete) — Google's RESTRICTED tier (v0.3.2).
+# Public-published apps need annual CASA review; Internal Workspace apps
+# skip verification entirely. The runbook covers the deployer trade-off.
+CHAT_MESSAGES = "https://www.googleapis.com/auth/chat.messages"
 DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
 # Consumer Gmail fallback for search_people (v0.3.1). Covers caller's own
 # contacts + "other contacts" auto-populated from interactions. Sensitive tier.
@@ -158,6 +162,7 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     CHAT_MESSAGES_READONLY,
     CHAT_MESSAGES_CREATE,
     CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES,
     CHAT_SPACES_READONLY,
     CHAT_SPACES_CREATE,
     CHAT_MEMBERSHIPS_READONLY,
