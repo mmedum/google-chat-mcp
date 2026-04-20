@@ -25,6 +25,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
+        env:
+          # Emit OCI annotations for both the per-arch manifests and the
+          # multi-arch index. GHCR reads the package description from the
+          # index's `org.opencontainers.image.description` annotation; without
+          # this, only per-arch labels are produced and the package page has
+          # no description.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/${{ github.repository }}
           # `latest` is gated on the default branch so a patch release on an
@@ -45,6 +52,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           # metadata-action's {{version}} strips the leading `v`, so this
           # matches the hatch-vcs-expected semver (`0.2.0` for tag `v0.2.0`).
           build-args: |
