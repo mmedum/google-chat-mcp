@@ -78,7 +78,7 @@ stdio only:
 
 Key things NOT in the repo but often asked for:
 - **No custom OAuth code for HTTPS.** `GoogleProvider` handles the full upstream dance and issues the MCP-layer JWT. Do not reintroduce a `users` table with `mcp_bearer_hash`, a custom `/oauth/callback`, or hand-rolled PKCE — `fastmcp.server.auth.providers.google.GoogleProvider` already does all of it.
-- **Stdio OAuth is intentionally minimal.** `src/stdio.py` implements the loopback-desktop flow (RFC 8252 §6) with PKCE + state manually — no `GoogleProvider` on that path. The trust model is "the user is the process owner", and tokens live 0600 under `~/.config/google-chat-mcp/`.
+- **Stdio OAuth via `google-auth-oauthlib.InstalledAppFlow`.** `src/stdio.py` delegates the loopback-desktop flow (RFC 8252 §6, PKCE + state + browser + token exchange) to the upstream library — no `GoogleProvider` on that path and no hand-rolled crypto. Refresh-on-expired uses `google.oauth2.credentials.Credentials.refresh()`. The trust model is "the user is the process owner"; tokens live 0600 under `~/.config/google-chat-mcp/`.
 - **No hardcoded client-specific redirects.** `allowed_client_redirects` defaults to empty; operators configure `GCM_ALLOWED_CLIENT_REDIRECTS` with their MCP client's OAuth callback(s). Don't reintroduce client-specific defaults (Claude, Cursor, etc.) — the server is intentionally client-agnostic.
 - **No server-side message-body mutation.** `send_message_handler` posts `payload.text` verbatim — no suffix, no prefix, no client identity appended. Keep it that way.
 - **No centralized deployment.** Each deployer (HTTPS operator or stdio user) owns their Google app, their tokens, and their rollout cadence. Don't reintroduce assumptions that there's a "central" install.
