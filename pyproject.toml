@@ -10,7 +10,7 @@ authors = [{ name = "Mark Medum Bundgaard" }]
 dependencies = [
     "fastmcp~=3.2",
     "pydantic~=2.13",
-    "pydantic-settings~=2.12",
+    "pydantic-settings~=2.14",
     "httpx~=0.28",
     "structlog~=25.5",
     "prometheus-client~=0.24",
