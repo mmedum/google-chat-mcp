@@ -81,9 +81,12 @@ jobs:
       - id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
         env:
-          # Emit annotations at both per-manifest and index level; GHCR
-          # reads the description from the index annotations.
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          # Index-only: `docker buildx imagetools create` doesn't accept
+          # `--annotation manifest:...` (per-arch manifests are already
+          # written by the build jobs; merge can't mutate them). GHCR
+          # reads the description from the index annotation anyway, so
+          # `index` is the level that matters.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
