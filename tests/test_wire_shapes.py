@@ -214,6 +214,8 @@ async def test_server_identity_and_capabilities(mcp: FastMCP) -> None:
         "add_member",
         "remove_member",
         "search_people",
+        "update_message",
+        "delete_message",
     }
 
     templates = await mcp.list_resource_templates()
