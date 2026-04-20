@@ -1,7 +1,6 @@
 # google-chat-mcp
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
-[![Release](https://github.com/mmedum/google-chat-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/mmedum/google-chat-mcp/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
 [![Container image](https://img.shields.io/badge/ghcr.io-mmedum%2Fgoogle--chat--mcp-2ea44f?logo=docker)](https://github.com/mmedum/google-chat-mcp/pkgs/container/google-chat-mcp)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)

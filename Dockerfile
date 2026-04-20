@@ -5,24 +5,21 @@ FROM ghcr.io/astral-sh/uv:0.11 AS uv
 FROM python:3.14-slim AS builder
 COPY --from=uv /uv /uvx /usr/local/bin/
 WORKDIR /app
-
-# hatch-vcs reads the package version from git tags, but the Docker build
-# context excludes `.git/` (see .dockerignore) to keep the image small.
-# Pass the version in as a build-arg instead: setuptools-scm honours
-# SETUPTOOLS_SCM_PRETEND_VERSION_FOR_<NORMALIZED_DIST_NAME> as an override,
-# and hatch-vcs delegates to the same machinery. Default to a local-marker
-# version so `docker build` without --build-arg still succeeds; the release
-# workflow overrides with the real tag value.
-ARG PACKAGE_VERSION=0.0.0+docker-local
-
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON_DOWNLOADS=never \
-    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_GOOGLE_CHAT_MCP=${PACKAGE_VERSION}
+    UV_PYTHON_DOWNLOADS=never
 
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
+
+# .git/ is excluded from the build context, so hatch-vcs can't derive the
+# version at build time. Override via the env var setuptools-scm honours;
+# hatch-vcs delegates to the same machinery. Placed AFTER the dependency
+# sync so bumping PACKAGE_VERSION only invalidates the project-install
+# layer below, not the expensive dependency layer above.
+ARG PACKAGE_VERSION=0.0.0+docker-local
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_GOOGLE_CHAT_MCP=${PACKAGE_VERSION}
 
 COPY src/ ./src/
 # hatchling reads `readme = "README.md"` from pyproject.toml when building the

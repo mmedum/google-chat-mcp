@@ -4,8 +4,6 @@ on:
   push:
     tags: ['v*.*.*']
 
-# Minimal-scope permissions; GITHUB_TOKEN is enough for GHCR + releases +
-# Sigstore attestations via OIDC — no PAT, no extra secrets.
 permissions:
   contents: write       # gh release create
   packages: write       # GHCR push
@@ -16,8 +14,6 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -52,15 +48,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Feed the tag-derived version to hatch-vcs inside the container;
-          # the .git/ dir isn't in the Docker build context so VCS detection
-          # can't run at build time. metadata-action's {{version}} strips
-          # the leading `v` so this matches the git tag value (`0.2.0`).
+          # metadata-action's {{version}} strips the leading `v`, so this
+          # matches the hatch-vcs-expected semver (`0.2.0` for tag `v0.2.0`).
           build-args: |
             PACKAGE_VERSION=${{ steps.meta.outputs.version }}
-          # Attestations: public repos auto-get provenance mode=max; setting
-          # it explicitly makes the workflow self-documenting. sbom=true
-          # generates an SPDX SBOM alongside the image manifest.
           provenance: mode=max
           sbom: true
           cache-from: type=gha
@@ -73,15 +64,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Extract CHANGELOG section for this tag
-        # Pulls the `## [X.Y.Z]` block out of CHANGELOG.md. Using a flag-based
-        # walk rather than awk's /start/,/end/ range operator because the range
-        # form matches the opening line on both ends (the header is itself a
-        # `## [` line), which collapses the output to a single line.
+        # Flag-based walk rather than awk's /start/,/end/ range: the range
+        # form matches the opening line on both ends (the header itself is
+        # a `## [` line), which collapses the output to a single line.
+        # Terminate on either the next `## [` header OR a `[x]: url` link
+        # definition block at the bottom of the file.
         run: |
           version="${GITHUB_REF_NAME#v}"
           awk -v ver="$version" '
             $0 ~ "^## \\[" ver "\\]" { found=1; print; next }
-            found && /^## \[/ { exit }
+            found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
             found { print }
           ' CHANGELOG.md > /tmp/release-notes.md
           if [ ! -s /tmp/release-notes.md ]; then

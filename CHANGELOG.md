@@ -87,10 +87,5 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-## [0.1.0]
-
-Initial scaffold; not intended for deployment.
-
 [Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.1.0
+[0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
