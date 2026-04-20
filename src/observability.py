@@ -5,18 +5,27 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
-from typing import Any
+from typing import IO, Any
 
 import structlog
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 
-def configure_logging(level: str = "INFO") -> None:
-    """Configure structlog to emit JSON to stdout, suppressing sensitive keys."""
+def configure_logging(
+    level: str = "INFO",
+    *,
+    stream: IO[str] | None = None,
+) -> None:
+    """Configure structlog to emit JSON, suppressing sensitive keys.
+
+    `stream` defaults to stdout (HTTPS transport). Stdio transport passes
+    `sys.stderr` — stdout in that mode is reserved for JSON-RPC frames, and
+    any non-protocol byte there corrupts the MCP stream.
+    """
     logging.basicConfig(
         level=level.upper(),
         format="%(message)s",
-        stream=sys.stdout,
+        stream=stream if stream is not None else sys.stdout,
     )
     structlog.configure(
         processors=[

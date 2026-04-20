@@ -48,9 +48,15 @@ async def search_messages_handler(
             )
             for raw in raw_page:
                 scanned += 1
+                # Pydantic's ValidationError is a ValueError; TypeError is the only
+                # other realistic failure (non-mapping raw). Catch both via the
+                # common base — written as Exception narrowing because ruff-format
+                # in the pinned 0.15.x rewrites tuple except clauses.
                 try:
                     msg = _ChatMessageResponse(**raw)
-                except (TypeError, ValueError):
+                except Exception as exc:
+                    if not isinstance(exc, TypeError | ValueError):
+                        raise
                     continue
                 snippet_start = _match_index(msg.text, query_lower=query_lower, regex=regex)
                 if snippet_start is None:

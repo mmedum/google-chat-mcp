@@ -33,6 +33,13 @@ dev = [
     "pip-audit~=2.10",
 ]
 
+[project.scripts]
+# Primary name matches Anthropic's mcp-server-<name> reference-server
+# convention (mcp-server-filesystem, mcp-server-github, ...). Alias kept for
+# discoverability in docs and existing muscle memory.
+mcp-server-google-chat = "src.stdio:main"
+google-chat-mcp = "src.stdio:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -81,6 +88,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "S105", "S106", "SLF001", "PLR6301"]
 "migrations/**" = ["ALL"]
+# stdio entry is a CLI — `print` is intentional for user-facing output
+# (login URL, confirmation, error messages). Also relaxes bandit's
+# urlopen / TCPServer warnings since the loopback + Google endpoints are
+# the whole point of the flow.
+"src/stdio.py" = ["T201", "S104", "S310", "PLR0911", "PLR0912", "PLR0915"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -122,7 +134,7 @@ source = ["src"]
 # server.py is the composition root: OAuth provider wiring + lifespan + route
 # mounting. Exercised end-to-end by a running server, not by unit tests. Cover
 # it once an integration-test harness is added.
-omit = ["src/server.py"]
+omit = ["src/server.py", "src/stdio.py"]
 
 [tool.coverage.report]
 exclude_lines = [
