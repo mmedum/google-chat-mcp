@@ -10,3 +10,26 @@ updates:
     commit-message:
       prefix: "ci"
       include: scope
+
+  # Python deps via uv's lockfile. The `uv` ecosystem preserves uv.lock
+  # shape; `pip` would rewrite it into a form uv can't consume.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+      include: scope
+
+  # Docker base images — `python:3.14-slim` + `ghcr.io/astral-sh/uv:0.11`.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+      include: scope
