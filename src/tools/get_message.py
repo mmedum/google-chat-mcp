@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..models import (
     MessageDetails,
     ReactionSummary,
+    _ChatEmojiReactionSummary,
     _ChatMessageResponse,
 )
 from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool, space_id_from_message_name
@@ -50,36 +51,15 @@ async def get_message_handler(ctx: ToolContext, message_name: str) -> MessageDet
 
 
 def _summarize_reactions(
-    raw: list[dict[str, object]] | None,
+    raw: list[_ChatEmojiReactionSummary] | None,
 ) -> tuple[list[ReactionSummary], bool]:
     if not raw:
         return [], False
-    summaries: list[ReactionSummary] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        raw_emoji = entry.get("emoji")
-        count_obj = entry.get("reactionCount")
-        if not isinstance(raw_emoji, dict):
-            continue
-        # ty: narrow-to-Never on untyped dict .get — the runtime shape is the
-        # Chat API's emoji object, we keep the checks anyway.
-        emoji_str: object = raw_emoji.get("unicode")  # ty: ignore[invalid-argument-type]
-        if not isinstance(emoji_str, str):
-            custom = raw_emoji.get("customEmoji")  # ty: ignore[invalid-argument-type]
-            if isinstance(custom, dict):
-                emoji_str = custom.get("uid") or custom.get("name")
-        if not isinstance(emoji_str, str):
-            continue
-        count = 0
-        if isinstance(count_obj, int):
-            count = count_obj
-        elif isinstance(count_obj, str):
-            try:
-                count = int(count_obj)
-            except ValueError:
-                count = 0
-        summaries.append(ReactionSummary(emoji=emoji_str, count=count))
+    summaries = [
+        ReactionSummary(emoji=entry.emoji.display, count=entry.reaction_count)
+        for entry in raw
+        if entry.emoji.display is not None
+    ]
     if len(summaries) > _INLINE_REACTIONS_CAP:
         return [], True
     return summaries, False

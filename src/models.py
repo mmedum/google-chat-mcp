@@ -358,7 +358,7 @@ class _ChatMessageResponse(_ChatBase):
     attachment: list[dict[str, object]] | None = None
     cards_v2: list[dict[str, object]] | None = Field(default=None, alias="cardsV2")
     cards: list[dict[str, object]] | None = None
-    emoji_reaction_summaries: list[dict[str, object]] | None = Field(
+    emoji_reaction_summaries: list[_ChatEmojiReactionSummary] | None = Field(
         default=None, alias="emojiReactionSummaries"
     )
     accessory_widgets: list[dict[str, object]] | None = Field(
@@ -450,6 +450,47 @@ class _ChatMembershipResponse(_ChatBase):
 
 class _ChatMembershipsListResponse(_ChatBase):
     memberships: list[_ChatMembershipResponse] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class _ChatCustomEmoji(_ChatBase):
+    uid: str | None = None
+    name: str | None = None
+
+
+class _ChatEmoji(_ChatBase):
+    """Emoji object in Chat API reactions. Either `unicode` or `custom_emoji` is set."""
+
+    unicode: str | None = None
+    custom_emoji: _ChatCustomEmoji | None = Field(default=None, alias="customEmoji")
+
+    @property
+    def display(self) -> str | None:
+        """Pick the unicode glyph, falling back to a custom-emoji uid/name."""
+        if self.unicode:
+            return self.unicode
+        if self.custom_emoji is not None:
+            return self.custom_emoji.uid or self.custom_emoji.name
+        return None
+
+
+class _ChatEmojiReactionSummary(_ChatBase):
+    """Entry in a message's `emojiReactionSummaries` array."""
+
+    emoji: _ChatEmoji
+    reaction_count: int = Field(default=0, alias="reactionCount")
+
+
+class _ChatReactionResponse(_ChatBase):
+    """One reaction resource (create / list element)."""
+
+    name: str
+    user: _ChatUser
+    emoji: _ChatEmoji
+
+
+class _ChatReactionsListResponse(_ChatBase):
+    reactions: list[_ChatReactionResponse] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 

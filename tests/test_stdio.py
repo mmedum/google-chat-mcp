@@ -1,4 +1,4 @@
-"""stdio CLI — login flow, logout, headless fallback, stdout hygiene."""
+"""stdio CLI — login flow, logout, stdout hygiene, token store, identity parsing."""
 
 from __future__ import annotations
 
@@ -6,11 +6,8 @@ import json
 import stat
 import subprocess
 import sys
-import threading
-import time
-import urllib.request
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from cryptography.fernet import Fernet
@@ -24,8 +21,6 @@ def stdio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Isolate each test: config dir under tmp_path, no bleed from real ~/.config."""
     d = tmp_path / "gcm"
     monkeypatch.setenv("GCM_CONFIG_DIR", str(d))
-    # Deletion note: stdio's serve path doesn't call these, but present them so
-    # `_tokens_path()` resolves inside the sandbox even if GCM_TOKENS_PATH is unset.
     monkeypatch.delenv("GCM_TOKENS_PATH", raising=False)
     monkeypatch.delenv("GCM_CLIENT_SECRET", raising=False)
     return d
@@ -41,6 +36,8 @@ def client_secret_file(tmp_path: Path) -> Path:
                     "client_id": "test-client-id.apps.googleusercontent.com",
                     "client_secret": "TEST_SECRET",
                     "redirect_uris": ["http://127.0.0.1"],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
                 }
             }
         )
@@ -82,37 +79,37 @@ def test_token_store_roundtrip(stdio_home: Path) -> None:
     assert store.load() == payload
 
 
-# ---------- unit: client_secret parser ----------
+def test_token_store_decrypt_failure_raises_actionable_error(
+    stdio_home: Path,
+) -> None:
+    """Corrupt tokens.json → RuntimeError naming the logout remediation."""
+    tokens_path = stdio_mod._tokens_path()
+    stdio_mod._load_or_create_fernet_key()  # materialize the Fernet key
+    # Write garbage under the right filename.
+    stdio_mod._ensure_config_dir()
+    tokens_path.write_bytes(b"not-a-fernet-token")
+    store = stdio_mod._open_store()
+    with pytest.raises(RuntimeError, match="logout"):
+        store.load()
 
 
-def test_read_client_secret_parses_installed(client_secret_file: Path) -> None:
-    cid, csec = stdio_mod._read_client_secret(client_secret_file)
-    assert cid == "test-client-id.apps.googleusercontent.com"
-    assert csec == "TEST_SECRET"
+# ---------- unit: identity parsing ----------
 
 
-def test_read_client_secret_rejects_missing_fields(tmp_path: Path) -> None:
-    bad = tmp_path / "bad.json"
-    bad.write_text("{}")
-    with pytest.raises(ValueError, match="installed/web"):
-        stdio_mod._read_client_secret(bad)
+def test_identity_from_id_token_extracts_sub_and_email() -> None:
+    token = _fake_id_token(sub="109876543210", email="alice@example.com")
+    sub, email = stdio_mod._identity_from_id_token(token)
+    assert sub == "109876543210"
+    assert email == "alice@example.com"
 
 
-# ---------- unit: PKCE ----------
+def test_identity_from_id_token_tolerates_malformed_input() -> None:
+    sub, email = stdio_mod._identity_from_id_token("not-a-jwt")
+    assert sub is None
+    assert email is None
 
 
-def test_pkce_pair_is_s256_compliant() -> None:
-    verifier, challenge = stdio_mod._pkce_pair()
-    import base64
-    import hashlib
-
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    expected = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    assert challenge == expected
-    assert 43 <= len(verifier) <= 128
-
-
-# ---------- integration: login end-to-end with fake Google ----------
+# ---------- integration: login end-to-end with InstalledAppFlow patched ----------
 
 
 def test_login_end_to_end(
@@ -120,64 +117,47 @@ def test_login_end_to_end(
     client_secret_file: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Full login path with a stubbed Google token endpoint and a fake browser.
+    """Patches `InstalledAppFlow.run_local_server` to return fake Credentials.
 
-    The flow's own loopback listener runs on a background thread (per
-    cmd_login). We patch webbrowser.open to parse the authz URL (it carries
-    both the `state` to echo back and the `redirect_uri` with the listener's
-    random port) and hit the callback directly from another thread.
+    The Google OAuth library handles the loopback + PKCE + browser; we don't
+    re-test its internals. What matters here is that cmd_login saves the
+    right shape to tokens.json and extracts identity from the id_token.
     """
-    import urllib.parse as _up
+    fake_credentials = MagicMock()
+    fake_credentials.client_id = "test-client-id.apps.googleusercontent.com"
+    fake_credentials.client_secret = "TEST_SECRET"
+    fake_credentials.refresh_token = "refresh-xyz"
+    fake_credentials.token = "access-abc"
+    fake_credentials.id_token = _fake_id_token(sub="109876543210", email="alice@example.com")
+    fake_credentials.scopes = ["openid", "email", "profile"]
 
-    seen_state: dict[str, str] = {}
+    fake_flow = MagicMock()
+    fake_flow.run_local_server.return_value = fake_credentials
 
-    def fake_open(url: str, *_args: object, **_kwargs: object) -> bool:
-        qs = _up.parse_qs(_up.urlparse(url).query)
-        state = qs["state"][0]
-        redirect_uri = qs["redirect_uri"][0]
-        seen_state["state"] = state
-        seen_state["redirect_uri"] = redirect_uri
-
-        def hit_callback() -> None:
-            callback_url = f"{redirect_uri}?code=TEST_CODE&state={state}"
-            deadline = time.monotonic() + 5.0
-            # Small retry: the listener may still be finishing bind() the
-            # microsecond the browser stub is invoked.
-            while True:
-                try:
-                    urllib.request.urlopen(callback_url, timeout=3.0).read()  # noqa: S310
-                    return
-                except OSError:
-                    if time.monotonic() > deadline:
-                        raise
-                    time.sleep(0.01)
-
-        threading.Thread(target=hit_callback, daemon=True).start()
-        return True
-
-    def fake_post_form(url: str, data: dict[str, str], **_kwargs: object) -> dict[str, object]:
-        assert url == stdio_mod._GOOGLE_TOKEN
-        assert data["grant_type"] == "authorization_code"
-        assert data["code"] == "TEST_CODE"
-        assert data["code_verifier"]  # PKCE verifier echoed back
-        return {
-            "access_token": "access-abc",
-            "refresh_token": "refresh-xyz",
-            "expires_in": 3600,
-            "scope": "openid email profile https://www.googleapis.com/auth/chat.messages.create",
-            "id_token": _fake_id_token(sub="109876543210", email="alice@example.com"),
-        }
-
-    with (
-        patch.object(stdio_mod, "webbrowser") as mock_web,
-        patch.object(stdio_mod, "_http_post_form", side_effect=fake_post_form),
-    ):
-        mock_web.open.side_effect = fake_open
+    with patch.object(
+        stdio_mod.InstalledAppFlow,
+        "from_client_secrets_file",
+        return_value=fake_flow,
+    ) as from_file:
         import argparse
 
         rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=str(client_secret_file)))
     assert rc == 0
 
+    # The flow was built from the user's client_secret.json with the v2 scopes.
+    from_file.assert_called_once()
+    _pos, kwargs = from_file.call_args
+    assert "scopes" in kwargs
+    assert "https://www.googleapis.com/auth/chat.messages.create" in kwargs["scopes"]
+
+    # Loopback ran on 127.0.0.1 with an OS-assigned port.
+    run_kwargs = fake_flow.run_local_server.call_args.kwargs
+    assert run_kwargs["host"] == "127.0.0.1"
+    assert run_kwargs["port"] == 0
+    # URL prompt shown to the user (headless-safe).
+    assert "Open this URL" in run_kwargs["authorization_prompt_message"]
+
+    # Tokens saved; content decrypts and carries the stored identity.
     store = stdio_mod._open_store()
     saved = store.load()
     assert saved["refresh_token"] == "refresh-xyz"
@@ -188,26 +168,51 @@ def test_login_end_to_end(
     mode = stat.S_IMODE((stdio_home / "tokens.json").stat().st_mode)
     assert mode == 0o600
 
-    captured_out = capsys.readouterr().out
-    assert "Open this URL in a browser" in captured_out
-    assert f"state={seen_state['state']}" in captured_out
+    out = capsys.readouterr().out
+    assert "alice@example.com" in out
 
 
-def test_login_headless_fallback_prints_manual_instruction(
+def test_login_requires_client_secret(stdio_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import argparse
+
+    rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=None))
+    assert rc == 2
+    assert "--client-secret is required" in capsys.readouterr().err
+
+
+def test_login_rejects_missing_file(
+    stdio_home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import argparse
+
+    rc = stdio_mod.cmd_login(
+        argparse.Namespace(client_secret=str(tmp_path / "does-not-exist.json"))
+    )
+    assert rc == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_login_refuses_when_refresh_token_missing(
     stdio_home: Path,
     client_secret_file: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """webbrowser.open returning False triggers manual-paste instructions."""
-    from src.stdio import _open_browser_with_fallback
+    """Google sometimes returns no refresh_token (e.g. prompt mismatch). We refuse to save."""
+    fake_credentials = MagicMock()
+    fake_credentials.refresh_token = None
+    fake_flow = MagicMock()
+    fake_flow.run_local_server.return_value = fake_credentials
 
-    with patch("src.stdio.webbrowser") as mock_web:
-        mock_web.open.return_value = False
-        _open_browser_with_fallback("https://example.com/authz?state=x")
+    with patch.object(
+        stdio_mod.InstalledAppFlow,
+        "from_client_secrets_file",
+        return_value=fake_flow,
+    ):
+        import argparse
 
-    out = capsys.readouterr().out
-    assert "Open this URL in a browser" in out
-    assert "Could not open a browser automatically" in out
+        rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=str(client_secret_file)))
+    assert rc == 1
+    assert "refresh_token" in capsys.readouterr().err
 
 
 # ---------- logout ----------
@@ -255,7 +260,7 @@ def test_logout_tolerates_non200_revoke(stdio_home: Path) -> None:
     assert not (stdio_home / "tokens.json").exists()
 
 
-# ---------- serve: needs tokens ----------
+# ---------- serve ----------
 
 
 def test_serve_without_tokens_exits_2(stdio_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -267,7 +272,53 @@ def test_serve_without_tokens_exits_2(stdio_home: Path, capsys: pytest.CaptureFi
     assert "no local credentials" in err
 
 
-# ---------- argparse wiring ----------
+# ---------- resolver ----------
+
+
+@pytest.mark.asyncio
+async def test_resolver_refreshes_and_persists_rotated_refresh_token(
+    stdio_home: Path,
+) -> None:
+    """Credentials.refresh() is delegated to google-auth; on rotation, persist."""
+    store = stdio_mod._open_store()
+    store.save(
+        {
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "original-refresh",
+            "granted_scopes": ["openid"],
+            "user_sub": "42",
+        }
+    )
+
+    # Fake Credentials.refresh: mutate the same private backing fields
+    # google-auth writes (`.token`, `._refresh_token`, `.expiry`).
+    def fake_refresh(credentials, request):
+        credentials.token = "access-fresh"
+        credentials.expiry = None
+        if credentials.refresh_token == "original-refresh":
+            credentials._refresh_token = "rotated-refresh"
+
+    with (
+        patch.object(stdio_mod.Credentials, "refresh", autospec=True) as mock_refresh,
+        patch.object(
+            stdio_mod.Credentials,
+            "expired",
+            new_callable=lambda: property(lambda _self: True),
+        ),
+    ):
+        mock_refresh.side_effect = fake_refresh
+        resolver, _identity = stdio_mod._build_stdio_resolver(store)
+        info = await resolver()
+
+    assert info.access_token == "access-fresh"
+    assert info.user_sub == "42"
+
+    # The rotated refresh token was persisted back to disk.
+    assert store.load()["refresh_token"] == "rotated-refresh"
+
+
+# ---------- argparse ----------
 
 
 def test_argparse_login_subcommand(client_secret_file: Path) -> None:
@@ -281,7 +332,6 @@ def test_argparse_login_subcommand(client_secret_file: Path) -> None:
 def test_argparse_default_is_serve() -> None:
     parser = stdio_mod._build_parser()
     args = parser.parse_args([])
-    # No subcommand → main() routes to cmd_serve.
     assert getattr(args, "func", stdio_mod.cmd_serve) is stdio_mod.cmd_serve
 
 
@@ -289,19 +339,12 @@ def test_argparse_default_is_serve() -> None:
 
 
 def test_stdout_hygiene_in_subprocess(tmp_path: Path) -> None:
-    """Spawn the CLI with no tokens — stderr may log, stdout MUST stay silent.
-
-    Serve-mode stdout is reserved for JSON-RPC; login-mode prints are on stdout
-    but not during serve. This test exercises the `serve` bail path: it should
-    print the "no credentials" message to STDERR, nothing to stdout.
-    """
+    """Spawn the CLI with no tokens — stderr may log, stdout MUST stay silent."""
     env = {
         "PATH": "/usr/bin:/bin",
         "HOME": str(tmp_path),
         "GCM_CONFIG_DIR": str(tmp_path / "gcm"),
     }
-    # Invoke via the package so we don't depend on the console script being
-    # installed on PATH inside the test env.
     result = subprocess.run(
         [sys.executable, "-m", "src.stdio", "serve"],
         capture_output=True,

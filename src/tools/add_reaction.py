@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..models import AddReactionInput, AddReactionResult
+from ..models import AddReactionInput, AddReactionResult, _ChatReactionResponse
 from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool, space_id_from_message_name
 
 
@@ -12,15 +12,11 @@ async def add_reaction_handler(ctx: ToolContext, payload: AddReactionInput) -> A
 
     async def body(access_token: str, _user_sub: str) -> AddReactionResult:
         raw = await ctx.client.add_reaction(access_token, payload.message_name, payload.emoji)
-        # The upstream payload: {name, user: {name}, emoji: {unicode}}.
-        emoji_obj = raw.get("emoji") or {}
-        user_obj = raw.get("user") or {}
-        emoji_unicode = emoji_obj.get("unicode") if isinstance(emoji_obj, dict) else None
-        user_name = user_obj.get("name") if isinstance(user_obj, dict) else None
+        parsed = _ChatReactionResponse(**raw)
         return AddReactionResult(
-            reaction_name=str(raw["name"]),
-            emoji=str(emoji_unicode) if emoji_unicode else payload.emoji,
-            user_id=str(user_name) if user_name else "users/me",
+            reaction_name=parsed.name,
+            emoji=parsed.emoji.display or payload.emoji,
+            user_id=parsed.user.name,
         )
 
     return await invoke_tool(

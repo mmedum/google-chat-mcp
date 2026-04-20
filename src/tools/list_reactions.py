@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from ..models import ListReactionsInput, ListReactionsResult, ReactionEntry
+from ..models import (
+    ListReactionsInput,
+    ListReactionsResult,
+    ReactionEntry,
+    _ChatReactionsListResponse,
+)
 from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool, space_id_from_message_name
 
 
@@ -21,11 +24,19 @@ async def list_reactions_handler(
             limit=payload.limit,
             page_token=payload.page_token,
         )
-        entries = _parse_reactions(raw.get("reactions", []))
-        next_token = raw.get("nextPageToken")
+        parsed = _ChatReactionsListResponse(**raw)
+        entries = [
+            ReactionEntry(
+                reaction_name=r.name,
+                emoji=r.emoji.display,
+                user_id=r.user.name,
+            )
+            for r in parsed.reactions
+            if r.emoji.display is not None
+        ]
         return ListReactionsResult(
             reactions=entries,
-            next_page_token=str(next_token) if isinstance(next_token, str) and next_token else None,
+            next_page_token=parsed.next_page_token,
         )
 
     return await invoke_tool(
@@ -35,25 +46,3 @@ async def list_reactions_handler(
         target_space_id=space_id,
         required_scope=CHAT_MESSAGES_READONLY,
     )
-
-
-def _parse_reactions(raw: Any) -> list[ReactionEntry]:
-    out: list[ReactionEntry] = []
-    if not isinstance(raw, list):
-        return out
-    for r in raw:
-        if not isinstance(r, dict):
-            continue
-        name = r.get("name")
-        emoji_obj = r.get("emoji")
-        user_obj = r.get("user")
-        if not isinstance(name, str) or not isinstance(emoji_obj, dict):
-            continue
-        emoji = emoji_obj.get("unicode")
-        if not isinstance(emoji, str):
-            continue
-        user_name = user_obj.get("name") if isinstance(user_obj, dict) else None
-        if not isinstance(user_name, str):
-            continue
-        out.append(ReactionEntry(reaction_name=name, emoji=emoji, user_id=user_name))
-    return out
