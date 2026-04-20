@@ -24,13 +24,11 @@ import base64
 import json
 import os
 import secrets
-import ssl
 import sys
-import urllib.parse
-import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet, InvalidToken
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -55,6 +53,12 @@ _AUDIT_PEPPER_FILE = "audit_pepper"
 _GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 _GOOGLE_REVOKE = "https://oauth2.googleapis.com/revoke"
 _GOOGLE_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
+
+# Placeholder Fernet key for stdio mode. `Settings.fernet_key` is a required
+# SecretStr with `min_length=1`; stdio bypasses GoogleProvider so the value
+# is never used. Using a constant avoids burning RNG entropy on every
+# `serve` startup.
+_STDIO_FERNET_PLACEHOLDER = Fernet.generate_key().decode()
 
 
 # ---------- config directory ----------
@@ -170,18 +174,22 @@ def _open_store() -> TokenStore:
 # ---------- OAuth revoke + /userinfo (logout + identity fallback) ----------
 
 
+_http = GoogleAuthRequest()
+
+
 def _http_post_form(url: str, data: Mapping[str, str], *, timeout: float = 15.0) -> dict[str, Any]:
     """POST form-encoded body, return JSON response. Raises on non-2xx."""
-    body = urllib.parse.urlencode(data).encode("ascii")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    body = urlencode(data).encode("ascii")
+    resp = _http(
+        url=url,
         method="POST",
+        body=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=timeout,
     )
-    ctx = ssl.create_default_context()
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-        raw = resp.read().decode("utf-8")
+    if resp.status >= 400:
+        raise RuntimeError(f"{url} returned {resp.status}: {resp.data!r}")
+    raw = resp.data.decode("utf-8") if resp.data else ""
     parsed = json.loads(raw) if raw else {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -212,14 +220,16 @@ def _identity_from_id_token(id_token: str) -> tuple[str | None, str | None]:
 
 def _identity_from_userinfo(access_token: str) -> tuple[str | None, str | None]:
     """Hit OIDC /userinfo synchronously as a fallback when id_token is absent."""
-    req = urllib.request.Request(
-        _GOOGLE_USERINFO,
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    ctx = ssl.create_default_context()
     try:
-        with urllib.request.urlopen(req, timeout=10.0, context=ctx) as resp:
-            parsed = json.loads(resp.read().decode("utf-8"))
+        resp = _http(
+            url=_GOOGLE_USERINFO,
+            method="GET",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10.0,
+        )
+        if resp.status >= 400:
+            return None, None
+        parsed = json.loads(resp.data.decode("utf-8"))
     except Exception as exc:
         if not isinstance(exc, OSError | ValueError):
             raise
@@ -249,7 +259,7 @@ def cmd_login(args: argparse.Namespace) -> int:
         return 2
 
     flow = InstalledAppFlow.from_client_secrets_file(
-        str(client_secret_path), scopes=list(GOOGLE_OAUTH_SCOPES)
+        client_secret_path, scopes=list(GOOGLE_OAUTH_SCOPES)
     )
     # port=0 → OS picks a random loopback port (RFC 8252 desktop flow).
     # The flow library handles PKCE + state, opens the browser, prints the URL
@@ -327,15 +337,14 @@ def cmd_logout(_args: argparse.Namespace) -> int:
 # ---------- serve subcommand (default) ----------
 
 
-def _build_stdio_resolver(store: TokenStore):
-    """Return an AuthResolver closure + the stored identity dict.
+def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
+    """Return an AuthResolver closure over `identity`.
 
-    Uses `google.oauth2.credentials.Credentials.refresh()` — the standard
-    library refresh path (in-place update of `.token`, `.expiry`, and
-    `.refresh_token` if Google rotates it). We persist the identity dict
-    when the refresh token rotates.
+    Uses `google.oauth2.credentials.Credentials.refresh()` for the standard
+    refresh path (in-place update of `.token`, `.expiry`, and `.refresh_token`
+    if Google rotates it). Persists `identity` back to `store` when the
+    refresh token rotates.
     """
-    identity = store.load()
     credentials = Credentials(
         token=None,
         refresh_token=identity["refresh_token"],
@@ -347,14 +356,14 @@ def _build_stdio_resolver(store: TokenStore):
 
     async def resolver() -> AuthInfo:
         if credentials.token is None or credentials.expired:
-            await asyncio.to_thread(credentials.refresh, GoogleAuthRequest())
+            await asyncio.to_thread(credentials.refresh, _http)
             if credentials.refresh_token and credentials.refresh_token != identity["refresh_token"]:
                 identity["refresh_token"] = credentials.refresh_token
                 store.save(identity)
         user_sub = identity.get("user_sub") or "stdio-user"
         return AuthInfo(access_token=str(credentials.token), user_sub=str(user_sub))
 
-    return resolver, identity
+    return resolver
 
 
 def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
@@ -374,7 +383,7 @@ def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
             "allowed_client_redirects": [],
             "google_client_id": identity.get("client_id", "unused-in-stdio"),
             "google_client_secret": identity.get("client_secret", "unused-in-stdio"),
-            "fernet_key": Fernet.generate_key().decode(),
+            "fernet_key": _STDIO_FERNET_PLACEHOLDER,
             "jwt_signing_key": "unused-in-stdio" * 4,
             "audit_pepper": _load_or_create_audit_pepper().hex(),
             # stdio is single-user; hashing adds no privacy beyond local disk.
@@ -393,7 +402,8 @@ def cmd_serve(_args: argparse.Namespace) -> int:
         )
         return 2
     configure_logging(os.environ.get("GCM_LOG_LEVEL", "INFO"), stream=sys.stderr)
-    resolver, identity = _build_stdio_resolver(store)
+    identity = store.load()
+    resolver = _build_stdio_resolver(store, identity)
     settings = _build_stdio_settings(identity)
     app = build_app(settings, resolver=resolver)
     app.run()  # Default transport is stdio.

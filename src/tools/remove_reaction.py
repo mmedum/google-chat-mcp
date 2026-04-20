@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..models import RemoveReactionInput, RemoveReactionResult
+from ..models import RemoveReactionInput, RemoveReactionResult, _ChatReactionsListResponse
 from ._common import (
     CHAT_MESSAGES_REACTIONS,
     ToolContext,
@@ -44,13 +44,10 @@ async def remove_reaction_handler(
             emoji_filter=payload.emoji,
             user_filter=f"users/{payload.user_email}",
         )
-        reactions = listed.get("reactions", [])
-        if not isinstance(reactions, list) or not reactions:
+        parsed = _ChatReactionsListResponse(**listed)
+        if not parsed.reactions:
             return RemoveReactionResult(reaction_name=None, removed=False)
-        first = reactions[0]
-        if not isinstance(first, dict) or not isinstance(first.get("name"), str):
-            return RemoveReactionResult(reaction_name=None, removed=False)
-        reaction_name = str(first["name"])
+        reaction_name = parsed.reactions[0].name
         await ctx.client.delete_reaction(access_token, reaction_name)
         return RemoveReactionResult(reaction_name=reaction_name, removed=True)
 

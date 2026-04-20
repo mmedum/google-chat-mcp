@@ -106,7 +106,9 @@ async def test_remove_reaction_by_filter_list_then_delete(
         list_route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
             return_value=httpx.Response(
                 200,
-                json={"reactions": [_reaction_obj("r42", "🙂", "users/alice@example.com")]},
+                # Real Chat API responses normalize user.name to users/{numeric-sub},
+                # even when the filter was submitted with users/{email}.
+                json={"reactions": [_reaction_obj("r42", "🙂", "users/109876543210")]},
             )
         )
         del_route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r42").mock(

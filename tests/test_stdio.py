@@ -308,7 +308,7 @@ async def test_resolver_refreshes_and_persists_rotated_refresh_token(
         ),
     ):
         mock_refresh.side_effect = fake_refresh
-        resolver, _identity = stdio_mod._build_stdio_resolver(store)
+        resolver = stdio_mod._build_stdio_resolver(store, store.load())
         info = await resolver()
 
     assert info.access_token == "access-fresh"
