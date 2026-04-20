@@ -215,6 +215,25 @@ Scrape `GET /metrics`. The metrics that tend to move first:
 | `mcp_rate_limit_hits_total` | Hot user or runaway loop. |
 | `mcp_active_users` | Flat-to-zero during business hours = server is isolated from any MCP client; check `/readyz` and the reverse proxy. |
 
+## Live MCP-client smoke test (post-deploy)
+
+After any significant upgrade, walk through at least one client per
+transport. Automated tests cover wire-shape regression
+(`tests/test_wire_shapes.py`), but client-specific quirks surface only
+against a live server.
+
+Suggested matrix:
+
+| Transport | Client | Minimum checks |
+|---|---|---|
+| stdio | Claude Code (`mcp-server-google-chat`) | `whoami`; `send_message dry_run=true`; `send_message` real; `get_thread` |
+| stdio | opencode | same |
+| stdio | Cursor | same |
+| HTTPS | Any MCP client that supports OAuth custom connectors | full OAuth flow end-to-end + the same four tool calls |
+
+Record any client-specific quirk (tool-name length limits, custom-URI
+rejections, permission prompts) here so the next upgrade knows.
+
 ## Health endpoints
 
 - `/healthz` — process is up. Always 200 if the container is serving.
