@@ -43,6 +43,7 @@ Thumbs.db
 *.sqlite-wal
 *.sqlite-shm
 
+
 # Local tooling state (Claude Code + Entire)
 .claude/
 .entire/

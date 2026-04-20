@@ -1,15 +1,21 @@
 # google-chat-mcp
 
+[![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
+[![Container image](https://img.shields.io/badge/ghcr.io-mmedum%2Fgoogle--chat--mcp-2ea44f?logo=docker)](https://github.com/mmedum/google-chat-mcp/pkgs/container/google-chat-mcp)
+[![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.14-blue)](https://www.python.org/downloads/)
+
 A production-grade MCP server that exposes Google Chat to any MCP-compatible
 client. Read, search, and reply to spaces and DMs through natural-language
 prompts in your MCP client of choice.
 
 Two transports ship in this repo:
 
-- **Stdio** (recommended for individual users) — install the CLI with
-  `uv tool install google-chat-mcp` (or `pip install`), run a one-time
-  OAuth login against your own Google account, then launch the server as a
-  subprocess under Claude Code, opencode, Cursor, etc.
+- **Stdio** (recommended for individual users) — install from source with
+  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.0`,
+  run a one-time OAuth login against your own Google account, then launch
+  the server as a subprocess under Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
   for teams; the MCP client connects over HTTPS and walks the OAuth flow
   per-user against the operator's Google app.
@@ -78,7 +84,13 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 ### 2. Install and log in
 
 ```bash
-uv tool install google-chat-mcp         # or `pip install google-chat-mcp`
+# From a tagged release (preferred):
+uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.2.0
+
+# Or from a local clone for dev / custom builds:
+# git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
+# uv tool install --from . google-chat-mcp
+
 google-chat-mcp login --client-secret ./client_secret.json
 ```
 
@@ -155,6 +167,13 @@ docker compose up -d
 docker compose logs -f mcp
 ```
 
+To consume the published image instead of building locally, edit
+`compose.yml`: comment out the `build:` block on the `mcp` service and set
+`image: ghcr.io/mmedum/google-chat-mcp:0.2.0` (or `:latest`). Then
+`docker compose up -d` pulls the multi-arch image (`linux/amd64` +
+`linux/arm64`), published with SBOM and SLSA provenance attestations on
+every `v*.*.*` tag.
+
 ### 4. Connect your MCP client
 
 Add a custom connector at `https://chat-mcp.example.com/mcp`. The client
@@ -198,7 +217,7 @@ you own for a stable hostname.
 
 - **No image rebuild.** Each deployer supplies their own Google app
   credentials at runtime (mounted secrets in HTTPS, `client_secret.json`
-  in stdio). Pull the published image or package; configure; run.
+  in stdio). Pull the published image or install from source; configure; run.
 - **No centralized deployment.** Each deployer owns their Google app,
   their tokens, and their rollout cadence. Compromises of a specific
   deployment's credentials or tokens are the deployer's responsibility —

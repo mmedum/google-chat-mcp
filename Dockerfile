@@ -13,6 +13,12 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
+# .git/ is not in the build context, so feed hatch-vcs the version via a
+# build-arg. Using the global SETUPTOOLS_SCM_PRETEND_VERSION because the
+# per-package `_FOR_<NAME>` form gets dropped by uv's build isolation.
+ARG PACKAGE_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${PACKAGE_VERSION}
+
 COPY src/ ./src/
 # hatchling reads `readme = "README.md"` from pyproject.toml when building the
 # project itself; the second `uv sync` installs the project, so the file has

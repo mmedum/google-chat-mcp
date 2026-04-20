@@ -1,5 +1,8 @@
 services:
   mcp:
+    # Default: build from the local Dockerfile (useful for dev). To consume
+    # the published image instead, comment out the `build:` block and set
+    # `image: ghcr.io/mmedum/google-chat-mcp:0.2.0` (or `:latest`) below.
     build:
       context: .
       dockerfile: Dockerfile
