@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
-from typing import IO, Any
+from typing import Any, TextIO
 
 import structlog
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
@@ -14,18 +14,22 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 def configure_logging(
     level: str = "INFO",
     *,
-    stream: IO[str] | None = None,
+    stream: TextIO | None = None,
 ) -> None:
     """Configure structlog to emit JSON, suppressing sensitive keys.
 
     `stream` defaults to stdout (HTTPS transport). Stdio transport passes
     `sys.stderr` — stdout in that mode is reserved for JSON-RPC frames, and
-    any non-protocol byte there corrupts the MCP stream.
+    any non-protocol byte there corrupts the MCP stream. The stream is wired
+    into both stdlib logging (for third-party libs like httpx) AND structlog's
+    own `PrintLoggerFactory`; structlog bypasses stdlib logging by default,
+    so configuring only `logging.basicConfig` is not enough.
     """
+    effective_stream = stream if stream is not None else sys.stdout
     logging.basicConfig(
         level=level.upper(),
         format="%(message)s",
-        stream=stream if stream is not None else sys.stdout,
+        stream=effective_stream,
     )
     structlog.configure(
         processors=[
@@ -39,6 +43,7 @@ def configure_logging(
         wrapper_class=structlog.make_filtering_bound_logger(
             getattr(logging, level.upper(), logging.INFO)
         ),
+        logger_factory=structlog.PrintLoggerFactory(file=effective_stream),
         cache_logger_on_first_use=True,
     )
 
