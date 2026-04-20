@@ -26,6 +26,8 @@ async def test_build_app_registers_all_tools(settings: Settings) -> None:
         "get_space",
         "list_members",
         "whoami",
+        "create_group_chat",
+        "create_space",
     }
     assert expected_so_far.issubset(names)
 
@@ -73,6 +75,15 @@ async def test_tool_annotations_match_mcp_alignment(settings: Settings) -> None:
     assert sm.readOnlyHint is False
     assert sm.destructiveHint is False
     assert sm.idempotentHint is False
+
+    # create_group_chat + create_space — writes, not destructive, not idempotent.
+    for name in ("create_group_chat", "create_space"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.readOnlyHint is False, f"{name} should be readOnlyHint=False"
+        assert ann.destructiveHint is False
+        assert ann.idempotentHint is False
+        assert ann.openWorldHint is True
 
 
 @pytest.mark.asyncio
