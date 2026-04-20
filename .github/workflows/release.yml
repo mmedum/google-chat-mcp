@@ -11,7 +11,10 @@ permissions:
   attestations: write   # provenance/SBOM attestations on the image
 
 jobs:
-  # Native arm64 runner avoids QEMU emulation on the project-install layer.
+  # One job per arch on a native runner (`ubuntu-24.04-arm` for arm64) to
+  # skip QEMU emulation on the project-install layer. Each leg pushes by
+  # digest only; `docker-merge` below assembles the manifest list and
+  # applies the semver tags.
   docker-build:
     strategy:
       fail-fast: false
@@ -29,7 +32,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: ver
+      - name: Compute package version
+        id: ver
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
@@ -120,9 +124,9 @@ jobs:
           IMAGE: ghcr.io/${{ github.repository }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
-          count=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw \
-            | jq '[.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")] | length')
+          raw=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw)
+          echo "$raw" | jq .
+          count=$(jq '[.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")] | length' <<< "$raw")
           if [ "$count" -lt 2 ]; then
             echo "::error::Expected ≥2 attestation manifests on the index; got $count"
             exit 1
