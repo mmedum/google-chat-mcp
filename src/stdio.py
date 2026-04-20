@@ -382,6 +382,10 @@ def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
     """
     tmp_data_dir = _ensure_config_dir() / "data"
     tmp_data_dir.mkdir(exist_ok=True)
+    # mkdir honors umask (typically 0o755); force 0o700 to match the parent
+    # config dir's invariant. The 0700 parent already gates other local
+    # users out, so this is defense-in-depth for the audit DB.
+    tmp_data_dir.chmod(0o700)
     return Settings.from_mapping(
         {
             "base_url": "http://127.0.0.1/stdio",
@@ -408,6 +412,11 @@ def cmd_serve(_args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    # Same scope-normalization workaround as `cmd_login`: Google returns
+    # canonicalized `userinfo.{email,profile}` URLs on refresh, and oauthlib's
+    # strict check would otherwise raise on the mismatch during every
+    # Credentials.refresh() in the stdio resolver.
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
     configure_logging(os.environ.get("GCM_LOG_LEVEL", "INFO"), stream=sys.stderr)
     identity = store.load()
     resolver = _build_stdio_resolver(store, identity)
