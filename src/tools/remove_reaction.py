@@ -9,6 +9,7 @@ from ._common import (
     invoke_tool,
     space_id_from_message_name,
 )
+from ._directory import fetch_person
 
 
 async def remove_reaction_handler(
@@ -18,9 +19,13 @@ async def remove_reaction_handler(
 
     Two shapes (mutually exclusive, enforced by the input model's validator):
     - `reaction_name` — direct DELETE by full resource name.
-    - `(message_name, emoji, user_email)` — server-side filtered list
-      (`emoji.unicode = "..." AND user.name = "users/..."`) then DELETE the
-      single returned resource. No-match returns removed=False with
+    - `(message_name, emoji, user_email)` — server-side filter on emoji only,
+      then walk each returned reaction, resolve `user.name` (`users/{sub}`)
+      to its primary email via People API, and DELETE the first match. The
+      Chat API's reactions.list filter requires a numeric `users/{sub}` on
+      the `user.name` predicate and returns 500 on `users/{email}`; we can't
+      do the match server-side without a sub, and `user_email` is the
+      caller's natural handle. No-match returns removed=False with
       reaction_name=None so the caller can distinguish "already gone".
     """
     space_id = space_id_from_message_name(payload.message_name or payload.reaction_name or "")
@@ -35,21 +40,23 @@ async def remove_reaction_handler(
         assert payload.emoji is not None
         assert payload.user_email is not None
 
-        # Chat API's reactions.list filter accepts `user.name = "users/{email}"`
-        # directly — no People-API round-trip needed to resolve the email first.
         listed = await ctx.client.list_reactions(
             access_token,
             message_name=payload.message_name,
-            limit=1,
+            limit=200,
             emoji_filter=payload.emoji,
-            user_filter=f"users/{payload.user_email}",
         )
         parsed = _ChatReactionsListResponse(**listed)
-        if not parsed.reactions:
-            return RemoveReactionResult(reaction_name=None, removed=False)
-        reaction_name = parsed.reactions[0].name
-        await ctx.client.delete_reaction(access_token, reaction_name)
-        return RemoveReactionResult(reaction_name=reaction_name, removed=True)
+        target_email = payload.user_email.lower()
+        for reaction in parsed.reactions:
+            resolved = await fetch_person(ctx.client, access_token, reaction.user.name)
+            if resolved is None:
+                continue
+            email, _name = resolved
+            if email is not None and email.lower() == target_email:
+                await ctx.client.delete_reaction(access_token, reaction.name)
+                return RemoveReactionResult(reaction_name=reaction.name, removed=True)
+        return RemoveReactionResult(reaction_name=None, removed=False)
 
     return await invoke_tool(
         "remove_reaction",
