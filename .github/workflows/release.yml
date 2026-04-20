@@ -11,9 +11,7 @@ permissions:
   attestations: write   # provenance/SBOM attestations on the image
 
 jobs:
-  # One job per arch on a native runner (no QEMU). Each pushes by digest
-  # only — the `docker-merge` job below assembles the manifest list and
-  # applies the semver tags.
+  # Native arm64 runner avoids QEMU emulation on the project-install layer.
   docker-build:
     strategy:
       fail-fast: false
@@ -31,24 +29,20 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
-        with:
-          images: ghcr.io/${{ github.repository }}
+      - id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          # metadata-action's {{version}} strips the leading `v`, so this
-          # matches the hatch-vcs-expected semver (`0.2.0` for tag `v0.2.0`).
           build-args: |
-            PACKAGE_VERSION=${{ steps.meta.outputs.version }}
+            PACKAGE_VERSION=${{ steps.ver.outputs.version }}
           provenance: mode=max
           sbom: true
-          # Push the per-arch image by digest only; the merge job tags the
-          # manifest list with semver tags. Per-arch cache-scope keeps the
-          # two platforms' caches separate.
+          # Per-arch push by digest; the merge job applies semver tags to
+          # the manifest list. Per-arch cache scope keeps the two
+          # platforms' caches independent.
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.id }}
           cache-to: type=gha,scope=${{ matrix.id }},mode=max
@@ -64,10 +58,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Combine the per-arch digests into a multi-arch index, apply the semver
-  # tags + OCI annotations, then push. Index annotations are what GHCR
-  # reads for the package description; per-arch manifest annotations are
-  # nice-to-have.
   docker-merge:
     needs: docker-build
     runs-on: ubuntu-latest
@@ -120,11 +110,24 @@ jobs:
           done
 
           docker buildx imagetools create "${tag_args[@]}" "${ann_args[@]}" "${src_args[@]}"
-      - name: Inspect published image
+      - name: Verify attestations landed on the index
+        # Referrer-following on `imagetools create` preserves the per-arch
+        # SBOM + provenance manifests into the merged index. If buildx or the
+        # runner image ever regresses, the image would ship without
+        # attestations and `provenance: mode=max` + `sbom: true` above would
+        # be silently no-op. One guard per arch (amd64, arm64 → 2 expected).
         env:
           IMAGE: ghcr.io/${{ github.repository }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          count=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw \
+            | jq '[.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")] | length')
+          if [ "$count" -lt 2 ]; then
+            echo "::error::Expected ≥2 attestation manifests on the index; got $count"
+            exit 1
+          fi
+          echo "Attestation manifests present: $count"
 
   release:
     needs: docker-merge

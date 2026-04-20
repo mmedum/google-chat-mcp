@@ -26,21 +26,13 @@ Python 3.14 is required (pinned in `.python-version` and `pyproject.toml`).
 
 ## Gates that must pass
 
-CI enforces these on every PR; run them locally before pushing:
+See [`CLAUDE.md`](./CLAUDE.md) §Commands for the canonical gate commands
+(`ruff check`, `ruff format --check`, `ty check`, `pytest` with the 80 %
+coverage floor). CI runs the same set on every PR; the PR template
+includes a checklist.
 
-```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run ty check
-uv run pytest               # 80% coverage floor
-```
-
-Plus on the release branch only, but worth sanity-checking any workflow
-change:
-
-```bash
-docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 .github/workflows/<file>.yml
-```
+For workflow edits, sanity-check with
+`rhysd/actionlint:1.7.12 .github/workflows/<file>.yml`.
 
 ## Branch and commit conventions
 

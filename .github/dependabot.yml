@@ -22,7 +22,7 @@ updates:
       python-minor-patch:
         update-types: ["minor", "patch"]
     commit-message:
-      prefix: "deps"
+      prefix: "ci"
       include: scope
 
   # Docker base images — `python:3.14-slim` + `ghcr.io/astral-sh/uv:0.11`.
@@ -31,5 +31,5 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: "deps"
+      prefix: "ci"
       include: scope
