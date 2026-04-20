@@ -1,7 +1,87 @@
 # Runbook
 
-Operational procedures for the google-chat-mcp server. Keep this file short and
-scannable; every procedure assumes you are on the host running `docker compose`.
+Operational procedures for the google-chat-mcp server. HTTPS-mode procedures
+assume you are on the host running `docker compose`; stdio-mode procedures
+are run by the end user in their own shell.
+
+## Missing-scope errors after Google's granular-consent rollout
+
+Symptom: tool call returns `ToolError` with text
+`Missing required OAuth scope: <url>. Re-run ...`.
+
+**Cause:** Google's January 2026 granular-consent feature lets users toggle
+individual OAuth scopes at grant time. A user who declined one scope
+(or the admin narrowed the consent screen) triggers this when a tool that
+needs it is called.
+
+**Fix:**
+
+- Stdio: `google-chat-mcp logout && google-chat-mcp login --client-secret
+  ./client_secret.json`. The login flow requests the full scope set; the
+  user accepts the missing one on the consent screen.
+- HTTPS: tell the user to revoke the server at
+  https://myaccount.google.com/permissions (option A of "Revoking a user",
+  below), then re-connect the MCP client to re-do the OAuth flow.
+
+## Stdio: forgot `--client-secret` / can't find `client_secret.json`
+
+`google-chat-mcp login` without `--client-secret` (and no `GCM_CLIENT_SECRET`
+env var) exits with `error: --client-secret is required ...`.
+
+Re-download Desktop-app credentials from Google Cloud Console → APIs &
+Services → Credentials → your OAuth 2.0 Client ID → "DOWNLOAD JSON". Pass
+that path on login.
+
+## Stdio: lost `~/.config/google-chat-mcp/fernet.key`
+
+Without the matching Fernet key, `tokens.json` cannot be decrypted. Symptoms:
+`google-chat-mcp` or a tool call reports
+`Cannot decrypt tokens.json. Either the Fernet key changed or the file is corrupt`.
+
+**Fix:** `google-chat-mcp logout` (it tolerates the decrypt failure and
+deletes both files anyway), then `google-chat-mcp login --client-secret
+./client_secret.json`. A fresh Fernet key is generated on first login.
+
+## Fernet key compromised (HTTPS mode)
+
+Stored refresh tokens are encrypted at rest with Fernet. If the key leaks:
+
+1. Generate a new key: `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' > secrets/fernet_key`.
+2. `docker compose stop mcp`.
+3. Wipe the old encrypted store (tokens encrypted under the old key are
+   now unreadable anyway): `docker run --rm -v google-chat-mcp_mcp_data:/v alpine sh -c 'rm -rf /v/oauth_store/*'`.
+4. `docker compose up -d mcp`.
+5. Users re-auth on their next MCP-client interaction.
+
+Seamless rotation (no forced re-auth) requires a custom script that
+decrypts with the old key and re-encrypts with the new one — out of scope
+for v2. See "Rotating the Fernet key" below for the long form.
+
+## GCP client secret compromised
+
+The client secret in `secrets/google_client_secret` (HTTPS) or inside
+`client_secret.json` (stdio) must be rotated at Google and locally.
+
+1. Google Cloud Console → your OAuth 2.0 Client ID → "Reset Secret".
+2. Update locally:
+   - HTTPS: `printf '%s' 'new-secret' > secrets/google_client_secret && docker compose restart mcp`.
+   - Stdio: re-download `client_secret.json` with the new secret; each
+     user runs `google-chat-mcp logout && google-chat-mcp login
+     --client-secret <new-path>`.
+3. The old client secret is immediately invalid at Google — any refresh
+   attempts fail until users re-login.
+
+## Revoke an individual refresh token
+
+### Stdio (the user themselves)
+
+`google-chat-mcp logout` — POSTs the refresh token to Google's revoke
+endpoint and deletes local files.
+
+### HTTPS (admin, suspected compromise)
+
+1. Ask the user to revoke at https://myaccount.google.com/permissions (fastest path; works without admin access).
+2. If the user is unavailable, rotate the JWT signing key (option 1 under "Revoking a user" → Option B below) to invalidate every issued MCP bearer. All users reconnect on next call; this is a blast-radius trade-off.
 
 ## Onboarding the first user
 
