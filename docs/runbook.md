@@ -55,7 +55,7 @@ Stored refresh tokens are encrypted at rest with Fernet. If the key leaks:
 
 Seamless rotation (no forced re-auth) requires a custom script that
 decrypts with the old key and re-encrypts with the new one — out of scope
-for v2. See "Rotating the Fernet key" below for the long form.
+for this release. See "Rotating the Fernet key" below for the long form.
 
 ## GCP client secret compromised
 
@@ -98,13 +98,13 @@ through the OAuth flow on their first tool call.
 
 ### Option A — user-initiated (recommended)
 
-The user visits `https://myaccount.google.com/permissions`, finds the
-"MCP for Google Chat" app, and removes it. Google invalidates the
-refresh token immediately.
+The user visits `https://myaccount.google.com/permissions`, finds your
+Google app (whatever name you set on the OAuth consent screen), and
+removes it. Google invalidates the refresh token immediately.
 
 ### Option B — admin-forced, all users
 
-There is no reliable per-user wipe in v1: the OAuth proxy stores its state keyed by JWT `jti`, not by Google `sub`, so you cannot cleanly pick a single user's record from the key-value store without a lookup that this server doesn't expose.
+There is no reliable per-user wipe in this release: the OAuth proxy stores its state keyed by JWT `jti`, not by Google `sub`, so you cannot cleanly pick a single user's record from the key-value store without a lookup that this server doesn't expose.
 
 Two supported admin actions:
 
@@ -139,7 +139,7 @@ For targeted per-user revocation, prefer Option A.
 Stored refresh tokens are encrypted at rest with Fernet. Rotate on suspected
 compromise (or on whatever cadence your policy demands).
 
-**v1 does not support in-place rotation.** Rotating the key without re-encrypting the existing store invalidates every persisted upstream token; all users reconnect through OAuth on their next call. For a small single-workspace deployment this is usually acceptable — it's an interruption, not a data loss.
+**This release does not support in-place rotation.** Rotating the key without re-encrypting the existing store invalidates every persisted upstream token; all users reconnect through OAuth on their next call. For a small single-workspace deployment this is usually acceptable — it's an interruption, not a data loss.
 
 Procedure:
 
@@ -150,11 +150,11 @@ Procedure:
 5. `docker compose up -d mcp`.
 6. Users re-auth on their next MCP-client interaction.
 
-If you need seamless rotation (no forced reconnects), you'll have to write a re-encryption script yourself: iterate every file in `/var/lib/google-chat-mcp/oauth_store`, decrypt with the old key, re-encrypt with the new key, then swap keys. py-key-value's `FernetEncryptionWrapper` stores values as individual tokens so it's tractable. This is out of scope for v1.
+If you need seamless rotation (no forced reconnects), you'll have to write a re-encryption script yourself: iterate every file in `/var/lib/google-chat-mcp/oauth_store`, decrypt with the old key, re-encrypt with the new key, then swap keys. py-key-value's `FernetEncryptionWrapper` stores values as individual tokens so it's tractable. This is out of scope for this release.
 
 ## Backup and restore
 
-**v1 does not set up backups for you.** The app writes SQLite + KV store to the `mcp_data` Docker volume; nothing in this repo copies that volume anywhere else. Set up your own backup on the host — `docker run --rm -v google-chat-mcp_mcp_data:/src -v /your/backup/path:/dst alpine tar czf /dst/$(date +%F).tgz -C /src .` from cron is enough for most deployments.
+**This release does not set up backups for you.** The app writes SQLite + KV store to the `mcp_data` Docker volume; nothing in this repo copies that volume anywhere else. Set up your own backup on the host — `docker run --rm -v google-chat-mcp_mcp_data:/src -v /your/backup/path:/dst alpine tar czf /dst/$(date +%F).tgz -C /src .` from cron is enough for most deployments.
 
 Restore, assuming you have a tarball:
 

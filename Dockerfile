@@ -13,13 +13,9 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
-# .git/ is excluded from the build context, so hatch-vcs can't derive the
-# version at build time. Override via setuptools-scm's global fallback env
-# var (the per-package `_FOR_<NAME>` form gets dropped by uv's build
-# isolation — unknown why; the global form is fine here because the
-# container only builds one package). Placed AFTER the dependency sync so
-# bumping PACKAGE_VERSION only invalidates the project-install layer
-# below, not the expensive dependency layer above.
+# .git/ is not in the build context, so feed hatch-vcs the version via a
+# build-arg. Using the global SETUPTOOLS_SCM_PRETEND_VERSION because the
+# per-package `_FOR_<NAME>` form gets dropped by uv's build isolation.
 ARG PACKAGE_VERSION=0.0.0
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${PACKAGE_VERSION}
 

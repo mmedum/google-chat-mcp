@@ -44,13 +44,8 @@ google-chat-mcp = "src.stdio:main"
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
-# Between tags, wheels get a local-version suffix (`0.2.0+dev.12.g<sha>`)
-# so builds from untagged commits remain distinguishable.
 [tool.hatch.version]
 source = "vcs"
-
-[tool.hatch.build.hooks.vcs]
-version-file = "src/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
