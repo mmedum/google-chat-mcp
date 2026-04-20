@@ -43,6 +43,9 @@ Thumbs.db
 *.sqlite-wal
 *.sqlite-shm
 
+# hatch-vcs build output — version is derived from git tags, not committed.
+src/_version.py
+
 # Local tooling state (Claude Code + Entire)
 .claude/
 .entire/

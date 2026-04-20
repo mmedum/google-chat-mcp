@@ -1,6 +1,6 @@
 [project]
 name = "google-chat-mcp"
-version = "0.1.0"
+dynamic = ["version"]
 description = "MCP server exposing Google Chat to MCP-compatible clients."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -41,8 +41,20 @@ mcp-server-google-chat = "src.stdio:main"
 google-chat-mcp = "src.stdio:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+# ---------- hatch-vcs (dynamic version from git tag) ----------
+# Git tag is the source of truth for the package version. Tag as `vX.Y.Z`;
+# hatch-vcs strips the leading `v` and writes it into `src/_version.py` at
+# build time (gitignored). Between tags, builds get a local-version suffix
+# (`0.2.0+dev.12.g<sha>`) so wheels can be distinguished.
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

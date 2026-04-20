@@ -155,6 +155,16 @@ docker compose up -d
 docker compose logs -f mcp
 ```
 
+Or pull a published image instead of building locally:
+
+```bash
+docker pull ghcr.io/mmedum/google-chat-mcp:latest
+# or pin a version: ghcr.io/mmedum/google-chat-mcp:0.2.0
+```
+
+The image is multi-arch (`linux/amd64` + `linux/arm64`), published with SBOM
+and SLSA provenance attestations on every `v*.*.*` tag.
+
 ### 4. Connect your MCP client
 
 Add a custom connector at `https://chat-mcp.example.com/mcp`. The client
