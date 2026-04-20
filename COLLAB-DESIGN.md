@@ -38,10 +38,24 @@ common-denominator for local installs; HTTPS is how we reach the
 vendor-hosted surfaces. Neither mode substitutes for the other.
 
 Authentication is user-OAuth against Google. Each deployment brings its
-own Google OAuth client, marked Internal to the deployer's Workspace; no
-Google verification or CASA assessment is required at single-tenant
-scale. A multi-tenant SaaS variant is out of scope for the current
-iteration and tracked separately as M6.
+own Google OAuth client, marked Internal to the deployer's Workspace.
+Three deployment shapes fall out of that:
+
+| Shape | Users | Orgs | Google approval | Phase |
+| --- | --- | --- | --- | --- |
+| Stdio install | 1 | 1 | None | M1 |
+| Single-tenant HTTPS | many | 1 | None | already in repo |
+| Multi-tenant SaaS | many | many | Verification + CASA | M6 (deferred) |
+
+"Single-tenant" throughout this doc means *one Workspace, many users*
+— a Partisia-run HTTPS instance that any `@partisia.com` employee can
+authenticate against, with per-user token storage behind a domain
+allowlist (§9.2). It does *not* mean one user. The one-user case is
+the stdio install.
+
+Single-tenant HTTPS needs no Google approval because the OAuth client
+is Internal to the deployer's Workspace. Only M6 — serving users from
+orgs the operator doesn't own — triggers Google's review machinery.
 
 ## 2. Goals
 
