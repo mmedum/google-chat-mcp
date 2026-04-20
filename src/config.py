@@ -143,7 +143,13 @@ CHAT_SPACES_READONLY = "https://www.googleapis.com/auth/chat.spaces.readonly"
 # Retained for find_direct_message's create-on-miss path (spaces.setup).
 CHAT_SPACES_CREATE = "https://www.googleapis.com/auth/chat.spaces.create"
 CHAT_MEMBERSHIPS_READONLY = "https://www.googleapis.com/auth/chat.memberships.readonly"
+# Write-side membership scope: add_member / remove_member (v0.3.1).
+# Google sensitive tier; deployers re-consent on upgrade.
+CHAT_MEMBERSHIPS = "https://www.googleapis.com/auth/chat.memberships"
 DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
+# Consumer Gmail fallback for search_people (v0.3.1). Covers caller's own
+# contacts + "other contacts" auto-populated from interactions. Sensitive tier.
+CONTACTS_READONLY = "https://www.googleapis.com/auth/contacts.readonly"
 
 GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     OPENID_SCOPE,
@@ -155,5 +161,7 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     CHAT_SPACES_READONLY,
     CHAT_SPACES_CREATE,
     CHAT_MEMBERSHIPS_READONLY,
+    CHAT_MEMBERSHIPS,
     DIRECTORY_READONLY,
+    CONTACTS_READONLY,
 )
