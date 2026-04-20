@@ -25,16 +25,17 @@ codebase because no single transport reaches every client we care about:
   speak stdio (Claude web/Desktop/mobile), which they do via the
   custom-connector OAuth flow.
 
-Neither mode replaces the other. Together they cover every MCP client
-in use:
-
-| Client | Stdio mode | HTTPS mode |
+| Client | Preferred transport | Notes |
 | --- | --- | --- |
-| Claude Code | ✅ | ✅ (if configured for HTTP MCP) |
-| opencode, Cursor, Continue, Goose | ✅ | ✅ where the client supports HTTP MCP |
-| Claude Desktop | ✅ (local stdio) | ✅ (custom connector) |
-| Claude web | ❌ | ✅ (custom connector) |
-| Claude mobile | ❌ | ✅ (custom connector, inherited from account) |
+| Claude Code, opencode, Cursor, Continue, Goose | Stdio | Subprocess-spawning clients. A couple of them have recently added HTTP MCP support too, but HTTPS is still strictly more setup — it needs a running server, OAuth proxy, JWT key, and CORS — so stdio is the sensible default. |
+| Claude Desktop | Either | Stdio for local installs; custom connector for access to a hosted instance. |
+| Claude web, Claude mobile | HTTPS | Custom connector only. These clients phone home from Anthropic infrastructure and can't spawn a local process, so HTTPS is the only reachable mode. |
+
+In other words: HTTPS is *necessary* for Claude web/mobile but
+*sufficient* for none of the stdio-spawning clients without the user
+first standing up a reachable server. Stdio is the universal lowest-
+common-denominator for local installs; HTTPS is how we reach the
+vendor-hosted surfaces. Neither mode substitutes for the other.
 
 Authentication is user-OAuth against Google. Each deployment brings its
 own Google OAuth client, marked Internal to the deployer's Workspace; no
@@ -49,7 +50,8 @@ iteration and tracked separately as M6.
   reactions, member lookups, space metadata, self-identity, and
   space-scoped search.
 - Work in every MCP client Partisia engineers use: stdio-spawning CLIs
-  for Phase-1 work, custom connectors for Phase-2 surfaces.
+  (local installs, no hosting required) and custom connectors
+  (vendor-hosted clients like Claude web and mobile).
 - Remain client-agnostic: no hard-coded redirect URLs for a specific
   MCP host, no message-body mutation that leaks the client's identity.
 - Be deployable by any team or individual without rebuilding the
