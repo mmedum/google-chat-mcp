@@ -278,21 +278,43 @@ shape.
 
 Symptom: `search_people` for a known-present Workspace user returns an
 empty list or only `CONTACTS`-tagged hits, even though the target is
-clearly in the caller's domain directory.
+clearly in the caller's domain directory. Typical error in server
+logs: `people.searchDirectoryPeople returned 403: The G Suite domain
+admin has disabled external directory sharing`.
 
-**Cause:** `people:searchDirectoryPeople` respects the Workspace
-admin's **Directory sharing** toggle. If external data sharing is
-disabled (the post-2023 default for new Workspace orgs), the endpoint
-returns empty for regular (non-admin) callers. Google's
-`directory.readonly` scope grant is necessary but not sufficient — the
-domain admin has to flip the switch too.
+**Cause:** `people:searchDirectoryPeople` is gated by two *separate*
+admin settings — don't confuse them:
 
-**Fix (for the Workspace admin):**
-`admin.google.com → Apps → Google Workspace → Directory → Directory
-sharing → Contact sharing` → enable, with whichever of "Show all
-contact information" / "Show only domain-specific info" matches the
-org's policy. Wait a few minutes for propagation, then re-run
-`search_people` — DIRECTORY hits should appear.
+1. **Directory sharing → Contact sharing (internal)** — controls
+   whether domain members can see each other in directory search.
+   Enabling this is necessary but not sufficient for our MCP server.
+2. **External directory sharing** — governs whether third-party
+   OAuth apps (which is what our Cloud-project OAuth client is, from
+   Google's perspective) can read directory data on behalf of
+   authenticated users. The default **"Authenticated user basic
+   profile fields"** option only lets the app read the caller's OWN
+   profile — all profile info of other users in the organization is
+   withheld, which surfaces as zero-hit queries.
+
+**Fix — pick one (ranked by security posture, cleanest first):**
+
+1. **Allow-list the specific OAuth client.** `admin.google.com →
+   Security → API controls → App access control → Google Services →
+   Contacts API → "Restricted but trust this specific app"` and paste
+   the Cloud project's OAuth client ID. Surgical — only your MCP
+   server gets directory access; other OAuth apps stay restricted.
+2. **Widen external directory sharing.** `admin.google.com → Apps →
+   Google Workspace → Directory → Directory settings → External
+   directory sharing → Share all info` (or "Share only domain
+   profiles" if a narrower disclosure is preferred). Broadest fix;
+   opens directory reads to any OAuth app granted `directory.readonly`.
+3. **Accept the limitation.** `DIRECTORY` source returns empty for
+   non-self queries; CONTACTS fallback covers people the caller has
+   personally corresponded with. Document for callers.
+
+Propagation is typically 1-5 minutes. Verify with a fresh
+`search_people` call — `sources_succeeded` should now contain
+`"DIRECTORY"` and `people` should contain the teammate.
 
 **Workaround for non-admins:** fall back to `search_people` with
 `sources=["CONTACTS"]` — the caller's personal contacts + "other
