@@ -119,6 +119,33 @@ async def test_missing_scope_surfaces_as_tool_error_result_with_scope_url(
     assert "login" in text
 
 
+@pytest.mark.asyncio
+async def test_find_direct_message_rejects_invalid_email_at_tool_boundary(
+    mcp: FastMCP, mock_access_token
+) -> None:
+    """EmailStr on the find_direct_message tool wrapper blocks malformed inputs
+    at the MCP boundary, before the handler runs — so invalid emails never hit
+    Google's API as a 400 and the caller gets a Pydantic-shaped error instead.
+    """
+    with (
+        respx.mock(assert_all_called=False) as _route_mock,
+        mock_access_token(),
+    ):
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "find_direct_message",
+                {"user_email": "not-an-email"},
+                raise_on_error=False,
+            )
+    assert result.is_error is True
+    assert result.content
+    text = result.content[0].text
+    # Pydantic's EmailStr validator surfaces "email address" / "@" wording;
+    # either form of the message is acceptable — the point is that the tool
+    # layer rejected it, not Google.
+    assert "email" in text.lower() or "@" in text
+
+
 # ---------- resource wire shapes ----------
 
 

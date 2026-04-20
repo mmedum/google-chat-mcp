@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from pydantic import EmailStr
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
@@ -197,7 +198,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "openWorldHint": True,
         },
     )
-    async def find_direct_message(user_email: str) -> DirectMessageResult:
+    async def find_direct_message(user_email: EmailStr) -> DirectMessageResult:
         return await find_direct_message_handler(_require_ctx(state), user_email)
 
     @mcp.tool(
