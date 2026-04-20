@@ -272,6 +272,36 @@ def test_serve_without_tokens_exits_2(stdio_home: Path, capsys: pytest.CaptureFi
     assert "no local credentials" in err
 
 
+def test_serve_test_auth_stub_bypasses_token_store(
+    stdio_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With GCM_TEST_AUTH_STUB=1, cmd_serve skips the token-store load and
+    runs build_app with a fixed stub resolver. Integration-harness seam only —
+    the in-process path is covered here; the subprocess path is in
+    ``tests/test_integration_stdio.py``.
+    """
+    import argparse
+
+    monkeypatch.setenv("GCM_TEST_AUTH_STUB", "1")
+    monkeypatch.setenv("GCM_CHAT_API_BASE", "http://stub.invalid/v1")
+    monkeypatch.setenv("GCM_PEOPLE_API_BASE", "http://stub.invalid/v1")
+    # app.run blocks on real transport wiring; short-circuit to prove cmd_serve
+    # assembled the app successfully and returned.
+    with patch("fastmcp.FastMCP.run") as mock_run:
+        rc = stdio_mod.cmd_serve(argparse.Namespace())
+    assert rc == 0
+    assert mock_run.called
+
+
+@pytest.mark.asyncio
+async def test_stub_auth_resolver_returns_fixed_authinfo() -> None:
+    resolver = stdio_mod._stub_auth_resolver()
+    info = await resolver()
+    assert info.user_sub == "test-user"
+    assert info.access_token == "test-upstream-access-token"
+
+
 # ---------- resolver ----------
 
 
