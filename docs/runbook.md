@@ -274,4 +274,43 @@ above), and for destructive paths that depend on a reliable email
 match (`remove_member` in v0.3.1), only offering the by-resource-name
 shape.
 
+## search_people returns zero DIRECTORY hits for Workspace users
+
+Symptom: `search_people` for a known-present Workspace user returns an
+empty list or only `CONTACTS`-tagged hits, even though the target is
+clearly in the caller's domain directory.
+
+**Cause:** `people:searchDirectoryPeople` respects the Workspace
+admin's **Directory sharing** toggle. If external data sharing is
+disabled (the post-2023 default for new Workspace orgs), the endpoint
+returns empty for regular (non-admin) callers. Google's
+`directory.readonly` scope grant is necessary but not sufficient — the
+domain admin has to flip the switch too.
+
+**Fix (for the Workspace admin):**
+`admin.google.com → Apps → Google Workspace → Directory → Directory
+sharing → Contact sharing` → enable, with whichever of "Show all
+contact information" / "Show only domain-specific info" matches the
+org's policy. Wait a few minutes for propagation, then re-run
+`search_people` — DIRECTORY hits should appear.
+
+**Workaround for non-admins:** fall back to `search_people` with
+`sources=["CONTACTS"]` — the caller's personal contacts + "other
+contacts" auto-populated from Chat interactions. Coverage is narrower
+(only people the caller has actually corresponded with) but works
+regardless of Workspace-level directory-sharing posture.
+
+## search_people on consumer Gmail accounts
+
+Consumer `@gmail.com` accounts have no Workspace directory.
+`DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE` / `..._CONTACT` both 403 for
+these callers. `search_people` transparently drops the DIRECTORY
+source and returns only `CONTACTS` hits — inspect
+`sources_succeeded` on the result to confirm.
+
+No admin action is available. If a consumer-Gmail caller needs to
+resolve a Workspace user they've never corresponded with, the email
+has to be pasted manually — there is no other upstream path that
+respects the per-user privacy boundary.
+
 Point your uptime monitor at `/readyz`.

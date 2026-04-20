@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-21
+
+Adds membership mutation + people resolution. **Two new sensitive-tier OAuth
+scopes** in this release; deployers re-consent once.
+
+### Added
+- `add_member(space_id, user_email, dry_run)` — invite a user to a space via
+  `spaces.members.create`. 409 `ALREADY_EXISTS` from Google surfaces as a
+  `ToolError` naming the user (not an idempotent success — the existing
+  membership_name belongs to the original inviter and would mislead callers).
+- `remove_member(membership_name, dry_run)` — delete a membership by full
+  resource name. Idempotent: double-delete returns `removed=false` on 404
+  NOT_FOUND or 403 PERMISSION_DENIED. Missing-scope 403s are excluded from
+  the idempotent path so callers still see the re-auth prompt. There is no
+  email-filter shape — non-self People API resolution is unreliable (see
+  the runbook's People API caveats), so an email-based lookup would
+  silently miss the target.
+- `search_people(query, limit, sources)` — hybrid lookup over Workspace
+  directory (`people:searchDirectoryPeople`) + caller's contacts
+  (`people:searchContacts`). Runs both sources in parallel via
+  `asyncio.gather` by default; sources tagged per hit. Workspace-profile
+  hits back-fill the DirectoryCache so later `get_messages` /
+  `list_members` resolve `sender_email` without another People API call.
+  Contact-ID hits surface but do NOT back-fill — different namespace,
+  would poison `users/{id}` lookups.
+
+### Changed (breaking for deployers)
+- **OAuth scopes**: two new entries in `GOOGLE_OAUTH_SCOPES`.
+  - `https://www.googleapis.com/auth/chat.memberships` (sensitive tier) —
+    `add_member` + `remove_member`.
+  - `https://www.googleapis.com/auth/contacts.readonly` (sensitive tier) —
+    `search_people` consumer-Gmail fallback.
+
+  Every HTTPS deployer updates the OAuth consent screen; every user
+  re-consents on next MCP call. Stdio users re-run `google-chat-mcp logout &&
+  google-chat-mcp login`.
+- **Internal Workspace apps (`External → Internal` in the OAuth consent
+  screen) skip Google's sensitive-tier verification entirely.** Deployers
+  publishing internally — the primary audience — don't file paperwork;
+  just declare the scopes.
+
+### Documented
+- `docs/runbook.md`: new "search_people: directory sharing must be enabled
+  by Workspace admin" and "consumer Gmail fallback path" sections. Admin
+  action (`admin.google.com → Apps → Google Workspace → Directory →
+  Directory sharing`) is required for `DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE`
+  to return non-empty results for non-admin users.
+- `docs/gcp-setup.md`: updated scope list.
+
 ## [0.3.0] - 2026-04-20
 
 Adds two space-creation tools on the existing `chat.spaces.create` scope.
@@ -154,7 +203,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0

@@ -13,7 +13,7 @@ prompts in your MCP client of choice.
 Two transports ship in this repo:
 
 - **Stdio** (recommended for individual users) — install from source with
-  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.0`,
+  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.1`,
   run a one-time OAuth login against your own Google account, then launch
   the server as a subprocess under Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
@@ -35,6 +35,9 @@ service accounts, no domain-wide delegation, no publishing step.
 | `get_messages` | Read recent messages, newest-first. Senders resolved via People API (24h cache) | `chat.messages.readonly` |
 | `get_space` | Fetch one space by ID | `chat.spaces.readonly` |
 | `list_members` | Humans + groups in a space; humans resolved to email via People API | `chat.memberships.readonly` + `directory.readonly` |
+| `add_member` | Invite a user to a space by email; `ToolError` on duplicate; `dry_run` previews | `chat.memberships` |
+| `remove_member` | Delete a membership by resource name; idempotent (`removed=false` on re-delete) | `chat.memberships` |
+| `search_people` | Hybrid lookup over Workspace directory + caller contacts; back-fills the email cache | `directory.readonly` + `contacts.readonly` |
 | `whoami` | Authenticated user's identity (sub, email, display name) via OIDC `/userinfo` | `openid email profile` |
 | `get_thread` | All messages in one thread, oldest-first | `chat.messages.readonly` |
 | `get_message` | One message by resource name, with reaction summaries inline | `chat.messages.readonly` |
@@ -87,7 +90,7 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 
 ```bash
 # From a tagged release (preferred):
-uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.0
+uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.1
 
 # Or from a local clone for dev / custom builds:
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
