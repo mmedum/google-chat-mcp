@@ -9,29 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.1] - 2026-04-21
 
-Adds membership mutation + people resolution. **Two new sensitive-tier OAuth
-scopes** in this release; deployers re-consent once.
+Adds five new tools — space creation, membership mutation, and people
+resolution — plus the integration-test harness that landed ahead of the
+release. **Two new sensitive-tier OAuth scopes** in this release; deployers
+re-consent once. Supersedes an unreleased [0.3.0] cut that only covered
+space creation; the combined surface ships as a single version.
 
 ### Added
-- `add_member(space_id, user_email, dry_run)` — invite a user to a space via
-  `spaces.members.create`. 409 `ALREADY_EXISTS` from Google surfaces as a
-  `ToolError` naming the user (not an idempotent success — the existing
-  membership_name belongs to the original inviter and would mislead callers).
-- `remove_member(membership_name, dry_run)` — delete a membership by full
-  resource name. Idempotent: double-delete returns `removed=false` on 404
-  NOT_FOUND or 403 PERMISSION_DENIED. Missing-scope 403s are excluded from
-  the idempotent path so callers still see the re-auth prompt. There is no
-  email-filter shape — non-self People API resolution is unreliable (see
-  the runbook's People API caveats), so an email-based lookup would
-  silently miss the target.
+- `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
+  (`spaceType=GROUP_CHAT`). `member_emails` excludes the caller; 2-20
+  members (self-imposed UX cap; Google's real limit is 49). No new scope
+  — uses the existing `chat.spaces.create`.
+- `create_space(member_emails, display_name, dry_run)` — named space
+  (`spaceType=SPACE`); 1-20 initial members; `display_name` required.
+  Same scope as above.
+- `add_member(space_id, user_email, dry_run)` — invite a user to a space
+  via `spaces.members.create`. 409 `ALREADY_EXISTS` from Google surfaces
+  as a `ToolError` naming the user (not an idempotent success — the
+  existing membership_name belongs to the original inviter and would
+  mislead callers).
+- `remove_member(membership_name, dry_run)` — delete a membership by
+  full resource name. Idempotent: double-delete returns `removed=false`
+  on 404 NOT_FOUND or 403 PERMISSION_DENIED. Missing-scope 403s are
+  excluded from the idempotent path so callers still see the re-auth
+  prompt. There is no email-filter shape — non-self People API
+  resolution is unreliable (see the runbook's People API caveats), so
+  an email-based lookup would silently miss the target.
 - `search_people(query, limit, sources)` — hybrid lookup over Workspace
   directory (`people:searchDirectoryPeople`) + caller's contacts
   (`people:searchContacts`). Runs both sources in parallel via
   `asyncio.gather` by default; sources tagged per hit. Workspace-profile
-  hits back-fill the DirectoryCache so later `get_messages` /
+  hits back-fill the `DirectoryCache` so later `get_messages` /
   `list_members` resolve `sender_email` without another People API call.
   Contact-ID hits surface but do NOT back-fill — different namespace,
   would poison `users/{id}` lookups.
+- **Integration test harness** (merged in PR #13 ahead of this release):
+  HTTPS and stdio transports now exercised end-to-end in CI; stdout-
+  hygiene regression guard covers the full stdio serve path.
 
 ### Changed (breaking for deployers)
 - **OAuth scopes**: two new entries in `GOOGLE_OAUTH_SCOPES`.
@@ -49,6 +63,10 @@ scopes** in this release; deployers re-consent once.
   just declare the scopes.
 
 ### Documented
+- `docs/runbook.md`: new "People API non-self resolution caveats" section
+  — non-self Workspace users return `email=null, display_name=null` in
+  practice; affects `remove_reaction`'s filter path and `sender_email`
+  nullability throughout the read-side tools.
 - `docs/runbook.md`: new "search_people: directory sharing must be enabled
   by Workspace admin" and "consumer Gmail fallback path" sections. Admin
   action (`admin.google.com → Apps → Google Workspace → Directory →
@@ -56,32 +74,14 @@ scopes** in this release; deployers re-consent once.
   to return non-empty results for non-admin users.
 - `docs/gcp-setup.md`: updated scope list.
 
-## [0.3.0] - 2026-04-20
-
-Adds two space-creation tools on the existing `chat.spaces.create` scope.
-**No new OAuth scope** — deployers don't re-consent.
-
-### Added
-- `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
-  (`spaceType=GROUP_CHAT`). `member_emails` excludes the caller; 2-20
-  members (self-imposed UX cap; Google's real limit is 49).
-- `create_space(member_emails, display_name, dry_run)` — named space
-  (`spaceType=SPACE`); 1-20 initial members; `display_name` required.
-- **Integration test harness** (merged in PR #13 ahead of this release):
-  HTTPS and stdio transports now exercised end-to-end in CI; stdout-hygiene
-  regression guard covers the full stdio serve path.
-
-### Documented
-- `docs/runbook.md` — People API non-self resolution caveats. Non-self
-  Workspace users return `email=null, display_name=null` in practice;
-  affects `remove_reaction`'s filter path and `sender_email` nullability
-  throughout the read-side tools.
-
 ### Internal
 - `ChatClient.create_dm` is now a thin delegate over an internal
   `_setup_space` + pure `_build_setup_space_body` helper. `displayName`
   is included in the request body only when `space_type == "SPACE"`;
   Google 400s otherwise.
+- `DirectoryCache.put_many` + `workspace_user_id` helper — bulk writer
+  keyed on `users/{id}` with a regex gate that filters contact-ID
+  resource names before any cache write.
 
 ## [0.2.1] - 2026-04-20
 
@@ -204,7 +204,6 @@ per-user OAuth end-to-end. First public release with a published Docker image.
   no longer crash on first `serve`.
 
 [Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.1...HEAD
-[0.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.0
+[0.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.1
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
