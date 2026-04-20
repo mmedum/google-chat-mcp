@@ -34,20 +34,20 @@ async def test_directory_hit_populates_result_and_cache(
                 200,
                 json={
                     "people": [
-                        _person("people/109876543210", "jesper@example.com", "Jesper"),
+                        _person("people/109876543210", "janedoe@example.com", "Jane Doe"),
                     ]
                 },
             )
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="jesper", sources=["DIRECTORY"]),
+            SearchPeopleInput(query="janedoe", sources=["DIRECTORY"]),
         )
     assert result.total_returned == 1
     assert result.sources_succeeded == ["DIRECTORY"]
     hit = result.people[0]
-    assert hit.email == "jesper@example.com"
-    assert hit.display_name == "Jesper"
+    assert hit.email == "janedoe@example.com"
+    assert hit.display_name == "Jane Doe"
     assert hit.user_id == "users/109876543210"
     assert hit.source == "DIRECTORY"
 
@@ -56,8 +56,8 @@ async def test_directory_hit_populates_result_and_cache(
     cached = await tool_ctx.directory_cache.get("users/109876543210")
     assert cached is not None
     email, display_name = cached
-    assert email == "jesper@example.com"
-    assert display_name == "Jesper"
+    assert email == "janedoe@example.com"
+    assert display_name == "Jane Doe"
 
 
 @pytest.mark.asyncio
@@ -73,17 +73,19 @@ async def test_contact_id_results_do_not_poison_cache(
             return_value=httpx.Response(
                 200,
                 json={
-                    "results": [{"person": _person("people/c1234abcd", "kim@example.com", "Kim")}]
+                    "results": [
+                        {"person": _person("people/c1234abcd", "johndoe@example.com", "John Doe")}
+                    ]
                 },
             )
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="kim", sources=["CONTACTS"]),
+            SearchPeopleInput(query="johndoe", sources=["CONTACTS"]),
         )
     assert result.total_returned == 1
     hit = result.people[0]
-    assert hit.email == "kim@example.com"
+    assert hit.email == "johndoe@example.com"
     assert hit.user_id is None  # contact IDs don't round-trip
     assert hit.source == "CONTACTS"
 
@@ -201,16 +203,18 @@ async def test_directory_sharing_disabled_degrades_to_contacts(
         mock.get(url__regex=r".*people:searchContacts.*").mock(
             return_value=httpx.Response(
                 200,
-                json={"results": [{"person": _person("people/c1", "jg@example.com", "Jesper")}]},
+                json={
+                    "results": [{"person": _person("people/c1", "janedoe@example.com", "Jane Doe")}]
+                },
             )
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="jesper"),  # ty: ignore[missing-argument]
+            SearchPeopleInput(query="janedoe"),  # ty: ignore[missing-argument]
         )
     assert result.sources_succeeded == ["CONTACTS"]
     assert result.total_returned == 1
-    assert result.people[0].email == "jg@example.com"
+    assert result.people[0].email == "janedoe@example.com"
 
 
 @pytest.mark.asyncio

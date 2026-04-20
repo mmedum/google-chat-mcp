@@ -308,7 +308,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "tagged with the `source` that produced it. Workspace hits "
             "back-fill the directory cache so later `get_messages` / "
             "`list_members` resolve `sender_email` without another API call. "
-            'Use this to turn `"jesper"` into an email before calling '
+            "Use this to turn a name fragment into an email before calling "
             "`create_group_chat`, `add_member`, or `send_message`."
         ),
         annotations={"readOnlyHint": True, "openWorldHint": True},
