@@ -1,12 +1,14 @@
 services:
   mcp:
-    # Default: build from the local Dockerfile (useful for dev). To consume
-    # the published image instead, comment out the `build:` block and set
-    # `image: ghcr.io/mmedum/google-chat-mcp:0.2.0` (or `:latest`) below.
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: google-chat-mcp:local
+    # Default: pull the published multi-arch image. The `:0.2` tag auto-
+    # floats within the 0.2.x patch line — pin to `:0.2.0` for strict
+    # reproducibility, or use `:latest` to follow the default branch.
+    # For local dev builds, comment the `image:` line out and uncomment
+    # the `build:` block below.
+    image: ghcr.io/mmedum/google-chat-mcp:0.2
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "8000:8000"
