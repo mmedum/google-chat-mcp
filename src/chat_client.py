@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Literal, Self
 from urllib.parse import urlencode
@@ -22,6 +22,11 @@ from .observability import (
     mcp_google_api_calls_total,
     mcp_google_api_latency_seconds,
 )
+
+# Query-param shapes httpx accepts. A mapping covers the common case; a
+# sequence of tuples is needed when a single key repeats (Google's
+# searchDirectoryPeople uses `sources` twice for profile + domain-contact).
+_QueryParams = Mapping[str, str] | Sequence[tuple[str, str]]
 
 
 class ChatApiError(RuntimeError):
@@ -349,6 +354,26 @@ class ChatClient:
         )
         return data.get("messages", [])[:limit]
 
+    # ---------- Memberships ----------
+
+    async def add_member(self, access_token: str, space_id: str, user_email: str) -> dict[str, Any]:
+        """Invite a user to a space via `spaces.members.create`."""
+        body = _build_add_member_body(user_email=user_email)
+        return await self._post(
+            f"{self._base_chat}/{space_id}/members",
+            access_token=access_token,
+            json=body,
+            endpoint_label="spaces.members.create",
+        )
+
+    async def remove_member(self, access_token: str, membership_name: str) -> dict[str, Any]:
+        """Remove a membership by full resource name via `spaces.members.delete`."""
+        return await self._delete(
+            f"{self._base_chat}/{membership_name}",
+            access_token=access_token,
+            endpoint_label="spaces.members.delete",
+        )
+
     # ---------- People ----------
 
     async def resolve_person(self, access_token: str, user_id: str) -> dict[str, Any] | None:
@@ -360,6 +385,64 @@ class ChatClient:
             params={"personFields": "emailAddresses,names"},
             endpoint_label="people.get",
         )
+
+    async def search_directory_people(
+        self, access_token: str, query: str, limit: int
+    ) -> list[dict[str, Any]]:
+        """Search the caller's Workspace directory via `people:searchDirectoryPeople`.
+
+        `sources[]` is REQUIRED by Google — omitting it returns 400. We pass
+        both `DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE` (Workspace members) and
+        `DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT` (domain-shared external
+        contacts) so the same call covers both directory populations.
+        """
+        params: list[tuple[str, str]] = [
+            ("query", query),
+            ("readMask", "emailAddresses,names"),
+            ("pageSize", str(min(limit, 500))),
+            ("sources", "DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"),
+            ("sources", "DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT"),
+        ]
+        data = await self._get(
+            f"{self._base_people}/people:searchDirectoryPeople",
+            access_token=access_token,
+            params=params,
+            endpoint_label="people.searchDirectoryPeople",
+        )
+        people = data.get("people", [])
+        return people if isinstance(people, list) else []
+
+    async def search_contacts(
+        self, access_token: str, query: str, limit: int
+    ) -> list[dict[str, Any]]:
+        """Search the caller's own contacts via `people:searchContacts`.
+
+        This is the consumer-Gmail fallback for `search_people`: it matches
+        the caller's personal contact list plus "other contacts"
+        auto-populated from interactions. Returns `Person` objects wrapped
+        in `{person: ...}` entries — we unwrap here so the result shape
+        matches `search_directory_people`.
+        """
+        data = await self._get(
+            f"{self._base_people}/people:searchContacts",
+            access_token=access_token,
+            params={
+                "query": query,
+                "readMask": "emailAddresses,names",
+                "pageSize": str(min(limit, 30)),
+            },
+            endpoint_label="people.searchContacts",
+        )
+        raw = data.get("results", [])
+        if not isinstance(raw, list):
+            return []
+        people: list[dict[str, Any]] = []
+        for entry in raw:
+            if isinstance(entry, dict):
+                person = entry.get("person")
+                if isinstance(person, dict):
+                    people.append(person)
+        return people
 
     # ---------- OIDC / identity ----------
 
@@ -410,7 +493,7 @@ class ChatClient:
         self,
         url: str,
         access_token: str,
-        params: Mapping[str, str] | None = None,
+        params: _QueryParams | None = None,
         endpoint_label: str = "",
     ) -> dict[str, Any] | None:
         """GET that converts upstream 404 into None; other errors re-raise."""
@@ -430,7 +513,7 @@ class ChatClient:
         self,
         url: str,
         access_token: str,
-        params: Mapping[str, str] | None = None,
+        params: _QueryParams | None = None,
         endpoint_label: str = "",
     ) -> dict[str, Any]:
         return await self._request(
@@ -442,7 +525,7 @@ class ChatClient:
         url: str,
         access_token: str,
         json: Mapping[str, Any],
-        params: Mapping[str, str] | None = None,
+        params: _QueryParams | None = None,
         endpoint_label: str = "",
     ) -> dict[str, Any]:
         return await self._request(
@@ -473,7 +556,7 @@ class ChatClient:
         url: str,
         access_token: str,
         json: Mapping[str, Any] | None = None,
-        params: Mapping[str, str] | None = None,
+        params: _QueryParams | None = None,
         endpoint_label: str = "",
     ) -> dict[str, Any]:
         headers = {
@@ -490,7 +573,7 @@ class ChatClient:
                     method,
                     url,
                     headers=headers,
-                    params=params,
+                    params=params,  # ty: ignore[invalid-argument-type]
                     json=json,
                 )
             mcp_google_api_calls_total.labels(endpoint_label, str(resp.status_code)).inc()
@@ -521,6 +604,15 @@ class ChatClient:
                 google_status=google_status,
                 google_reason=google_reason,
             )
+
+
+def _build_add_member_body(*, user_email: str) -> dict[str, Any]:
+    """Pure builder for the `spaces.members.create` request body.
+
+    Shared by the real POST path and `add_member`'s dry_run branch — same
+    dry/real-parity pattern as `_build_send_message_body`.
+    """
+    return {"member": {"name": f"users/{user_email}", "type": "HUMAN"}}
 
 
 def _build_setup_space_body(
@@ -613,10 +705,12 @@ def _parse_error_payload(resp: httpx.Response) -> tuple[str, str | None, str | N
     return message, status, reason
 
 
-def _scrub_query(url: str, params: Mapping[str, str] | None) -> str:
+def _scrub_query(url: str, params: _QueryParams | None) -> str:
     if not params:
         return url
-    return f"{url}?{urlencode({k: v for k, v in params.items() if k != 'access_token'})}"
+    pairs = params.items() if isinstance(params, Mapping) else params
+    safe = [(k, v) for k, v in pairs if k != "access_token"]
+    return f"{url}?{urlencode(safe)}"  # ty: ignore[invalid-argument-type]
 
 
 @asynccontextmanager

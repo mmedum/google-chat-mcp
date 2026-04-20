@@ -24,6 +24,8 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from .chat_client import ChatClient
 from .config import Settings
 from .models import (
+    AddMemberInput,
+    AddMemberResult,
     AddReactionInput,
     AddReactionResult,
     ChatMessage,
@@ -41,10 +43,14 @@ from .models import (
     Member,
     MessageDetails,
     MessageId,
+    RemoveMemberInput,
+    RemoveMemberResult,
     RemoveReactionInput,
     RemoveReactionResult,
     SearchMessagesInput,
     SearchMessagesResult,
+    SearchPeopleInput,
+    SearchPeopleResult,
     SendMessageInput,
     SendMessageResult,
     SpaceDetails,
@@ -65,6 +71,7 @@ from .resources import (
 )
 from .storage import Database, lifespan_database, prune_audit_log
 from .tools import (
+    add_member_handler,
     add_reaction_handler,
     create_group_chat_handler,
     create_space_handler,
@@ -76,8 +83,10 @@ from .tools import (
     list_members_handler,
     list_reactions_handler,
     list_spaces_handler,
+    remove_member_handler,
     remove_reaction_handler,
     search_messages_handler,
+    search_people_handler,
     send_message_handler,
     whoami_handler,
 )
@@ -247,6 +256,65 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def create_space(payload: CreateSpaceInput) -> CreateSpaceResult:
         return await create_space_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="add_member",
+        title="Add a member to a space",
+        description=(
+            "Invite a Google Workspace user into a space by email. Idempotent-"
+            "adjacent: if the user is already a member, returns a `ToolError` "
+            "naming them (not a silent success — the existing membership_name "
+            "belongs to the original inviter). Set `dry_run=true` to preview "
+            "the request body."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    )
+    async def add_member(payload: AddMemberInput) -> AddMemberResult:
+        return await add_member_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="remove_member",
+        title="Remove a member from a space",
+        description=(
+            "Remove a membership by its full resource name "
+            "(`spaces/{space}/members/{member}`). Idempotent: double-delete "
+            "returns `removed=false` rather than erroring. Fetch the "
+            "membership_name via `list_members` first — there is no "
+            "email-filter shape, since non-self People API resolution is "
+            "unreliable and would silently miss the target."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
+    async def remove_member(payload: RemoveMemberInput) -> RemoveMemberResult:
+        return await remove_member_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="search_people",
+        title="Search people by name or email",
+        description=(
+            "Hybrid lookup across the caller's Workspace directory "
+            "(`searchDirectoryPeople`) and personal contacts "
+            "(`searchContacts`). Returns up to `limit` hits; each hit is "
+            "tagged with the `source` that produced it. Workspace hits "
+            "back-fill the directory cache so later `get_messages` / "
+            "`list_members` resolve `sender_email` without another API call. "
+            'Use this to turn `"jesper"` into an email before calling '
+            "`create_group_chat`, `add_member`, or `send_message`."
+        ),
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+    )
+    async def search_people(payload: SearchPeopleInput) -> SearchPeopleResult:
+        return await search_people_handler(_require_ctx(state), payload)
 
     @mcp.tool(
         name="send_message",

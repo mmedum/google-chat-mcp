@@ -112,6 +112,89 @@ class CreateSpaceResult(_Strict):
     rendered_payload: dict[str, Any] | None = None
 
 
+class AddMemberInput(_Strict):
+    space_id: SpaceId
+    user_email: EmailStr
+    dry_run: bool = False
+
+
+class AddMemberResult(_Strict):
+    membership_name: MembershipName | None = None
+    """None on dry-run; set on a real post."""
+    space_id: SpaceId
+    user_email: EmailStr
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
+class RemoveMemberInput(_Strict):
+    """Single shape only (membership_name). Email-filter path is not exposed
+    because Google's People API returns email=null for non-self users in
+    practice (see memory/project_people_api_resolution.md), which would
+    silently fail the match and return removed=false even when present.
+    Callers fetch membership_name via list_members first.
+    """
+
+    membership_name: MembershipName
+    dry_run: bool = False
+
+
+class RemoveMemberResult(_Strict):
+    membership_name: MembershipName
+    removed: bool
+    """False when the membership was already gone (404/NOT_FOUND idempotency)."""
+    dry_run: bool = False
+
+
+PeopleSearchSource = Literal["DIRECTORY", "CONTACTS"]
+
+
+def _default_search_sources() -> list[PeopleSearchSource]:
+    return ["DIRECTORY", "CONTACTS"]
+
+
+class SearchPeopleInput(_Strict):
+    query: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    limit: Annotated[int, Field(ge=1, le=100)] = 10
+    sources: Annotated[
+        list[PeopleSearchSource],
+        Field(min_length=1, max_length=2, default_factory=_default_search_sources),
+    ]
+    """Which upstream to query. DIRECTORY hits searchDirectoryPeople
+    (Workspace domain); CONTACTS hits searchContacts (caller's own
+    contacts). Default runs both in parallel so both Workspace and
+    consumer Gmail deployers get useful results."""
+
+
+class PersonHit(_Strict):
+    """One hit from a search_people call.
+
+    `user_id` is set (`users/{id}`) only when the upstream hit resolves to
+    a Workspace profile ID that shares the Chat API namespace. Contact-ID
+    hits from searchContacts surface email+display_name but user_id=None
+    since the `people/c{id}` namespace doesn't round-trip to
+    `sender.name` in Chat messages.
+    """
+
+    user_id: UserId | None
+    email: EmailStr | None
+    display_name: str | None
+    source: PeopleSearchSource
+
+
+class SearchPeopleResult(_Strict):
+    people: list[PersonHit]
+    total_returned: Annotated[int, Field(ge=0)]
+    """Unique hits after cross-source dedupe (people.len())."""
+    sources_attempted: list[PeopleSearchSource]
+    sources_succeeded: list[PeopleSearchSource]
+    """When a source is in `attempted` but not `succeeded`, the upstream
+    returned an error (missing scope, empty directory, etc) and the hit
+    list was built from the remaining source only. Non-fatal — an empty
+    result is preferable to a ToolError since LLM callers will retry
+    with broader queries."""
+
+
 class SendMessageInput(_Strict):
     space_id: SpaceId
     text: Annotated[str, StringConstraints(min_length=1, max_length=4096)]

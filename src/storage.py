@@ -6,12 +6,36 @@ store wrapped in Fernet encryption, managed entirely by FastMCP's GoogleProvider
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import re
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
+
+# Workspace profile IDs are numeric — the same namespace as Chat's users/{id}.
+# Contact IDs from searchContacts are "people/c{hex}" which DO NOT round-trip
+# to users/{id}; writing them would poison the cache for later sender lookups.
+# This gate filters resourceName before any cache write.
+_WORKSPACE_PERSON_ID = re.compile(r"^people/(\d+)$")
+
+
+def workspace_user_id(resource_name: str) -> str | None:
+    """Translate `people/{numeric}` → `users/{numeric}` or return None.
+
+    The numeric Workspace profile ID is the one resource shape that shares
+    a namespace with Chat's `sender.name = users/{id}`. `people/c{hex}`
+    contact IDs do NOT round-trip — they belong to the caller's personal
+    contact list, not Chat. Callers use this helper both to decide
+    whether to surface a `user_id` on search results and to gate cache
+    writes; the SQL cache enforces it again on write as a belt-and-suspenders.
+    """
+    match = _WORKSPACE_PERSON_ID.match(resource_name)
+    if match is None:
+        return None
+    return f"users/{match.group(1)}"
+
 
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
@@ -125,6 +149,37 @@ class DirectoryCache:
                 (user_id, email, display_name),
             )
 
+    async def put_many(self, entries: Iterable[tuple[str, str, str | None]]) -> int:
+        """Bulk-write a list of `(resource_name, email, display_name)` tuples.
+
+        Gates each `resource_name` through `^people/\\d+$` — only Workspace
+        profile IDs round-trip to Chat's `users/{id}` namespace. Contact IDs
+        (`people/c{hex}`) from searchContacts are skipped; writing them would
+        cause a later `sender.name = users/{id}` lookup to miss (or worse,
+        match the wrong identity). Returns the count of rows actually written.
+        """
+        rows: list[tuple[str, str, str | None]] = []
+        for resource_name, email, display_name in entries:
+            user_id = workspace_user_id(resource_name)
+            if user_id is None:
+                continue
+            rows.append((user_id, email, display_name))
+        if not rows:
+            return 0
+        async with self._db.cursor() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO user_directory (user_id, email, display_name, fetched_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    email = excluded.email,
+                    display_name = excluded.display_name,
+                    fetched_at = CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
+        return len(rows)
+
 
 def _parse_sqlite_ts(raw: str) -> datetime:
     # SQLite's CURRENT_TIMESTAMP emits "YYYY-MM-DD HH:MM:SS" without tz.
@@ -146,5 +201,6 @@ __all__ = [
     "DirectoryCache",
     "lifespan_database",
     "prune_audit_log",
+    "workspace_user_id",
     "write_audit_row",
 ]
