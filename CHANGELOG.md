@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-21
+
+Closes the last high-value gap in the per-user-OAuth Chat API surface
+(`update_space`) and widens Python support for mainstream deployer
+installs. Ships alongside two scope-correctness fixes surfaced by a
+pre-release audit, a Code of Conduct, and a versioning policy — the
+final pre-1.0 maturity pass.
+
+### Added
+
+- **`update_space`** — rename a space or edit its description via
+  `spaces.patch`. Accepts any combination of `display_name` (1-128 chars)
+  and `description` (≤150 chars); at least one must be set. Supports
+  `dry_run=true` for preview-without-post, same parity contract as
+  `send_message` / `update_message`. Tool surface is now 21 tools.
+  (`src/tools/update_space.py`, `src/chat_client.py::update_space`,
+  `src/models.py::UpdateSpaceInput` + `UpdateSpaceResult`).
+
+### Changed (breaking for deployers)
+
+- **New `chat.spaces` umbrella scope required** for `update_space`.
+  Google's `spaces.patch` accepts only the umbrella under user OAuth —
+  the granular `chat.spaces.create` / `chat.spaces.readonly` we already
+  hold do **not** cover patch. Existing deployers must re-consent (stdio:
+  `google-chat-mcp logout && google-chat-mcp login`; HTTPS: re-consent
+  in your MCP client) or `update_space` will 403 with the scope-named
+  re-auth prompt. `chat.spaces` is in Google's **restricted tier**,
+  joining `chat.messages` (added in v0.3.2) — Internal Workspace apps
+  skip verification; Externally-published apps' existing CASA review
+  covers the new scope (single CASA per Cloud project, no additional
+  fee). See `docs/runbook.md` for the opt-out path.
+- **Python 3.12+ required.** `requires-python` widened from
+  `>=3.14,<3.15` to `>=3.12,<3.15`; `[tool.ruff] target-version` lowered
+  to `py312` to match. CI exercises 3.12 / 3.13 / 3.14 in a matrix. The
+  shipped Docker image stays on `python:3.14-slim`; the widening
+  benefits `uv tool install` on mainstream distros (Ubuntu 24.04 ships
+  3.12 default; RHEL 9 + Debian 13 have 3.12/3.13 available).
+
+### Fixed
+
+- **`find_direct_message` no longer masks missing-scope 403s, and now
+  names the correct scope.** Pre-fix, the create-on-miss path
+  (`spaces.setup`, requires `chat.spaces.create`) wrapped every
+  `ChatApiError` into a generic "is the user in your Workspace
+  directory?" `ToolError` — hiding the scope-specific re-auth prompt a
+  deployer without `chat.spaces.create` would need. Now the handler
+  detects missing-scope on the create path and raises a `ToolError`
+  naming `chat.spaces.create` directly, rather than relying on
+  `invoke_tool`'s generic wrapper (which would have named the
+  pre-flight tag `chat.spaces.readonly` — wrong scope, misleading
+  re-auth prompt). (`src/tools/find_direct_message.py`).
+- **`list_reactions` scope tag corrected** from
+  `chat.messages.readonly` (restricted tier) to `chat.messages.reactions`
+  (sensitive tier). The narrower scope also permits
+  `spaces.messages.reactions.list`, and using it in the missing-scope
+  re-auth prompt keeps deployers who declined the restricted umbrella
+  inside the sensitive tier. No granted-scope change.
+  (`src/tools/list_reactions.py`).
+
+### Documented
+
+- **`CODE_OF_CONDUCT.md`** — Contributor Covenant 3.0 with the default
+  enforcement ladder; reports go to the maintainer via email or GitHub
+  security advisory.
+- **`README.md`** gains a "Versioning and support" section: tool names
+  and I/O shapes are semver-stable from v1.0; breaking changes get a
+  major bump and at least one minor-version deprecation warning.
+- **`docs/runbook.md`** — restricted-tier scope section now covers both
+  `chat.messages` and `chat.spaces`; adds a "sender_email / display_name
+  are null on non-self users" section documenting the People API
+  limitation that was previously implicit.
+- **`docs/gcp-setup.md`** — scope paste-list includes `chat.spaces`;
+  restricted-tier note updated.
+
+### Internal
+
+- Renamed `_is_missing_scope_error` → `is_missing_scope_error`
+  (`src/tools/_common.py`). The function was already imported by four
+  modules across the codebase; dropping the leading underscore makes
+  the cross-module import an explicit public API instead of a
+  private-namespace reach.
+
 ## [0.3.3] - 2026-04-21
 
 Security release. Closes 2 High and 5 Medium findings from a comprehensive
@@ -294,7 +376,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.3
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0

@@ -61,6 +61,7 @@ https://www.googleapis.com/auth/chat.messages.reactions
 https://www.googleapis.com/auth/chat.messages
 https://www.googleapis.com/auth/chat.spaces.readonly
 https://www.googleapis.com/auth/chat.spaces.create
+https://www.googleapis.com/auth/chat.spaces
 https://www.googleapis.com/auth/chat.memberships.readonly
 https://www.googleapis.com/auth/chat.memberships
 https://www.googleapis.com/auth/directory.readonly
@@ -68,12 +69,13 @@ https://www.googleapis.com/auth/contacts.readonly
 ```
 
 Most sit in Google's *sensitive* tier (3–5 day self-service verification
-if you ever go External + Published). The one exception is
-`chat.messages` — Google's *restricted* tier, which adds annual CASA
-review for Externally-published apps. **Internal Workspace apps skip
+if you ever go External + Published). Two are in the *restricted* tier,
+which adds annual CASA review for Externally-published apps:
+`chat.messages` (covers `update_message` / `delete_message`) and
+`chat.spaces` (covers `update_space`). **Internal Workspace apps skip
 verification entirely for both tiers.** Public deployers: see
 `docs/runbook.md` for the trade-off and how to skip the restricted-tier
-scope if `update_message` / `delete_message` aren't needed.
+scopes if the restricted-scope tools aren't needed.
 
 ## 5. Create an OAuth 2.0 Client ID
 
