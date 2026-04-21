@@ -106,6 +106,52 @@ async def test_find_direct_message_creates_on_404(tool_ctx: ToolContext, mock_ac
 
 
 @pytest.mark.asyncio
+async def test_find_direct_message_missing_scope_surfaces_reauth_prompt(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """Missing `chat.spaces.create` on the create-on-miss path must produce
+    the scope-specific re-auth prompt, not the generic "is the user in your
+    Workspace directory?" rewrite that the handler emits for other 4xx.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.get("/spaces:findDirectMessage").mock(return_value=httpx.Response(404))
+        mock.post("/spaces:setup").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "Request had insufficient authentication scopes.",
+                        "status": "PERMISSION_DENIED",
+                        "details": [
+                            {
+                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                                "domain": "googleapis.com",
+                            }
+                        ],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ToolError) as exc_info:
+            await find_direct_message_handler(tool_ctx, "alice@example.com")
+    msg = str(exc_info.value)
+    assert "Missing required OAuth scope" in msg
+    # The create-on-miss path 403'd; the re-auth prompt must name
+    # `chat.spaces.create` (the actually-missing scope) rather than the
+    # pre-flight tag `chat.spaces.readonly` that invoke_tool would have
+    # surfaced by default. The generic directory-lookup rewrite must also
+    # not fire — it would mask the scope gap entirely.
+    assert "chat.spaces.create" in msg
+    assert "chat.spaces.readonly" not in msg
+    assert "Workspace directory" not in msg
+
+
+@pytest.mark.asyncio
 async def test_send_message_posts_body_verbatim(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
         respx.mock(base_url="https://chat.test/v1") as mock,

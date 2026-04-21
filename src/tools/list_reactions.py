@@ -8,7 +8,7 @@ from ..models import (
     ReactionEntry,
     _ChatReactionsListResponse,
 )
-from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool, space_id_from_message_name
+from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool, space_id_from_message_name
 
 
 async def list_reactions_handler(
@@ -44,5 +44,10 @@ async def list_reactions_handler(
         ctx,
         body,
         target_space_id=space_id,
-        required_scope=CHAT_MESSAGES_READONLY,
+        # spaces.messages.reactions.list accepts the narrower .reactions scope
+        # (sensitive tier) in addition to chat.messages.readonly (restricted).
+        # Tagging with the narrower one keeps missing-scope re-auth prompts
+        # inside the sensitive tier so a deployer who declined the restricted
+        # umbrella still gets a usable prompt.
+        required_scope=CHAT_MESSAGES_REACTIONS,
     )
