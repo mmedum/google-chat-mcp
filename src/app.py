@@ -33,6 +33,8 @@ from .models import (
     CreateGroupChatResult,
     CreateSpaceInput,
     CreateSpaceResult,
+    DeleteMessageInput,
+    DeleteMessageResult,
     DirectMessageResult,
     GetMessagesInput,
     GetThreadInput,
@@ -56,6 +58,8 @@ from .models import (
     SpaceDetails,
     SpaceSummary,
     SpaceType,
+    UpdateMessageInput,
+    UpdateMessageResult,
     WhoamiResult,
 )
 from .observability import (
@@ -75,6 +79,7 @@ from .tools import (
     add_reaction_handler,
     create_group_chat_handler,
     create_space_handler,
+    delete_message_handler,
     find_direct_message_handler,
     get_message_handler,
     get_messages_handler,
@@ -88,6 +93,7 @@ from .tools import (
     search_messages_handler,
     search_people_handler,
     send_message_handler,
+    update_message_handler,
     whoami_handler,
 )
 from .tools._common import AuthResolver, ToolContext
@@ -332,6 +338,45 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def send_message(payload: SendMessageInput) -> SendMessageResult:
         return await send_message_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="update_message",
+        title="Edit a message's text",
+        description=(
+            "Replace the text of a message you previously sent (`spaces.messages.patch` "
+            "with `updateMask=text`). Text-only — cards / attachments are out of scope. "
+            "1-4096 chars; cap mirrors `send_message` for project-wide consistency. "
+            "Set `dry_run=true` to preview the patch body without posting. Requires the "
+            "restricted-tier `chat.messages` scope; deployer re-consent on upgrade."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    )
+    async def update_message(payload: UpdateMessageInput) -> UpdateMessageResult:
+        return await update_message_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="delete_message",
+        title="Delete a message",
+        description=(
+            "Delete a message by full resource name "
+            "(`spaces/{space}/messages/{message}`). Idempotent: double-delete returns "
+            "`deleted=false` rather than erroring. Missing-scope 403s still raise. "
+            "Requires the restricted-tier `chat.messages` scope."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
+    async def delete_message(payload: DeleteMessageInput) -> DeleteMessageResult:
+        return await delete_message_handler(_require_ctx(state), payload)
 
     @mcp.tool(
         name="get_messages",

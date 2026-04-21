@@ -322,6 +322,51 @@ contacts" auto-populated from Chat interactions. Coverage is narrower
 (only people the caller has actually corresponded with) but works
 regardless of Workspace-level directory-sharing posture.
 
+## search_people on consumer Gmail accounts
+
+Consumer `@gmail.com` accounts have no Workspace directory.
+`DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE` / `..._CONTACT` both 403 for
+these callers. `search_people` transparently drops the DIRECTORY
+source and returns only `CONTACTS` hits — inspect
+`sources_succeeded` on the result to confirm.
+
+No admin action is available. If a consumer-Gmail caller needs to
+resolve a Workspace user they've never corresponded with, the email
+has to be pasted manually — there is no other upstream path that
+respects the per-user privacy boundary.
+
+## chat.messages restricted-tier scope (update_message / delete_message)
+
+Symptom: question from a deployer considering whether to publish their
+app externally — does the `chat.messages` scope used by
+`update_message` / `delete_message` trigger Google's annual CASA
+security assessment?
+
+**Cause:** `chat.messages` is in Google's **restricted** tier, the
+strictest verification tier. For an Externally-published app
+(visible to all Google users), Google requires an annual third-party
+Cloud Application Security Assessment (CASA) on top of the standard
+sensitive-tier verification. The audit cost is non-trivial — usually
+several thousand USD per year per Cloud project — and recurs.
+
+**Who's affected:** only deployers who set the OAuth consent screen
+to **External** AND publish to **In production** AND want to support
+Google users outside their own organization. The exact triggers:
+
+- **Internal app** (Workspace org-only): not affected. No verification
+  required, no CASA. Just declare the scope and ship.
+- **External app in Testing mode** (≤100 test users): not affected.
+  Users see the unverified-app warning and click through.
+- **External app published In production**: CASA review applies — file
+  with Google's verification team, expect 6-12 weeks.
+
+**If you don't need the restricted scope:** drop `update_message` +
+`delete_message` from your install. Remove `CHAT_MESSAGES` from
+`GOOGLE_OAUTH_SCOPES` in `src/config.py`, drop the two tool
+registrations in `src/app.py`, and the rest of the surface stays on
+sensitive-tier scopes. The runbook tracks this as the supported
+opt-out path.
+
 ## add_member returns a membership_name when the user is already present
 
 Symptom: `add_member` on a user who's already a member of the target
@@ -343,18 +388,5 @@ Google numeric ID before + after — a no-change ID is the signal, not
 the response status. In most agent flows this distinction doesn't
 matter; treat a successful `add_member` as "user is in the space now",
 whether they were there a second ago or not.
-
-## search_people on consumer Gmail accounts
-
-Consumer `@gmail.com` accounts have no Workspace directory.
-`DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE` / `..._CONTACT` both 403 for
-these callers. `search_people` transparently drops the DIRECTORY
-source and returns only `CONTACTS` hits — inspect
-`sources_succeeded` on the result to confirm.
-
-No admin action is available. If a consumer-Gmail caller needs to
-resolve a Workspace user they've never corresponded with, the email
-has to be pasted manually — there is no other upstream path that
-respects the per-user privacy boundary.
 
 Point your uptime monitor at `/readyz`.

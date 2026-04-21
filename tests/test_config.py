@@ -46,10 +46,17 @@ def test_oauth_scopes_include_required_set() -> None:
     assert required.issubset(set(GOOGLE_OAUTH_SCOPES))
 
 
-def test_umbrella_chat_messages_scope_dropped() -> None:
-    # v2 replaces the restricted-tier umbrella with narrower sensitive-tier scopes.
-    # Regression guard against anyone reintroducing it.
-    assert "https://www.googleapis.com/auth/chat.messages" not in GOOGLE_OAUTH_SCOPES
+def test_chat_messages_umbrella_present_for_message_lifecycle() -> None:
+    # v0.2.0 dropped the restricted-tier umbrella `chat.messages` in favor of
+    # narrower sensitive-tier scopes (.create / .reactions / .readonly).
+    # v0.3.2 brings it back because update_message + delete_message hit
+    # `spaces.messages.patch` / `.delete`, which only the umbrella scope
+    # authorizes (the .create / .readonly scopes don't cover edit + delete).
+    # Pinning here so the deployer-visible scope set is intentional, not drift.
+    assert "https://www.googleapis.com/auth/chat.messages" in GOOGLE_OAUTH_SCOPES
+    # The narrower scopes still ride along — different endpoints use each.
+    assert "https://www.googleapis.com/auth/chat.messages.create" in GOOGLE_OAUTH_SCOPES
+    assert "https://www.googleapis.com/auth/chat.messages.readonly" in GOOGLE_OAUTH_SCOPES
 
 
 def test_secret_fields_are_secretstr() -> None:

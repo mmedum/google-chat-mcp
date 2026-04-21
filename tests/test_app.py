@@ -31,6 +31,8 @@ async def test_build_app_registers_all_tools(settings: Settings) -> None:
         "add_member",
         "remove_member",
         "search_people",
+        "update_message",
+        "delete_message",
     }
     assert expected_so_far.issubset(names)
 
@@ -89,13 +91,22 @@ async def test_tool_annotations_match_mcp_alignment(settings: Settings) -> None:
         assert ann.idempotentHint is False
         assert ann.openWorldHint is True
 
-    # remove_member — destructive + idempotent (double-delete returns
-    # removed=false rather than erroring).
-    rm = by_name["remove_member"].annotations
-    assert rm is not None
-    assert rm.readOnlyHint is False
-    assert rm.destructiveHint is True
-    assert rm.idempotentHint is True
+    # remove_member + delete_message — destructive + idempotent (double-delete
+    # returns removed=false / deleted=false rather than erroring).
+    for name in ("remove_member", "delete_message"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.readOnlyHint is False, f"{name} should be readOnlyHint=False"
+        assert ann.destructiveHint is True
+        assert ann.idempotentHint is True
+
+    # update_message — writes, not destructive (text edit is reversible by
+    # re-edit), not idempotent (new text replaces previous).
+    um = by_name["update_message"].annotations
+    assert um is not None
+    assert um.readOnlyHint is False
+    assert um.destructiveHint is False
+    assert um.idempotentHint is False
 
     # search_people — read-only.
     sp = by_name["search_people"].annotations
