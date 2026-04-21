@@ -47,10 +47,19 @@ from ..storage import Database, DirectoryCache, write_audit_row
 
 @dataclass(slots=True, frozen=True)
 class AuthInfo:
-    """Resolved auth for a single tool call: upstream Google token + user sub."""
+    """Resolved auth for a single tool call: upstream Google token + user sub.
+
+    `granted_scopes` is set by the stdio resolver (read from the local
+    tokens.json) so `invoke_tool` can fail-fast with a re-consent prompt
+    when the caller asks for a tool whose `required_scope` was never
+    granted. HTTPS leaves it None — FastMCP's GoogleProvider already
+    validates scopes against the MCP-layer JWT before the request reaches
+    a tool handler.
+    """
 
     access_token: str
     user_sub: str
+    granted_scopes: tuple[str, ...] | None = None
 
 
 AuthResolver = Callable[[], Awaitable[AuthInfo]]
@@ -223,6 +232,16 @@ async def invoke_tool[T](
     auth = await (ctx.resolver() if ctx.resolver is not None else _resolve_auth_via_fastmcp())
     user_sub = auth.user_sub
     upstream_access_token = auth.access_token
+
+    # Pre-flight scope check (stdio path). HTTPS leaves auth.granted_scopes
+    # as None and relies on GoogleProvider's MCP-layer JWT validation —
+    # the upstream 403 fallback in the except branch handles its case.
+    if (
+        required_scope is not None
+        and auth.granted_scopes is not None
+        and required_scope not in auth.granted_scopes
+    ):
+        raise ToolError(_format_missing_scope_message(required_scope))
 
     if not await ctx.limiter.allow(user_sub):
         mcp_rate_limit_hits_total.inc()

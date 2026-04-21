@@ -51,6 +51,26 @@ def test_non_sensitive_event_passes_through() -> None:
     assert result == event
 
 
+def test_nested_sensitive_value_is_redacted_recursively() -> None:
+    """Regression: top-level-only redaction would log a nested
+    `access_token` in plaintext if a future caller did
+    `logger.info("upstream", payload={"access_token": "..."})`."""
+    event = {
+        "msg": "upstream_response",
+        "payload": {
+            "access_token": "leak-1",
+            "user": {"email": "leak-2", "id": 42},
+            "data": [{"refresh_token": "leak-3"}, "harmless"],
+        },
+    }
+    result = _redact_sensitive(None, "info", event)
+    assert result["payload"]["access_token"] == "***redacted***"
+    assert result["payload"]["user"]["email"] == "***redacted***"
+    assert result["payload"]["user"]["id"] == 42
+    assert result["payload"]["data"][0]["refresh_token"] == "***redacted***"
+    assert result["payload"]["data"][1] == "harmless"
+
+
 def test_sensitive_keys_superset_of_v1_baseline() -> None:
     # Regression guard: Step 0 widened the set. Don't accidentally shrink it.
     v1_baseline = {

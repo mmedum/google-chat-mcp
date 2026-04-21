@@ -59,6 +59,96 @@ def test_chat_messages_umbrella_present_for_message_lifecycle() -> None:
     assert "https://www.googleapis.com/auth/chat.messages.readonly" in GOOGLE_OAUTH_SCOPES
 
 
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://*",
+        "https://example.*",
+        "https://*/cb",
+        "https://com/cb",
+        "http://example.com/cb",
+        "ftp://example.com/cb",
+    ],
+)
+def test_allowed_redirects_rejects_unsafe_patterns(
+    monkeypatch: pytest.MonkeyPatch, uri: str
+) -> None:
+    """Regression for the redirect-allowlist hardening: bare-TLD patterns,
+    multi-`*` wildcards, and non-https schemes are common operator typos
+    that turn the allowlist into an open-redirect surface."""
+    monkeypatch.setenv("GCM_ALLOWED_CLIENT_REDIRECTS", uri)
+    with pytest.raises(ValueError, match="redirect"):
+        Settings.from_env()
+
+
+def test_allowed_redirects_accepts_documented_subdomain_wildcard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single leading `*.` bound to a ≥2-label suffix is the FastMCP-
+    documented pattern; keep it working."""
+    monkeypatch.setenv("GCM_ALLOWED_CLIENT_REDIRECTS", "https://*.client.example.com/cb")
+    s = Settings.from_env()
+    assert s.allowed_client_redirects == ["https://*.client.example.com/cb"]
+
+
+def test_chat_api_base_rejects_non_google_url_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closes the token-exfil vector: GCM_CHAT_API_BASE must point at Google
+    unless the test-only GCM_DEV_MODE=1 gate is set."""
+    monkeypatch.delenv("GCM_DEV_MODE", raising=False)
+    monkeypatch.setenv("GCM_CHAT_API_BASE", "https://attacker.example.com/v1")
+    with pytest.raises(ValueError, match=r"googleapis\.com"):
+        Settings.from_env()
+
+
+def test_chat_api_base_rejects_http_scheme_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GCM_DEV_MODE", raising=False)
+    monkeypatch.setenv("GCM_CHAT_API_BASE", "http://chat.googleapis.com/v1")
+    with pytest.raises(ValueError, match="https://"):
+        Settings.from_env()
+
+
+def test_chat_api_base_accepts_arbitrary_url_in_dev_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integration tests need to point at a local mock — explicitly opt in."""
+    monkeypatch.setenv("GCM_DEV_MODE", "1")
+    monkeypatch.setenv("GCM_CHAT_API_BASE", "http://127.0.0.1:54321/v1")
+    s = Settings.from_env()
+    assert s.chat_api_base == "http://127.0.0.1:54321/v1"
+
+
+def test_chat_api_base_default_passes_validator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GCM_DEV_MODE", raising=False)
+    monkeypatch.delenv("GCM_CHAT_API_BASE", raising=False)
+    monkeypatch.delenv("GCM_PEOPLE_API_BASE", raising=False)
+    s = Settings.from_env()
+    assert s.chat_api_base.startswith("https://chat.googleapis.com/")
+    assert s.people_api_base.startswith("https://people.googleapis.com/")
+
+
+def test_jwt_signing_key_min_length_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trivially short keys (1 char) would let an attacker recover the
+    signing key from any emitted MCP-layer JWT and forge bearer tokens."""
+    monkeypatch.setenv("GCM_JWT_SIGNING_KEY", "x")
+    with pytest.raises(ValueError, match="jwt_signing_key"):
+        Settings.from_env()
+
+
+def test_fernet_key_length_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fernet keys are URL-safe base64 of 32 bytes — exactly 44 chars.
+    Anything else isn't a valid Fernet key and would crash at first use;
+    the validator surfaces the mistake at config-parse."""
+    monkeypatch.setenv("GCM_FERNET_KEY", "too-short")
+    with pytest.raises(ValueError, match="fernet_key"):
+        Settings.from_env()
+
+
 def test_secret_fields_are_secretstr() -> None:
     s = Settings.from_env()
     assert isinstance(s.google_client_id, SecretStr)
@@ -104,13 +194,15 @@ def test_from_mapping_bypasses_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "GCM_DATA_DIR",
     ]:
         monkeypatch.delenv(var, raising=False)
+    from cryptography.fernet import Fernet
+
     s = Settings.from_mapping(
         {
             "base_url": "https://stdio.example.test",
             "google_client_id": "explicit-id",
             "google_client_secret": "explicit-secret",
-            "fernet_key": "explicit-fernet",
-            "jwt_signing_key": "explicit-jwt-key",
+            "fernet_key": Fernet.generate_key().decode(),
+            "jwt_signing_key": "explicit-jwt-key-at-least-32-bytes-long",
             "audit_pepper": "explicit-pepper",
         }
     )

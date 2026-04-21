@@ -161,3 +161,20 @@ async def test_non_retryable_4xx_raises_immediately(chat_client: ChatClient) -> 
             await chat_client.list_spaces(access_token="tok", limit=50)
     assert exc.value.status_code == 403
     assert "forbidden" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_3xx_response_raises_chat_api_error(chat_client: ChatClient) -> None:
+    """Regression: pre-fix `< 400` swallowed 3xx as success and returned an
+    empty dict, masking the redirect. Now any 3xx surfaces as a
+    ChatApiError so the caller can decide what to do."""
+    with respx.mock(base_url="https://chat.test/v1") as mock:
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "https://attacker.example.com/v1/spaces"},
+            )
+        )
+        with pytest.raises(ChatApiError) as exc:
+            await chat_client.list_spaces(access_token="tok", limit=50)
+    assert exc.value.status_code == 302

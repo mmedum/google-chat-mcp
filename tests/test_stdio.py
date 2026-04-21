@@ -21,6 +21,9 @@ def stdio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Isolate each test: config dir under tmp_path, no bleed from real ~/.config."""
     d = tmp_path / "gcm"
     monkeypatch.setenv("GCM_CONFIG_DIR", str(d))
+    # tmp_path is outside ~/ so the safety check refuses by default; opt in
+    # for the test fixture (this is exactly what the override flag is for).
+    monkeypatch.setenv("GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME", "1")
     monkeypatch.delenv("GCM_TOKENS_PATH", raising=False)
     monkeypatch.delenv("GCM_CLIENT_SECRET", raising=False)
     return d
@@ -48,6 +51,27 @@ def client_secret_file(tmp_path: Path) -> Path:
 # ---------- unit: config dir + atomic write ----------
 
 
+def test_config_dir_outside_home_refuses_without_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: GCM_CONFIG_DIR pointing outside ~/ would silently get
+    chmod-0700'd by _ensure_config_dir. The guard refuses such paths
+    unless the explicit override is set."""
+    monkeypatch.setenv("GCM_CONFIG_DIR", str(tmp_path / "outside-home"))
+    monkeypatch.delenv("GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME", raising=False)
+    with pytest.raises(RuntimeError, match="outside ~"):
+        stdio_mod._config_dir()
+
+
+def test_config_dir_outside_home_accepts_with_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GCM_CONFIG_DIR", str(tmp_path / "outside-home"))
+    monkeypatch.setenv("GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME", "1")
+    # Resolve through to confirm no error.
+    assert stdio_mod._config_dir() == (tmp_path / "outside-home").resolve()
+
+
 def test_ensure_config_dir_applies_0700(stdio_home: Path) -> None:
     d = stdio_mod._ensure_config_dir()
     assert d == stdio_home
@@ -61,6 +85,35 @@ def test_atomic_write_bytes_sets_0600(tmp_path: Path) -> None:
     assert target.read_bytes() == b"hello"
     mode = stat.S_IMODE(target.stat().st_mode)
     assert mode == 0o600
+
+
+def test_create_exclusive_or_read_handles_concurrent_writers(stdio_home: Path) -> None:
+    """Regression for the TOCTOU race in `_load_or_create_fernet_key` /
+    `_load_or_create_audit_pepper`: two processes calling these
+    concurrently must converge on the SAME key, never both writing.
+
+    Pre-fix, the `if path.exists(): read; else: generate+write` pattern
+    let two racing processes both observe "no key" and both write — the
+    losing process's tokens.json was encrypted under a key that no
+    longer existed on disk, silently corrupting one user's session.
+    """
+    import threading
+
+    target = stdio_home / "race_key"
+    results: list[bytes] = []
+    barrier = threading.Barrier(8)
+
+    def worker() -> None:
+        barrier.wait()
+        results.append(stdio_mod._create_exclusive_or_read(target, Fernet.generate_key))
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    # Every worker observed the same final key — exactly one O_EXCL succeeded.
+    assert len(set(results)) == 1, f"race condition: {len(set(results))} distinct keys"
 
 
 def test_fernet_key_created_on_first_read_and_reused(stdio_home: Path) -> None:
@@ -284,6 +337,9 @@ def test_serve_test_auth_stub_bypasses_token_store(
     import argparse
 
     monkeypatch.setenv("GCM_TEST_AUTH_STUB", "1")
+    # Non-Google upstream URLs require GCM_DEV_MODE=1 (closes the
+    # token-exfil vector that the env override otherwise opens).
+    monkeypatch.setenv("GCM_DEV_MODE", "1")
     monkeypatch.setenv("GCM_CHAT_API_BASE", "http://stub.invalid/v1")
     monkeypatch.setenv("GCM_PEOPLE_API_BASE", "http://stub.invalid/v1")
     # app.run blocks on real transport wiring; short-circuit to prove cmd_serve
@@ -374,6 +430,7 @@ def test_stdout_hygiene_in_subprocess(tmp_path: Path) -> None:
         "PATH": "/usr/bin:/bin",
         "HOME": str(tmp_path),
         "GCM_CONFIG_DIR": str(tmp_path / "gcm"),
+        "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME": "1",
     }
     result = subprocess.run(
         [sys.executable, "-m", "src.stdio", "serve"],

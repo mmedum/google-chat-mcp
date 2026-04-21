@@ -21,11 +21,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import contextlib
 import json
 import os
 import secrets
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -43,6 +44,7 @@ from .tools._common import AuthInfo, AuthResolver
 # ---------- constants ----------
 
 _CONFIG_DIR_ENV = "GCM_CONFIG_DIR"
+_CONFIG_DIR_OVERRIDE_ENV = "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME"
 _TOKENS_PATH_ENV = "GCM_TOKENS_PATH"
 _CLIENT_SECRET_ENV = "GCM_CLIENT_SECRET"
 _DEFAULT_CONFIG_DIR = Path.home() / ".config" / "google-chat-mcp"
@@ -67,11 +69,18 @@ def _relax_oauthlib_token_scope() -> None:
     os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 
-# Placeholder Fernet key for stdio mode. `Settings.fernet_key` is a required
-# SecretStr with `min_length=1`; stdio bypasses GoogleProvider so the value
-# is never used. Using a constant avoids burning RNG entropy on every
-# `serve` startup.
-_STDIO_FERNET_PLACEHOLDER = Fernet.generate_key().decode()
+# Placeholder Fernet key for stdio mode — Settings now requires exactly 44
+# bytes (URL-safe base64 of a 32-byte key) so the value must be a real
+# Fernet key shape. stdio bypasses GoogleProvider so this value is never
+# used to encrypt anything; if a future refactor accidentally exercises it,
+# the literal makes the failure visible (decrypt of any real ciphertext
+# will deterministically fail because the key is documented-public).
+_STDIO_FERNET_PLACEHOLDER = "c3RkaW8tcGxhY2Vob2xkZXItbm90LXVzZWQtbmV2ZXI9"
+# Placeholder JWT signing key for stdio mode. Same rationale: 32 chars to
+# satisfy `Settings.jwt_signing_key.min_length=32`, never used at runtime
+# (stdio has no FastMCP JWT path), public-grep'able to ensure any
+# accidental signing operation produces a recognizable forgeable token.
+_STDIO_JWT_PLACEHOLDER = "stdio-placeholder-jwt-key-unused"
 
 
 # ---------- config directory ----------
@@ -79,7 +88,26 @@ _STDIO_FERNET_PLACEHOLDER = Fernet.generate_key().decode()
 
 def _config_dir() -> Path:
     raw = os.environ.get(_CONFIG_DIR_ENV)
-    return Path(raw) if raw else _DEFAULT_CONFIG_DIR
+    if not raw:
+        return _DEFAULT_CONFIG_DIR
+    candidate = Path(raw).expanduser().resolve()
+    # Refuse paths outside the user's home dir unless explicitly opted in.
+    # `_ensure_config_dir()` chmod-0700's whatever dir this returns; an
+    # accidental `GCM_CONFIG_DIR=~/.ssh` would silently re-perm a sensitive
+    # directory. The opt-out covers integration-test sandboxes that live
+    # under `/tmp` per pytest's tmp_path.
+    if os.environ.get(_CONFIG_DIR_OVERRIDE_ENV) == "1":
+        return candidate
+    home = Path.home().resolve()
+    try:
+        candidate.relative_to(home)
+    except ValueError:
+        raise RuntimeError(
+            f"{_CONFIG_DIR_ENV}={raw!r} resolves outside ~/. Set "
+            f"{_CONFIG_DIR_OVERRIDE_ENV}=1 to opt into a non-home path "
+            f"(integration-test use only)."
+        ) from None
+    return candidate
 
 
 def _tokens_path() -> Path:
@@ -97,36 +125,80 @@ def _ensure_config_dir() -> Path:
 
 
 def _atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> None:
-    """Write bytes to `path` atomically (temp + os.replace), setting mode on success."""
+    """Write bytes to `path` atomically. Open the temp with O_CREAT|O_EXCL so
+    the file is created at the final perms in one syscall — closes the
+    create-then-chmod window where the temp briefly exists at umask perms.
+    """
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(data)
-    tmp.chmod(mode)
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+    except BaseException:
+        # On error, clean up the temp file we just created so the next call
+        # doesn't trip O_CREAT|O_EXCL on a stale leftover.
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
     os.replace(tmp, path)
 
 
 # ---------- local Fernet key + audit pepper ----------
 
 
+def _create_exclusive_or_read(path: Path, generate: Callable[[], bytes]) -> bytes:
+    """Create `path` with `generate()`'s output, OR read the existing file
+    if a concurrent process won the race.
+
+    Closes a TOCTOU race in `_load_or_create_fernet_key` /
+    `_load_or_create_audit_pepper` where two concurrent `login` invocations
+    could both observe "no key", both generate, and both write — leaving
+    `tokens.json` encrypted with whichever process lost (silent data loss
+    of the loser's session).
+
+    Two-step pattern:
+    1. Write the new value to a per-process temp via `mkstemp` (each
+       caller gets a unique temp, no inter-process collision).
+    2. `os.link(tmp, final)` — atomic on POSIX, fails with
+       `FileExistsError` if `final` already exists. Losers read the
+       winner's COMPLETE file (the link only succeeds after the temp
+       was fully written).
+
+    Without step 1's separation, naive `os.open(O_EXCL)` on the final
+    path lets racing readers see partial contents during the writer's
+    `f.write()` window.
+    """
+    import tempfile
+
+    _ensure_config_dir()
+    if path.exists():
+        return path.read_bytes().strip()
+    fd, tmp_name = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        value = generate()
+        with os.fdopen(fd, "wb") as f:
+            f.write(value)
+        try:
+            os.link(tmp_name, str(path))
+            return value
+        except FileExistsError:
+            return path.read_bytes().strip()
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp_name)
+
+
 def _load_or_create_fernet_key() -> bytes:
     """Return the per-installation Fernet key, generating + persisting one if absent."""
-    _ensure_config_dir()
-    key_path = _config_dir() / _FERNET_KEY_FILE
-    if key_path.exists():
-        return key_path.read_bytes().strip()
-    key = Fernet.generate_key()
-    _atomic_write_bytes(key_path, key)
-    return key
+    return _create_exclusive_or_read(_config_dir() / _FERNET_KEY_FILE, Fernet.generate_key)
 
 
 def _load_or_create_audit_pepper() -> bytes:
     """Return the audit-log HMAC pepper, generating + persisting one if absent."""
-    _ensure_config_dir()
-    pepper_path = _config_dir() / _AUDIT_PEPPER_FILE
-    if pepper_path.exists():
-        return pepper_path.read_bytes().strip()
-    pepper = secrets.token_bytes(32)
-    _atomic_write_bytes(pepper_path, pepper)
-    return pepper
+    return _create_exclusive_or_read(
+        _config_dir() / _AUDIT_PEPPER_FILE, lambda: secrets.token_bytes(32)
+    )
 
 
 # ---------- token store ----------
@@ -299,6 +371,21 @@ def cmd_login(args: argparse.Namespace) -> int:
     if user_sub is None and isinstance(credentials.token, str):
         user_sub, user_email = _identity_from_userinfo(credentials.token)
 
+    if user_sub is None:
+        # Hard-fail: every downstream identity-keyed system (audit log,
+        # rate-limit bucket, add_reaction's 409 recovery via user_filter)
+        # depends on a real Google sub. Falling back to a literal string
+        # silently corrupts those — refuse to save tokens at all so the
+        # user re-runs login with network access for the /userinfo
+        # fallback.
+        print(
+            "error: could not resolve a Google `sub` from id_token or "
+            "/userinfo. Re-run `google-chat-mcp login` with network "
+            "access so the OIDC fallback can complete.",
+            file=sys.stderr,
+        )
+        return 1
+
     store = _open_store()
     store.save(
         {
@@ -368,15 +455,38 @@ def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
         token_uri=_GOOGLE_TOKEN_URI,
         scopes=identity.get("granted_scopes") or list(GOOGLE_OAUTH_SCOPES),
     )
+    # Serialize concurrent refreshes — google-auth's Credentials.refresh()
+    # isn't documented thread-safe and concurrent tool calls otherwise both
+    # observe `expired=True`, both call refresh(), and both race the
+    # store.save() that persists a rotated refresh_token.
+    refresh_lock = asyncio.Lock()
 
     async def resolver() -> AuthInfo:
-        if credentials.token is None or credentials.expired:
-            await asyncio.to_thread(credentials.refresh, _http)
-            if credentials.refresh_token and credentials.refresh_token != identity["refresh_token"]:
-                identity["refresh_token"] = credentials.refresh_token
-                store.save(identity)
-        user_sub = identity.get("user_sub") or "stdio-user"
-        return AuthInfo(access_token=str(credentials.token), user_sub=str(user_sub))
+        async with refresh_lock:
+            if credentials.token is None or credentials.expired:
+                await asyncio.to_thread(credentials.refresh, _http)
+                if (
+                    credentials.refresh_token
+                    and credentials.refresh_token != identity["refresh_token"]
+                ):
+                    identity["refresh_token"] = credentials.refresh_token
+                    store.save(identity)
+        user_sub = identity.get("user_sub")
+        if not user_sub:
+            # Defensive: cmd_login refuses to save without a sub, so this
+            # should be unreachable in practice. If a future caller mutates
+            # tokens.json by hand, fail loud rather than fall through to a
+            # literal "stdio-user" that pollutes the audit log + breaks
+            # add_reaction's user_filter recovery.
+            raise RuntimeError(
+                "tokens.json missing `user_sub`. Run `google-chat-mcp logout && login`."
+            )
+        granted = identity.get("granted_scopes") or ()
+        return AuthInfo(
+            access_token=str(credentials.token),
+            user_sub=str(user_sub),
+            granted_scopes=tuple(granted),
+        )
 
     return resolver
 
@@ -399,7 +509,7 @@ def _build_stdio_settings(identity: Mapping[str, Any]) -> Settings:
         "google_client_id": identity.get("client_id", "unused-in-stdio"),
         "google_client_secret": identity.get("client_secret", "unused-in-stdio"),
         "fernet_key": _STDIO_FERNET_PLACEHOLDER,
-        "jwt_signing_key": "unused-in-stdio" * 4,
+        "jwt_signing_key": _STDIO_JWT_PLACEHOLDER,
         "audit_pepper": _load_or_create_audit_pepper().hex(),
         # stdio is single-user; hashing adds no privacy beyond local disk.
         "audit_hash_user_sub": False,

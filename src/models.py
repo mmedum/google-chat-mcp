@@ -27,10 +27,16 @@ class _Strict(BaseModel):
 
 # ---------- tool I/O ----------
 
-# Google Chat resource names use IDs that include dots, dashes, underscores,
-# and alphanumerics. Patterns kept permissive enough to accept every real-world
-# form we've seen, strict enough to reject obviously-malformed input.
-_ID = r"[A-Za-z0-9._-]+"
+# Google Chat resource names use IDs of dots, dashes, underscores, and
+# alphanumerics. The middle `[A-Za-z0-9]` is mandatory — at least one
+# alphanumeric character must appear somewhere in the segment. This closes
+# a path-traversal vector where bare `.` or `..` segments would pass the
+# regex and let httpx normalize them via RFC 3986 §5.2.4 dot-segment
+# resolution, rewriting the upstream URL to target a different resource
+# (e.g. `spaces/T/messages/..` → `DELETE /v1/spaces/T`). Pydantic v2's
+# Rust regex engine doesn't support lookarounds, so the constraint is
+# expressed positionally rather than via `(?=...)`.
+_ID = r"[A-Za-z0-9._-]*[A-Za-z0-9][A-Za-z0-9._-]*"
 SpaceId = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}$")]
 ThreadName = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/threads/{_ID}$")]
 MessageId = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/messages/{_ID}$")]
@@ -327,9 +333,15 @@ ReactionName = Annotated[
 
 class AddReactionInput(_Strict):
     message_name: MessageId
-    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)]
+    emoji: Annotated[
+        str,
+        StringConstraints(min_length=1, max_length=16, pattern=r'^[^"\\\s]+$'),
+    ]
     """Unicode emoji. Custom-emoji reactions are out of scope for v2 — pass the
-    unicode glyph (single char or ZWJ sequence)."""
+    unicode glyph (single char or ZWJ sequence). The pattern excludes `"`,
+    `\\`, and whitespace to close an AIP-160 filter-injection vector in
+    `remove_reaction`'s lookup path: those characters could break out of the
+    quoted filter string `emoji.unicode = "{value}"` and broaden the match."""
 
 
 class AddReactionResult(_Strict):
@@ -344,7 +356,13 @@ class RemoveReactionInput(_Strict):
 
     reaction_name: ReactionName | None = None
     message_name: MessageId | None = None
-    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)] | None = None
+    emoji: (
+        Annotated[
+            str,
+            StringConstraints(min_length=1, max_length=16, pattern=r'^[^"\\\s]+$'),
+        ]
+        | None
+    ) = None
     user_email: EmailStr | None = None
 
     @model_validator(mode="after")

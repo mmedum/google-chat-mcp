@@ -101,6 +101,48 @@ def test_get_messages_input_rejects_non_iso_since() -> None:
         GetMessagesInput.model_validate({"space_id": "spaces/AAA", "since": "last week"})
 
 
+_TRAVERSAL_SEGMENTS = ("..", ".", "...", "....", ".-_")
+
+
+@pytest.mark.parametrize("seg", _TRAVERSAL_SEGMENTS)
+def test_resource_name_regex_rejects_dot_only_segments(seg: str) -> None:
+    """Regression for the path-traversal vector: bare dot/dash/underscore
+    segments would pass the old `[A-Za-z0-9._-]+` regex and let httpx
+    normalize the URL via RFC 3986 §5.2.4, rewriting the upstream target.
+
+    The tightened regex requires at least one alphanumeric character per
+    segment so `..`, `.`, `...` etc. are rejected at the Pydantic boundary
+    before they ever reach `chat_client._request`.
+    """
+    from src.models import (
+        DeleteMessageInput,
+        GetThreadInput,
+        ListMembersInput,
+        RemoveMemberInput,
+        UpdateMessageInput,
+    )
+
+    with pytest.raises(ValidationError):
+        UpdateMessageInput(message_name=f"spaces/AAA/messages/{seg}", text="x")
+    with pytest.raises(ValidationError):
+        DeleteMessageInput(message_name=f"spaces/{seg}/messages/M.1")
+    with pytest.raises(ValidationError):
+        RemoveMemberInput(membership_name=f"spaces/AAA/members/{seg}")
+    with pytest.raises(ValidationError):
+        ListMembersInput(space_id=f"spaces/{seg}")
+    with pytest.raises(ValidationError):
+        GetThreadInput(space_id="spaces/AAA", thread_name=f"spaces/AAA/threads/{seg}")
+
+
+def test_resource_name_regex_still_accepts_real_ids() -> None:
+    """Sanity: tightening the regex must not break legitimate Chat IDs that
+    contain dots/dashes/underscores (e.g. `M.fFwlJ6Q-v8`)."""
+    from src.models import DeleteMessageInput, RemoveMemberInput
+
+    DeleteMessageInput(message_name="spaces/AAA/messages/MfFwlJ6Q-v8.MfFwlJ6Q-v8")
+    RemoveMemberInput(membership_name="spaces/AAQAcRvOo10/members/103509578229692690681")
+
+
 def test_message_response_accepts_embedded_space_dict() -> None:
     model = _ChatMessageResponse.model_validate(
         {

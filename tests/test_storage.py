@@ -69,3 +69,16 @@ async def test_directory_cache_upsert_updates(db: Database) -> None:
     await cache.put("users/333", "new@example.com", "New")
     hit = await cache.get("users/333")
     assert hit == ("new@example.com", "New")
+
+
+@pytest.mark.asyncio
+async def test_directory_cache_put_silently_drops_non_workspace_ids(
+    db: Database,
+) -> None:
+    """Regression: the workspace_user_id gate must hold for both put paths
+    (single + bulk). Bot/app/contact-derived IDs that aren't `users/{numeric}`
+    are silently dropped to prevent cache poisoning."""
+    cache = DirectoryCache(db, ttl_seconds=3600)
+    for non_workspace in ("users/c1234", "users/bot-name", "users/app", "people/123"):
+        await cache.put(non_workspace, "bad@example.com", "Bad")
+        assert await cache.get(non_workspace) is None
