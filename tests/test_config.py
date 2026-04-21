@@ -194,6 +194,8 @@ def test_from_mapping_bypasses_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "GCM_DATA_DIR",
     ]:
         monkeypatch.delenv(var, raising=False)
+    import secrets
+
     from cryptography.fernet import Fernet
 
     s = Settings.from_mapping(
@@ -202,7 +204,9 @@ def test_from_mapping_bypasses_env(monkeypatch: pytest.MonkeyPatch) -> None:
             "google_client_id": "explicit-id",
             "google_client_secret": "explicit-secret",
             "fernet_key": Fernet.generate_key().decode(),
-            "jwt_signing_key": "explicit-jwt-key-at-least-32-bytes-long",
+            # Generated at runtime so the secret-shaped value never sits in
+            # source — appeases gitleaks's generic-api-key heuristic.
+            "jwt_signing_key": secrets.token_urlsafe(32),
             "audit_pepper": "explicit-pepper",
         }
     )
