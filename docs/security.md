@@ -49,7 +49,7 @@ checks. Tests in `tests/test_config.py`, `tests/test_models.py`, and
 1. **`chat_api_base` / `people_api_base` must point at `*.googleapis.com`** in production. Override requires `GCM_DEV_MODE=1` env var.
 2. **Resource-name segments must contain ≥1 alphanumeric char** — closes path-traversal via `..` segments that httpx would otherwise normalize per RFC 3986.
 3. **Reaction `emoji` rejects `"`, `\`, whitespace** — closes AIP-160 filter injection in `remove_reaction`'s lookup path.
-4. **`allowed_client_redirects` rejects bare-TLD hosts and wildcard-in-TLD patterns** — narrows the open-redirect surface.
+4. **`allowed_client_redirects` validator hardening** — rejects non-`https://` schemes, bare-TLD hosts (`https://com/...`), wildcard-in-TLD patterns (`https://*` / `https://example.*`), and any non-leading `*` placement. Single leading `*.subdomain` wildcards bound to a real ≥2-label suffix (the documented FastMCP pattern) are still accepted.
 5. **`jwt_signing_key.min_length=32`, `fernet_key.length=44`** — config-parse rejects trivially weak/malformed keys.
 6. **`DirectoryCache.put` silently drops non-`users/{numeric}` writes** — bots/apps/contact IDs can't poison the cache that drives `sender_email` resolution.
 7. **`_load_or_create_fernet_key` is concurrent-safe** — atomic temp-file + `os.link` ensures racing `login` invocations converge on the same key.

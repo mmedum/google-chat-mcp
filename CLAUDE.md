@@ -84,6 +84,7 @@ Key things NOT in the repo but often asked for:
 - **No centralized deployment.** Each deployer (HTTPS operator or stdio user) owns their Google app, their tokens, and their rollout cadence. Don't reintroduce assumptions that there's a "central" install.
 - **Pydantic `extra="forbid"` on Chat-API response models** is intentional. Schema drift surfaces as validation errors rather than silent drops. The fix is to add the new optional field to `src/models.py`, not to relax to `extra="ignore"`. Runbook (`docs/runbook.md`) covers this.
 - **stdout hygiene in stdio serve mode.** structlog writes to stderr — stdout is reserved for MCP JSON-RPC frames. `src/stdio.py::cmd_serve` reconfigures this; `print()` in `login`/`logout` is fine (non-MCP subcommands), `print()` in `serve` is banned (tests/test_stdio.py guards via a subprocess regression test).
+- **Security model lives in `docs/security.md`.** Trust boundaries, assets, adversary classes, the 12 security-relevant invariants the code enforces, and operator responsibilities. Read it before answering "is this safe?" questions or before relaxing any of: the `_ID` regex, the `chat_api_base` validator, the `allowed_client_redirects` validator, the Fernet/JWT key length checks, or the `_redact_value` walker.
 
 ## Tooling pins
 

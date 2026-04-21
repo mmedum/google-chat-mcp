@@ -12,6 +12,7 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -39,17 +40,14 @@ def _validate_redirect_pattern(uri: object) -> None:
        `https://example.*`) are rejected — too easy to write by accident.
     2. The host must have ≥2 labels — bare-TLD patterns like
        `https://com/...` are rejected as obvious typos.
-    3. Path-component wildcards (`/*` at the end of the path) are allowed
-       but logged as a soft warning at startup — they're a real risk for
-       downstream open-redirect chaining if the host serves redirector
-       endpoints.
+    3. Single leading `*.subdomain` wildcards bound to a real ≥2-label
+       suffix (e.g. `https://*.client.example.com/cb`) are accepted —
+       this is the documented FastMCP pattern for fan-out clients.
 
     The strict checks live here at config-parse so the deployer sees a
     clear ValueError before the server boots, not a debug-level warning
     deep in the OAuth flow.
     """
-    from urllib.parse import urlparse
-
     if not isinstance(uri, str) or not uri.startswith("https://"):
         raise ValueError(
             f"allowed_client_redirects entries must be absolute https:// URLs; got {uri!r}"

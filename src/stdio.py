@@ -26,6 +26,7 @@ import json
 import os
 import secrets
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -69,17 +70,14 @@ def _relax_oauthlib_token_scope() -> None:
     os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 
-# Placeholder Fernet key for stdio mode — Settings now requires exactly 44
-# bytes (URL-safe base64 of a 32-byte key) so the value must be a real
-# Fernet key shape. stdio bypasses GoogleProvider so this value is never
-# used to encrypt anything; if a future refactor accidentally exercises it,
-# the literal makes the failure visible (decrypt of any real ciphertext
-# will deterministically fail because the key is documented-public).
+# Placeholder secrets for stdio mode — both satisfy Settings's length
+# constraints (fernet_key=44 chars URL-safe base64; jwt_signing_key≥32
+# chars) without consuming entropy at every CLI invocation. stdio
+# bypasses GoogleProvider, so neither value is ever used at runtime;
+# the literal-source-grep'able shapes make any future accidental use
+# fail loudly (a recognizable string in JWTs/Fernet output flags the
+# regression in code review).
 _STDIO_FERNET_PLACEHOLDER = "c3RkaW8tcGxhY2Vob2xkZXItbm90LXVzZWQtbmV2ZXI9"
-# Placeholder JWT signing key for stdio mode. Same rationale: 32 chars to
-# satisfy `Settings.jwt_signing_key.min_length=32`, never used at runtime
-# (stdio has no FastMCP JWT path), public-grep'able to ensure any
-# accidental signing operation produces a recognizable forgeable token.
 _STDIO_JWT_PLACEHOLDER = "stdio-placeholder-jwt-key-unused"
 
 
@@ -125,9 +123,13 @@ def _ensure_config_dir() -> Path:
 
 
 def _atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> None:
-    """Write bytes to `path` atomically. Open the temp with O_CREAT|O_EXCL so
-    the file is created at the final perms in one syscall — closes the
-    create-then-chmod window where the temp briefly exists at umask perms.
+    """Write bytes to `path` atomically.
+
+    Opens the temp with `O_CREAT|O_TRUNC` at final perms in one syscall —
+    closes the create-then-chmod window where the temp briefly existed at
+    umask perms before the explicit `chmod`. Concurrent-writer race-safety
+    is not a goal here (callers serialize their own writes); for that use
+    `_create_exclusive_or_read` instead.
     """
     tmp = path.with_suffix(path.suffix + ".tmp")
     fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
@@ -135,8 +137,6 @@ def _atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> None:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
     except BaseException:
-        # On error, clean up the temp file we just created so the next call
-        # doesn't trip O_CREAT|O_EXCL on a stale leftover.
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
         raise
@@ -168,8 +168,6 @@ def _create_exclusive_or_read(path: Path, generate: Callable[[], bytes]) -> byte
     path lets racing readers see partial contents during the writer's
     `f.write()` window.
     """
-    import tempfile
-
     _ensure_config_dir()
     if path.exists():
         return path.read_bytes().strip()

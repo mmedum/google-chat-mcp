@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Security release. Closes 2 High and 5 Medium findings from a comprehensive
 security audit, plus a long tail of low-severity hardening. Subsumes the
-unreleased [0.3.2] feature content; `[0.3.3]` is the first tagged
-artifact for the entire v0.3.x train (7 new tools + 3 new OAuth scopes).
-See `docs/security.md` for the threat model and the full set of
+unreleased v0.3.2 feature content; `0.3.3` is the first tagged artifact
+for the entire v0.3.x train (7 new tools + 3 new OAuth scopes). See
+`docs/security.md` for the threat model and the full set of
 security-relevant invariants.
 
 ### Security — High
@@ -78,12 +78,12 @@ security-relevant invariants.
 - Log redaction walks nested dicts — `logger.info("x", payload={"access_token": ...})`
   no longer leaks plaintext.
 
-### Added (subsumed from unreleased v0.3.2 cut — feature content unchanged)
+### Added
 
 Seven new tools across the v0.3.x train, three new OAuth scopes (two
 sensitive, one restricted); one re-consent round covers all three.
+Feature content unchanged from the unreleased v0.3.2 cut.
 
-### Added
 - `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
   (`spaceType=GROUP_CHAT`). `member_emails` excludes the caller; 2-20
   members (self-imposed UX cap; Google's real limit is 49). No new scope
