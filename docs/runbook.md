@@ -239,6 +239,28 @@ rejections, permission prompts) here so the next upgrade knows.
 - `/healthz` — process is up. Always 200 if the container is serving.
 - `/readyz` — DB reachable. 503 means SQLite is locked or the volume dropped.
 
+## Security model
+
+For the threat model, trust boundaries, and the full set of
+security-relevant invariants enforced in code, see
+[`docs/security.md`](./security.md). That doc is the authoritative
+reference for "is this safe?" questions in PR review and for deployers
+evaluating the project.
+
+Operator highlights (rules the server can't enforce for you):
+
+- **Don't share `fernet_key` across deployments** — a compromised disk
+  in one environment leaks tokens for all environments sharing the key.
+  See "Rotating the Fernet key" above.
+- **Don't enable `GCM_DEV_MODE=1` outside test environments** — that
+  switches off the upstream-URL safety check and would let a host-side
+  attacker exfiltrate access tokens via `GCM_CHAT_API_BASE`.
+- **Don't enable `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME=1` outside test
+  environments** — that switches off the chmod-0700 safety check on
+  arbitrary directories.
+- **Don't flip `GCM_AUDIT_HASH_USER_SUB` mid-deployment** — old hashed
+  rows + new raw rows can't be joined cleanly across the rotation point.
+
 ## People API resolution caveats
 
 Several read-side tools resolve `users/{id}` → email + display name via

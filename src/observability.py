@@ -69,16 +69,35 @@ _SENSITIVE_KEYS = frozenset(
 )
 
 
+def _redact_value(value: Any) -> Any:
+    """Recursively walk dicts/lists/tuples, redacting sensitive keys.
+
+    Top-level-only redaction was a footgun: a future
+    ``logger.info("upstream_response", payload=raw_dict)`` where
+    ``raw_dict`` contains an ``access_token`` would log it in plaintext
+    because ``payload`` isn't in the sensitive set. Walking the structure
+    catches the nested case at a small cost (sensitive log events are rare).
+    """
+    if isinstance(value, dict):
+        return {
+            k: ("***redacted***" if k.lower() in _SENSITIVE_KEYS else _redact_value(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_value(item) for item in value)
+    return value
+
+
 def _redact_sensitive(
     _logger: Any, _name: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
-    # Short-circuit the hot path: most log lines have no sensitive keys.
-    lowered = {k.lower() for k in event_dict}
-    if not lowered & _SENSITIVE_KEYS:
-        return event_dict
     for k in list(event_dict):
         if k.lower() in _SENSITIVE_KEYS:
             event_dict[k] = "***redacted***"
+        else:
+            event_dict[k] = _redact_value(event_dict[k])
     return event_dict
 
 

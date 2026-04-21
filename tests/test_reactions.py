@@ -316,6 +316,30 @@ async def test_remove_reaction_by_filter_no_email_match(
     assert out.reaction_name is None
 
 
+@pytest.mark.parametrize("payload", ['x"y', "x\\y", "x y", 'x" OR "y'])
+def test_emoji_rejects_filter_injection_chars(payload: str) -> None:
+    """Regression for AIP-160 filter injection: `"`, `\\`, and whitespace
+    in `emoji` could break out of the quoted filter string in
+    `chat_client.list_reactions` (`emoji.unicode = "{value}"`) and broaden
+    the match. The Pydantic pattern rejects them at the model boundary."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        AddReactionInput(message_name="spaces/AAA/messages/M.1", emoji=payload)
+    with pytest.raises(ValidationError):
+        RemoveReactionInput(
+            message_name="spaces/AAA/messages/M.1",
+            emoji=payload,
+            user_email="a@example.com",
+        )
+
+
+def test_emoji_still_accepts_unicode_glyphs() -> None:
+    """Sanity: legitimate unicode emoji + ZWJ sequences must still validate."""
+    AddReactionInput(message_name="spaces/AAA/messages/M.1", emoji="🙂")
+    AddReactionInput(message_name="spaces/AAA/messages/M.1", emoji="👨‍👩‍👧")
+
+
 def test_remove_reaction_input_requires_exactly_one_shape() -> None:
     # Both shapes set — reject.
     with pytest.raises(ValueError, match="reaction_name OR"):

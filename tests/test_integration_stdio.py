@@ -128,7 +128,12 @@ async def test_stdio_happy_path_tools_list_and_call(tmp_path: Path, stub_chat_ap
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "HOME": str(tmp_path / "home"),
         "GCM_CONFIG_DIR": str(config_dir),
+        "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME": "1",
         "GCM_TEST_AUTH_STUB": "1",
+        # GCM_DEV_MODE=1 is required when GCM_CHAT_API_BASE / GCM_PEOPLE_API_BASE
+        # point at anything other than *.googleapis.com. The validator rejects
+        # non-Google URLs in production to close the token-exfil vector.
+        "GCM_DEV_MODE": "1",
         "GCM_CHAT_API_BASE": stub_chat_api,
         "GCM_PEOPLE_API_BASE": stub_chat_api,
         "GCM_LOG_LEVEL": "INFO",

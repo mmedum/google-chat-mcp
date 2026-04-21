@@ -19,6 +19,10 @@ import aiosqlite
 # to users/{id}; writing them would poison the cache for later sender lookups.
 # This gate filters resourceName before any cache write.
 _WORKSPACE_PERSON_ID = re.compile(r"^people/(\d+)$")
+# `users/{numeric}` form already in Chat's namespace — no translation needed.
+# Used to gate the single-item DirectoryCache.put() so the docstring's
+# belt-and-suspenders claim holds for both write paths.
+_WORKSPACE_USER_ID = re.compile(r"^users/\d+$")
 
 
 def workspace_user_id(resource_name: str) -> str | None:
@@ -136,6 +140,13 @@ class DirectoryCache:
         return row["email"], row["display_name"]
 
     async def put(self, user_id: str, email: str, display_name: str | None) -> None:
+        # Gate: only `users/{numeric}` is a Workspace profile — non-conforming
+        # IDs (bots, apps, contact-derived shapes) are silently dropped to
+        # match the put_many invariant. Without this, a future caller wired
+        # to put() without going through workspace_user_id could poison the
+        # cache for later sender-name lookups.
+        if not _WORKSPACE_USER_ID.match(user_id):
+            return
         async with self._db.cursor() as conn:
             await conn.execute(
                 """

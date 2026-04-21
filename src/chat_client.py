@@ -619,7 +619,12 @@ class ChatClient:
                     json=json,
                 )
             mcp_google_api_calls_total.labels(endpoint_label, str(resp.status_code)).inc()
-            if resp.status_code < 400:
+            # Tighten the success branch to 2xx only — `follow_redirects=False`
+            # means a 3xx falls into the success path under `< 400`, returning
+            # an empty dict that masks the redirect as "Google returned no
+            # data" and silently drops the Location header. Treat 3xx as a
+            # ChatApiError so callers see what happened.
+            if 200 <= resp.status_code < 300:
                 return resp.json() if resp.content else {}
             if _is_retryable(resp.status_code) and attempt <= self._max_retries:
                 sleep_for = _backoff_seconds(attempt, resp)
