@@ -21,9 +21,9 @@ from ._common import (
     CONTACTS_READONLY,
     DIRECTORY_READONLY,
     ToolContext,
-    _format_missing_scope_message,
-    _is_missing_scope_error,
+    format_missing_scope_message,
     invoke_tool,
+    is_missing_scope_error,
 )
 from ._directory import primary_email, primary_name
 
@@ -41,7 +41,7 @@ class _SourceFailure:
 
     def __init__(self, exc: ChatApiError) -> None:
         self.exc = exc
-        self.missing_scope = _is_missing_scope_error(exc)
+        self.missing_scope = is_missing_scope_error(exc)
 
 
 _SearchFn = Callable[[str, str, int], Awaitable[list[dict[str, Any]]]]
@@ -128,7 +128,7 @@ async def search_people_handler(ctx: ToolContext, payload: SearchPeopleInput) ->
             # otherwise aggregate the upstream messages so the admin can
             # see what actually broke.
             if all(f.missing_scope for _, f in failures):
-                raise ToolError(_format_missing_scope_message(_scope_for(failures[0][0])))
+                raise ToolError(format_missing_scope_message(_scope_for(failures[0][0])))
             reasons = "; ".join(f"{source}: {f.exc.message}" for source, f in failures)
             raise ToolError(f"search_people: all sources failed ({reasons})")
 

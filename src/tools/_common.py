@@ -28,6 +28,7 @@ from ..config import (
     CHAT_MESSAGES_CREATE,
     CHAT_MESSAGES_REACTIONS,
     CHAT_MESSAGES_READONLY,
+    CHAT_SPACES,
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
     CONTACTS_READONLY,
@@ -85,6 +86,7 @@ ToolName = Literal[
     "search_people",
     "update_message",
     "delete_message",
+    "update_space",
 ]
 
 # Scope constants re-exported from `src/config.py` so tool handlers + tests
@@ -97,6 +99,7 @@ __all__ = [
     "CHAT_MESSAGES_CREATE",
     "CHAT_MESSAGES_REACTIONS",
     "CHAT_MESSAGES_READONLY",
+    "CHAT_SPACES",
     "CHAT_SPACES_CREATE",
     "CHAT_SPACES_READONLY",
     "CONTACTS_READONLY",
@@ -107,7 +110,9 @@ __all__ = [
     "ToolContext",
     "ToolName",
     "audit_user_sub",
+    "format_missing_scope_message",
     "invoke_tool",
+    "is_missing_scope_error",
     "space_display_name",
     "space_id_from_message_name",
 ]
@@ -168,7 +173,7 @@ def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -
     return hmac.new(pepper, user_sub.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _is_missing_scope_error(exc: ChatApiError) -> bool:
+def is_missing_scope_error(exc: ChatApiError) -> bool:
     """Detect Google's "insufficient scope" 403 from an AIP-193 error envelope.
 
     Dual condition: prefer the typed reason code (error.details[].reason); fall
@@ -185,7 +190,7 @@ def _is_missing_scope_error(exc: ChatApiError) -> bool:
     )
 
 
-def _format_missing_scope_message(scope: str) -> str:
+def format_missing_scope_message(scope: str) -> str:
     """Human-readable text for a missing-scope ToolError.
 
     Format is stable: the scope URL appears between "scope: " and ". Re-run".
@@ -241,7 +246,7 @@ async def invoke_tool[T](
         and auth.granted_scopes is not None
         and required_scope not in auth.granted_scopes
     ):
-        raise ToolError(_format_missing_scope_message(required_scope))
+        raise ToolError(format_missing_scope_message(required_scope))
 
     if not await ctx.limiter.allow(user_sub):
         mcp_rate_limit_hits_total.inc()
@@ -264,9 +269,9 @@ async def invoke_tool[T](
             google_status=exc.google_status,
             google_reason=exc.google_reason,
         )
-        if required_scope is not None and _is_missing_scope_error(exc):
+        if required_scope is not None and is_missing_scope_error(exc):
             error_code = "missing_scope"
-            raise ToolError(_format_missing_scope_message(required_scope)) from exc
+            raise ToolError(format_missing_scope_message(required_scope)) from exc
         raise ToolError(f"Google Chat API error: {exc}") from exc
     except ToolError:
         error_code = "tool_error"

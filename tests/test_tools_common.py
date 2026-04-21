@@ -17,9 +17,9 @@ from src.tools import list_spaces_handler
 from src.tools._common import (
     AuthInfo,
     ToolContext,
-    _format_missing_scope_message,
-    _is_missing_scope_error,
     audit_user_sub,
+    format_missing_scope_message,
+    is_missing_scope_error,
 )
 
 
@@ -31,7 +31,7 @@ def test_is_missing_scope_detects_aip193_reason() -> None:
         google_status="PERMISSION_DENIED",
         google_reason="ACCESS_TOKEN_SCOPE_INSUFFICIENT",
     )
-    assert _is_missing_scope_error(exc) is True
+    assert is_missing_scope_error(exc) is True
 
 
 def test_is_missing_scope_detects_message_fallback() -> None:
@@ -44,7 +44,7 @@ def test_is_missing_scope_detects_message_fallback() -> None:
         google_status="PERMISSION_DENIED",
         google_reason=None,
     )
-    assert _is_missing_scope_error(exc) is True
+    assert is_missing_scope_error(exc) is True
 
 
 def test_is_missing_scope_false_for_generic_403() -> None:
@@ -55,7 +55,7 @@ def test_is_missing_scope_false_for_generic_403() -> None:
         google_status="PERMISSION_DENIED",
         google_reason="IAM_PERMISSION_DENIED",
     )
-    assert _is_missing_scope_error(exc) is False
+    assert is_missing_scope_error(exc) is False
 
 
 def test_is_missing_scope_false_for_non_403() -> None:
@@ -64,12 +64,12 @@ def test_is_missing_scope_false_for_non_403() -> None:
         message="not found",
         endpoint="spaces.get",
     )
-    assert _is_missing_scope_error(exc) is False
+    assert is_missing_scope_error(exc) is False
 
 
 def test_format_missing_scope_message_names_scope() -> None:
     scope = "https://www.googleapis.com/auth/chat.messages.reactions"
-    msg = _format_missing_scope_message(scope)
+    msg = format_missing_scope_message(scope)
     # Contract: the scope URL is in the message. Re-auth guidance follows.
     assert scope in msg
     assert "Missing required OAuth scope" in msg

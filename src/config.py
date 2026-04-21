@@ -244,6 +244,11 @@ CHAT_MEMBERSHIPS = "https://www.googleapis.com/auth/chat.memberships"
 # Public-published apps need annual CASA review; Internal Workspace apps
 # skip verification entirely. The runbook covers the deployer trade-off.
 CHAT_MESSAGES = "https://www.googleapis.com/auth/chat.messages"
+# Space lifecycle umbrella (update_space via spaces.patch, v0.4.0) — also
+# Google's RESTRICTED tier. Granular chat.spaces.readonly / .create do not
+# cover spaces.patch; Google lists only the umbrella for the user-OAuth path.
+# Same CASA trade-off as chat.messages applies; runbook covers it.
+CHAT_SPACES = "https://www.googleapis.com/auth/chat.spaces"
 DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
 # Consumer Gmail fallback for search_people (v0.3.1). Covers caller's own
 # contacts + "other contacts" auto-populated from interactions. Sensitive tier.
@@ -259,6 +264,7 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     CHAT_MESSAGES,
     CHAT_SPACES_READONLY,
     CHAT_SPACES_CREATE,
+    CHAT_SPACES,
     CHAT_MEMBERSHIPS_READONLY,
     CHAT_MEMBERSHIPS,
     DIRECTORY_READONLY,

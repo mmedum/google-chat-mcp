@@ -60,6 +60,8 @@ from .models import (
     SpaceType,
     UpdateMessageInput,
     UpdateMessageResult,
+    UpdateSpaceInput,
+    UpdateSpaceResult,
     WhoamiResult,
 )
 from .observability import (
@@ -94,6 +96,7 @@ from .tools import (
     search_people_handler,
     send_message_handler,
     update_message_handler,
+    update_space_handler,
     whoami_handler,
 )
 from .tools._common import AuthResolver, ToolContext
@@ -358,6 +361,30 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def update_message(payload: UpdateMessageInput) -> UpdateMessageResult:
         return await update_message_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="update_space",
+        title="Rename or update a space",
+        description=(
+            "Rename a space or edit its description via `spaces.patch`. Pass at "
+            "least one of `display_name` (1-128 chars) / `description` (≤150 "
+            "chars); both are optional, but a no-op patch is rejected at the "
+            "input layer. Set `dry_run=true` to preview the patch body + "
+            "`updateMask` without posting. Requires the restricted-tier "
+            "`chat.spaces` scope; deployer re-consent on upgrade. Caveat: "
+            "because Google's `updateMask` only accepts top-level paths, a "
+            "description update clears any existing `guidelines` set on the "
+            "space — edit guideline-bearing rooms via the Chat web UI instead."
+        ),
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    )
+    async def update_space(payload: UpdateSpaceInput) -> UpdateSpaceResult:
+        return await update_space_handler(_require_ctx(state), payload)
 
     @mcp.tool(
         name="delete_message",

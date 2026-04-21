@@ -210,6 +210,53 @@ class UpdateMessageResult(_Strict):
     rendered_payload: dict[str, Any] | None = None
 
 
+class UpdateSpaceInput(_Strict):
+    """Rename a space or update its description via `spaces.patch`.
+
+    At least one of `display_name` / `description` must be supplied —
+    Google rejects an empty `updateMask`. The validator enforces this so
+    we never send a no-op patch upstream.
+
+    Field bounds match Google's documented limits: `display_name` is
+    1-128 characters; `description` is up to 150. Both are text-only;
+    permission settings and other space fields are out of scope for v0.4.0.
+
+    **Caveat on `description`:** Google's `spaces.patch` `updateMask`
+    accepts only top-level field paths — no `spaceDetails.description`
+    sub-path. Updating description means patching the whole
+    `spaceDetails` sub-object, so any existing `guidelines` (rules of
+    the room) that aren't re-supplied in the same call will be cleared.
+    Most spaces don't set guidelines; if yours does, edit via the Chat
+    web UI instead of this tool until v1.1 adds a `guidelines` field.
+    """
+
+    space_id: SpaceId
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=128)] | None = None
+    description: Annotated[str, StringConstraints(max_length=150)] | None = None
+    dry_run: bool = False
+
+    @model_validator(mode="after")
+    def _require_one_field(self) -> UpdateSpaceInput:
+        if self.display_name is None and self.description is None:
+            raise ValueError("At least one of `display_name` or `description` must be set.")
+        return self
+
+
+class UpdateSpaceResult(_Strict):
+    space_id: SpaceId
+    display_name: str | None = None
+    description: str | None = None
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+    update_mask: str | None = None
+    """Comma-joined `updateMask` actually applied (e.g.
+    `displayName,spaceDetails`). Surfaced for observability — callers
+    can confirm which fields the patch targeted without re-deriving
+    from the input. Google accepts only top-level mask paths for
+    `spaces.patch`, so a description update sends `spaceDetails` (whole
+    sub-object), not `spaceDetails.description`."""
+
+
 class DeleteMessageInput(_Strict):
     message_name: MessageId
     dry_run: bool = False
