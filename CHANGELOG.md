@@ -7,14 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.2] - 2026-04-21
+## [0.3.3] - 2026-04-21
 
-Closes the v0.3.x train: seven new tools across space creation, membership
-mutation, people resolution, and message lifecycle. Ships everything from
-the unreleased [0.3.0] (space creation) and [0.3.1] (membership + people
-search) cuts as a single version — no intermediate tags. **Three new OAuth
-scopes** total (two sensitive, one restricted); one re-consent round
-covers all three.
+Security release. Closes 2 High and 5 Medium findings from a comprehensive
+security audit, plus a long tail of low-severity hardening. Subsumes the
+unreleased [0.3.2] feature content; `[0.3.3]` is the first tagged
+artifact for the entire v0.3.x train (7 new tools + 3 new OAuth scopes).
+See `docs/security.md` for the threat model and the full set of
+security-relevant invariants.
+
+### Security — High
+
+- **`GCM_CHAT_API_BASE` / `GCM_PEOPLE_API_BASE` token-exfil closed**
+  (`src/config.py`). Pre-fix, these env-overridable Settings fields
+  accepted plain `http://` and any host — an attacker with env-write on
+  the host could redirect every Chat API call to themselves and capture
+  the user's Google access token from the `Authorization` header. Now
+  the validator requires `https://*.googleapis.com` unless the explicit
+  `GCM_DEV_MODE=1` env gate is set (integration-test use only).
+- **Path-traversal in resource-name regexes closed** (`src/models.py`).
+  The shared `_ID = r"[A-Za-z0-9._-]+"` admitted bare `..` segments;
+  httpx normalized them via RFC 3986 before sending, so
+  `delete_message("spaces/T/messages/..")` resolved to
+  `DELETE /v1/spaces/T` — wrong-resource call with the audit log
+  recording the intended target. Tightened to require ≥1 alphanumeric
+  per segment.
+
+### Security — Medium
+
+- **`emoji` parameter constrained** to block AIP-160 filter injection in
+  `remove_reaction`'s lookup path (`src/models.py`). Pre-fix, `"` in the
+  emoji could break out of `emoji.unicode = "{value}"` and broaden the
+  filter to delete the wrong reaction.
+- **`allowed_client_redirects` validator tightened** (`src/config.py`).
+  Rejects bare-TLD hosts, multi-`*` wildcards, and `*` in TLD position;
+  preserves the documented single `*.subdomain` pattern.
+- **Weak-key rejection at config-parse** (`src/config.py`).
+  `jwt_signing_key.min_length=32`, `fernet_key` exactly 44 chars (real
+  Fernet shape). Catches operator typos before mid-OAuth-flow crashes.
+- **`DirectoryCache.put` gated on `users/{numeric}` shape**
+  (`src/storage.py`). The single-write path now silently drops bot/app/
+  contact-derived IDs — matches the bulk `put_many` invariant the
+  docstring already promised.
+- **Concurrent-writer race on `fernet.key` / `audit_pepper` closed**
+  (`src/stdio.py`). Pre-fix, two `login` invocations could both observe
+  "no key", both generate, and both write — losing one user's session
+  silently. Replaced with `tempfile.mkstemp` + `os.link` for atomic
+  exclusive create-or-read.
+
+### Security — Low (defense-in-depth)
+
+- Stdio `cmd_login` hard-fails when `user_sub` is unresolvable from
+  both id_token and OIDC `/userinfo` — drops the literal `"stdio-user"`
+  fallback that would have polluted audit logs.
+- Stdio resolver pre-flight scope check (`src/tools/_common.py`):
+  `granted_scopes` from tokens.json compared against `required_scope`
+  before the upstream API call. Matches HTTPS's reactive-via-403 shape.
+- `GCM_CONFIG_DIR` outside `~/` requires `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME=1`
+  — closes the silent chmod-0700 footgun.
+- Stdio Fernet/JWT placeholder constants made deterministic-public (no
+  longer `Fernet.generate_key()` per import) — `_STDIO_FERNET_PLACEHOLDER`
+  and `_STDIO_JWT_PLACEHOLDER` are recognizable literals so any
+  accidental real use fails loudly.
+- `_atomic_write_bytes` now opens the temp with `O_CREAT|O_TRUNC` at
+  final perms in one syscall — closes the create-then-chmod window.
+- `asyncio.Lock` around stdio resolver's refresh+save — serializes
+  Google token rotation across concurrent tool calls.
+- `chat_client._request` rejects 3xx responses (was misclassified as
+  success and returned `{}`).
+- Log redaction walks nested dicts — `logger.info("x", payload={"access_token": ...})`
+  no longer leaks plaintext.
+
+### Added (subsumed from unreleased v0.3.2 cut — feature content unchanged)
+
+Seven new tools across the v0.3.x train, three new OAuth scopes (two
+sensitive, one restricted); one re-consent round covers all three.
 
 ### Added
 - `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
@@ -227,7 +294,7 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.2...HEAD
-[0.3.2]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.2
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.3
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
