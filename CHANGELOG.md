@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-21
+
+Initial stable release. The tool surface (21 tools + 3 resources), I/O
+shapes, and scope set graduated from v0.4.0 are now semver-stable per
+the policy in [README](README.md#versioning-and-support): breaking
+changes get a major-version bump and at least one minor-version
+deprecation warning before removal.
+
+No code changes from v0.4.0 — this is a tag-only release. The v0.4.0
+artifact (Docker image, SBOM, SLSA provenance, wheel) is the same
+binary you get at v1.0.0; the version string changes and the contract
+is now stable.
+
 ## [0.4.0] - 2026-04-21
 
 Closes the last high-value gap in the per-user-OAuth Chat API surface
@@ -376,7 +389,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.3
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
