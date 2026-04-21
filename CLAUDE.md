@@ -11,13 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Both entry points share `src/app.py::build_app(settings, resolver=, auth=)` — tool and resource registration is transport-agnostic. Per-user OAuth throughout; no service account, no domain-wide delegation, no centralized app (each deployer owns their Google app, their tokens, their rollout).
 
-Twenty tools, three resources:
+Twenty-one tools, three resources:
 
 - Tools (read-side): `list_spaces`, `find_direct_message`, `get_messages`, `get_space`, `list_members`, `whoami`, `get_thread`, `get_message`, `list_reactions`, `search_messages` (space-scoped, client-side exact/regex), `search_people` (hybrid Workspace directory + caller contacts lookup; back-fills the email cache as a side effect).
 - Tools (write-side): `send_message` (optional `dry_run: true` previews the payload without posting), `update_message` (text-only edit via `updateMask=text`; restricted-tier scope), `delete_message` (idempotent on 404 / non-scope 403; restricted-tier scope), `add_reaction`, `remove_reaction` (by resource name OR server-side-filtered `(message, emoji, user)`), `create_group_chat` (unnamed multi-person DM; 2-20 members; `dry_run`), `create_space` (named space; 1-20 members; `display_name` required; `dry_run`), `add_member` (invite by email; idempotent-by-nature on Google's side; `dry_run`), `remove_member` (delete by resource name; idempotent).
 - Resources: `gchat://spaces/{id}`, `gchat://spaces/{id}/messages/{id}`, `gchat://spaces/{id}/threads/{id}` — same content shape as the matching `get_*` tools.
 
-`send_message` posts the body verbatim — no server-side suffix is appended. Missing-scope 403s from Google are wrapped as a `ToolError` that names the exact scope URL (see `_is_missing_scope_error` + `_format_missing_scope_message` in `src/tools/_common.py`).
+`send_message` posts the body verbatim — no server-side suffix is appended. Missing-scope 403s from Google are wrapped as a `ToolError` that names the exact scope URL (see `is_missing_scope_error` + `format_missing_scope_message` in `src/tools/_common.py`).
 
 ## Commands
 
@@ -42,7 +42,7 @@ Pre-commit hooks: `uv run pre-commit install`.
 
 Composition split across three entry-point files and one shared builder:
 
-- `src/app.py::build_app(settings, *, resolver=None, auth=None) -> FastMCP` — transport-agnostic. Registers all 20 tools + 3 resources, wires the `ToolContext` lifespan. Unit-tested in `tests/test_app.py`.
+- `src/app.py::build_app(settings, *, resolver=None, auth=None) -> FastMCP` — transport-agnostic. Registers all 21 tools + 3 resources, wires the `ToolContext` lifespan. Unit-tested in `tests/test_app.py`.
 - `src/server.py` — HTTPS entry. Builds `GoogleProvider`, calls `build_app(settings, auth=provider)`, mounts `/healthz`/`/readyz`/`/metrics`, runs HTTP transport. Unit-tested in `tests/test_server.py`; full stack exercised in `tests/test_integration_https.py`.
 - `src/stdio.py` — stdio entry. argparse CLI (`login`, `logout`, default `serve`); loopback OAuth + local token store; calls `build_app(settings, resolver=<local-resolver>)`. Full stack exercised in `tests/test_integration_stdio.py` via a real subprocess.
 

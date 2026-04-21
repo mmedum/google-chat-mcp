@@ -148,7 +148,7 @@ async def test_stdio_happy_path_tools_list_and_call(tmp_path: Path, stub_chat_ap
     async with Client(transport) as client:
         tools = await client.list_tools()
         tool_names = {t.name for t in tools}
-        assert len(tools) == 20
+        assert len(tools) == 21
         assert "list_spaces" in tool_names
         assert "whoami" in tool_names
 

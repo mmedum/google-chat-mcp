@@ -300,6 +300,29 @@ class ChatClient:
             endpoint_label="spaces.messages.patch",
         )
 
+    async def update_space(
+        self,
+        access_token: str,
+        space_id: str,
+        *,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Rename a space or update its description via PATCH `spaces.patch`.
+
+        Mask + body are derived from whichever of `display_name` /
+        `description` are non-None — caller must guarantee at least one is
+        set (the tool layer enforces this via `UpdateSpaceInput`).
+        """
+        body, mask = _build_update_space_body(display_name=display_name, description=description)
+        return await self._patch(
+            f"{self._base_chat}/{space_id}",
+            access_token=access_token,
+            json=body,
+            params={"updateMask": mask},
+            endpoint_label="spaces.patch",
+        )
+
     async def delete_message(self, access_token: str, message_name: str) -> dict[str, Any]:
         """Delete a message via DELETE `spaces.messages.delete`."""
         return await self._delete(
@@ -696,6 +719,27 @@ def _build_update_message_body(*, text: str) -> dict[str, Any]:
     branch (same dry/real-parity contract as `_build_send_message_body`).
     """
     return {"text": text}
+
+
+def _build_update_space_body(
+    *, display_name: str | None, description: str | None
+) -> tuple[dict[str, Any], str]:
+    """Pure builder for the `spaces.patch` request body + `updateMask`.
+
+    Shared by real-PATCH and `update_space`'s dry_run branch. Body shape
+    and mask-path constraints (description nests under `spaceDetails`;
+    `updateMask` accepts only top-level paths) are documented on
+    `UpdateSpaceInput` in `src/models.py`.
+    """
+    body: dict[str, Any] = {}
+    mask_parts: list[str] = []
+    if display_name is not None:
+        body["displayName"] = display_name
+        mask_parts.append("displayName")
+    if description is not None:
+        body["spaceDetails"] = {"description": description}
+        mask_parts.append("spaceDetails")
+    return body, ",".join(mask_parts)
 
 
 def _build_send_message_body(

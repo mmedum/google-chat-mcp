@@ -9,7 +9,14 @@ from fastmcp.exceptions import ToolError
 
 from ..chat_client import ChatApiError
 from ..models import DirectMessageResult, _ChatSpaceResponse
-from ._common import CHAT_SPACES_READONLY, ToolContext, invoke_tool
+from ._common import (
+    CHAT_SPACES_CREATE,
+    CHAT_SPACES_READONLY,
+    ToolContext,
+    format_missing_scope_message,
+    invoke_tool,
+    is_missing_scope_error,
+)
 
 
 async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> DirectMessageResult:
@@ -23,6 +30,14 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
         try:
             created = await ctx.client.create_dm(access_token, user_email)
         except ChatApiError as exc:
+            # The create-on-miss path needs `chat.spaces.create`, not the
+            # `readonly` scope the pre-flight is tagged with (readonly is
+            # the scope the find step needs). Surface the actually-missing
+            # scope so the re-auth prompt points users at the right consent
+            # — if we let invoke_tool's wrapper fire instead, it would name
+            # readonly from the pre-flight `required_scope` tag.
+            if is_missing_scope_error(exc):
+                raise ToolError(format_missing_scope_message(CHAT_SPACES_CREATE)) from exc
             raise ToolError(
                 f"Could not find or create DM with {user_email}. "
                 f"Is the user in your Workspace directory?"

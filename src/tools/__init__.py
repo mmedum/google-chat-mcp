@@ -19,6 +19,7 @@ from .search_messages import search_messages_handler
 from .search_people import search_people_handler
 from .send_message import send_message_handler
 from .update_message import update_message_handler
+from .update_space import update_space_handler
 from .whoami import whoami_handler
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "search_people_handler",
     "send_message_handler",
     "update_message_handler",
+    "update_space_handler",
     "whoami_handler",
 ]

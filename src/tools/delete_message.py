@@ -7,8 +7,8 @@ from ..models import DeleteMessageInput, DeleteMessageResult
 from ._common import (
     CHAT_MESSAGES,
     ToolContext,
-    _is_missing_scope_error,
     invoke_tool,
+    is_missing_scope_error,
     space_id_from_message_name,
 )
 
@@ -68,7 +68,7 @@ async def delete_message_handler(
 
 def _is_gone_or_forbidden(exc: ChatApiError) -> bool:
     """True when the message is already gone. Excludes missing-scope 403s."""
-    if _is_missing_scope_error(exc):
+    if is_missing_scope_error(exc):
         return False
     if exc.status_code == 404 or exc.google_status == "NOT_FOUND":
         return True

@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
 [![Container image](https://img.shields.io/badge/ghcr.io-mmedum%2Fgoogle--chat--mcp-2ea44f?logo=docker)](https://github.com/mmedum/google-chat-mcp/pkgs/container/google-chat-mcp)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
-[![Python](https://img.shields.io/badge/python-3.14-blue)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.12%E2%80%933.14-blue)](https://www.python.org/downloads/)
 
 A production-grade MCP server that exposes Google Chat to any MCP-compatible
 client. Read, search, and reply to spaces and DMs through natural-language
@@ -13,7 +13,7 @@ prompts in your MCP client of choice.
 Two transports ship in this repo:
 
 - **Stdio** (recommended for individual users) — install from source with
-  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.3`,
+  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.4.0`,
   run a one-time OAuth login against your own Google account, then launch
   the server as a subprocess under Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
@@ -31,6 +31,7 @@ service accounts, no domain-wide delegation, no publishing step.
 | `find_direct_message` | Resolve an email to a DM space ID (creates one on miss) | `chat.spaces.readonly` + `chat.spaces.create` |
 | `create_group_chat` | Create an unnamed group chat with 2-20 members; `dry_run` previews the body | `chat.spaces.create` |
 | `create_space` | Create a named space (`display_name` required, 1-20 members); `dry_run` previews the body | `chat.spaces.create` |
+| `update_space` | Rename a space or edit its description (`spaces.patch`); at least one field required; `dry_run` previews | `chat.spaces` (restricted) |
 | `send_message` | Post a text message. Optional `thread_name` reply; `dry_run` previews the payload without posting | `chat.messages.create` |
 | `update_message` | Edit the text of a message you sent (`updateMask=text`); `dry_run` previews | `chat.messages` (restricted) |
 | `delete_message` | Delete a message by resource name; idempotent (`deleted=false` on re-delete); missing-scope still raises | `chat.messages` (restricted) |
@@ -45,7 +46,7 @@ service accounts, no domain-wide delegation, no publishing step.
 | `get_message` | One message by resource name, with reaction summaries inline | `chat.messages.readonly` |
 | `add_reaction` | Add a Unicode-emoji reaction to a message (idempotent) | `chat.messages.reactions` |
 | `remove_reaction` | Delete by resource name, or by `(message, emoji, user)` via server-side filter | `chat.messages.reactions` |
-| `list_reactions` | Paginated reactions on a message | `chat.messages.readonly` |
+| `list_reactions` | Paginated reactions on a message | `chat.messages.reactions` |
 | `search_messages` | Client-side exact / regex scan of one space; always pass `space_id` and `created_after` | `chat.messages.readonly` |
 
 Three MCP **Resources** are dual-exposed for host-UI inclusion:
@@ -92,7 +93,7 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 
 ```bash
 # From a tagged release (preferred):
-uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.3.3
+uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.4.0
 
 # Or from a local clone for dev / custom builds:
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
@@ -273,6 +274,17 @@ from common mis-states.
 ## Security
 
 See [`SECURITY.md`](SECURITY.md) for how to report vulnerabilities.
+
+## Versioning and support
+
+Tool names and I/O shapes are semver-stable from v1.0 onward. Breaking
+changes get a major-version bump and ship with at least one minor-version
+deprecation warning before removal. We support the Python versions listed
+in [`pyproject.toml`](pyproject.toml) under `requires-python`.
+
+## Code of conduct
+
+See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant 3.0.
 
 ## License
 

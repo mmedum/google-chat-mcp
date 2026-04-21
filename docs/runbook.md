@@ -357,37 +357,85 @@ resolve a Workspace user they've never corresponded with, the email
 has to be pasted manually — there is no other upstream path that
 respects the per-user privacy boundary.
 
-## chat.messages restricted-tier scope (update_message / delete_message)
+## Restricted-tier scopes (chat.messages + chat.spaces)
 
 Symptom: question from a deployer considering whether to publish their
-app externally — does the `chat.messages` scope used by
-`update_message` / `delete_message` trigger Google's annual CASA
+app externally — do the restricted-tier scopes used by `update_message`
+/ `delete_message` / `update_space` trigger Google's annual CASA
 security assessment?
 
-**Cause:** `chat.messages` is in Google's **restricted** tier, the
-strictest verification tier. For an Externally-published app
-(visible to all Google users), Google requires an annual third-party
-Cloud Application Security Assessment (CASA) on top of the standard
-sensitive-tier verification. The audit cost is non-trivial — usually
-several thousand USD per year per Cloud project — and recurs.
+**Cause:** two scopes sit in Google's **restricted** tier, the strictest
+verification tier:
+
+- `https://www.googleapis.com/auth/chat.messages` — used by
+  `update_message` and `delete_message`. Added in v0.3.2.
+- `https://www.googleapis.com/auth/chat.spaces` — used by `update_space`.
+  Added in v0.4.0. Google lists only this umbrella for `spaces.patch`
+  under user OAuth; the granular `chat.spaces.create` / `.readonly`
+  scopes we also hold do **not** cover the patch method.
+
+For an Externally-published app (visible to all Google users), Google
+requires an annual third-party Cloud Application Security Assessment
+(CASA) on top of the standard sensitive-tier verification. The audit
+cost is non-trivial — usually several thousand USD per year per Cloud
+project — and recurs. A single CASA covers the full restricted-scope set
+granted to that Cloud project, so adding a second restricted scope
+doesn't double the audit fee.
 
 **Who's affected:** only deployers who set the OAuth consent screen
 to **External** AND publish to **In production** AND want to support
 Google users outside their own organization. The exact triggers:
 
 - **Internal app** (Workspace org-only): not affected. No verification
-  required, no CASA. Just declare the scope and ship.
+  required, no CASA. Just declare the scopes and ship.
 - **External app in Testing mode** (≤100 test users): not affected.
   Users see the unverified-app warning and click through.
 - **External app published In production**: CASA review applies — file
   with Google's verification team, expect 6-12 weeks.
 
-**If you don't need the restricted scope:** drop `update_message` +
-`delete_message` from your install. Remove `CHAT_MESSAGES` from
-`GOOGLE_OAUTH_SCOPES` in `src/config.py`, drop the two tool
-registrations in `src/app.py`, and the rest of the surface stays on
-sensitive-tier scopes. The runbook tracks this as the supported
-opt-out path.
+**If you don't need the restricted scopes:** drop the restricted-scope
+tools from your install. Remove `CHAT_MESSAGES` and/or `CHAT_SPACES`
+from `GOOGLE_OAUTH_SCOPES` in `src/config.py`, drop the matching tool
+registrations in `src/app.py`, and the remaining surface stays on
+sensitive-tier scopes. The opt-out groupings:
+
+- Drop `CHAT_MESSAGES` → remove `update_message` + `delete_message`.
+- Drop `CHAT_SPACES` → remove `update_space`.
+
+This is the supported opt-out path; both groups are modular.
+
+## sender_email / display_name are null on non-self users
+
+Symptom: `get_messages` / `get_thread` / `get_message` / `list_members`
+return entries with `sender_email: null` and `sender_display_name: null`
+for users other than the caller themselves, even though
+`directory.readonly` is granted and the People API returns 200 OK.
+
+**Cause:** Google's `people.get(people/{id})` endpoint reliably resolves
+only `people/me`. Passing an arbitrary `users/{id}` (translated to
+`people/{id}`) returns a shell response with no `emailAddresses` /
+`names` fields populated — regardless of scope. This is a People API
+behavioral limitation, not a scope gap. The tools degrade gracefully to
+`null` rather than failing the whole call.
+
+**The correct non-self resolver is `search_people`.** It hits
+`people.searchDirectoryPeople` (Workspace directory) and
+`people.searchContacts` (caller contacts), which DO return populated
+email + name fields. The same call back-fills the local directory cache
+so subsequent `get_messages` / `list_members` calls resolve the same
+user without another upstream round-trip.
+
+**Recommended agent flow:**
+
+1. If you need an email for a user you've seen in a message or
+   membership list, run `search_people(query="<partial name or email>")`
+   first. The back-fill makes the next read call cheap.
+2. Treat `sender_email: null` as "not resolved yet," not "user has no
+   email." Retry via `search_people` if the value matters to your flow.
+
+**Not a bug:** the degrade is intentional. `search_people` is a separate
+tool because agents often don't need the resolution at all (e.g. reading
+a DM's messages when the caller already knows who sent them).
 
 ## add_member returns a membership_name when the user is already present
 

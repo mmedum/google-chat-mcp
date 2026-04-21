@@ -33,6 +33,7 @@ async def test_build_app_registers_all_tools(settings: Settings) -> None:
         "search_people",
         "update_message",
         "delete_message",
+        "update_space",
     }
     assert expected_so_far.issubset(names)
 
