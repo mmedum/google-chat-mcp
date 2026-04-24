@@ -25,7 +25,7 @@ service accounts, no domain-wide delegation, no publishing step.
 
 ### Which mode do I want?
 
-Pick one path and jump straight to its setup. You don't need both.
+Pick one path and jump straight to its setup.
 
 |  | Stdio | HTTPS |
 |---|---|---|

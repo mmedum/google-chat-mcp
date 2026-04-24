@@ -6,11 +6,6 @@ the request-flow through tools and resources, and the deliberate design
 decisions that contributors should know before touching auth, OAuth, or
 message handling.
 
-For the threat model and trust boundaries, see
-[`docs/security.md`](security.md). For operational procedures (scope
-rotation, key rotation, recovery from mis-states), see
-[`docs/runbook.md`](runbook.md).
-
 ## Two transports, one composition root
 
 Both transports share a single builder, `src/app.py::build_app`. Tool and
@@ -65,9 +60,8 @@ stdio only:
 
 ## Design decisions
 
-These are deliberate choices. Changing any of them should be a
-conscious decision with a PR-level discussion, not an incremental
-refactor.
+These are deliberate choices — changing any of them warrants a
+PR-level discussion, not an incremental refactor.
 
 ### HTTPS OAuth delegates to `GoogleProvider`
 
@@ -98,18 +92,16 @@ vendor-specific defaults.
 
 ### No server-side message-body mutation
 
-`send_message_handler` posts `payload.text` verbatim. No suffix, no
-prefix, no "sent via google-chat-mcp" tag, no client-identity
-injection. What the caller passes is what Google Chat receives.
+`send_message_handler` posts `payload.text` verbatim — no suffix,
+prefix, or client-identity tag. What the caller passes is what
+Google Chat receives.
 
 ### No centralized deployment
 
 Each deployer (HTTPS operator or stdio user) owns their own Google
-Cloud project, their own OAuth consent screen, their own client
-credentials, and their own rollout cadence. There is no "central"
-install, no shared Google app, and no upstream service operated by
-the maintainers. Assumptions like "everyone uses the same client ID"
-do not hold.
+Cloud project, OAuth consent screen, client credentials, and rollout
+cadence. No shared install, no upstream service operated by the
+maintainers.
 
 ### Pydantic `extra="forbid"` on Chat-API response models
 
@@ -122,27 +114,23 @@ walkthrough.
 
 ### Stdout hygiene in stdio serve mode
 
-When `src/stdio.py` runs `serve`, stdout is reserved exclusively for
-MCP JSON-RPC frames. structlog is reconfigured to write to stderr in
-that mode. `print()` calls are fine in `login` and `logout` (they are
-not MCP subcommands) but banned in `serve` — a misdirected line of
-output on stdout breaks the JSON-RPC handshake before any assertion
-in the integration test can fire. `tests/test_integration_stdio.py`
-guards this via a real subprocess.
+When `src/stdio.py` runs `serve`, stdout is reserved for MCP JSON-RPC
+frames. structlog writes to stderr in that mode. `print()` is fine in
+`login` and `logout` (not MCP subcommands) but banned in `serve`.
+Guarded by a real-subprocess test in `tests/test_integration_stdio.py`.
 
 ### Missing-scope errors are structured
 
-Google's January 2026 granular-consent rollout lets users approve
-individual scopes at grant time. When a tool call 403s for a missing
-scope, the server wraps it as a `ToolError` that names the exact
-scope URL the user still needs to grant. Helpers live in
-`src/tools/_common.py`:
+Helpers in `src/tools/_common.py` wrap missing-scope 403s as a
+`ToolError` naming the exact scope URL the user still needs to grant:
 
 - `is_missing_scope_error(exc)` — detects the 403-shaped
   missing-scope case.
 - `format_missing_scope_message(scope)` — renders the user-facing
-  message naming the scope and the re-consent path (stdio vs.
-  HTTPS).
+  message naming the scope and the re-consent path (stdio vs. HTTPS).
+
+See the README "Granular-consent errors" section for the user-facing
+error shape.
 
 ## Security model
 
