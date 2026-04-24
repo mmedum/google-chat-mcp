@@ -53,7 +53,7 @@ Threat model and trust boundaries live in
 
 ## Tooling pins
 
-- Python 3.14 (locked in `.python-version`; pyproject pins `>=3.14,<3.15`)
+- Python 3.12–3.14 (`requires-python = ">=3.12,<3.15"` in `pyproject.toml`; `.python-version` pins dev/CI default to 3.14)
 - FastMCP `~= 3.2` (current 3.2.4)
 - `ty == 0.0.31` (pinned exactly — it's 0.0.x beta, every patch can have breaking changes; no strict mode)
 - `ruff ~= 0.15`
