@@ -3,9 +3,24 @@ name = "google-chat-mcp"
 dynamic = ["version"]
 description = "MCP server exposing Google Chat to MCP-compatible clients."
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.15"
 authors = [{ name = "Mark Medum Bundgaard" }]
+keywords = ["mcp", "google-chat", "fastmcp", "oauth", "cli"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
 
 dependencies = [
     "fastmcp~=3.2",
@@ -40,8 +55,18 @@ dev = [
 mcp-server-google-chat = "src.stdio:main"
 google-chat-mcp = "src.stdio:main"
 
+[project.urls]
+Homepage = "https://github.com/mmedum/google-chat-mcp"
+Repository = "https://github.com/mmedum/google-chat-mcp"
+Issues = "https://github.com/mmedum/google-chat-mcp/issues"
+Changelog = "https://github.com/mmedum/google-chat-mcp/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/mmedum/google-chat-mcp#readme"
+
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+# hatchling >= 1.27 is the first version that emits Metadata 2.4 with
+# PEP 639 `License-Expression` / `License-File` correctly; the `license`
+# and `license-files` fields above depend on it.
+requires = ["hatchling>=1.27", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
