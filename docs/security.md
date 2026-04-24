@@ -5,6 +5,10 @@ security-relevant invariants that hold across the codebase. It's the
 authoritative reference for "is this safe?" questions raised in PR
 review or by deployers evaluating the project.
 
+Both deployment modes (stdio and HTTPS — see the README for the decision
+helper) are covered below; each has its own row in the trust-boundary
+table and its own set of at-rest assumptions.
+
 ## Trust boundaries
 
 | Boundary | Crosses what | Trust assumption |
