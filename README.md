@@ -23,6 +23,18 @@ Two transports ship in this repo:
 Per-user OAuth against Google Workspace or consumer Google accounts. No
 service accounts, no domain-wide delegation, no publishing step.
 
+### Which mode do I want?
+
+Pick one path and jump straight to its setup. You don't need both.
+
+|  | Stdio | HTTPS |
+|---|---|---|
+| **Who runs it** | You, on your own machine | A team operator, on a server |
+| **Users per install** | One (the OS user) | Many (each authenticates per-user) |
+| **Prereqs** | `uv` + your own Google Cloud project | Public HTTPS host, Docker, reverse proxy, your own Google Cloud project |
+| **Auth surface** | Loopback OAuth on `127.0.0.1`; Fernet-encrypted tokens at `~/.config/google-chat-mcp/` | FastMCP-issued JWT in front of Google OAuth proxy; Fernet-encrypted refresh tokens on disk |
+| **Jump to setup** | [Stdio mode](#stdio-mode--individual-users) | [HTTPS mode](#https-mode--shared--hosted-deployment) |
+
 ## Tool surface
 
 | Tool | Purpose | Required scope |
@@ -249,7 +261,10 @@ MCP client ──(stdio OR HTTP)──► FastMCP
 `src/server.py` is the HTTPS entry (builds the `GoogleProvider`). `src/stdio.py`
 is the stdio entry (loopback login + local token store). Both hand the shared
 `build_app(settings, resolver=, auth=)` composition root identical tool and
-resource registration. See [`CLAUDE.md`](CLAUDE.md) for more.
+resource registration. See [`docs/architecture.md`](docs/architecture.md)
+for the full request-flow diagram, per-transport wiring, and the
+deliberate design decisions (no hand-rolled OAuth, no server-side
+message-body mutation, etc.).
 
 ## Local development
 

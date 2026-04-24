@@ -40,51 +40,16 @@ Pre-commit hooks: `uv run pre-commit install`.
 
 ## Architecture
 
-Composition split across three entry-point files and one shared builder:
+See [`docs/architecture.md`](docs/architecture.md) for the
+composition-root pattern (`src/app.py::build_app`), the request-flow
+diagram, the per-transport file layout, and the deliberate design
+decisions contributors must not undo (no hand-rolled OAuth, no
+server-side message-body mutation, no centralized deployment, etc.).
+Read it before touching auth wiring, OAuth, or message handling.
 
-- `src/app.py::build_app(settings, *, resolver=None, auth=None) -> FastMCP` — transport-agnostic. Registers all 21 tools + 3 resources, wires the `ToolContext` lifespan. Unit-tested in `tests/test_app.py`.
-- `src/server.py` — HTTPS entry. Builds `GoogleProvider`, calls `build_app(settings, auth=provider)`, mounts `/healthz`/`/readyz`/`/metrics`, runs HTTP transport. Unit-tested in `tests/test_server.py`; full stack exercised in `tests/test_integration_https.py`.
-- `src/stdio.py` — stdio entry. argparse CLI (`login`, `logout`, default `serve`); loopback OAuth + local token store; calls `build_app(settings, resolver=<local-resolver>)`. Full stack exercised in `tests/test_integration_stdio.py` via a real subprocess.
-
-```
-MCP client ──(HTTPS OR stdio)──► src/app.py::build_app
-                                  │
-                                  ├── @mcp.tool handlers in src/tools/
-                                  │      └── each wraps invoke_tool() in tools/_common.py:
-                                  │           rate-limit → resolver() → timed call → metrics + audit row
-                                  │           (auth resolver: HTTPS=FastMCP dep; stdio=local closure)
-                                  │
-                                  ├── @mcp.resource handlers in src/resources/
-                                  │      └── same chat_client backends as the get_* tools
-                                  │
-                                  ├── src/chat_client.py — single shared httpx.AsyncClient
-                                  │      └── 10s timeout, exp-backoff retry on 5xx/429, Pydantic-validated JSON
-                                  │
-                                  ├── src/storage.py — SQLite (WAL): audit_log (user_sub HMAC-hashed by default) + user_directory (email cache)
-                                  ├── src/rate_limit.py — in-memory token bucket, 60/min per user sub
-                                  └── src/observability.py — structlog (stdout HTTPS / stderr stdio) + prometheus_client registry
-
-HTTPS only:
-  ├── fastmcp.GoogleProvider (OAuthProxy subclass; PKCE + state + MCP JWT issuance)
-  │      └── client_storage = FernetEncryptionWrapper(DiskStore) — Fernet-encrypted refresh tokens on disk
-  └── custom_route: /healthz, /readyz, /metrics
-
-stdio only:
-  └── ~/.config/google-chat-mcp/{tokens.json, fernet.key, audit_pepper}
-         ├── tokens.json: Fernet-encrypted OAuth credentials (0600)
-         ├── fernet.key: per-installation encryption key (0600)
-         └── audit_pepper: HMAC-SHA256 key for audit_log user_sub hashing (0600)
-```
-
-Key things NOT in the repo but often asked for:
-- **No custom OAuth code for HTTPS.** `GoogleProvider` handles the full upstream dance and issues the MCP-layer JWT. Do not reintroduce a `users` table with `mcp_bearer_hash`, a custom `/oauth/callback`, or hand-rolled PKCE — `fastmcp.server.auth.providers.google.GoogleProvider` already does all of it.
-- **Stdio OAuth via `google-auth-oauthlib.InstalledAppFlow`.** `src/stdio.py` delegates the loopback-desktop flow (RFC 8252 §6, PKCE + state + browser + token exchange) to the upstream library — no `GoogleProvider` on that path and no hand-rolled crypto. Refresh-on-expired uses `google.oauth2.credentials.Credentials.refresh()`. The trust model is "the user is the process owner"; tokens live 0600 under `~/.config/google-chat-mcp/`.
-- **No hardcoded client-specific redirects.** `allowed_client_redirects` defaults to empty; operators configure `GCM_ALLOWED_CLIENT_REDIRECTS` with their MCP client's OAuth callback(s). Don't reintroduce client-specific defaults (Claude, Cursor, etc.) — the server is intentionally client-agnostic.
-- **No server-side message-body mutation.** `send_message_handler` posts `payload.text` verbatim — no suffix, no prefix, no client identity appended. Keep it that way.
-- **No centralized deployment.** Each deployer (HTTPS operator or stdio user) owns their Google app, their tokens, and their rollout cadence. Don't reintroduce assumptions that there's a "central" install.
-- **Pydantic `extra="forbid"` on Chat-API response models** is intentional. Schema drift surfaces as validation errors rather than silent drops. The fix is to add the new optional field to `src/models.py`, not to relax to `extra="ignore"`. Runbook (`docs/runbook.md`) covers this.
-- **stdout hygiene in stdio serve mode.** structlog writes to stderr — stdout is reserved for MCP JSON-RPC frames. `src/stdio.py::cmd_serve` reconfigures this; `print()` in `login`/`logout` is fine (non-MCP subcommands), `print()` in `serve` is banned (tests/test_stdio.py guards via a subprocess regression test).
-- **Security model lives in `docs/security.md`.** Trust boundaries, assets, adversary classes, the 12 security-relevant invariants the code enforces, and operator responsibilities. Read it before answering "is this safe?" questions or before relaxing any of: the `_ID` regex, the `chat_api_base` validator, the `allowed_client_redirects` validator, the Fernet/JWT key length checks, or the `_redact_value` walker.
+Threat model and trust boundaries live in
+[`docs/security.md`](docs/security.md). Operational procedures
+(rotation, recovery) live in [`docs/runbook.md`](docs/runbook.md).
 
 ## Tooling pins
 
