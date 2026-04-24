@@ -191,13 +191,13 @@ jobs:
           # would yield a dev-suffixed version that PyPI would reject.
           fetch-depth: 0
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
       - name: Build sdist and wheel
         run: uv build
       - name: Publish to PyPI
-        # `release/v1` is the PyPA-recommended pinning strategy for this
-        # action specifically — it's a protected branch the maintainers
-        # keep pointing at the latest tagged release.
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # release/v1
         with:
           packages-dir: dist/
           print-hash: true

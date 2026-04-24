@@ -11,7 +11,6 @@ keywords = ["mcp", "google-chat", "fastmcp", "oauth", "cli"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
@@ -64,7 +63,10 @@ Changelog = "https://github.com/mmedum/google-chat-mcp/blob/main/CHANGELOG.md"
 Documentation = "https://github.com/mmedum/google-chat-mcp#readme"
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+# hatchling >= 1.27 is the first version that emits Metadata 2.4 with
+# PEP 639 `License-Expression` / `License-File` correctly; the `license`
+# and `license-files` fields above depend on it.
+requires = ["hatchling>=1.27", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]

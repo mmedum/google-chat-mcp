@@ -12,9 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Packaging-only release. No API changes.
 
 ### Added
-- PyPI distribution via [Trusted Publishing][tp] (OIDC, no API token).
-  Install with `uv tool install google-chat-mcp` or
-  `pipx install google-chat-mcp`. Git-install
+- PyPI distribution via [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+  (OIDC, no API token). Install with `uv tool install google-chat-mcp`
+  or `pipx install google-chat-mcp`. Git-install
   (`uv tool install git+https://github.com/mmedum/google-chat-mcp@vX.Y.Z`)
   continues to work for pre-release / dev installs.
 - `[project.urls]` and PyPI `classifiers` in `pyproject.toml` so the
@@ -26,12 +26,12 @@ Packaging-only release. No API changes.
 ### Changed
 - `license = { text = "Apache-2.0" }` migrated to PEP 639 SPDX form
   `license = "Apache-2.0"` in `pyproject.toml`; `license-files` added
-  so the wheel ships `LICENSE` verbatim.
+  so the wheel ships `LICENSE` verbatim. `[build-system] requires`
+  tightened to `hatchling>=1.27` (the first version that emits
+  Metadata 2.4 with the SPDX license expression correctly).
 - README's stdio install section now leads with
   `uv tool install google-chat-mcp` (PyPI) and keeps the git-install
   URL as a secondary pre-release path.
-
-[tp]: https://docs.pypi.org/trusted-publishers/
 
 ## [1.0.0] - 2026-04-21
 
@@ -415,7 +415,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.3

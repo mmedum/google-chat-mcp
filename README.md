@@ -109,7 +109,7 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 uv tool install google-chat-mcp
 
 # Or: install from a git tag (pre-release / unreleased fixes)
-# uv tool install git+https://github.com/mmedum/google-chat-mcp@v1.0.1
+# uv tool install git+https://github.com/mmedum/google-chat-mcp@vX.Y.Z
 
 # Or: install from a local clone for dev / custom builds
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
