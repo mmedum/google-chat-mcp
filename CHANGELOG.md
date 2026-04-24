@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - YYYY-MM-DD
+
+Packaging-only release. No API changes.
+
+### Added
+- PyPI distribution via [Trusted Publishing][tp] (OIDC, no API token).
+  Install with `uv tool install google-chat-mcp` or
+  `pipx install google-chat-mcp`. Git-install
+  (`uv tool install git+https://github.com/mmedum/google-chat-mcp@vX.Y.Z`)
+  continues to work for pre-release / dev installs.
+- `[project.urls]` and PyPI `classifiers` in `pyproject.toml` so the
+  project page renders with Homepage, Issues, Changelog links and
+  faceted-search metadata (Production/Stable, Python 3.12–3.14,
+  Communications::Chat, Typed).
+- `keywords` in `pyproject.toml` for PyPI search.
+
+### Changed
+- `license = { text = "Apache-2.0" }` migrated to PEP 639 SPDX form
+  `license = "Apache-2.0"` in `pyproject.toml`; `license-files` added
+  so the wheel ships `LICENSE` verbatim.
+- README's stdio install section now leads with
+  `uv tool install google-chat-mcp` (PyPI) and keeps the git-install
+  URL as a secondary pre-release path.
+
+[tp]: https://docs.pypi.org/trusted-publishers/
+
 ## [1.0.0] - 2026-04-21
 
 Initial stable release. The tool surface (21 tools + 3 resources), I/O

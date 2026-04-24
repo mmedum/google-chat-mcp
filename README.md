@@ -1,6 +1,7 @@
 # google-chat-mcp
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/google-chat-mcp)](https://pypi.org/project/google-chat-mcp/)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
 [![Container image](https://img.shields.io/badge/ghcr.io-mmedum%2Fgoogle--chat--mcp-2ea44f?logo=docker)](https://github.com/mmedum/google-chat-mcp/pkgs/container/google-chat-mcp)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
@@ -12,10 +13,10 @@ prompts in your MCP client of choice.
 
 Two transports ship in this repo:
 
-- **Stdio** (recommended for individual users) — install from source with
-  `uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.4.0`,
-  run a one-time OAuth login against your own Google account, then launch
-  the server as a subprocess under Claude Code, opencode, Cursor, etc.
+- **Stdio** (recommended for individual users) — install from PyPI with
+  `uv tool install google-chat-mcp`, run a one-time OAuth login against
+  your own Google account, then launch the server as a subprocess under
+  Claude Code, opencode, Cursor, etc.
 - **Streamable HTTP** (shared / hosted deployments) — self-host in Docker
   for teams; the MCP client connects over HTTPS and walks the OAuth flow
   per-user against the operator's Google app.
@@ -104,10 +105,13 @@ See [`docs/gcp-setup.md`](docs/gcp-setup.md) for the full walkthrough. Summary:
 ### 2. Install and log in
 
 ```bash
-# From a tagged release (preferred):
-uv tool install git+https://github.com/mmedum/google-chat-mcp@v0.4.0
+# Recommended: install from PyPI
+uv tool install google-chat-mcp
 
-# Or from a local clone for dev / custom builds:
+# Or: install from a git tag (pre-release / unreleased fixes)
+# uv tool install git+https://github.com/mmedum/google-chat-mcp@v1.0.1
+
+# Or: install from a local clone for dev / custom builds
 # git clone https://github.com/mmedum/google-chat-mcp && cd google-chat-mcp
 # uv tool install --from . google-chat-mcp
 
