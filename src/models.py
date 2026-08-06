@@ -499,6 +499,10 @@ class SearchMessagesResult(_Strict):
     """True when scanning stopped at `max_pages` before finding `limit` matches.
     Caller should either narrow the query, raise `created_after`, or accept
     the partial result."""
+    unparsed: Annotated[int, Field(ge=0)] = 0
+    """Messages counted in `scanned` that failed model validation and were
+    never searched. Non-zero means schema drift (see docs/runbook.md) and
+    that `matches` is incomplete — it is NOT the same as "no matches"."""
 
 
 class ReactionEntry(_Strict):
@@ -578,6 +582,10 @@ class _ChatMessageResponse(_ChatBase):
     fallback_text: str | None = Field(default=None, alias="fallbackText")
     thread_reply: bool | None = Field(default=None, alias="threadReply")
     client_assigned_message_id: str | None = Field(default=None, alias="clientAssignedMessageId")
+    # Added by Google on messages.list/get some time before 2026-08; observed
+    # value `MARKUP_SYNTAX_CHAT`. Typed as `str`, not a Literal — a new syntax
+    # name must not be able to reject the message it arrives on.
+    markup_syntax: str | None = Field(default=None, alias="markupSyntax")
     # Opaque fields — we don't render them, but `extra="forbid"` would
     # otherwise reject any message carrying them. Keep one-per-field so
     # unexpected drift still surfaces (CLAUDE.md rule).
@@ -672,6 +680,10 @@ class _ChatMembershipResponse(_ChatBase):
     # populated per membership, per Google's response shape.
     member: _ChatUser | None = None
     group_member: _ChatGroup | None = Field(default=None, alias="groupMember")
+    # Added by Google on spaces.members.list some time before 2026-08 (whether
+    # the member joined directly or via their domain). `str` for the same
+    # reason as `markup_syntax` above.
+    affiliation: str | None = None
 
 
 class _ChatMembershipsListResponse(_ChatBase):
