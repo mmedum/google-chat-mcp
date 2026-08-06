@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Every read tool was broken against the live Chat API.** Google added
+  `markupSyntax` (on messages) and `affiliation` (on memberships); with
+  `extra="forbid"` on the response models, every message and every membership
+  failed validation. `get_messages`, `get_message`, `get_thread` and
+  `list_members` raised on every call in every space, and `search_messages`
+  returned zero matches over a full scan. Both fields are now accepted as
+  optional `str`.
+- `search_messages` no longer drops unvalidatable messages silently. It still
+  skips them — one bad row must not fail the search — but counts them in the
+  new `unparsed` field of the result and logs the first one per call. A
+  non-zero `unparsed` means the result is incomplete, which is what made the
+  drift above look like an empty space rather than a broken parser.
+
+### Changed
+- `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so
+  existing callers are unaffected).
+
 ## [1.0.1] - 2026-04-24
 
 Packaging-only release. No API changes.

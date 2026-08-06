@@ -138,3 +138,51 @@ def test_both_query_and_regex_rejected() -> None:
 def test_empty_query_rejected() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         SearchMessagesInput(space_id="spaces/AAA", query="   ")
+
+
+@pytest.mark.asyncio
+async def test_unparsable_messages_are_counted_not_silently_dropped(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """Schema drift must not read as "no matches in this space".
+
+    A message the model rejects is skipped — one bad row can't fail the whole
+    search — but it is reported in `unparsed` so the caller can tell a broken
+    parser from an empty result.
+    """
+    drifted = _msg("M.2", "hello again") | {"someFieldGoogleAddedLater": "X"}
+    with (
+        respx.mock(assert_all_called=False) as mock,
+        mock_access_token(),
+    ):
+        mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                200,
+                json={"messages": [_msg("M.1", "hello world"), drifted]},
+            )
+        )
+        out = await search_messages_handler(
+            tool_ctx,
+            SearchMessagesInput(space_id="spaces/AAA", query="hello"),
+        )
+    assert [m.message_id for m in out.matches] == ["spaces/AAA/messages/M.1"]
+    assert out.scanned == 2
+    assert out.unparsed == 1
+
+
+@pytest.mark.asyncio
+async def test_unparsed_is_zero_when_every_message_validates(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    with (
+        respx.mock(assert_all_called=False) as mock,
+        mock_access_token(),
+    ):
+        mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
+            return_value=httpx.Response(200, json={"messages": [_msg("M.1", "hello world")]})
+        )
+        out = await search_messages_handler(
+            tool_ctx,
+            SearchMessagesInput(space_id="spaces/AAA", query="hello"),
+        )
+    assert out.unparsed == 0
