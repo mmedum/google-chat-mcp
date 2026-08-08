@@ -14,7 +14,7 @@ import respx
 import structlog
 from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
-from src.chat_client import ChatApiError
+from src.chat_client import ChatApiError, ChatClient
 from src.models import ListSpacesInput, _ChatMessageResponse
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
@@ -231,6 +231,104 @@ async def test_resolver_override_path_preferred_over_fastmcp(
     # The sub logged is the resolver's, hashed by the configured pepper.
     expected = hmac.new(b"pepper", b"stdio-user-42", hashlib.sha256).hexdigest()
     assert row["user_sub"] == expected
+
+
+def _ctx_with_scopes(db, chat_client, granted: tuple[str, ...] | None) -> ToolContext:
+    """A ToolContext whose resolver reports exactly `granted`."""
+    from src.rate_limit import ActiveUserTracker, TokenBucketLimiter
+
+    async def fake_resolver() -> AuthInfo:
+        return AuthInfo(
+            access_token="from-resolver",
+            user_sub="stdio-user-42",
+            granted_scopes=granted,
+        )
+
+    return ToolContext(
+        client=chat_client,
+        db=db,
+        limiter=TokenBucketLimiter(capacity=60),
+        active_users=ActiveUserTracker(),
+        audit_pepper=b"pepper",
+        audit_hash_user_sub=True,
+        resolver=fake_resolver,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preflight_rejects_missing_scope_and_audits_it(
+    chat_client: ChatClient,
+    tmp_path: Path,
+) -> None:
+    """A locally-denied call is refused without an upstream request — and recorded.
+
+    This gate was unreachable until `granted_scopes` started holding what Google
+    actually granted. It denies the same call the upstream 403 path denies, so
+    it has to leave the same trace: raising above the audit write would make a
+    whole class of denials invisible to the operator.
+    """
+    async with lifespan_database(tmp_path / "test.sqlite") as db:
+        ctx = _ctx_with_scopes(db, chat_client, granted=("openid",))
+
+        # assert_all_called=False: the route is registered precisely so the test
+        # can prove it stays untouched.
+        with respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock:
+            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+            with pytest.raises(ToolError) as exc_info:
+                await list_spaces_handler(ctx, ListSpacesInput())
+
+        assert "chat.spaces.readonly" in str(exc_info.value)
+        assert "Missing required OAuth scope" in str(exc_info.value)
+        # Denied before the call, not after it.
+        assert route.call_count == 0
+
+        async with db.cursor() as conn:
+            cur = await conn.execute(
+                "SELECT tool_name, success, error_code FROM audit_log ORDER BY id DESC LIMIT 1"
+            )
+            row = await cur.fetchone()
+    assert row is not None
+    assert row["tool_name"] == "list_spaces"
+    assert not row["success"]
+    # Same code the upstream-403 path records, so both routes to the same
+    # denial aggregate together rather than one of them vanishing.
+    assert row["error_code"] == "missing_scope"
+
+
+@pytest.mark.asyncio
+async def test_preflight_allows_a_granted_scope(
+    chat_client: ChatClient,
+    tmp_path: Path,
+) -> None:
+    """The canonicalized set Google returns must satisfy the check, not trip it."""
+    async with lifespan_database(tmp_path / "test.sqlite") as db:
+        ctx = _ctx_with_scopes(
+            db,
+            chat_client,
+            granted=("openid", "https://www.googleapis.com/auth/chat.spaces.readonly"),
+        )
+        with respx.mock(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+            await list_spaces_handler(ctx, ListSpacesInput())
+        assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_preflight_skipped_when_granted_scopes_unknown(
+    chat_client: ChatClient,
+    tmp_path: Path,
+) -> None:
+    """None means unknown, so the call goes through and Google decides.
+
+    An empty tuple here would reject every tool; that distinction is the whole
+    reason the resolver reports None rather than ().
+    """
+    async with lifespan_database(tmp_path / "test.sqlite") as db:
+        ctx = _ctx_with_scopes(db, chat_client, granted=None)
+        with respx.mock(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+            await list_spaces_handler(ctx, ListSpacesInput())
+        assert route.call_count == 1
 
 
 @pytest.mark.asyncio

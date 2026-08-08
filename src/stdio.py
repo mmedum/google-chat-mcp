@@ -40,7 +40,7 @@ from pydantic import BaseModel
 
 from .app import build_app
 from .chat_client import ChatClient
-from .config import GOOGLE_OAUTH_SCOPES, Settings
+from .config import GOOGLE_OAUTH_SCOPES, Settings, canonical_scopes
 from .models import (
     _ChatMembershipResponse,
     _ChatMessageResponse,
@@ -48,7 +48,7 @@ from .models import (
     _ChatSpaceResponse,
     _UserInfoResponse,
 )
-from .observability import configure_logging
+from .observability import configure_logging, logger
 from .tools._common import AuthInfo, AuthResolver, drift_fields
 
 # ---------- constants ----------
@@ -70,11 +70,17 @@ _GOOGLE_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 def _relax_oauthlib_token_scope() -> None:
     """Apply Google's documented workaround for oauthlib's strict scope check.
 
-    Google canonicalizes `email`/`profile` aliases into their `userinfo.*` URL
-    forms on the token-endpoint response; without this, oauthlib's strict
-    comparison rejects the response (on initial login) and emits warnings on
-    every `Credentials.refresh()` (on serve). `setdefault` so an operator's
-    explicit choice still wins.
+    Google reports the `email`/`profile` aliases back in their `userinfo.*` URL
+    forms (see `canonical_scopes`); without this, oauthlib's strict comparison
+    rejects the response outright.
+
+    `login` is the only caller, and that is deliberate: oauthlib runs the
+    authorization-code exchange, but `Credentials.refresh()` afterwards goes
+    through google-auth's own `refresh_grant`, which never touches oauthlib.
+    Calling this from `serve` or `doctor` set a process-wide env var to no
+    effect. The "Not all requested scopes were granted" line those commands used
+    to emit is google-auth's, and `canonical_scopes` is what silences it.
+    `setdefault` so an operator's explicit choice still wins.
     """
     os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
@@ -219,7 +225,7 @@ class TokenStore:
       "client_id": "...",
       "client_secret": "...",
       "refresh_token": "...",
-      "granted_scopes": ["openid", ...],
+      "granted_scopes": ["openid", ...],   # what Google granted, not what we asked for
       "user_sub": "109876543210",
       "user_email": "alice@example.com",
     }
@@ -399,7 +405,11 @@ def cmd_login(args: argparse.Namespace) -> int:
             "client_id": credentials.client_id,
             "client_secret": credentials.client_secret,
             "refresh_token": credentials.refresh_token,
-            "granted_scopes": list(credentials.scopes or ()),
+            # `granted_scopes` is what the token response came back with;
+            # `credentials.scopes` is only ever what we asked for. Storing the
+            # latter made this key a lie, so don't fall back to it — an empty
+            # list reads as "unknown" downstream, which is the honest answer.
+            "granted_scopes": list(credentials.granted_scopes or ()),
             "user_sub": user_sub,
             "user_email": user_email,
         }
@@ -453,6 +463,23 @@ def cmd_logout(_args: argparse.Namespace) -> int:
 # ---------- serve subcommand (default) ----------
 
 
+def _stored_scopes(identity: Mapping[str, Any]) -> tuple[str, ...] | None:
+    """Canonicalized `granted_scopes` from tokens.json, or None if unusable.
+
+    tokens.json is a user-editable file, so the shape is checked rather than
+    trusted. A bare string is the trap worth naming: `str` is a perfectly good
+    `Iterable[str]`, so `"openid email"` would canonicalize character by
+    character and every scope check would then fail against a set of single
+    letters. None means "unknown", which degrades to Google's own enforcement.
+    """
+    stored = identity.get("granted_scopes")
+    if not isinstance(stored, list) or not all(isinstance(s, str) for s in stored):
+        if stored is not None:
+            logger.warning("stdio_granted_scopes_malformed", stored_type=type(stored).__name__)
+        return None
+    return tuple(canonical_scopes(stored)) or None
+
+
 def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
     """Return an AuthResolver closure over `identity`.
 
@@ -461,13 +488,20 @@ def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
     if Google rotates it). Persists `identity` back to `store` when the
     refresh token rotates.
     """
+    # Canonicalize on read rather than at save time so a tokens.json written
+    # before this fix — one holding the `email`/`profile` aliases — works
+    # without a re-login. Nothing stored becomes None, not (): AuthInfo reads
+    # None as "unknown, skip the check" and () as "nothing granted", which
+    # would reject every call.
+    granted_scopes = _stored_scopes(identity)
+
     credentials = Credentials(
         token=None,
         refresh_token=identity["refresh_token"],
         client_id=identity["client_id"],
         client_secret=identity["client_secret"],
         token_uri=_GOOGLE_TOKEN_URI,
-        scopes=identity.get("granted_scopes") or list(GOOGLE_OAUTH_SCOPES),
+        scopes=list(granted_scopes or canonical_scopes(GOOGLE_OAUTH_SCOPES)),
     )
     # Serialize concurrent refreshes — google-auth's Credentials.refresh()
     # isn't documented thread-safe and concurrent tool calls otherwise both
@@ -476,14 +510,28 @@ def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
     refresh_lock = asyncio.Lock()
 
     async def resolver() -> AuthInfo:
+        nonlocal granted_scopes
         async with refresh_lock:
             if credentials.token is None or credentials.expired:
                 await asyncio.to_thread(credentials.refresh, _http)
+                dirty = False
                 if (
                     credentials.refresh_token
                     and credentials.refresh_token != identity["refresh_token"]
                 ):
                     identity["refresh_token"] = credentials.refresh_token
+                    dirty = True
+                # Every refresh response carries the scopes Google currently
+                # considers granted, which beats whatever is on disk: it heals a
+                # tokens.json written before scopes were recorded correctly, and
+                # it drops a scope the user has since revoked in their Google
+                # account instead of honouring the stale copy until re-login.
+                refreshed = canonical_scopes(credentials.granted_scopes or ())
+                if refreshed and tuple(refreshed) != granted_scopes:
+                    granted_scopes = tuple(refreshed)
+                    identity["granted_scopes"] = refreshed
+                    dirty = True
+                if dirty:
                     store.save(identity)
         user_sub = identity.get("user_sub")
         if not user_sub:
@@ -495,11 +543,10 @@ def _build_stdio_resolver(store: TokenStore, identity: dict[str, Any]):
             raise RuntimeError(
                 "tokens.json missing `user_sub`. Run `google-chat-mcp logout && login`."
             )
-        granted = identity.get("granted_scopes") or ()
         return AuthInfo(
             access_token=str(credentials.token),
             user_sub=str(user_sub),
-            granted_scopes=tuple(granted),
+            granted_scopes=granted_scopes,
         )
 
     return resolver
@@ -566,7 +613,6 @@ def cmd_serve(_args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
-        _relax_oauthlib_token_scope()
     configure_logging(os.environ.get("GCM_LOG_LEVEL", "INFO"), stream=sys.stderr)
     if test_auth_stub:
         resolver: AuthResolver = _stub_auth_resolver()
@@ -604,7 +650,6 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if args.spaces < 1:
         print("error: --spaces must be at least 1", file=sys.stderr)
         return 2
-    _relax_oauthlib_token_scope()
     configure_logging("WARNING", stream=sys.stderr)
     identity = store.load()
     resolver = _build_stdio_resolver(store, identity)

@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import warnings
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr
-from src.config import GOOGLE_OAUTH_SCOPES, Settings
+from pydantic_settings import SettingsError
+from src import config as config_mod
+from src.config import (
+    EMAIL_SCOPE,
+    GOOGLE_OAUTH_SCOPES,
+    OPENID_SCOPE,
+    PROFILE_SCOPE,
+    Settings,
+    canonical_scopes,
+)
 
 
 def test_default_redirects_is_empty() -> None:
@@ -222,3 +234,88 @@ def test_from_env_matches_bare_construction() -> None:
     b = Settings()  # type: ignore[call-arg]
     assert a.base_url == b.base_url
     assert a.google_client_id.get_secret_value() == b.google_client_id.get_secret_value()
+
+
+def test_construction_is_silent_when_secrets_dir_is_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No `directory "..." does not exist` warning on the stdio path.
+
+    /run/secrets exists only in the Docker deployment, so passing it
+    unconditionally put a UserWarning in every stdio user's client log on every
+    invocation. The runbook points operators at stderr as the one signal for
+    degraded People lookups; routine noise there teaches them to ignore it.
+
+    Points at a path under tmp_path rather than trusting the real /run/secrets
+    to be absent — otherwise this passes vacuously inside a container.
+    """
+    monkeypatch.setattr(config_mod, "_SECRETS_DIR", tmp_path / "nope")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        Settings.from_env()
+
+
+def test_secrets_dir_is_read_when_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The Docker branch: secrets load from files when the env var is unset.
+
+    This is the only path that loads secrets in production, and gating it on
+    `Path.exists()` at import time left it unreachable from a test. Env still
+    outranks the file (pydantic-settings' default order, preserved here), so
+    this drops the env var to see the file actually being read.
+    """
+    secrets = tmp_path / "run-secrets"
+    secrets.mkdir()
+    # env_prefix applies to secrets_dir lookups too, hence the GCM_ prefix.
+    (secrets / "GCM_google_client_id").write_text("id-from-secret-file")
+
+    monkeypatch.setattr(config_mod, "_SECRETS_DIR", secrets)
+    monkeypatch.delenv("GCM_GOOGLE_CLIENT_ID", raising=False)
+
+    # from_mapping({}) drops the repo-root .env a developer may keep for local
+    # `uv run`, which would otherwise supply the field ahead of the file.
+    loaded = Settings.from_mapping({})
+    assert loaded.google_client_id.get_secret_value() == "id-from-secret-file"
+
+
+def test_secrets_dir_that_is_not_a_directory_still_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A mounted file where a directory belongs must stay loud.
+
+    pydantic-settings only warns for a *missing* path but raises for one that
+    exists and is not a directory. Gating on `is_dir()` would silently discard
+    every secret and resurface as an unrelated missing-field error.
+    """
+    not_a_dir = tmp_path / "run-secrets"
+    not_a_dir.write_text("oops")
+
+    monkeypatch.setattr(config_mod, "_SECRETS_DIR", not_a_dir)
+
+    with pytest.raises(SettingsError, match="must reference a directory"):
+        Settings.from_env()
+
+
+def test_canonical_scopes_rewrites_only_the_oidc_aliases() -> None:
+    # Google accepts `email`/`profile` on the way out and reports the userinfo.*
+    # URLs on the way back; google-auth compares the two verbatim on refresh.
+    canonical = canonical_scopes([OPENID_SCOPE, EMAIL_SCOPE, PROFILE_SCOPE])
+    assert canonical == [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ]
+    # Everything else is already in the form Google echoes back.
+    chat_scopes = [s for s in GOOGLE_OAUTH_SCOPES if s.startswith("https://")]
+    assert canonical_scopes(chat_scopes) == chat_scopes
+
+
+def test_alias_table_matches_fastmcp() -> None:
+    """Pin our table to fastmcp's rather than trusting a comment to keep it so.
+
+    The HTTPS transport normalizes through `GOOGLE_SCOPE_ALIASES` and stdio
+    through ours. If the two drift, one transport starts accepting a scope name
+    the other rejects — and no test would otherwise notice.
+    """
+    from fastmcp.server.auth.providers.google import GOOGLE_SCOPE_ALIASES
+
+    assert config_mod._OIDC_ALIAS_CANONICAL == GOOGLE_SCOPE_ALIASES

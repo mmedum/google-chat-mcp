@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Two warnings on stderr that never meant anything.** stdio has no `/metrics`
+  endpoint, so `docs/runbook.md` points operators at stderr as the only signal
+  that People lookups are degrading. Both of these fired on `serve`, not just
+  `doctor`, so they reached that channel on every session and trained people to
+  ignore it.
+  - `UserWarning: directory "/run/secrets" does not exist` — that path exists
+    only in the Docker deployment, but `secrets_dir` was passed unconditionally.
+    It is now passed only when the directory is really there.
+  - `Not all requested scopes were granted by the authorization server, missing
+    scopes email, profile` — Google accepts `email` and `profile` on the
+    authorization request and reports them back as their `userinfo.*` URLs.
+    google-auth compares the two lists verbatim on every token refresh and
+    warned about scopes that had in fact been granted. The aliases are now
+    translated to the URL form Google echoes back, so the mismatch is gone
+    rather than muted: a scope that was genuinely withheld still warns.
+- **`tokens.json` recorded the requested scopes under the key `granted_scopes`.**
+  `credentials.scopes` is only ever the list we asked for — it is never
+  reconciled against the token response — so the stored set always contained
+  every scope in `GOOGLE_OAUTH_SCOPES`. The pre-flight scope check in
+  `invoke_tool` compares against that set, which meant it could never fire, and
+  a scope the user had declined surfaced only as an upstream 403. Login now
+  stores `credentials.granted_scopes`, what Google actually returned.
+  - Existing `tokens.json` files keep working and need no re-login: the alias
+    translation above is applied when the stored scopes are read, so the refresh
+    warning stops immediately. The pre-flight check starts reflecting reality at
+    the next `google-chat-mcp login`.
+  - A missing, empty or malformed stored scope list is now reported as *unknown*
+    rather than as *nothing granted*. The latter made the pre-flight check
+    reject every tool call locally; it now defers to Google's 403, matching the
+    HTTPS transport. A hand-edited `"granted_scopes": "openid email"` (a string
+    where a list belongs) is treated the same way instead of being compared one
+    character at a time.
+  - Every refresh response now updates the stored scopes. A `tokens.json`
+    written before this fix corrects itself on the next refresh rather than
+    waiting for a re-login, and a scope revoked in Google account settings stops
+    being honoured locally.
+  - **Rollback caveat:** if Google returns no scope list at login, this version
+    stores an empty one. Version 1.3.0 and earlier read that as *nothing
+    granted* and refuse every tool call. Re-run `google-chat-mcp login` after
+    downgrading.
+- **A locally-denied tool call left no trace.** The pre-flight scope check
+  raised before the rate limiter, the latency metric and the audit write, so a
+  denial recorded nothing — while the identical denial caught as an upstream 403
+  was audited as `missing_scope`. The check now runs inside the instrumented
+  block and records the same way. It had never fired in a release, so no
+  existing audit history is affected.
+
 ## [1.3.0] - 2026-08-08
 
 Upgrade if you read messages or members. On 1.2.0 and earlier, `get_messages`,
