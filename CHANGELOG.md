@@ -64,6 +64,11 @@ exists. Writes are the dangerous case — they succeeded and still reported
   into the existing `*_UNSPECIFIED` member, logged, and counted.
 
 ### Added
+- **`google-chat-mcp doctor`** — validates live Chat API responses against the
+  models using the token already on disk, names any drifted field paths, and
+  exits non-zero, so it works as a cron job. Nothing detected drift before a
+  user did; this closes that. No shared credential is involved — each deployer
+  checks with their own token.
 - `mcp_schema_drift_total{location}` — a metric that fires the first time a
   response doesn't match our models, so drift is alertable instead of waiting
   on a user report. `location` is a model/field path, never a value.

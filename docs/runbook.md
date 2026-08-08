@@ -209,9 +209,19 @@ would put message text past the key-based log redaction.
 | `affiliation` | membership | `list_members`, in every space |
 
 Both are additive fields that appear on *every* row of their resource, which
-is the worst case: the failure is total, not partial. Expect that shape again —
-and note that nothing detects it before a user does. A scheduled check that
-validates the models against a recorded live payload is tracked separately.
+is the worst case: the failure is total, not partial. Expect that shape again.
+
+**Check for drift before a user hits it:**
+
+```bash
+google-chat-mcp doctor          # samples 5 spaces; --spaces N to widen
+```
+
+It validates live responses against the models using the token already on
+disk, prints the drifted field paths, and exits non-zero — so it works as a
+cron job. On the HTTPS transport, alert on any non-zero rate of
+`mcp_schema_drift_total`; it fires on the first mismatched response rather than
+waiting for a report.
 
 ### 401 Unauthorized on every tool call immediately after a deploy
 
