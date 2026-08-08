@@ -35,7 +35,12 @@ FROM python:3.14-slim AS runtime
 # anything at runtime, but pip's bundled `_vendor/` tree (msgpack, setuptools,
 # ...) is scanned as real packages and pins the image to whatever versions the
 # base tag happened to vendor. Removing it clears those findings at the source
-# and trims the runtime attack surface.
+# and trims the runtime attack surface. The bundled ensurepip wheel goes too,
+# or `python -m ensurepip` restores the very tree we just deleted.
+#
+# The two assertions matter: an unmatched glob still exits 0, so if a future
+# base image moves site-packages the removal silently becomes a no-op, the
+# findings return, and the build stays green. Fail loudly instead.
 RUN apt-get update \
  && apt-get -y upgrade \
  && apt-get clean \
@@ -43,6 +48,9 @@ RUN apt-get update \
  && rm -rf /usr/local/lib/python3.*/site-packages/pip \
            /usr/local/lib/python3.*/site-packages/pip-*.dist-info \
            /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.* \
+           /usr/local/lib/python3.*/ensurepip/_bundled \
+ && ! command -v pip \
+ && ! python -c "import pip" 2>/dev/null \
  && useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp \
  && mkdir -p /var/lib/google-chat-mcp \
  && chown mcp:mcp /var/lib/google-chat-mcp

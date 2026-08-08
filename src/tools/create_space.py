@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from ..chat_client import _build_setup_space_body
-from ..models import CreateSpaceInput, CreateSpaceResult, _ChatSpaceResponse
-from ._common import CHAT_SPACES_CREATE, ToolContext, invoke_tool
+from ..models import CreateSpaceInput, CreateSpaceResult
+from ._common import (
+    CHAT_SPACES_CREATE,
+    ToolContext,
+    invoke_tool,
+    write_result,
+)
 
 
 async def create_space_handler(ctx: ToolContext, payload: CreateSpaceInput) -> CreateSpaceResult:
@@ -36,11 +41,13 @@ async def create_space_handler(ctx: ToolContext, payload: CreateSpaceInput) -> C
             display_name=payload.display_name,
             member_emails=member_emails,
         )
-        space = _ChatSpaceResponse(**raw)
-        return CreateSpaceResult(
-            space_id=space.name,
-            display_name=payload.display_name,
-            member_count=len(member_emails),
+        return write_result(
+            lambda: CreateSpaceResult(
+                space_id=raw["name"],
+                display_name=payload.display_name,
+                member_count=len(member_emails),
+            ),
+            action="create_space",
         )
 
     return await invoke_tool(

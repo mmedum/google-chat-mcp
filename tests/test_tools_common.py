@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import io
-import logging
 from pathlib import Path
 
 import httpx
@@ -16,7 +15,6 @@ from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 from src.chat_client import ChatApiError
 from src.models import ListSpacesInput, _ChatMessageResponse
-from src.observability import configure_logging
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
 from src.tools._common import (
@@ -360,6 +358,7 @@ async def test_drift_log_renders_without_the_drifted_value(
     tool_ctx: ToolContext,
     mock_access_token,
     monkeypatch: pytest.MonkeyPatch,
+    structlog_stream: io.StringIO,
 ) -> None:
     """The value must be absent from the *rendered* line, not just the event dict.
 
@@ -372,30 +371,21 @@ async def test_drift_log_renders_without_the_drifted_value(
     doesn't redirect it — the binding has to be replaced.
     """
     secret = "CONFIDENTIAL-salary-review"
-    buf = io.StringIO()
-    try:
-        structlog.reset_defaults()
-        configure_logging("INFO", stream=buf)
-        monkeypatch.setattr("src.tools._common.logger", structlog.get_logger("drift_render"))
-        with (
-            respx.mock(base_url="https://chat.test/v1") as mock,
-            mock_access_token(),
-        ):
-            mock.get("/spaces").mock(
-                return_value=httpx.Response(
-                    200,
-                    json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leaked": secret}]},
-                )
+    monkeypatch.setattr("src.tools._common.logger", structlog.get_logger("drift_render"))
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                200,
+                json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leaked": secret}]},
             )
-            with pytest.raises(ToolError, match=r"Internal error\."):
-                await list_spaces_handler(tool_ctx, ListSpacesInput())
-    finally:
-        structlog.reset_defaults()
-        root = logging.getLogger()
-        for handler in list(root.handlers):
-            root.removeHandler(handler)
+        )
+        with pytest.raises(ToolError, match=r"Internal error\."):
+            await list_spaces_handler(tool_ctx, ListSpacesInput())
 
-    rendered = buf.getvalue()
+    rendered = structlog_stream.getvalue()
     assert "tool_unhandled" in rendered, "the drift log must actually be emitted"
     assert '"leaked"' in rendered, "the drifted field name is the whole diagnostic"
     assert secret not in rendered, "the drifted field's VALUE must never be logged"

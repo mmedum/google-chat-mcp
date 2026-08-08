@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,8 +12,10 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+import structlog
 from cryptography.fernet import Fernet
 from src.chat_client import ChatClient
+from src.observability import configure_logging
 from src.rate_limit import ActiveUserTracker, TokenBucketLimiter
 from src.storage import Database, lifespan_database
 from src.tools._common import ToolContext
@@ -91,3 +96,32 @@ def person_payload(email: str, display_name: str | None = None) -> dict[str, obj
     if display_name is not None:
         payload["names"] = [{"metadata": {"primary": True}, "displayName": display_name}]
     return payload
+
+
+@pytest.fixture
+def structlog_stream() -> Iterator[io.StringIO]:
+    """Capture structlog output through the REAL processor chain.
+
+    `structlog.testing.capture_logs` replaces the chain, so it cannot see
+    redaction or rendering — this fixture is for asserting on what an operator
+    would actually read.
+
+    Restores the root logger's handlers rather than clearing them: pytest
+    attaches its own `caplog` handlers there, and dropping them silently breaks
+    log capture for every later test in the process. `configure_logging` is
+    re-run against stderr on the way out because `cache_logger_on_first_use`
+    pins already-bound loggers to whatever stream was configured first, and
+    structlog's own default writes to stdout — which the stdio transport
+    treats as reserved for JSON-RPC frames.
+    """
+    buf = io.StringIO()
+    saved = list(logging.getLogger().handlers)
+    structlog.reset_defaults()
+    configure_logging("INFO", stream=buf)
+    try:
+        yield buf
+    finally:
+        structlog.reset_defaults()
+        root = logging.getLogger()
+        root.handlers[:] = saved
+        configure_logging("INFO", stream=sys.stderr)

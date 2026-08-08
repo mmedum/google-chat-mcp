@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
+from fastmcp.exceptions import ToolError
 from src.chat_client import _build_send_message_body
 from src.models import SendMessageInput
 from src.tools import send_message_handler
@@ -89,3 +90,59 @@ async def test_dry_run_still_writes_audit_row(tool_ctx: ToolContext, mock_access
     assert row["tool_name"] == "send_message"
     assert row["success"] == 1
     assert row["target_space_id"] == "spaces/AAA"
+
+
+@pytest.mark.asyncio
+async def test_write_survives_a_drifted_response(tool_ctx: ToolContext, mock_access_token) -> None:
+    """A field Google adds must not turn a successful post into an error.
+
+    This is the duplicate-message hazard: the POST lands, then the response
+    fails validation, the caller sees `Internal error.` and retries. Reading
+    only the identifiers we return keeps the write path off the drift path
+    entirely.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.post("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "name": "spaces/AAA/messages/M.1",
+                    "sender": {"name": "users/111"},
+                    "createTime": "2026-04-19T10:00:00Z",
+                    "text": "hi",
+                    "thread": {"name": "spaces/AAA/threads/T.1"},
+                    "someFieldGoogleAddsLater": "X",
+                },
+            )
+        )
+        out = await send_message_handler(
+            tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi")
+        )
+    assert out.message_id == "spaces/AAA/messages/M.1"
+    assert out.thread_id == "spaces/AAA/threads/T.1"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_write_response_says_do_not_retry(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """If we truly can't build a result, the error must not invite a retry.
+
+    The message is already posted at this point; a caller that retries
+    duplicates it.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.post("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(200, json={"unexpected": "shape"})
+        )
+        with pytest.raises(ToolError) as excinfo:
+            await send_message_handler(tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi"))
+    msg = str(excinfo.value)
+    assert "SUCCEEDED" in msg
+    assert "Do NOT retry" in msg

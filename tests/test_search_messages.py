@@ -8,6 +8,7 @@ import respx
 from src.models import SearchMessagesInput
 from src.tools import search_messages_handler
 from src.tools._common import ToolContext
+from structlog.testing import capture_logs
 
 
 def _msg(m_id: str, text: str, ts: str = "2026-04-19T10:00:00Z") -> dict[str, object]:
@@ -155,6 +156,7 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     with (
         respx.mock(assert_all_called=False) as mock,
         mock_access_token(),
+        capture_logs() as logs,
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
             return_value=httpx.Response(
@@ -169,3 +171,7 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     assert [m.message_id for m in out.matches] == ["spaces/AAA/messages/M.1"]
     assert out.scanned == 2
     assert out.unparsed == 1
+    # The "not silently" half: deleting the log call must fail this test.
+    warnings = [e for e in logs if e["event"] == "search_message_unparsed"]
+    assert len(warnings) == 1
+    assert warnings[0]["fields"] == ["someFieldGoogleAddedLater"]

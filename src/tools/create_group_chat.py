@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from ..chat_client import _build_setup_space_body
-from ..models import CreateGroupChatInput, CreateGroupChatResult, _ChatSpaceResponse
-from ._common import CHAT_SPACES_CREATE, ToolContext, invoke_tool
+from ..models import CreateGroupChatInput, CreateGroupChatResult
+from ._common import (
+    CHAT_SPACES_CREATE,
+    ToolContext,
+    invoke_tool,
+    write_result,
+)
 
 
 async def create_group_chat_handler(
@@ -37,10 +42,12 @@ async def create_group_chat_handler(
             display_name=None,
             member_emails=member_emails,
         )
-        space = _ChatSpaceResponse(**raw)
-        return CreateGroupChatResult(
-            space_id=space.name,
-            member_count=len(member_emails),
+        return write_result(
+            lambda: CreateGroupChatResult(
+                space_id=raw["name"],
+                member_count=len(member_emails),
+            ),
+            action="create_group_chat",
         )
 
     return await invoke_tool(

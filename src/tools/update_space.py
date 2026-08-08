@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from ..chat_client import _build_update_space_body
-from ..models import UpdateSpaceInput, UpdateSpaceResult, _ChatSpaceResponse
-from ._common import CHAT_SPACES, ToolContext, invoke_tool
+from ..models import UpdateSpaceInput, UpdateSpaceResult
+from ._common import (
+    CHAT_SPACES,
+    ToolContext,
+    invoke_tool,
+    write_result,
+)
 
 
 async def update_space_handler(ctx: ToolContext, payload: UpdateSpaceInput) -> UpdateSpaceResult:
@@ -44,13 +49,15 @@ async def update_space_handler(ctx: ToolContext, payload: UpdateSpaceInput) -> U
         # and `_ChatSpaceResponse` doesn't surface `description` at the top
         # level (it's nested under `spaceDetails`). Returning what the caller
         # asked for is unambiguous.
-        parsed = _ChatSpaceResponse(**raw)
-        return UpdateSpaceResult(
-            space_id=parsed.name,
-            display_name=payload.display_name,
-            description=payload.description,
-            dry_run=False,
-            update_mask=mask,
+        return write_result(
+            lambda: UpdateSpaceResult(
+                space_id=raw["name"],
+                display_name=payload.display_name,
+                description=payload.description,
+                dry_run=False,
+                update_mask=mask,
+            ),
+            action="update_space",
         )
 
     return await invoke_tool(

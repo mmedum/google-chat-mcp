@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from ..models import SpaceDetails, _ChatSpaceResponse
-from ._common import CHAT_SPACES_READONLY, ToolContext, invoke_tool, space_display_name
+from ._common import (
+    CHAT_SPACES_READONLY,
+    ToolContext,
+    invoke_tool,
+    space_display_name,
+    space_type_out,
+)
 
 
 async def get_space_handler(ctx: ToolContext, space_id: str) -> SpaceDetails:
@@ -14,7 +20,7 @@ async def get_space_handler(ctx: ToolContext, space_id: str) -> SpaceDetails:
         s = _ChatSpaceResponse(**raw)
         return SpaceDetails(
             space_id=s.name,
-            type=s.type_,
+            type=space_type_out(s),
             display_name=space_display_name(s),
             single_user_bot_dm=s.single_user_bot_dm,
             external_user_allowed=s.external_user_allowed,
