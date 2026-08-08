@@ -72,10 +72,37 @@ def test_space_response_accepts_last_active_time() -> None:
     assert model.last_active_time.year == 2026
 
 
-def test_space_response_still_rejects_unknown_fields() -> None:
-    with pytest.raises(ValidationError, match="extra_forbidden"):
-        _ChatSpaceResponse.model_validate(
-            {"name": "spaces/AAA", "type": "SPACE", "somethingNew": "foo"}
+def test_unknown_fields_are_accepted_and_reported() -> None:
+    """Drift must be observable, not fatal.
+
+    Google adds response fields without notice and every one lands on every row
+    of its resource, so rejecting them turned a backwards-compatible change into
+    a total outage — twice. The field is kept in `model_extra` so `doctor` and
+    the drift metric can surface it while the server keeps working.
+    """
+    before = _drift_count("_ChatSpaceResponse.somethingNew")
+    space = _ChatSpaceResponse.model_validate(
+        {"name": "spaces/AAA", "type": "SPACE", "somethingNew": "foo"}
+    )
+    assert space.model_extra == {"somethingNew": "foo"}
+    assert space.name == "spaces/AAA"
+    assert _drift_count("_ChatSpaceResponse.somethingNew") == before + 1
+
+
+def test_removing_a_field_we_read_still_fails_loudly() -> None:
+    """`allow` must not become "anything goes".
+
+    Fields the handlers actually consume have no defaults, so a removal or a
+    type change still raises — which is the half of the old rule worth keeping.
+    """
+    with pytest.raises(ValidationError):
+        _ChatMessageResponse.model_validate(
+            {
+                "name": "spaces/AAA/messages/111",
+                "createTime": "2026-04-19T17:00:00Z",
+                "thread": {"name": "spaces/AAA/threads/333"},
+                # `sender` removed
+            }
         )
 
 

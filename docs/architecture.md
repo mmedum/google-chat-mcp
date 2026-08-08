@@ -103,14 +103,35 @@ Cloud project, OAuth consent screen, client credentials, and rollout
 cadence. No shared install, no upstream service operated by the
 maintainers.
 
-### Pydantic `extra="forbid"` on Chat-API response models
+### Schema drift must be observable, not fatal
 
-Response models in `src/models.py` refuse unknown fields. Schema
-drift in the Google Chat API surfaces as a validation error rather
-than a silently-dropped field. When Google adds a new response
-field, the fix is to add it (optional) to `src/models.py` — not to
-relax the models to `extra="ignore"`. See `docs/runbook.md` for the
-walkthrough.
+Chat-API response models (`_ChatBase`) set `extra="allow"`. An unknown
+field is kept, reported once per process on the `schema_drift` log
+event, and counted in `mcp_schema_drift_total{location}`.
+
+This reverses an earlier rule that said drift must fail the call.
+That rule cost two total outages: Google adds response fields without
+notice — AIP-180 explicitly permits it — and every such field lands on
+*every* row of its resource, so `forbid` turned a routine
+backwards-compatible change into an every-tool failure, twice. The
+detection it promised never materialised: both events were found by a
+user, not by us.
+
+What is kept is the half that was load-bearing. Fields the handlers
+actually read have no defaults, so a removal or a type change still
+raises. A *renamed* field is caught too — the new name arrives as an
+unknown key even though the old one merely goes missing. And
+`google-chat-mcp doctor` checks live responses against the models on
+demand, so drift is found before a user trips over it.
+
+**Tool I/O keeps `extra="forbid"`** (`_Strict`). That side is our own
+contract, and rejecting an unrecognised key from a calling model is a
+real safety property — a misspelled `dry_run` must not silently post
+for real. Do not relax it because the response tier was relaxed; the
+two tiers face opposite directions.
+
+When Google adds a field you want to *use*, declare it on the model as
+usual. See `docs/runbook.md`.
 
 ### Stdout hygiene in stdio serve mode
 

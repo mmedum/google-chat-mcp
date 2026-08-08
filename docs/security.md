@@ -33,7 +33,7 @@ table and its own set of at-rest assumptions.
 - **Network attacker (HTTPS)** — can attempt JWT forgery, redirect-URI abuse, replay. Mitigated by `jwt_signing_key.min_length=32` + GoogleProvider's PKCE + state.
 - **Malicious co-resident process (stdio host)** — can't bind-race the loopback socket; can only attack via env-var write. The `chat_api_base` / `people_api_base` env path is gated behind `GCM_DEV_MODE=1`. The `GCM_CONFIG_DIR` env path is gated behind `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME=1`.
 - **Malicious MCP client** — can issue any tool call under the user's valid OAuth. All scope-restricted tools are bounded by Google's per-scope authorization. **Server-side does not police what the client asks for** — that's the trust model.
-- **Malicious upstream Google response** — Pydantic `extra="forbid"` on Chat API models surfaces schema drift as ValidationError; no silent corruption.
+- **Malicious upstream Google response** — every value we read is constrained at the model boundary: `_ID`-pattern resource names, `EmailStr`, `datetime` coercion, and required-field presence. Unknown *keys* are accepted and reported (`schema_drift`, `mcp_schema_drift_total`) rather than rejected — they are inert, since no handler reads them, and rejecting them cost two total outages. Tool results pass a second `extra="forbid"` boundary (`_Strict`) before reaching the caller.
 - **Prompt-injection from chat content** — message bodies are returned verbatim to the MCP client. The LLM harness is the trust boundary; the server cannot defend against an LLM that follows instructions found in chat. Documented as a known limitation.
 
 ## Out of scope

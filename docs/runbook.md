@@ -169,59 +169,57 @@ Audit-log and directory-cache are in `app.sqlite`; OAuth state is in `oauth_stor
 
 ## Known failure modes
 
-### Pydantic `extra="forbid"` validation errors on Chat API responses
+### Schema drift: Google changed a Chat API response
 
-We intentionally set `extra="forbid"` on Chat-API response models so that Google
-silently adding fields surfaces as an error instead of a silent drop. If you see:
-
-```
-pydantic.ValidationError: 1 validation error for _ChatSpaceResponse
-<newfield>
-  Extra inputs are not permitted ...
-```
-
-The fix is to add the new optional field to the relevant model in
-`src/models.py`, ship a new version, and redeploy. This is expected; the
-tradeoff is explicit.
-
-**Type the new field as `str`, not a `Literal`**, when it is an enum-shaped
-string. `markupSyntax` arrives as `MARKUP_SYNTAX_CHAT` today; pinning the
-literal set would hand Google a second way to break the same message later.
-
-**How to identify the field fast.** The caller only ever sees
-`Internal error.`, so read the server log instead. `invoke_tool` names the
-drifted field paths on the `tool_unhandled` event:
+Google adds response fields without notice, and each one lands on *every* row
+of its resource. Since v1.2.0 that is absorbed rather than fatal — the field is
+kept, and reported once per process:
 
 ```json
-{"event": "tool_unhandled", "tool": "get_messages", "fields": ["markupSyntax"]}
+{"event": "schema_drift", "location": "_ChatMessageResponse.markupSyntax"}
 ```
 
-`search_messages` degrades rather than failing, so it logs
-`search_message_unparsed` with the same `fields` key and reports a non-zero
-`unparsed` in its result. Both carry field paths only — never values, which
-would put message text past the key-based log redaction.
+with `mcp_schema_drift_total{location="..."}` incremented. **Alert on any
+non-zero rate.** Nothing is broken when this fires; it means the models are
+behind. Declare the field on the matching model in `src/models.py` when you
+want to use it.
 
-**Two real occurrences, both mid-2026:**
-
-| Field | Resource | Broke |
-| --- | --- | --- |
-| `markupSyntax` | message | every read tool, in every space |
-| `affiliation` | membership | `list_members`, in every space |
-
-Both are additive fields that appear on *every* row of their resource, which
-is the worst case: the failure is total, not partial. Expect that shape again.
-
-**Check for drift before a user hits it:**
+**Check on demand, before a user does:**
 
 ```bash
 google-chat-mcp doctor          # samples 5 spaces; --spaces N to widen
 ```
 
-It validates live responses against the models using the token already on
-disk, prints the drifted field paths, and exits non-zero — so it works as a
-cron job. On the HTTPS transport, alert on any non-zero rate of
-`mcp_schema_drift_total`; it fires on the first mismatched response rather than
-waiting for a report.
+Validates live responses against the models using the token already on disk,
+lists unmodelled fields, and exits non-zero — so it works as a cron job.
+
+**Type an enum-shaped field as `str`, not a `Literal`.** `markupSyntax` arrives
+as `MARKUP_SYNTAX_CHAT` today; a closed set hands Google a second way to break
+the same row later. Narrow to a closed set at the tool boundary instead
+(`narrow_enum` in `src/tools/_common.py`).
+
+**What still fails loudly**, and should: a field the handlers *read* being
+removed or changing type. Those have no defaults, so validation raises,
+`invoke_tool` logs the field paths on `tool_unhandled`, and the caller gets
+`Internal error.`:
+
+```json
+{"event": "tool_unhandled", "tool": "get_messages", "fields": ["createTime"]}
+```
+
+Field paths only — never values, which would put message text past the
+key-based log redaction.
+
+**Three real occurrences, all mid-2026:**
+
+| Field | Resource | Broke |
+| --- | --- | --- |
+| `markupSyntax` | message | every message tool, in every space |
+| `affiliation` | membership | `list_members`, in every space |
+| `lastActiveTime` | space | caught pre-release |
+
+All were additive fields on every row of their resource — under the current
+models none of them would have broken anything.
 
 ### 401 Unauthorized on every tool call immediately after a deploy
 

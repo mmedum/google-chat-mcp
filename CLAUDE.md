@@ -59,7 +59,7 @@ Threat model and trust boundaries live in
 - `ty == 0.0.31` (pinned exactly — it's 0.0.x beta, every patch can have breaking changes; no strict mode)
 - `ruff ~= 0.15` (current 0.16.2; 0.16 stabilised `PLR0917`, hence its entry in
   the ignore list)
-- Pydantic v2: tool I/O models use `extra="forbid"` + `strict=True`; Chat API response models use `extra="forbid"` only so schema drift still surfaces
+- Pydantic v2: tool I/O models use `extra="forbid"` + `strict=True`; Chat API response models use `extra="allow"` and report unknown keys via `schema_drift` + `mcp_schema_drift_total` (drift must be observable, not fatal — see `docs/architecture.md`)
 
 ## Secrets
 
