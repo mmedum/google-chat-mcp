@@ -9,17 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-08-08
 
-Upgrade immediately if you are on 1.0.x: the read side of the server is
-broken against the live Google Chat API, and no client-side workaround exists.
+Upgrade immediately if you are on 1.0.x: every message- and membership-touching
+tool is broken against the live Google Chat API, and no client-side workaround
+exists. Writes are the dangerous case — they succeeded and still reported
+`Internal error.`, so retries may have posted duplicates.
 
 ### Fixed
-- **Every read tool was broken against the live Chat API.** Google added
-  `markupSyntax` (on messages) and `affiliation` (on memberships); with
-  `extra="forbid"` on the response models, every message and every membership
-  failed validation. `get_messages`, `get_message`, `get_thread` and
-  `list_members` raised on every call in every space, and `search_messages`
-  returned zero matches over a full scan. Both fields are now accepted as
-  optional `str`.
+- **Every message- and membership-touching tool was broken against the live
+  Chat API.** Google added `markupSyntax` (on messages) and `affiliation` (on
+  memberships); with `extra="forbid"` on the response models, every message and
+  every membership failed validation. Both fields are now accepted as optional
+  `str`.
+  - Reads: `get_messages`, `get_message`, `get_thread` and `list_members`
+    raised on every call in every space; `search_messages` returned zero
+    matches over a full scan.
+  - **Writes, and this is the damaging part: the write succeeded and the tool
+    still reported `Internal error.`** `send_message` and `update_message`
+    parse the create/patch response, which carries `markupSyntax` — so the
+    message was posted or edited, then validation threw. A caller seeing an
+    error would reasonably retry, posting twice. `add_member` parses the same
+    membership shape and has the same hazard. If you ran 1.0.x recently, check
+    affected spaces for duplicates.
+  - Space-shaped responses never drifted, so `list_spaces`, `get_space`,
+    `create_space`, `create_group_chat`, `update_space` and `whoami` kept
+    working — which is what made this look like a permissions or network
+    problem rather than schema drift.
 - `search_messages` no longer drops unvalidatable messages silently. It still
   skips them — one bad row must not fail the search — but counts them in the
   new `unparsed` field of the result and logs the first one per call. A
