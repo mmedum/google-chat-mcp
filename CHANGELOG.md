@@ -73,13 +73,15 @@ exists. Writes are the dangerous case — they succeeded and still reported
 
 ### Added
 - **`google-chat-mcp doctor`** — validates live Chat API responses against the
-  models using the token already on disk, names any drifted field paths, and
-  exits non-zero, so it works as a cron job. Nothing detected drift before a
-  user did; this closes that. No shared credential is involved — each deployer
-  checks with their own token.
-- `mcp_schema_drift_total{location}` — a metric that fires the first time a
-  response doesn't match our models, so drift is alertable instead of waiting
-  on a user report. `location` is a model/field path, never a value.
+  models using the token already on disk, names any drifted field paths
+  (including nested ones, as dotted paths), and exits non-zero, so it works as
+  a cron job. Nothing detected drift before a user did; this closes that. No
+  shared credential is involved — each deployer checks with their own token.
+- `mcp_schema_drift_total{location}` — incremented on every response that
+  doesn't match our models, so `rate()` stays non-zero while the models are
+  stale rather than self-resolving after the first hit. The matching log line
+  is deduped per process; the counter deliberately is not. `location` is a
+  model/field path, never a value. Alert on any non-zero rate.
 
 ### Changed
 - **Chat API response models accept unknown fields instead of rejecting them**
