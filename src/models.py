@@ -499,6 +499,23 @@ class SearchMessagesResult(_Strict):
     """True when scanning stopped at `max_pages` before finding `limit` matches.
     Caller should either narrow the query, raise `created_after`, or accept
     the partial result."""
+    # `description` rather than only a docstring: `_Strict` doesn't set
+    # `use_attribute_docstrings`, so a bare docstring never reaches the tool's
+    # output schema — and a caller that can't see this field can't tell a
+    # broken parser from an empty space, which is the whole point of it.
+    unparsed: Annotated[
+        int,
+        Field(
+            ge=0,
+            description=(
+                "Messages counted in `scanned` that failed validation and were "
+                "never searched. Non-zero means the server's models are stale "
+                "against the Chat API and `matches` is INCOMPLETE — this is not "
+                "the same as 'no matches'. Report it rather than concluding the "
+                "space has nothing."
+            ),
+        ),
+    ] = 0
 
 
 class ReactionEntry(_Strict):
@@ -543,7 +560,8 @@ class WhoamiResult(_Strict):
 
 # ---------- Chat API response shapes ----------
 # Pydantic validators for raw Google JSON. `extra="forbid"` catches additions
-# from Google — surfaced as an ApiValidationError and logged.
+# from Google as a ValidationError; `invoke_tool` logs the drifted field paths
+# via `drift_fields` and returns "Internal error." to the caller.
 
 
 class _ChatBase(BaseModel):
@@ -580,7 +598,10 @@ class _ChatMessageResponse(_ChatBase):
     client_assigned_message_id: str | None = Field(default=None, alias="clientAssignedMessageId")
     # Opaque fields — we don't render them, but `extra="forbid"` would
     # otherwise reject any message carrying them. Keep one-per-field so
-    # unexpected drift still surfaces (CLAUDE.md rule).
+    # unexpected drift still surfaces (CLAUDE.md rule). Enum-shaped ones are
+    # `str`, never `Literal`: a value we don't know yet must not be able to
+    # reject the message it arrives on.
+    markup_syntax: str | None = Field(default=None, alias="markupSyntax")
     attachment: list[dict[str, object]] | None = None
     cards_v2: list[dict[str, object]] | None = Field(default=None, alias="cardsV2")
     cards: list[dict[str, object]] | None = None
@@ -672,6 +693,9 @@ class _ChatMembershipResponse(_ChatBase):
     # populated per membership, per Google's response shape.
     member: _ChatUser | None = None
     group_member: _ChatGroup | None = Field(default=None, alias="groupMember")
+    # Opaque: whether the member joined directly or via their domain. `str`,
+    # never `Literal`, for the same reason as `_ChatMessageResponse`'s.
+    affiliation: str | None = None
 
 
 class _ChatMembershipsListResponse(_ChatBase):

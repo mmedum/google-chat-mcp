@@ -4,23 +4,30 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
+import logging
 from pathlib import Path
 
 import httpx
 import pytest
 import respx
+import structlog
 from fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 from src.chat_client import ChatApiError
-from src.models import ListSpacesInput
+from src.models import ListSpacesInput, _ChatMessageResponse
+from src.observability import configure_logging
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
 from src.tools._common import (
     AuthInfo,
     ToolContext,
     audit_user_sub,
+    drift_fields,
     format_missing_scope_message,
     is_missing_scope_error,
 )
+from structlog.testing import capture_logs
 
 
 def test_is_missing_scope_detects_aip193_reason() -> None:
@@ -288,3 +295,107 @@ async def test_audit_row_stores_raw_sub_when_hashing_disabled(
             row = await cur.fetchone()
     assert row is not None
     assert row["user_sub"] == raw_sub
+
+
+def test_drift_fields_names_the_field_without_its_value() -> None:
+    """The drift log must identify the field but never carry its content.
+
+    `_redact_sensitive` masks by key, so it cannot see into a preformatted
+    string — `str(exc)` would smuggle `input_value=...` past it.
+    """
+    secret = "salary review notes"
+    with pytest.raises(ValidationError) as excinfo:
+        _ChatMessageResponse.model_validate(
+            {
+                "name": "spaces/AAA/messages/M.1",
+                "sender": {"name": "users/111"},
+                "createTime": "2026-04-19T10:00:00Z",
+                "thread": {"name": "spaces/AAA/threads/T.1"},
+                "newQuotedText": secret,
+            }
+        )
+    fields = drift_fields(excinfo.value)
+    assert fields == ["newQuotedText"]
+    assert secret not in repr(fields)
+
+
+def test_drift_fields_empty_for_non_validation_errors() -> None:
+    assert drift_fields(TypeError("raw was not a mapping")) == []
+
+
+@pytest.mark.asyncio
+async def test_invoke_tool_logs_drifted_field_on_schema_drift(
+    tool_ctx: ToolContext,
+    mock_access_token,
+) -> None:
+    """A field Google adds must be nameable from the logs.
+
+    The caller only ever gets "Internal error.", and the processor chain has
+    no format_exc_info — so without `fields` on `tool_unhandled` the drifted
+    field name reaches nobody. This is the regression that made the
+    markupSyntax outage present as an unexplained failure on every read tool.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+        capture_logs() as logs,
+    ):
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                200,
+                json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "brandNewField": "x"}]},
+            )
+        )
+        with pytest.raises(ToolError, match=r"Internal error\."):
+            await list_spaces_handler(tool_ctx, ListSpacesInput())
+
+    unhandled = [entry for entry in logs if entry["event"] == "tool_unhandled"]
+    assert len(unhandled) == 1
+    assert unhandled[0]["fields"] == ["brandNewField"]
+    assert unhandled[0]["tool"] == "list_spaces"
+
+
+@pytest.mark.asyncio
+async def test_drift_log_renders_without_the_drifted_value(
+    tool_ctx: ToolContext,
+    mock_access_token,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The value must be absent from the *rendered* line, not just the event dict.
+
+    `capture_logs` swaps the processor chain out, so the test above proves
+    only that `fields` is set — not that the real chain keeps the value out.
+    This one runs the actual processors and greps the JSON an operator sees.
+
+    `_common` binds `logger` at import and `cache_logger_on_first_use=True`
+    pins it to whatever stream was configured first, so reconfiguring alone
+    doesn't redirect it — the binding has to be replaced.
+    """
+    secret = "CONFIDENTIAL-salary-review"
+    buf = io.StringIO()
+    try:
+        structlog.reset_defaults()
+        configure_logging("INFO", stream=buf)
+        monkeypatch.setattr("src.tools._common.logger", structlog.get_logger("drift_render"))
+        with (
+            respx.mock(base_url="https://chat.test/v1") as mock,
+            mock_access_token(),
+        ):
+            mock.get("/spaces").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leaked": secret}]},
+                )
+            )
+            with pytest.raises(ToolError, match=r"Internal error\."):
+                await list_spaces_handler(tool_ctx, ListSpacesInput())
+    finally:
+        structlog.reset_defaults()
+        root = logging.getLogger()
+        for handler in list(root.handlers):
+            root.removeHandler(handler)
+
+    rendered = buf.getvalue()
+    assert "tool_unhandled" in rendered, "the drift log must actually be emitted"
+    assert '"leaked"' in rendered, "the drifted field name is the whole diagnostic"
+    assert secret not in rendered, "the drifted field's VALUE must never be logged"

@@ -19,6 +19,7 @@ from typing import Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
+from pydantic import ValidationError
 
 from ..chat_client import ChatApiError, ChatClient
 from ..config import (
@@ -110,6 +111,7 @@ __all__ = [
     "ToolContext",
     "ToolName",
     "audit_user_sub",
+    "drift_fields",
     "format_missing_scope_message",
     "invoke_tool",
     "is_missing_scope_error",
@@ -205,6 +207,31 @@ def format_missing_scope_message(scope: str) -> str:
     )
 
 
+def drift_fields(exc: Exception) -> list[str]:
+    """Field paths that failed validation, without their values.
+
+    Chat API response models are `extra="forbid"`, so a field Google adds
+    fails every row of that resource — the field path is the whole diagnosis.
+    `str(exc)` would carry it, but it renders `input_value=...` inline, and a
+    drifted field holding message text or an email would then reach the logs
+    as a preformatted string that `_redact_sensitive` cannot see into. The
+    `include_*=False` kwargs keep the value out of the dicts we read; the
+    `ctx` one matters too, since a wrapped `ValueError` message can embed it.
+
+    Field paths are safe to log only while no model declares a
+    `dict[str, <validated type>]`: pydantic puts *dict keys* into `loc`, so
+    such a field would put attacker- or user-controlled keys in this list.
+    Today only `membership_count: dict[str, int]` qualifies and its keys are
+    Google constants. Re-check this if that changes.
+    """
+    if not isinstance(exc, ValidationError):
+        return []
+    return [
+        ".".join(str(part) for part in err["loc"])
+        for err in exc.errors(include_input=False, include_url=False, include_context=False)
+    ]
+
+
 async def _resolve_auth_via_fastmcp() -> AuthInfo:
     """HTTPS-transport resolver: pull sub + upstream token from the FastMCP request context."""
     token = get_access_token()
@@ -278,7 +305,11 @@ async def invoke_tool[T](
         raise
     except Exception as exc:
         error_code = exc.__class__.__name__
-        logger.exception("tool_unhandled", tool=tool_name)
+        # `fields` is what makes a schema-drift outage diagnosable: the caller
+        # only ever sees "Internal error.", and the processor chain has no
+        # format_exc_info, so `exc_info` renders as a bare `true`. Without this
+        # the drifted field name reaches nobody.
+        logger.exception("tool_unhandled", tool=tool_name, fields=drift_fields(exc))
         raise ToolError("Internal error.") from exc
     finally:
         latency_ms = int((time.perf_counter() - started) * 1000)

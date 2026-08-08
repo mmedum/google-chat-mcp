@@ -184,6 +184,35 @@ The fix is to add the new optional field to the relevant model in
 `src/models.py`, ship a new version, and redeploy. This is expected; the
 tradeoff is explicit.
 
+**Type the new field as `str`, not a `Literal`**, when it is an enum-shaped
+string. `markupSyntax` arrives as `MARKUP_SYNTAX_CHAT` today; pinning the
+literal set would hand Google a second way to break the same message later.
+
+**How to identify the field fast.** The caller only ever sees
+`Internal error.`, so read the server log instead. `invoke_tool` names the
+drifted field paths on the `tool_unhandled` event:
+
+```json
+{"event": "tool_unhandled", "tool": "get_messages", "fields": ["markupSyntax"]}
+```
+
+`search_messages` degrades rather than failing, so it logs
+`search_message_unparsed` with the same `fields` key and reports a non-zero
+`unparsed` in its result. Both carry field paths only — never values, which
+would put message text past the key-based log redaction.
+
+**Two real occurrences, both mid-2026:**
+
+| Field | Resource | Broke |
+| --- | --- | --- |
+| `markupSyntax` | message | every read tool, in every space |
+| `affiliation` | membership | `list_members`, in every space |
+
+Both are additive fields that appear on *every* row of their resource, which
+is the worst case: the failure is total, not partial. Expect that shape again —
+and note that nothing detects it before a user does. A scheduled check that
+validates the models against a recorded live payload is tracked separately.
+
 ### 401 Unauthorized on every tool call immediately after a deploy
 
 FastMCP's OAuth Proxy issues JWTs signed with `GCM_JWT_SIGNING_KEY`. If the

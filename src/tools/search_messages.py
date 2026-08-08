@@ -12,7 +12,8 @@ from ..models import (
     SearchMessagesResult,
     _ChatMessageResponse,
 )
-from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool
+from ..observability import logger
+from ._common import CHAT_MESSAGES_READONLY, ToolContext, drift_fields, invoke_tool
 from ._messages import ensure_utc
 
 _DEFAULT_MAX_PAGES = 10
@@ -38,6 +39,7 @@ async def search_messages_handler(
     async def body(access_token: str, _user_sub: str) -> SearchMessagesResult:
         matches: list[SearchMatch] = []
         scanned = 0
+        unparsed = 0
         page_token: str | None = None
         for _ in range(max_pages):
             raw_page, next_token = await ctx.client.list_messages_page(
@@ -49,15 +51,22 @@ async def search_messages_handler(
             )
             for raw in raw_page:
                 scanned += 1
-                # Pydantic's ValidationError is a ValueError; TypeError is the only
-                # other realistic failure (non-mapping raw). Catch both via the
-                # common base — written as Exception narrowing because ruff-format
-                # in the pinned 0.15.x rewrites tuple except clauses.
+                # Pydantic's ValidationError is a ValueError; TypeError is the
+                # only other realistic failure (non-mapping raw).
                 try:
                     msg = _ChatMessageResponse(**raw)
-                except Exception as exc:
-                    if not isinstance(exc, TypeError | ValueError):
-                        raise
+                except (TypeError, ValueError) as exc:
+                    # Skipping is right — one bad row must not fail the search.
+                    # Doing it silently is not: schema drift then reads as
+                    # "no matches in this space" instead of "search is broken".
+                    if unparsed == 0:
+                        logger.warning(
+                            "search_message_unparsed",
+                            space_id=payload.space_id,
+                            error=type(exc).__name__,
+                            fields=drift_fields(exc),
+                        )
+                    unparsed += 1
                     continue
                 snippet_start = _match_index(msg.text, query_lower=query_lower, regex=regex)
                 if snippet_start is None:
@@ -73,12 +82,12 @@ async def search_messages_handler(
                     )
                 )
                 if len(matches) >= payload.limit:
-                    return SearchMessagesResult(matches=matches, scanned=scanned, cap_reached=False)
+                    return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=False)
             if not next_token:
-                return SearchMessagesResult(matches=matches, scanned=scanned, cap_reached=False)
+                return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=False)
             page_token = next_token
         # Fell out of the loop with a next_token still available: cap reached.
-        return SearchMessagesResult(matches=matches, scanned=scanned, cap_reached=True)
+        return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=True)
 
     return await invoke_tool(
         "search_messages",
@@ -86,6 +95,14 @@ async def search_messages_handler(
         body,
         target_space_id=payload.space_id,
         required_scope=CHAT_MESSAGES_READONLY,
+    )
+
+
+def _result(
+    matches: list[SearchMatch], *, scanned: int, unparsed: int, cap_reached: bool
+) -> SearchMessagesResult:
+    return SearchMessagesResult(
+        matches=matches, scanned=scanned, cap_reached=cap_reached, unparsed=unparsed
     )
 
 
