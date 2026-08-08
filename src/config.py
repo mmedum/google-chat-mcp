@@ -2,20 +2,26 @@
 
 Secrets (Fernet key, Google client credentials, JWT signing key) are read from
 /run/secrets/* in the container, or from `GCM_*` env vars in local dev, by
-pydantic-settings. The ``secrets_dir`` is silently skipped when it doesn't
-exist, so env vars take over in development.
+pydantic-settings. The ``secrets_dir`` is passed only when that directory
+exists, so env vars take over in development without a spurious warning.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    NoDecode,
+    PydanticBaseSettingsSource,
+    SecretsSettingsSource,
+    SettingsConfigDict,
+)
 
 # Production deployers MUST point at Google. The env override exists for
 # integration tests that spin up a local mock; gating it behind GCM_DEV_MODE
@@ -27,6 +33,20 @@ _GOOGLE_API_PREFIXES = (
     "https://people.googleapis.com/",
 )
 _DEV_MODE_ENV = "GCM_DEV_MODE"
+
+# Docker mounts secrets here; nothing else does. pydantic-settings warns on
+# stderr for every missing `secrets_dir`, which on the stdio transport means a
+# `UserWarning: directory "/run/secrets" does not exist` in the MCP client's
+# log on every single invocation. `settings_customise_sources` below passes the
+# path only when it is really there, so stderr stays quiet enough that the
+# warnings that *do* appear mean something.
+#
+# `exists()`, deliberately not `is_dir()`: pydantic-settings warns for a missing
+# path but raises `SettingsError` for one that exists and isn't a directory.
+# Testing `is_dir()` here would swallow that second case, turning a mounted-file
+# typo into "every secret silently ignored" followed by an unrelated
+# missing-field error.
+_SECRETS_DIR = Path("/run/secrets")
 
 
 def _validate_redirect_pattern(uri: object) -> None:
@@ -95,13 +115,40 @@ class Settings(BaseSettings):
     from files in /run/secrets when present, else from ``GCM_*`` env vars.
     """
 
+    # No `secrets_dir` here on purpose — `settings_customise_sources` supplies
+    # it. `SecretsSettingsSource` falls back to this dict whenever it is handed
+    # `secrets_dir=None`, so leaving an entry here would defeat the gate.
     model_config = SettingsConfigDict(
         env_prefix="GCM_",
         env_file=".env",
         env_file_encoding="utf-8",
-        secrets_dir="/run/secrets",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Read `/run/secrets` only when it is there, checked per construction.
+
+        Deciding this once at import would freeze the answer for the process and
+        leave the branch that matters in production — the one where the
+        directory exists — impossible to reach from a test.
+        """
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            SecretsSettingsSource(
+                settings_cls,
+                secrets_dir=_SECRETS_DIR if _SECRETS_DIR.exists() else None,
+            ),
+        )
 
     base_url: str = Field(
         ...,
@@ -270,3 +317,29 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     DIRECTORY_READONLY,
     CONTACTS_READONLY,
 )
+
+# Google accepts `email` and `profile` on the authorization request but reports
+# them back as these URLs in the token response. google-auth compares the two
+# lists verbatim on every `Credentials.refresh()` and logs "Not all requested
+# scopes were granted" when they differ — a false alarm, since the scope *was*
+# granted under its other name. Translating our side removes the mismatch
+# instead of muting the log, so a genuinely withheld scope still reports.
+# `openid` needs no entry: Google echoes it unchanged.
+#
+# Only the stdio transport needs this. FastMCP's GoogleProvider already applies
+# the same mapping (`GOOGLE_SCOPE_ALIASES` in
+# `fastmcp.server.auth.providers.google`) to both `valid_scopes` and
+# `required_scopes`, so `src/server.py` must NOT be "fixed" for symmetry. Keep
+# the two tables in step if Google ever adds an alias.
+_OIDC_ALIAS_CANONICAL = {
+    EMAIL_SCOPE: "https://www.googleapis.com/auth/userinfo.email",
+    PROFILE_SCOPE: "https://www.googleapis.com/auth/userinfo.profile",
+}
+
+
+def canonical_scopes(scopes: Iterable[str]) -> list[str]:
+    """Rewrite the `email`/`profile` aliases into the URLs Google reports back.
+
+    Order is preserved and non-alias scopes pass through untouched.
+    """
+    return [_OIDC_ALIAS_CANONICAL.get(scope, scope) for scope in scopes]

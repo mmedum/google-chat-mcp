@@ -154,9 +154,6 @@ filterwarnings = [
     # respx emits a DeprecationWarning when httpx is patched in certain orders;
     # harmless and tracked upstream. Remove once respx drops it.
     "ignore::DeprecationWarning:respx.*",
-    # pydantic-settings warns when secrets_dir (/run/secrets) doesn't exist —
-    # expected in local/test environments where all secrets come from env vars.
-    "ignore:directory.*does not exist:UserWarning",
 ]
 
 [tool.coverage.run]

@@ -55,12 +55,19 @@ from ..storage import Database, DirectoryCache, write_audit_row
 class AuthInfo:
     """Resolved auth for a single tool call: upstream Google token + user sub.
 
-    `granted_scopes` is set by the stdio resolver (read from the local
-    tokens.json) so `invoke_tool` can fail-fast with a re-consent prompt
-    when the caller asks for a tool whose `required_scope` was never
-    granted. HTTPS leaves it None — FastMCP's GoogleProvider already
-    validates scopes against the MCP-layer JWT before the request reaches
-    a tool handler.
+    `granted_scopes` is the set Google reported granting, so `invoke_tool` can
+    fail fast with a re-consent prompt when the caller asks for a tool whose
+    `required_scope` is missing. The stdio resolver reads it from the local
+    tokens.json.
+
+    None means *the granted set is unknown*, not *nothing was granted*: the
+    pre-flight check is skipped and an upstream 403 becomes the authority. Both
+    transports produce it. HTTPS always does — FastMCP's GoogleProvider has
+    already validated scopes against the MCP-layer JWT by then — and stdio does
+    when tokens.json predates the scope-recording fix or carries no scope list.
+
+    Pass canonicalized scope names (`src/config.py::canonical_scopes`); an empty
+    tuple is not the way to say "unknown", because it would reject every call.
     """
 
     access_token: str
@@ -305,16 +312,6 @@ async def invoke_tool[T](
     user_sub = auth.user_sub
     upstream_access_token = auth.access_token
 
-    # Pre-flight scope check (stdio path). HTTPS leaves auth.granted_scopes
-    # as None and relies on GoogleProvider's MCP-layer JWT validation —
-    # the upstream 403 fallback in the except branch handles its case.
-    if (
-        required_scope is not None
-        and auth.granted_scopes is not None
-        and required_scope not in auth.granted_scopes
-    ):
-        raise ToolError(format_missing_scope_message(required_scope))
-
     if not await ctx.limiter.allow(user_sub):
         mcp_rate_limit_hits_total.inc()
         raise ToolError("Rate limit exceeded. Try again in a moment.")
@@ -328,6 +325,24 @@ async def invoke_tool[T](
     # than re-passed by each handler and free to drift.
     tool_token = current_tool.set(tool_name)
     try:
+        # Pre-flight scope check. None means the granted set is unknown (see
+        # AuthInfo), so skip it and let the upstream 403 in the except branch
+        # below speak instead. This sits inside the instrumented block on
+        # purpose: it denies the same call the 403 path denies, so it has to
+        # leave the same audit row, metric and `missing_scope` code rather than
+        # returning an error no one can account for afterwards.
+        if (
+            required_scope is not None
+            and auth.granted_scopes is not None
+            and required_scope not in auth.granted_scopes
+        ):
+            error_code = "missing_scope"
+            logger.warning(
+                "tool_missing_scope",
+                tool=tool_name,
+                required_scope=required_scope,
+            )
+            raise ToolError(format_missing_scope_message(required_scope))
         result = await body(upstream_access_token, user_sub)
         success = True
         return result
@@ -345,7 +360,9 @@ async def invoke_tool[T](
             raise ToolError(format_missing_scope_message(required_scope)) from exc
         raise ToolError(f"Google Chat API error: {exc}") from exc
     except ToolError:
-        error_code = "tool_error"
+        # Keep a code the pre-flight check already set; only unlabelled
+        # ToolErrors from the handler fall back to the generic one.
+        error_code = error_code or "tool_error"
         raise
     except Exception as exc:
         error_code = exc.__class__.__name__

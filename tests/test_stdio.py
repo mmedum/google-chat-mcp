@@ -6,7 +6,10 @@ import json
 import stat
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -183,6 +186,11 @@ def test_login_end_to_end(
     fake_credentials.token = "access-abc"
     fake_credentials.id_token = _fake_id_token(sub="109876543210", email="alice@example.com")
     fake_credentials.scopes = ["openid", "email", "profile"]
+    fake_credentials.granted_scopes = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ]
 
     fake_flow = MagicMock()
     fake_flow.run_local_server.return_value = fake_credentials
@@ -217,6 +225,7 @@ def test_login_end_to_end(
     assert saved["client_id"] == "test-client-id.apps.googleusercontent.com"
     assert saved["user_sub"] == "109876543210"
     assert saved["user_email"] == "alice@example.com"
+    assert saved["granted_scopes"] == fake_credentials.granted_scopes
 
     mode = stat.S_IMODE((stdio_home / "tokens.json").stat().st_mode)
     assert mode == 0o600
@@ -366,29 +375,38 @@ async def test_stub_auth_resolver_returns_fixed_authinfo() -> None:
 # ---------- resolver ----------
 
 
-@pytest.mark.asyncio
-async def test_resolver_refreshes_and_persists_rotated_refresh_token(
-    stdio_home: Path,
-) -> None:
-    """Credentials.refresh() is delegated to google-auth; on rotation, persist."""
+def _saved_store(**overrides: Any) -> stdio_mod.TokenStore:
+    """A token store holding a minimal valid identity, with fields overridden."""
     store = stdio_mod._open_store()
     store.save(
         {
             "client_id": "cid",
             "client_secret": "csec",
             "refresh_token": "original-refresh",
-            "granted_scopes": ["openid"],
             "user_sub": "42",
+            **overrides,
         }
     )
+    return store
 
-    # Fake Credentials.refresh: mutate the same private backing fields
-    # google-auth writes (`.token`, `._refresh_token`, `.expiry`).
+
+@contextmanager
+def _patched_refresh(
+    *, rotate_to: str | None = None, granted_scopes: list[str] | None = None
+) -> Iterator[None]:
+    """Force `expired` and fake `Credentials.refresh`.
+
+    The fake mutates the same private backing fields google-auth writes
+    (`.token`, `._refresh_token`, `.expiry`, `._granted_scopes`).
+    """
+
     def fake_refresh(credentials, request):
         credentials.token = "access-fresh"
         credentials.expiry = None
-        if credentials.refresh_token == "original-refresh":
-            credentials._refresh_token = "rotated-refresh"
+        if rotate_to and credentials.refresh_token == "original-refresh":
+            credentials._refresh_token = rotate_to
+        if granted_scopes is not None:
+            credentials._granted_scopes = granted_scopes
 
     with (
         patch.object(stdio_mod.Credentials, "refresh", autospec=True) as mock_refresh,
@@ -399,6 +417,17 @@ async def test_resolver_refreshes_and_persists_rotated_refresh_token(
         ),
     ):
         mock_refresh.side_effect = fake_refresh
+        yield
+
+
+@pytest.mark.asyncio
+async def test_resolver_refreshes_and_persists_rotated_refresh_token(
+    stdio_home: Path,
+) -> None:
+    """Credentials.refresh() is delegated to google-auth; on rotation, persist."""
+    store = _saved_store(granted_scopes=["openid"])
+
+    with _patched_refresh(rotate_to="rotated-refresh"):
         resolver = stdio_mod._build_stdio_resolver(store, store.load())
         info = await resolver()
 
@@ -407,6 +436,99 @@ async def test_resolver_refreshes_and_persists_rotated_refresh_token(
 
     # The rotated refresh token was persisted back to disk.
     assert store.load()["refresh_token"] == "rotated-refresh"
+
+
+@pytest.mark.asyncio
+async def test_resolver_canonicalizes_legacy_alias_scopes(stdio_home: Path) -> None:
+    """A tokens.json written before this fix refreshes without the bogus warning.
+
+    Those files recorded the *requested* scopes, so they hold the `email` and
+    `profile` aliases rather than the userinfo.* URLs Google reports back. Both
+    the scopes handed to google-auth and the set the pre-flight check reads must
+    be canonicalized, or the two compare different vocabularies.
+    """
+    canonical = (
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    )
+    store = _saved_store(granted_scopes=["openid", "email", "profile"])
+
+    with (
+        _patched_refresh(),
+        patch.object(stdio_mod, "Credentials", wraps=stdio_mod.Credentials) as cred,
+    ):
+        resolver = stdio_mod._build_stdio_resolver(store, store.load())
+        info = await resolver()
+
+    assert cred.call_args.kwargs["scopes"] == list(canonical)
+    assert info.granted_scopes == canonical
+
+
+@pytest.mark.asyncio
+async def test_resolver_reports_unknown_scopes_as_none(stdio_home: Path) -> None:
+    """No stored scope list disables the pre-flight check rather than failing shut.
+
+    `invoke_tool` reads an empty tuple as "nothing was granted" and rejects every
+    tool. A tokens.json with no scope list means we simply don't know, so hand
+    back None and let a real 403 from Google be the authority.
+    """
+    store = _saved_store()
+
+    with (
+        _patched_refresh(),
+        patch.object(stdio_mod, "Credentials", wraps=stdio_mod.Credentials) as cred,
+    ):
+        resolver = stdio_mod._build_stdio_resolver(store, store.load())
+        info = await resolver()
+
+    assert info.granted_scopes is None
+    # The fallback list must be canonicalized too — it is what a tokens.json
+    # with no scope list actually refreshes with, and the aliases in
+    # GOOGLE_OAUTH_SCOPES are what produced the warning in the first place.
+    scopes = cred.call_args.kwargs["scopes"]
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
+    assert "email" not in scopes
+
+
+@pytest.mark.asyncio
+async def test_resolver_ignores_malformed_stored_scopes(stdio_home: Path) -> None:
+    """A hand-edited tokens.json must not brick every tool.
+
+    `str` satisfies `Iterable[str]`, so a space-joined `"openid email"` would
+    canonicalize one character at a time and leave every scope check comparing
+    against single letters. Unusable input degrades to "unknown" instead.
+    """
+    store = _saved_store(granted_scopes="openid email")
+
+    with _patched_refresh():
+        resolver = stdio_mod._build_stdio_resolver(store, store.load())
+        info = await resolver()
+
+    assert info.granted_scopes is None
+
+
+@pytest.mark.asyncio
+async def test_resolver_relearns_scopes_from_the_refresh_response(
+    stdio_home: Path,
+) -> None:
+    """Google's refresh response outranks whatever is on disk, and is persisted.
+
+    This is what heals a tokens.json written before scopes were recorded
+    correctly — without it, a pre-fix file keeps asserting scopes the user never
+    granted until they happen to log in again. It also drops a scope revoked in
+    Google account settings rather than honouring the stale local copy.
+    """
+    store = _saved_store(granted_scopes=["openid", "email", "profile"])
+    granted_now = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
+
+    with _patched_refresh(granted_scopes=granted_now):
+        resolver = stdio_mod._build_stdio_resolver(store, store.load())
+        info = await resolver()
+
+    assert info.granted_scopes == tuple(granted_now)
+    # Persisted, so the next process starts from the corrected set.
+    assert store.load()["granted_scopes"] == granted_now
 
 
 # ---------- argparse ----------
