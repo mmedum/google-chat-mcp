@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import io
-import logging
 
 import pytest
 import structlog
-from src.observability import _SENSITIVE_KEYS, _redact_sensitive, configure_logging
+from src.observability import _SENSITIVE_KEYS, _redact_sensitive
 
 
 @pytest.mark.parametrize(
@@ -87,26 +86,17 @@ def test_sensitive_keys_superset_of_v1_baseline() -> None:
 # ---------- stream plumbing ----------
 
 
-def test_configure_logging_routes_structlog_to_given_stream() -> None:
+def test_configure_logging_routes_structlog_to_given_stream(
+    structlog_stream: io.StringIO,
+) -> None:
     """Regression: structlog must write to the configured stream, not default stdout.
 
     Stdio mode passes `stream=sys.stderr` so MCP JSON-RPC frames on stdout
     stay uncorrupted. Before this fix, configure_logging only wired stdlib
     logging's stream and structlog kept writing to stdout.
     """
-    buf = io.StringIO()
-    try:
-        structlog.reset_defaults()
-        configure_logging("INFO", stream=buf)
-        log = structlog.get_logger("test_stream")
-        log.info("hello_stream_check", marker=42)
-    finally:
-        structlog.reset_defaults()
-        # Avoid leaking StringIO into later tests.
-        root = logging.getLogger()
-        for handler in list(root.handlers):
-            root.removeHandler(handler)
+    structlog.get_logger("test_stream").info("hello_stream_check", marker=42)
 
-    contents = buf.getvalue()
+    contents = structlog_stream.getvalue()
     assert "hello_stream_check" in contents
     assert '"marker": 42' in contents

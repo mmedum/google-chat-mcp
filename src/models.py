@@ -677,7 +677,10 @@ class _ChatSpaceResponse(_ChatBase):
     @classmethod
     def _normalize_legacy_space_type(cls, v: object) -> object:
         # Covers the older shape where only `type` was returned, using the
-        # pre-GA aliases (ROOM / DM / GROUP_DM) before the Literal rejects them.
+        # pre-GA aliases (ROOM / DM / GROUP_DM). Still load-bearing now that
+        # `type_` is a plain `str`: without it, `ROOM` would reach
+        # `space_type_out`, bucket into SPACE_TYPE_UNSPECIFIED and raise a
+        # false drift alert on every legacy space.
         return _LEGACY_SPACE_TYPE_ALIASES.get(v, v) if isinstance(v, str) else v
 
 
@@ -699,7 +702,7 @@ class _ChatMembershipResponse(_ChatBase):
     # Google extends MembershipState. The tool boundary narrows both via
     # `narrow_enum`, bucketing anything new into the `*_UNSPECIFIED` member
     # these enums already carry.
-    state: str = Field(alias="state")
+    state: str
     role: str | None = None
     create_time: datetime | None = Field(default=None, alias="createTime")
     delete_time: datetime | None = Field(default=None, alias="deleteTime")

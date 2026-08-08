@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastmcp.exceptions import ToolError
 
 from ..chat_client import ChatApiError
-from ..models import DirectMessageResult, _ChatSpaceResponse
+from ..models import DirectMessageResult
 from ._common import (
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
@@ -26,8 +26,7 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
     async def body(access_token: str, _user_sub: str) -> DirectMessageResult:
         found = await ctx.client.find_direct_message(access_token, user_email)
         if found is not None:
-            space = _ChatSpaceResponse(**found)
-            return DirectMessageResult(space_id=space.name)
+            return DirectMessageResult(space_id=found["name"])
         try:
             created = await ctx.client.create_dm(access_token, user_email)
         except ChatApiError as exc:

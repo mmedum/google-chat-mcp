@@ -15,7 +15,7 @@ import hmac
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal, get_args
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
@@ -36,7 +36,7 @@ from ..config import (
     DIRECTORY_READONLY,
     OPENID_SCOPE,
 )
-from ..models import SpaceTypeOut, _ChatSpaceResponse
+from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
 from ..observability import (
     logger,
     mcp_rate_limit_hits_total,
@@ -116,6 +116,8 @@ __all__ = [
     "format_missing_scope_message",
     "invoke_tool",
     "is_missing_scope_error",
+    "member_role_out",
+    "member_state_out",
     "narrow_enum",
     "space_display_name",
     "space_id_from_message_name",
@@ -374,7 +376,7 @@ async def invoke_tool[T](
         )
 
 
-def narrow_enum(value: object, allowed: tuple[str, ...], fallback: str, *, location: str) -> Any:
+def narrow_enum[T: str](value: object, allowed: tuple[T, ...], fallback: T, *, location: str) -> T:
     """Map a wire enum string onto our closed set, bucketing anything new.
 
     Wire models type enum-shaped fields as `str`, because these fields sit on
@@ -383,10 +385,14 @@ def narrow_enum(value: object, allowed: tuple[str, ...], fallback: str, *, locat
     outage an unknown *field* causes. Callers still get a closed set: anything
     unrecognised lands in `fallback` and is logged and counted instead.
 
+    Pass `allowed` as `get_args(<the Literal>)`, never a hand-written tuple: a
+    copy silently rots the moment someone extends the Literal, and the symptom
+    is a value we *do* support being bucketed away and reported as drift.
+
     The value is safe to log: these are Google's enum names, not user content.
     """
     if isinstance(value, str) and value in allowed:
-        return value
+        return value  # ty: ignore[invalid-return-type]
     if value is not None:
         logger.warning("enum_value_unrecognised", location=location, value=value)
         mcp_schema_drift_total.labels(location).inc()
@@ -397,9 +403,26 @@ def space_type_out(s: _ChatSpaceResponse) -> SpaceTypeOut:
     """Narrow a wire space type to the tool-facing enum."""
     return narrow_enum(
         s.type_,
-        ("SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"),
+        get_args(SpaceTypeOut),
         "SPACE_TYPE_UNSPECIFIED",
         location="_ChatSpaceResponse.type",
+    )
+
+
+def member_role_out(value: object) -> MemberRole:
+    """Narrow a wire membership role to the tool-facing enum."""
+    return narrow_enum(
+        value, get_args(MemberRole), "ROLE_UNSPECIFIED", location="_ChatMembershipResponse.role"
+    )
+
+
+def member_state_out(value: object) -> MemberState:
+    """Narrow a wire membership state to the tool-facing enum."""
+    return narrow_enum(
+        value,
+        get_args(MemberState),
+        "MEMBERSHIP_STATE_UNSPECIFIED",
+        location="_ChatMembershipResponse.state",
     )
 
 

@@ -36,12 +36,18 @@ from cryptography.fernet import Fernet, InvalidToken
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from pydantic import BaseModel
 
 from .app import build_app
 from .chat_client import ChatClient
 from .config import GOOGLE_OAUTH_SCOPES, Settings
+from .models import (
+    _ChatMembershipResponse,
+    _ChatMessageResponse,
+    _ChatSpaceResponse,
+)
 from .observability import configure_logging
-from .tools._common import AuthInfo, AuthResolver
+from .tools._common import AuthInfo, AuthResolver, drift_fields
 
 # ---------- constants ----------
 
@@ -595,18 +601,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
     """Fetch a sample of live data and report every model mismatch."""
-    from .models import (
-        _ChatMembershipResponse,
-        _ChatMessageResponse,
-        _ChatSpaceResponse,
-    )
-    from .tools._common import drift_fields
-
     client = ChatClient()
     problems: list[str] = []
     checked = 0
 
-    def check(model: type, raw: dict[str, Any], where: str) -> None:
+    def check(model: type[BaseModel], raw: dict[str, Any], where: str) -> None:
         nonlocal checked
         checked += 1
         try:

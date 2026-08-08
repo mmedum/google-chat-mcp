@@ -12,7 +12,7 @@ from ..models import (
     SearchMessagesResult,
     _ChatMessageResponse,
 )
-from ..observability import logger
+from ..observability import logger, mcp_schema_drift_total
 from ._common import CHAT_MESSAGES_READONLY, ToolContext, drift_fields, invoke_tool
 from ._messages import ensure_utc
 
@@ -66,6 +66,11 @@ async def search_messages_handler(
                             error=type(exc).__name__,
                             fields=drift_fields(exc),
                         )
+                        # Count here, not in `invoke_tool` — this tool swallows
+                        # the error to keep searching, so drift would otherwise
+                        # be invisible to the metric the runbook says to alert
+                        # on. Once per call, matching how invoke_tool counts.
+                        mcp_schema_drift_total.labels("search_messages").inc()
                     unparsed += 1
                     continue
                 snippet_start = _match_index(msg.text, query_lower=query_lower, regex=regex)

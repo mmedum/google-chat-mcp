@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import logging
-import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -106,22 +105,20 @@ def structlog_stream() -> Iterator[io.StringIO]:
     redaction or rendering — this fixture is for asserting on what an operator
     would actually read.
 
-    Restores the root logger's handlers rather than clearing them: pytest
-    attaches its own `caplog` handlers there, and dropping them silently breaks
-    log capture for every later test in the process. `configure_logging` is
-    re-run against stderr on the way out because `cache_logger_on_first_use`
-    pins already-bound loggers to whatever stream was configured first, and
-    structlog's own default writes to stdout — which the stdio transport
-    treats as reserved for JSON-RPC frames.
+    Teardown restores the *previous config object* rather than rebuilding one.
+    That matters: `configure_logging` installs a fresh processor list, and
+    `cache_logger_on_first_use=True` means any module-level logger bound
+    earlier still points at the old list. `capture_logs` mutates the current
+    list in place, so a rebuilt config silently stops intercepting those
+    loggers and later tests see no output. Root handlers are likewise restored,
+    not cleared — pytest keeps its `caplog` handlers there.
     """
     buf = io.StringIO()
-    saved = list(logging.getLogger().handlers)
-    structlog.reset_defaults()
+    saved_handlers = list(logging.getLogger().handlers)
+    saved_config = structlog.get_config()
     configure_logging("INFO", stream=buf)
     try:
         yield buf
     finally:
-        structlog.reset_defaults()
-        root = logging.getLogger()
-        root.handlers[:] = saved
-        configure_logging("INFO", stream=sys.stderr)
+        structlog.configure(**saved_config)
+        logging.getLogger().handlers[:] = saved_handlers

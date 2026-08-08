@@ -21,7 +21,8 @@ from ._common import (
     CHAT_MEMBERSHIPS_READONLY,
     ToolContext,
     invoke_tool,
-    narrow_enum,
+    member_role_out,
+    member_state_out,
 )
 from ._directory import fetch_person
 
@@ -69,18 +70,8 @@ async def _to_member(
     m: _ChatMembershipResponse,
     ctx: ToolContext,
 ) -> Member:
-    role = narrow_enum(
-        m.role,
-        ("ROLE_UNSPECIFIED", "ROLE_MEMBER", "ROLE_MANAGER"),
-        "ROLE_UNSPECIFIED",
-        location="_ChatMembershipResponse.role",
-    )
-    state = narrow_enum(
-        m.state,
-        ("MEMBERSHIP_STATE_UNSPECIFIED", "JOINED", "INVITED", "NOT_A_MEMBER"),
-        "MEMBERSHIP_STATE_UNSPECIFIED",
-        location="_ChatMembershipResponse.state",
-    )
+    role = member_role_out(m.role)
+    state = member_state_out(m.state)
     if m.member is not None:
         email, display_name = await _resolve_human(
             access_token, m.member.name, ctx.directory_cache, ctx
