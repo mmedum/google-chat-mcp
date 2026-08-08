@@ -30,7 +30,7 @@ dependencies = [
     "structlog~=25.5",
     "prometheus-client~=0.24",
     "py-key-value-aio[disk]~=0.4",
-    "cryptography~=46.0",
+    "cryptography~=50.0",
     "aiosqlite~=0.21",
     "google-auth~=2.49",
     "google-auth-oauthlib~=1.2",
@@ -106,6 +106,7 @@ select = [
 ]
 ignore = [
     "PLR0913",  # too many args — tool handlers have legitimate signature breadth
+    "PLR0917",  # too many positional args — same rationale as PLR0913 above
     "PLR2004", # magic value — HTTP status codes are clearer than named constants here
     "S101",    # asserts in tests
     "S105",    # "token" substring in URL constants is not a hardcoded password
