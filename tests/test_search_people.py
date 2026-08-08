@@ -301,3 +301,49 @@ def test_limit_bounds_enforced() -> None:
 def test_default_sources_is_hybrid() -> None:
     payload = SearchPeopleInput(query="x")  # ty: ignore[missing-argument]
     assert payload.sources == ["DIRECTORY", "CONTACTS"]
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        pytest.param("bob@nas.local", id="internal_hostname"),
+        pytest.param("admin@router", id="single_label_domain"),
+        pytest.param("j.doe@example.com.", id="trailing_dot"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_user_entered_contact_address_still_returns_a_hit(
+    tool_ctx: ToolContext, mock_access_token, address: str
+) -> None:
+    """The CONTACTS source returns the caller's own address book.
+
+    Those cards are typed by a human, not issued by Workspace, so they hold
+    whatever the user saved — an internal hostname, a bare domain, a stray
+    trailing dot. `PersonHit.email` used to be a strict `EmailStr`, so one such
+    card made the *entire* `search_people` call fail with `Internal error.`,
+    hiding every other hit in the result. These fields are `str` now: the value
+    reaches the caller exactly as Google returned it.
+    """
+    with respx.mock(base_url="https://people.test/v1") as mock, mock_access_token():
+        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
+            return_value=httpx.Response(200, json={"people": []})
+        )
+        mock.get(url__regex=r".*people:searchContacts.*").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"person": _person("people/c111", address, "Saved Contact")},
+                        {"person": _person("people/c222", "ok@example.com", "Other Contact")},
+                    ]
+                },
+            )
+        )
+        result = await search_people_handler(
+            tool_ctx, SearchPeopleInput(query="contact", sources=["DIRECTORY", "CONTACTS"])
+        )
+
+    emails = [hit.email for hit in result.people]
+    assert address in emails, "the odd card must not be dropped"
+    assert "ok@example.com" in emails, "and must not take the other hits down with it"
+    assert result.total_returned == 2

@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -393,3 +394,61 @@ async def test_drift_log_renders_without_the_drifted_value(
     assert "schema_drift" in rendered, "the drift log must actually be emitted"
     assert "leakyNewField" in rendered, "the field name is the whole diagnostic"
     assert secret not in rendered, "the field's VALUE must never be logged"
+
+
+@pytest.mark.asyncio
+async def test_audit_write_failure_does_not_mask_the_tool_result(
+    tool_ctx: ToolContext,
+    mock_access_token,
+) -> None:
+    """A broken audit sink must not rewrite what the tool returned.
+
+    The audit row is written in `invoke_tool`'s `finally`, and an exception
+    escaping a `finally` REPLACES the value or exception in flight. A locked
+    or full SQLite file would therefore turn a successful call into an
+    unrelated `OperationalError` — the caller loses a result that was already
+    computed, and for a write tool would reasonably retry it.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+        patch(
+            "src.tools._common.write_audit_row",
+            side_effect=RuntimeError("database is locked"),
+        ),
+    ):
+        mock.get("/spaces").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "spaces": [
+                        {"name": "spaces/AAA", "type": "ROOM", "displayName": "Eng"},
+                    ]
+                },
+            )
+        )
+        out = await list_spaces_handler(tool_ctx, ListSpacesInput())
+
+    assert [s.space_id for s in out] == ["spaces/AAA"]
+
+
+@pytest.mark.asyncio
+async def test_audit_write_failure_does_not_mask_the_tool_error(
+    tool_ctx: ToolContext,
+    mock_access_token,
+) -> None:
+    """The same, for the failure path: the caller must still see the real error."""
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+        patch(
+            "src.tools._common.write_audit_row",
+            side_effect=RuntimeError("database is locked"),
+        ),
+    ):
+        mock.get("/spaces").mock(return_value=httpx.Response(404, json={"error": {"code": 404}}))
+        with pytest.raises(ToolError) as exc:
+            await list_spaces_handler(tool_ctx, ListSpacesInput())
+
+    assert "database is locked" not in str(exc.value)
+    assert "404" in str(exc.value)

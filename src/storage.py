@@ -43,6 +43,15 @@ def workspace_user_id(resource_name: str) -> str | None:
 
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
+# Bootstrapped in code rather than as a migration file — it is the thing that
+# records which migration files have run, so it cannot be one of them.
+_SCHEMA_MIGRATIONS_DDL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename   TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 class Database:
     """Thin async wrapper. One connection per request is fine with WAL."""
@@ -69,14 +78,63 @@ class Database:
             await conn.close()
 
     async def migrate(self) -> None:
-        """Apply every `.sql` file in migrations/ in lexical order."""
+        """Apply each not-yet-applied `.sql` file in migrations/, in lexical order.
+
+        Every file used to be re-executed on every startup, which forced each
+        one to be idempotent and made anything that *transforms* data
+        impossible to express. Applied filenames are recorded in
+        `schema_migrations`, so a migration is skipped once it has run.
+
+        That is a per-process check, not a distributed lock: the applied set is
+        read outside any transaction and `executescript` commits as it goes, so
+        two processes starting together — routine on stdio, where every MCP
+        client spawns its own subprocess against the same file — can both apply
+        the same migration. Harmless while every migration is replay-safe, which
+        is the standing requirement below. A migration that genuinely must run
+        once needs `PRAGMA user_version` checked and bumped inside its own
+        `BEGIN IMMEDIATE`; add that before writing one.
+
+        Databases created before this table existed have no record of `001`.
+        That is why `001` must stay idempotent: it is re-applied once, against
+        a schema it already created, and its `IF NOT EXISTS` guards make that a
+        no-op.
+
+        **Every migration must be safe to re-run from its own end state.**
+        `executescript` issues an implicit COMMIT, so a file cannot share a
+        transaction with the `schema_migrations` row that records it — the file
+        commits first, and a crash in between replays it on the next start. A
+        migration that is not replay-safe (`UPDATE x SET n = n * 2`) needs a
+        different runner, not a comment. Anything that rewrites an existing
+        table should also state `BEGIN IMMEDIATE`, not a deferred `BEGIN`: a
+        deferred transaction takes its write lock late, and the resulting
+        `SQLITE_BUSY_SNAPSHOT` is returned immediately rather than being
+        retried by `busy_timeout`.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         sql_files = sorted(_MIGRATIONS_DIR.glob("*.sql"))
         if not sql_files:
             raise RuntimeError(f"No migrations found at {_MIGRATIONS_DIR}")
-        async with self.cursor() as conn:
+        conn = await self.connect()
+        try:
+            await conn.execute(_SCHEMA_MIGRATIONS_DDL)
+            await conn.commit()
+            cur = await conn.execute("SELECT filename FROM schema_migrations")
+            applied = {row["filename"] for row in await cur.fetchall()}
             for path in sql_files:
-                await conn.executescript(path.read_text())
+                if path.name in applied:
+                    continue
+                # `executescript` performs no transaction control of its own,
+                # so a migration needing atomicity states BEGIN/COMMIT itself.
+                # Explicit encoding: the default follows the process locale, and
+                # a C-locale container would fail to decode a non-ASCII comment.
+                await conn.executescript(path.read_text(encoding="utf-8"))
+                await conn.execute(
+                    "INSERT OR REPLACE INTO schema_migrations (filename) VALUES (?)",
+                    (path.name,),
+                )
+                await conn.commit()
+        finally:
+            await conn.close()
 
 
 # ---------- audit log ----------
@@ -109,7 +167,7 @@ async def prune_audit_log(db: Database, retention_days: int) -> int:
     async with db.cursor() as conn:
         cur = await conn.execute(
             "DELETE FROM audit_log WHERE timestamp < ?",
-            (cutoff.isoformat(),),
+            (_sqlite_ts(cutoff),),
         )
         return cur.rowcount
 
@@ -139,6 +197,33 @@ class DirectoryCache:
             return None
         return row["email"], row["display_name"]
 
+    async def get_many(self, user_ids: Iterable[str]) -> dict[str, tuple[str, str | None]]:
+        """Fresh cache entries for `user_ids`, in one query. Misses are absent.
+
+        `get()` opens its own connection, and callers resolve a page of senders
+        or members concurrently — so the per-row form cost one `aiosqlite`
+        connection, and one OS thread, per row. At the 200-member cap that is
+        200 of each to read rows already sitting in one file. Batching turns
+        the SQLite half of a fan-out into a single round-trip.
+        """
+        ids = list(dict.fromkeys(user_ids))
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        async with self._db.cursor() as conn:
+            cur = await conn.execute(
+                "SELECT user_id, email, display_name, fetched_at "  # noqa: S608 — placeholders only
+                f"FROM user_directory WHERE user_id IN ({placeholders})",
+                ids,
+            )
+            rows = list(await cur.fetchall())
+        now = datetime.now(UTC)
+        return {
+            row["user_id"]: (row["email"], row["display_name"])
+            for row in rows
+            if now - _parse_sqlite_ts(row["fetched_at"]) <= self._ttl
+        }
+
     async def put(self, user_id: str, email: str, display_name: str | None) -> None:
         # Gate: only `users/{numeric}` is a Workspace profile — non-conforming
         # IDs (bots, apps, contact-derived shapes) are silently dropped to
@@ -160,6 +245,22 @@ class DirectoryCache:
                 (user_id, email, display_name),
             )
 
+    async def put_many_users(self, entries: Iterable[tuple[str, str, str | None]]) -> int:
+        """Bulk-write `(users/{id}, email, display_name)` in one connection.
+
+        `put_many` takes People `resourceName`s; this takes ids already in
+        Chat's namespace, which is what resolution produces. Same `users/{n}`
+        gate as `put`. Batched because the cold path resolves a whole page
+        concurrently, and a per-row write opened one connection — and one OS
+        thread — per row, all contending for SQLite's single write lock.
+        """
+        rows = [
+            (user_id, email, display_name)
+            for user_id, email, display_name in entries
+            if _WORKSPACE_USER_ID.match(user_id)
+        ]
+        return await self._write(rows)
+
     async def put_many(self, entries: Iterable[tuple[str, str, str | None]]) -> int:
         """Bulk-write a list of `(resource_name, email, display_name)` tuples.
 
@@ -175,6 +276,10 @@ class DirectoryCache:
             if user_id is None:
                 continue
             rows.append((user_id, email, display_name))
+        return await self._write(rows)
+
+    async def _write(self, rows: list[tuple[str, str, str | None]]) -> int:
+        """Upsert pre-gated `(users/{id}, email, display_name)` rows. Returns the count."""
         if not rows:
             return 0
         async with self._db.cursor() as conn:
@@ -192,8 +297,39 @@ class DirectoryCache:
         return len(rows)
 
 
+_SQLITE_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def _sqlite_ts(value: datetime) -> str:
+    """Render a UTC datetime the way SQLite's `CURRENT_TIMESTAMP` does.
+
+    `timestamp` columns hold `CURRENT_TIMESTAMP`'s output — `YYYY-MM-DD
+    HH:MM:SS`, UTC, space-separated, no offset — and `TIMESTAMP` carries
+    NUMERIC affinity, so a bound string that isn't a number is compared
+    lexicographically against it. `datetime.isoformat()` does NOT sort
+    compatibly with that: its `T` (0x54) sorts *after* the stored space
+    (0x20), so every row sharing the cutoff's date compared as older and was
+    deleted regardless of time-of-day — silently discarding up to a further
+    24h of audit history on each prune. Format the bound value to match the
+    stored one instead. Keeping both sides plain text also keeps
+    `idx_audit_log_timestamp` usable, which wrapping either side in
+    `datetime()` would not.
+
+    Naive input is rejected rather than assumed: `astimezone` would read it as
+    *host-local* time, shifting the cutoff by the deployment's UTC offset and
+    silently deleting or retaining up to a further half-day of history — the
+    same class of quiet, timezone-shaped error this function exists to fix.
+    """
+    if value.tzinfo is None:
+        raise ValueError("_sqlite_ts requires an aware datetime; naive input is ambiguous")
+    return value.astimezone(UTC).strftime(_SQLITE_TS_FORMAT)
+
+
 def _parse_sqlite_ts(raw: str) -> datetime:
-    # SQLite's CURRENT_TIMESTAMP emits "YYYY-MM-DD HH:MM:SS" without tz.
+    # Inverse of `_sqlite_ts`; `_SQLITE_TS_FORMAT` is the authority on the
+    # layout. Parsed via `fromisoformat` rather than `strptime` so a value with
+    # fractional seconds still reads — `CURRENT_TIMESTAMP` never emits one, but
+    # a hand-written row or a future writer might.
     return datetime.fromisoformat(raw.replace(" ", "T")).replace(tzinfo=UTC)
 
 

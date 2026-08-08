@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import time
 from collections.abc import Awaitable, Callable
+from contextvars import Token
 from dataclasses import dataclass
 from typing import Literal, get_args
 
@@ -38,7 +39,9 @@ from ..config import (
 )
 from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
 from ..observability import (
+    current_tool,
     logger,
+    mcp_audit_write_failures_total,
     mcp_rate_limit_hits_total,
     mcp_schema_drift_total,
     mcp_tool_calls_total,
@@ -320,6 +323,10 @@ async def invoke_tool[T](
     started = time.perf_counter()
     success = False
     error_code: str | None = None
+    # Publish the tool name for code below the handler (People API enrichment
+    # labels its counter from this) so the name is written once, here, rather
+    # than re-passed by each handler and free to drift.
+    tool_token = current_tool.set(tool_name)
     try:
         result = await body(upstream_access_token, user_sub)
         success = True
@@ -357,10 +364,54 @@ async def invoke_tool[T](
         )
         raise ToolError("Internal error.") from exc
     finally:
-        latency_ms = int((time.perf_counter() - started) * 1000)
+        # Everything in this block is bookkeeping, and an exception escaping a
+        # `finally` REPLACES whatever the tool was raising or returning — a
+        # locked or full database would turn a clean `ToolError` into an
+        # unrelated `OperationalError`, hiding the actual outcome from the
+        # caller. Guarding the whole teardown rather than just the audit write
+        # means anything added here later inherits the guarantee instead of
+        # having to remember it.
+        await _record_call_outcome(
+            ctx,
+            tool_token=tool_token,
+            tool_name=tool_name,
+            target_space_id=target_space_id,
+            user_sub=user_sub,
+            success=success,
+            error_code=error_code,
+            started=started,
+        )
+
+
+async def _record_call_outcome(
+    ctx: ToolContext,
+    *,
+    tool_token: Token[str],
+    tool_name: ToolName,
+    target_space_id: str | None,
+    user_sub: str,
+    success: bool,
+    error_code: str | None,
+    started: float,
+) -> None:
+    """Record metrics + the audit row for one call. Contract: never raises.
+
+    The two halves are guarded separately on purpose: sharing one `try` meant a
+    metrics failure would skip the audit row as a side effect, losing the
+    security-relevant record because of the cosmetic one.
+    """
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    try:
+        current_tool.reset(tool_token)
+    except Exception:
+        logger.exception("tool_context_reset_failed", tool=tool_name)
+    try:
         status_label = "ok" if success else "error"
         mcp_tool_calls_total.labels(tool_name, status_label).inc()
         mcp_tool_latency_seconds.labels(tool_name).observe(latency_ms / 1000.0)
+    except Exception:
+        logger.exception("tool_metrics_record_failed", tool=tool_name)
+    try:
         audit_sub = audit_user_sub(
             user_sub or "unknown",
             pepper=ctx.audit_pepper,
@@ -375,6 +426,14 @@ async def invoke_tool[T](
             latency_ms=latency_ms,
             error_code=error_code,
         )
+    except Exception as exc:
+        # Fail-open, but never silently: the call completed and the caller gets
+        # its result, while `audit_log` has a hole no other signal would show.
+        # `error_type` explicitly, for the reason the handler above documents:
+        # the processor chain has no `format_exc_info`, so `exc_info` renders
+        # as a bare `true` and "check disk space" would be unactionable.
+        mcp_audit_write_failures_total.inc()
+        logger.exception("audit_write_failed", tool=tool_name, error_type=type(exc).__name__)
 
 
 def narrow_enum[T: str](value: object, allowed: tuple[T, ...], fallback: T, *, location: str) -> T:

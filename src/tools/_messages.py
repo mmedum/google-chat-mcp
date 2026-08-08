@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 
 from ..models import ChatMessage, _ChatMessageResponse
-from ..observability import logger
-from ._common import ToolContext
-from ._directory import fetch_person
+from ..observability import logger, mcp_schema_drift_total
+from ._common import ToolContext, drift_fields
+from ._directory import resolve_people, resolve_person_cached
 
 
 def ensure_utc(ts: datetime) -> datetime:
@@ -21,18 +20,12 @@ async def resolve_sender(
     access_token: str,
     msg: _ChatMessageResponse,
 ) -> tuple[str | None, str | None]:
-    """Resolve `msg.sender.name` to `(email, display_name)` via the directory cache."""
-    user_id = msg.sender.name
-    cache = ctx.directory_cache
-    cached = await cache.get(user_id)
-    if cached is not None:
-        return cached
-    fetched = await fetch_person(ctx.client, access_token, user_id)
-    if fetched is None:
-        return None, msg.sender.display_name
-    email, display_name = fetched
-    if email:
-        await cache.put(user_id, email, display_name)
+    """Resolve `msg.sender.name` to `(email, display_name)`. Never raises.
+
+    Falls back to the display name Chat already gave us on the message, so a
+    failed lookup costs the email and nothing else.
+    """
+    email, display_name = await resolve_person_cached(ctx, access_token, msg.sender.name)
     return email, display_name or msg.sender.display_name
 
 
@@ -41,40 +34,47 @@ async def enrich_messages(
     ctx: ToolContext,
     access_token: str,
 ) -> list[ChatMessage]:
-    """Resolve senders in parallel; drop rows whose People-API lookup raises.
+    """Resolve senders, keeping every message.
 
-    `return_exceptions=True`: one bad lookup mustn't blank the whole batch.
-    Failures are logged and skipped — the caller sees a partial result.
+    Lookups are per *unique sender*, not per message, and the cache is read
+    for the whole page in one query. Resolving per message meant a 50-message
+    thread between three people issued 50 concurrent People calls, each with
+    its own SQLite connection, all missing before the first `cache.put` landed.
+
+    A People API failure no longer costs a row — `resolve_person_cached`
+    degrades to a null email instead, and never raises. The only way to lose a
+    message here is `ChatMessage` failing to validate, i.e. a field we *read*
+    drifted. That is real drift, so it is counted rather than just logged: a
+    dropped row shortens the list with no other signal, and the caller reads
+    the short list as the whole conversation.
     """
-    results = await asyncio.gather(
-        *[_enrich_sender(access_token, m, ctx) for m in parsed],
-        return_exceptions=True,
-    )
+    by_sender = await resolve_people(ctx, access_token, (m.sender.name for m in parsed))
+
     enriched: list[ChatMessage] = []
-    for msg, res in zip(parsed, results, strict=True):
-        if isinstance(res, BaseException):
+    for msg in parsed:
+        email, display_name = by_sender.get(msg.sender.name, (None, None))
+        try:
+            enriched.append(
+                ChatMessage(
+                    message_id=msg.name,
+                    sender_user_id=msg.sender.name,
+                    sender_email=email,
+                    sender_display_name=display_name or msg.sender.display_name,
+                    text=msg.text,
+                    timestamp=ensure_utc(msg.create_time),
+                    thread_id=msg.thread.name,
+                )
+            )
+        except (TypeError, ValueError) as exc:
             logger.warning(
                 "enrich_sender_failed",
                 sender=msg.sender.name,
-                error=type(res).__name__,
+                error=type(exc).__name__,
+                fields=drift_fields(exc),
             )
-            continue
-        enriched.append(res)
+            # `location` labels a code site, not a caller — every other use of
+            # this metric is a literal. Interpolating the tool would split one
+            # drifted `ChatMessage` field across three series and fragment the
+            # alert the runbook tells operators to set.
+            mcp_schema_drift_total.labels("enrich_messages.dropped_row").inc()
     return enriched
-
-
-async def _enrich_sender(
-    access_token: str,
-    msg: _ChatMessageResponse,
-    ctx: ToolContext,
-) -> ChatMessage:
-    email, display_name = await resolve_sender(ctx, access_token, msg)
-    return ChatMessage(
-        message_id=msg.name,
-        sender_user_id=msg.sender.name,
-        sender_email=email,
-        sender_display_name=display_name or msg.sender.display_name,
-        text=msg.text,
-        timestamp=ensure_utc(msg.create_time),
-        thread_id=msg.thread.name,
-    )

@@ -10,6 +10,19 @@ PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
 
+-- Already applied everywhere. Do not edit beyond comments, and keep every
+-- statement idempotent: databases created before `schema_migrations` existed
+-- have no record of this file, so the runner re-applies it once against a
+-- schema it already created.
+--
+-- CAUTION on the TIMESTAMP columns below. SQLite has no timestamp type, and
+-- "TIMESTAMP" matches none of the affinity keywords, so these columns take
+-- NUMERIC affinity while holding CURRENT_TIMESTAMP's text. A bound value that
+-- is not a well-formed number is therefore compared *lexicographically*, which
+-- is how an ISO-8601 cutoff — whose "T" sorts after the stored space —
+-- silently pruned an extra day of audit history. Render bound values with
+-- `storage._sqlite_ts` so both sides share one representation; that is the
+-- guard, and it is required whatever the column is declared as.
 CREATE TABLE IF NOT EXISTS audit_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

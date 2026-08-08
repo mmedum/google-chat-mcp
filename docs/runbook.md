@@ -167,6 +167,37 @@ docker compose up -d mcp
 
 Audit-log and directory-cache are in `app.sqlite`; OAuth state is in `oauth_store/`. Restore both together — they reference each other by user sub.
 
+## Schema migrations
+
+`.sql` files in `src/migrations/` are applied in lexical order at startup, once
+each. Applied filenames are recorded in `schema_migrations`; to see what a
+database has had applied:
+
+```bash
+sqlite3 /var/lib/google-chat-mcp/app.sqlite \
+  'SELECT filename, applied_at FROM schema_migrations ORDER BY filename;'
+```
+
+Before v1.3.0 there was no such record and every file re-ran on every boot, so
+`001_init.sql` is written to be idempotent and is re-applied once against the
+schema it already created. Later migrations run exactly once.
+
+**v1.3.0 adds no migration** — it only starts recording which ones have run.
+Nothing rewrites an existing table.
+
+Writing a new migration: a file is committed before its `schema_migrations`
+row, so a crash in between replays it — and the applied-set check is not
+serialised, so two processes starting together (routine on stdio, where every
+MCP client spawns its own subprocess against the same file) can both apply the
+same file. Every migration must therefore be safe to re-run from its own end
+state; one that genuinely cannot be re-applied needs a lock this runner does
+not yet take. Anything that rewrites an existing table
+should open `BEGIN IMMEDIATE` rather than a deferred `BEGIN` — a deferred
+transaction takes its write lock late, and the resulting `SQLITE_BUSY_SNAPSHOT`
+is returned immediately instead of being retried by `busy_timeout`. Rewriting a
+large table also needs roughly 3x its size in free space while the old and new
+copies coexist, and leaves the freed pages in the file until a `VACUUM`.
+
 ## Known failure modes
 
 ### Schema drift: Google changed a Chat API response
@@ -251,6 +282,9 @@ Scrape `GET /metrics`. The metrics that tend to move first:
 | `mcp_tool_latency_seconds` (P95) | Rising tail usually means Google-side slowness; check `mcp_google_api_latency_seconds`. |
 | `mcp_rate_limit_hits_total` | Hot user or runaway loop. |
 | `mcp_active_users` | Flat-to-zero during business hours = server is isolated from any MCP client; check `/readyz` and the reverse proxy. |
+| `mcp_schema_drift_total` | Any non-zero rate = the response models are stale against the Chat API. Alert on it; see "Schema drift: Google changed a Chat API response" under Known failure modes, above. |
+| `mcp_people_lookup_failures_total` | Every `sender_email` / `Member.email` is unreliable while this is non-zero. Rows still return, with `email: null` — see "People API failures return null emails" below. |
+| `mcp_audit_write_failures_total` | Calls are completing without being recorded in `audit_log`. Writes are fail-open by design, so nothing else surfaces this. Check disk space and the SQLite file's permissions. |
 
 ## Live MCP-client smoke test (post-deploy)
 
@@ -332,6 +366,43 @@ tool. The right response is clear nullability in the docs (done
 above), and for destructive paths that depend on a reliable email
 match (`remove_member` in v0.3.1), only offering the by-resource-name
 shape.
+
+## People API failures return null emails, not empty lists
+
+Symptom: `mcp_people_lookup_failures_total` is climbing and every
+`sender_email` / `Member.email` comes back `null`, while the messages and
+members themselves still return normally.
+
+**Cause:** the People API refused the lookup — a 403 (`directory.readonly`
+never granted, or consent revoked), a 429, or a 5xx. Email resolution is
+separate from the Chat call that fetched the row.
+
+**Where to see it:** `mcp_people_lookup_failures_total` is scrapeable on the
+HTTPS transport only — stdio has no `/metrics` endpoint. On stdio the signal is
+the `person_lookup_degraded` warning on **stderr**, which carries the upstream
+`status` so a 403 (scope) can be told from a 429 (quota); MCP clients often
+discard stderr, so check the client's server log.
+
+**What to do:** confirm the scope is still granted (`google-chat-mcp login`
+re-consents on stdio), then check Google Cloud quota for the People API.
+Nothing is lost while it lasts: `user_id` and `display_name` still come from
+the Chat payload, and `search_people` back-fills the cache once the upstream
+recovers.
+
+**Why it degrades instead of failing:** an upstream People API failure used to
+propagate and take the whole row with it, so `get_messages` and `list_members`
+returned `[]` (and `get_message` raised). A calling model reads an empty list
+as *the space is empty* — a confident wrong answer, and the same shape as the
+`markupSyntax` outage where `search_messages` reported zero matches over a
+broken scan. The email field is nullable by contract, so losing it costs the
+field and nothing else. The counter exists because that degradation is
+otherwise invisible to the caller.
+
+**Cost while it lasts:** each call re-attempts one lookup per *unique* sender
+or member that is not already cached — not one per row. There is no
+suppression window: an earlier failure never silences a later call, so
+recovery is immediate and no tool reports an answer derived from a failure it
+did not itself observe.
 
 ## search_people returns zero DIRECTORY hits for Workspace users
 
