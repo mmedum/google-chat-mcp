@@ -499,10 +499,23 @@ class SearchMessagesResult(_Strict):
     """True when scanning stopped at `max_pages` before finding `limit` matches.
     Caller should either narrow the query, raise `created_after`, or accept
     the partial result."""
-    unparsed: Annotated[int, Field(ge=0)] = 0
-    """Messages counted in `scanned` that failed model validation and were
-    never searched. Non-zero means schema drift (see docs/runbook.md) and
-    that `matches` is incomplete — it is NOT the same as "no matches"."""
+    # `description` rather than only a docstring: `_Strict` doesn't set
+    # `use_attribute_docstrings`, so a bare docstring never reaches the tool's
+    # output schema — and a caller that can't see this field can't tell a
+    # broken parser from an empty space, which is the whole point of it.
+    unparsed: Annotated[
+        int,
+        Field(
+            ge=0,
+            description=(
+                "Messages counted in `scanned` that failed validation and were "
+                "never searched. Non-zero means the server's models are stale "
+                "against the Chat API and `matches` is INCOMPLETE — this is not "
+                "the same as 'no matches'. Report it rather than concluding the "
+                "space has nothing."
+            ),
+        ),
+    ] = 0
 
 
 class ReactionEntry(_Strict):

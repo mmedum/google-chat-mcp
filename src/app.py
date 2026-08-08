@@ -543,7 +543,9 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "bound — an unbounded scan of a large space hits the page cap "
             "and returns a partial result. Provide exactly one of `query` "
             "(exact substring, case-insensitive) or `regex` (Python re.search). "
-            "For org-wide history, direct the user to the Chat web UI."
+            "For org-wide history, direct the user to the Chat web UI. "
+            "If `unparsed` is non-zero the result is incomplete — say so "
+            "instead of reporting the space as empty."
         ),
         annotations={"readOnlyHint": True, "openWorldHint": True},
     )

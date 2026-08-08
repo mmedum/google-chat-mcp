@@ -17,12 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional `str`.
 - `search_messages` no longer drops unvalidatable messages silently. It still
   skips them — one bad row must not fail the search — but counts them in the
-  new `unparsed` field of the result and logs the first one per call, naming
-  the drifted field path but never its value — `str(ValidationError)` embeds
-  `input_value=...`, which would carry message content past the key-based log
-  redaction. A
+  new `unparsed` field of the result and logs the first one per call. A
   non-zero `unparsed` means the result is incomplete, which is what made the
   drift above look like an empty space rather than a broken parser.
+- Schema drift is now diagnosable from the logs on *every* tool, not just
+  `search_messages`. `invoke_tool` names the drifted field paths on the
+  `tool_unhandled` event; previously the caller got `Internal error.` and the
+  field name reached nobody, because the log chain has no `format_exc_info`.
+  Paths only, never values — `str(ValidationError)` embeds `input_value=...`,
+  which would carry message content past the key-based log redaction.
 
 ### Changed
 - `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so

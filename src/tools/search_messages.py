@@ -59,7 +59,6 @@ async def search_messages_handler(
                     # Skipping is right — one bad row must not fail the search.
                     # Doing it silently is not: schema drift then reads as
                     # "no matches in this space" instead of "search is broken".
-                    # Count it into the result and log the first one per call.
                     if unparsed == 0:
                         logger.warning(
                             "search_message_unparsed",

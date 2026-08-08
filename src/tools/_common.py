@@ -111,6 +111,7 @@ __all__ = [
     "ToolContext",
     "ToolName",
     "audit_user_sub",
+    "drift_fields",
     "format_missing_scope_message",
     "invoke_tool",
     "is_missing_scope_error",
@@ -213,8 +214,15 @@ def drift_fields(exc: Exception) -> list[str]:
     fails every row of that resource — the field path is the whole diagnosis.
     `str(exc)` would carry it, but it renders `input_value=...` inline, and a
     drifted field holding message text or an email would then reach the logs
-    as a preformatted string that `_redact_sensitive` cannot see into.
-    `include_input=False` means the value is never even materialized.
+    as a preformatted string that `_redact_sensitive` cannot see into. The
+    `include_*=False` kwargs keep the value out of the dicts we read; the
+    `ctx` one matters too, since a wrapped `ValueError` message can embed it.
+
+    Field paths are safe to log only while no model declares a
+    `dict[str, <validated type>]`: pydantic puts *dict keys* into `loc`, so
+    such a field would put attacker- or user-controlled keys in this list.
+    Today only `membership_count: dict[str, int]` qualifies and its keys are
+    Google constants. Re-check this if that changes.
     """
     if not isinstance(exc, ValidationError):
         return []

@@ -36,6 +36,12 @@ def configure_logging(
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             _redact_sensitive,
+            # Deliberately no format_exc_info / ExceptionRenderer. Adding one
+            # would render `ValidationError` reprs, and those embed
+            # `input_value=...` — message text straight into the logs, past
+            # `_redact_sensitive`, which masks by key and can't see inside a
+            # formatted string. `drift_fields` exists to carry the diagnostic
+            # (field paths) without the values; keep it that way.
             structlog.processors.EventRenamer("event"),
             structlog.processors.JSONRenderer(),
         ],
