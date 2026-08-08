@@ -609,10 +609,19 @@ async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
         nonlocal checked
         checked += 1
         try:
-            model(**raw)
+            parsed = model(**raw)
         except Exception as exc:
+            # A field we read changed shape or disappeared. Still fatal.
             fields = drift_fields(exc) or [type(exc).__name__]
             problems.append(f"{where}: {', '.join(fields)}")
+            return
+        # The common case since `_ChatBase` became `extra="allow"`: the row
+        # parses fine and carries fields we've never modelled. That is exactly
+        # the drift `doctor` exists to surface — the server keeps working, but
+        # the models are behind and nobody would otherwise notice.
+        unknown = sorted(parsed.model_extra or {})
+        if unknown:
+            problems.append(f"{where}: unmodelled {', '.join(unknown)}")
 
     try:
         auth = await resolver()

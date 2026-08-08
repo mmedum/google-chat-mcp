@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Chat API response models accept unknown fields instead of rejecting them**
+  (`_ChatBase`: `extra="forbid"` → `extra="allow"`). An unknown field is kept,
+  logged once per process as `schema_drift` with its `Model.field` location, and
+  counted in `mcp_schema_drift_total`. This reverses the rule in
+  `docs/architecture.md`, which cost two total outages: Google adds response
+  fields without notice — AIP-180 explicitly permits it — and each lands on
+  *every* row of its resource, so rejecting them failed every tool at once. The
+  detection that rule promised never materialised; both events were found by a
+  user. The invariant is now **drift must be observable**, not fatal.
+
+  What still fails loudly is unchanged: fields the handlers read have no
+  defaults, so a removal or type change raises. A *renamed* field is caught too
+  — the new name arrives as an unknown key even though the old one merely goes
+  missing. `doctor` reports unmodelled fields on rows that parse fine.
+
+  **Tool I/O keeps `extra="forbid"`.** That side is our own contract, and
+  rejecting an unrecognised key from a calling model is a real safety property
+  — a misspelled `dry_run` must not silently post for real.
+
 ### Fixed
 - **`send_message` could post twice on a transient upstream error.** The client
   retries 429/5xx, and a 5xx can arrive *after* Google created the message — so

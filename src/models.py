@@ -1,7 +1,10 @@
 """Pydantic models for tool I/O and Chat API responses.
 
-Every model sets ``extra="forbid"`` and ``strict=True``. Schema drift in Google's
-API surfaces as validation errors instead of silent field drops — the runbook
+Two tiers, facing opposite directions. ``_Strict`` (tool I/O) is our own
+contract: ``extra="forbid"`` + ``strict=True``, so an unrecognised key from a
+calling model is rejected. ``_ChatBase`` (Chat API responses) is Google's wire
+format, which we do not control and which grows without notice:
+``extra="allow"``, with unknown keys reported rather than rejected. The runbook
 covers the failure mode.
 """
 
@@ -19,6 +22,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from .observability import logger, mcp_schema_drift_total
 
 
 class _Strict(BaseModel):
@@ -564,8 +569,47 @@ class WhoamiResult(_Strict):
 # via `drift_fields` and returns "Internal error." to the caller.
 
 
+# Unknown wire keys already reported, so drift is logged once per process
+# rather than once per row. Bounded by Google's field vocabulary, not by
+# traffic.
+_reported_drift: set[str] = set()
+
+
 class _ChatBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    """Base for Chat API response shapes.
+
+    `extra="allow"`, not `forbid`. Google adds response fields without notice —
+    AIP-180 explicitly permits it — and every such field lands on *every* row of
+    its resource, so `forbid` converted a routine, backwards-compatible change
+    into a total outage twice. The invariant we actually want is that drift is
+    **observable**, not that it fails the call, so unknown keys are accepted and
+    reported instead.
+
+    This does not make the models permissive about what we read: `name`,
+    `sender`, `create_time` and `thread` have no defaults, so a field being
+    removed still fails loudly. And a *renamed* field is caught here too — the
+    new name arrives as an unknown key even though the old one merely goes
+    missing.
+
+    Tool I/O keeps `extra="forbid"` (see `_Strict`). That side is our own
+    contract, and rejecting a hallucinated key from a calling model is a real
+    safety property — a misspelled `dry_run` must not silently post for real.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _report_unknown_fields(self) -> _ChatBase:
+        for key in self.model_extra or {}:
+            location = f"{type(self).__name__}.{key}"
+            if location in _reported_drift:
+                continue
+            _reported_drift.add(location)
+            # Key names only — never the value. Google's field names are safe
+            # to log; the content behind them is message text and emails.
+            logger.warning("schema_drift", location=location)
+            mcp_schema_drift_total.labels(location).inc()
+        return self
 
 
 class _ChatUser(_ChatBase):

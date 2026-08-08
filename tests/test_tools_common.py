@@ -309,11 +309,13 @@ def test_drift_fields_names_the_field_without_its_value() -> None:
                 "sender": {"name": "users/111"},
                 "createTime": "2026-04-19T10:00:00Z",
                 "thread": {"name": "spaces/AAA/threads/T.1"},
-                "newQuotedText": secret,
+                # `text` is declared `str`; a dict is a real validation error
+                # (unknown keys no longer raise now that _ChatBase allows them).
+                "text": {"body": secret},
             }
         )
     fields = drift_fields(excinfo.value)
-    assert fields == ["newQuotedText"]
+    assert fields == ["text"]
     assert secret not in repr(fields)
 
 
@@ -341,7 +343,7 @@ async def test_invoke_tool_logs_drifted_field_on_schema_drift(
         mock.get("/spaces").mock(
             return_value=httpx.Response(
                 200,
-                json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "brandNewField": "x"}]},
+                json={"spaces": [{"name": "spaces/AAA"}]},  # `type` removed
             )
         )
         with pytest.raises(ToolError, match=r"Internal error\."):
@@ -349,7 +351,7 @@ async def test_invoke_tool_logs_drifted_field_on_schema_drift(
 
     unhandled = [entry for entry in logs if entry["event"] == "tool_unhandled"]
     assert len(unhandled) == 1
-    assert unhandled[0]["fields"] == ["brandNewField"]
+    assert unhandled[0]["fields"] == ["type"]
     assert unhandled[0]["tool"] == "list_spaces"
 
 
@@ -360,18 +362,20 @@ async def test_drift_log_renders_without_the_drifted_value(
     monkeypatch: pytest.MonkeyPatch,
     structlog_stream: io.StringIO,
 ) -> None:
-    """The value must be absent from the *rendered* line, not just the event dict.
+    """An unmodelled field is reported by name and never by value.
 
-    `capture_logs` swaps the processor chain out, so the test above proves
-    only that `fields` is set — not that the real chain keeps the value out.
-    This one runs the actual processors and greps the JSON an operator sees.
+    Now that `_ChatBase` allows unknown keys, this is the path drift actually
+    takes: the call succeeds and the field is reported. The value behind that
+    key is message text or an email, so it must not reach the log — and
+    `capture_logs` can't prove that, because it replaces the processor chain.
+    This runs the real processors and greps the JSON an operator would read.
 
-    `_common` binds `logger` at import and `cache_logger_on_first_use=True`
-    pins it to whatever stream was configured first, so reconfiguring alone
-    doesn't redirect it — the binding has to be replaced.
+    Modules bind `logger` at import and `cache_logger_on_first_use=True` pins
+    it to whatever stream was configured first, so the binding has to be
+    replaced rather than the config reconfigured.
     """
     secret = "CONFIDENTIAL-salary-review"
-    monkeypatch.setattr("src.tools._common.logger", structlog.get_logger("drift_render"))
+    monkeypatch.setattr("src.models.logger", structlog.get_logger("drift_render"))
     with (
         respx.mock(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
@@ -379,13 +383,13 @@ async def test_drift_log_renders_without_the_drifted_value(
         mock.get("/spaces").mock(
             return_value=httpx.Response(
                 200,
-                json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leaked": secret}]},
+                json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leakyNewField": secret}]},
             )
         )
-        with pytest.raises(ToolError, match=r"Internal error\."):
-            await list_spaces_handler(tool_ctx, ListSpacesInput())
+        out = await list_spaces_handler(tool_ctx, ListSpacesInput())
 
+    assert [s.space_id for s in out] == ["spaces/AAA"], "drift must not fail the call"
     rendered = structlog_stream.getvalue()
-    assert "tool_unhandled" in rendered, "the drift log must actually be emitted"
-    assert '"leaked"' in rendered, "the drifted field name is the whole diagnostic"
-    assert secret not in rendered, "the drifted field's VALUE must never be logged"
+    assert "schema_drift" in rendered, "the drift log must actually be emitted"
+    assert "leakyNewField" in rendered, "the field name is the whole diagnostic"
+    assert secret not in rendered, "the field's VALUE must never be logged"

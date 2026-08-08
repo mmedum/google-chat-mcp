@@ -65,5 +65,6 @@ async def test_doctor_reports_drift_and_exits_nonzero(
     assert rc == 1
     err = capsys.readouterr().err
     assert "SCHEMA DRIFT" in err
+    assert "unmodelled" in err
     assert "fieldGoogleAddsIn2027" in err
     assert "src/models.py" in err

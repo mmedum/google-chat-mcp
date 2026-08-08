@@ -152,7 +152,9 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     search — but it is reported in `unparsed` so the caller can tell a broken
     parser from an empty result.
     """
-    drifted = _msg("M.2", "hello again") | {"someFieldGoogleAddedLater": "X"}
+    # A field we READ changing shape — unknown keys are absorbed now, so this
+    # is what an unparsable row actually looks like.
+    drifted = _msg("M.2", "hello again") | {"createTime": "not-a-timestamp"}
     with (
         respx.mock(assert_all_called=False) as mock,
         mock_access_token(),
@@ -174,4 +176,4 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     # The "not silently" half: deleting the log call must fail this test.
     warnings = [e for e in logs if e["event"] == "search_message_unparsed"]
     assert len(warnings) == 1
-    assert warnings[0]["fields"] == ["someFieldGoogleAddedLater"]
+    assert warnings[0]["fields"] == ["createTime"]
