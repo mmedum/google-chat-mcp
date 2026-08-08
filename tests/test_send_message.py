@@ -146,3 +146,81 @@ async def test_unreadable_write_response_says_do_not_retry(
     msg = str(excinfo.value)
     assert "SUCCEEDED" in msg
     assert "Do NOT retry" in msg
+
+
+@pytest.mark.asyncio
+async def test_send_message_carries_an_idempotency_key(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """Without a key, a retried POST posts a second copy.
+
+    `_request` retries 429/5xx, and a 5xx can arrive after Google already
+    created the message.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        route = mock.post("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "name": "spaces/AAA/messages/M.1",
+                    "sender": {"name": "users/111"},
+                    "createTime": "2026-04-19T10:00:00Z",
+                    "text": "hi",
+                    "thread": {"name": "spaces/AAA/threads/T.1"},
+                },
+            )
+        )
+        await send_message_handler(tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi"))
+
+    sent = route.calls[0].request.url.params.get("messageId")
+    assert sent is not None
+    assert sent.startswith("client-")
+
+
+@pytest.mark.asyncio
+async def test_already_exists_recovers_instead_of_duplicating(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """A 409 means our own earlier attempt landed — return it, don't fail.
+
+    Reporting an error here is what makes a caller retry, which is the
+    duplicate-message path this key exists to close.
+    """
+    with (
+        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_access_token(),
+    ):
+        mock.post("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                409,
+                json={
+                    "error": {
+                        "code": 409,
+                        "message": "Message already exists.",
+                        "status": "ALREADY_EXISTS",
+                    }
+                },
+            )
+        )
+        get_route = mock.get(url__regex=r".*/spaces/AAA/messages/client-.*").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "name": "spaces/AAA/messages/M.1",
+                    "sender": {"name": "users/111"},
+                    "createTime": "2026-04-19T10:00:00Z",
+                    "text": "hi",
+                    "thread": {"name": "spaces/AAA/threads/T.1"},
+                },
+            )
+        )
+        out = await send_message_handler(
+            tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi")
+        )
+
+    assert get_route.called
+    assert out.message_id == "spaces/AAA/messages/M.1"
+    assert out.thread_id == "spaces/AAA/threads/T.1"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Literal, Self
@@ -206,15 +207,43 @@ class ChatClient:
         text: str,
         thread_name: str | None = None,
     ) -> dict[str, Any]:
-        """Post a message. `thread_name` is a reply target (`spaces/X/threads/Y`)."""
+        """Post a message. `thread_name` is a reply target (`spaces/X/threads/Y`).
+
+        Sends a client-assigned `messageId` so the POST is idempotent. `_request`
+        retries 429/5xx, and a 5xx can arrive *after* Google created the message
+        — without a key, the retry posts a second copy. With one, Google rejects
+        the retry as ALREADY_EXISTS and we fetch what actually landed.
+
+        Verified against the live API: user OAuth accepts `messageId`, a repeat
+        returns 409 ALREADY_EXISTS, and `spaces/{s}/messages/{messageId}` reads
+        back the created message.
+        """
+        message_id = _new_client_message_id()
         body, params = _build_send_message_body(text=text, thread_name=thread_name)
-        return await self._post(
-            f"{self._base_chat}/{space_id}/messages",
-            access_token=access_token,
-            json=body,
-            params=params or None,
-            endpoint_label="spaces.messages.create",
-        )
+        params["messageId"] = message_id
+        try:
+            return await self._post(
+                f"{self._base_chat}/{space_id}/messages",
+                access_token=access_token,
+                json=body,
+                params=params,
+                endpoint_label="spaces.messages.create",
+            )
+        except ChatApiError as exc:
+            if exc.status_code != 409:
+                raise
+            # Our own earlier attempt in this call created it. Return that
+            # message rather than reporting a failure the caller would retry.
+            logger.warning(
+                "send_message_recovered_after_retry",
+                space_id=space_id,
+                endpoint="spaces.messages.create",
+            )
+            return await self._get(
+                f"{self._base_chat}/{space_id}/messages/{message_id}",
+                access_token=access_token,
+                endpoint_label="spaces.messages.get",
+            )
 
     async def list_messages(
         self,
@@ -740,6 +769,17 @@ def _build_update_space_body(
         body["spaceDetails"] = {"description": description}
         mask_parts.append("spaceDetails")
     return body, ",".join(mask_parts)
+
+
+def _new_client_message_id() -> str:
+    """A fresh client-assigned message ID for one logical send.
+
+    Google's constraints: must start with `client-`, at most 63 chars, and only
+    lowercase letters, digits and hyphens. Generated once per `send_message`
+    call — NOT per HTTP attempt, which is the whole point: every retry inside
+    `_request` must carry the same key or it stops being idempotent.
+    """
+    return f"client-{uuid.uuid4().hex}"
 
 
 def _build_send_message_body(

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`send_message` could post twice on a transient upstream error.** The client
+  retries 429/5xx, and a 5xx can arrive *after* Google created the message — so
+  the retry posted a second copy. Nothing to do with schema drift; it predates
+  all of that. Each send now carries a client-assigned `messageId`, generated
+  once per call rather than per attempt, so Google rejects the retry as
+  `ALREADY_EXISTS` and the client fetches the message that actually landed.
+  Verified against the live API: user OAuth accepts `messageId`, a repeat
+  returns 409, and `spaces/{space}/messages/{messageId}` reads the message back.
+
+### Changed
+- Pinned GitHub Actions bumped to current releases, including two majors:
+  `actions/checkout` v6 → v7.0.1 and `astral-sh/setup-uv` v8 → v9.0.0. The only
+  breaking change that touches us is setup-uv's `prune-cache` now defaulting to
+  false, which trades Actions cache usage for less load on PyPI.
+
 ## [1.1.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
