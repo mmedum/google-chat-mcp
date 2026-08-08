@@ -117,12 +117,14 @@ backwards-compatible change into an every-tool failure, twice. The
 detection it promised never materialised: both events were found by a
 user, not by us.
 
-What is kept is the half that was load-bearing. Fields the handlers
-actually read have no defaults, so a removal or a type change still
-raises. A *renamed* field is caught too — the new name arrives as an
-unknown key even though the old one merely goes missing. And
-`google-chat-mcp doctor` checks live responses against the models on
-demand, so drift is found before a user trips over it.
+What still fails loudly: `name`, `sender`, `create_time` and
+`thread` have no defaults, so removing or retyping one of those raises.
+**Fields that do have defaults — `text`, `displayName`, `member` — do
+not.** If Google renames `text`, every message body comes back empty and
+the call succeeds. The signal in that case is the unknown key arriving
+under its new name: `schema_drift` fires, the counter moves, and
+`doctor` reports it. That is an observation, not a failure, and it is
+why `doctor` needs to actually run.
 
 **Tool I/O keeps `extra="forbid"`** (`_Strict`). That side is our own
 contract, and rejecting an unrecognised key from a calling model is a

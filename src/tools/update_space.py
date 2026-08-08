@@ -44,7 +44,7 @@ async def update_space_handler(ctx: ToolContext, payload: UpdateSpaceInput) -> U
             display_name=payload.display_name,
             description=payload.description,
         )
-        # Validate the response shape (catches schema drift via extra="forbid")
+        # Validate the response shape
         # but echo the input values back: a 2xx confirms Google applied them,
         # and `_ChatSpaceResponse` doesn't surface `description` at the top
         # level (it's nested under `spaceDetails`). Returning what the caller

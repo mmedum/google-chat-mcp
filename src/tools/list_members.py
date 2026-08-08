@@ -15,7 +15,7 @@ from ..models import (
     _ChatMembershipResponse,
     _ChatMembershipsListResponse,
 )
-from ..observability import logger
+from ..observability import logger, mcp_schema_drift_total
 from ..storage import DirectoryCache
 from ._common import (
     CHAT_MEMBERSHIPS_READONLY,
@@ -52,6 +52,13 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
                     membership=m.name,
                     error=type(res).__name__,
                 )
+                # A dropped row shortens the list with no signal to the caller,
+                # who reads it as the complete membership. `_to_member` raises
+                # when neither `member` nor `groupMember` is set — i.e. when
+                # Google adds a third kind of member — so this is a drift
+                # symptom, not just a failed People API lookup, and it has to
+                # reach the metric operators alert on.
+                mcp_schema_drift_total.labels("list_members.dropped_row").inc()
                 continue
             out.append(res)
         return out

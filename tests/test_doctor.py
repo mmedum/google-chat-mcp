@@ -68,3 +68,52 @@ async def test_doctor_reports_drift_and_exits_nonzero(
     assert "unmodelled" in err
     assert "fieldGoogleAddsIn2027" in err
     assert "src/models.py" in err
+
+
+@pytest.mark.asyncio
+async def test_doctor_reports_a_field_that_changed_shape() -> None:
+    """The hard-failure arm: a field we READ changing type still has to be caught.
+
+    Unknown keys are absorbed now, so this branch is the only thing covering
+    drift that actually breaks a tool.
+    """
+    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                200, json={"messages": [_message({"createTime": "not-a-timestamp"})]}
+            )
+        )
+        mock.get("/spaces/AAA/members").mock(
+            return_value=httpx.Response(200, json={"memberships": []})
+        )
+        rc = await _run_doctor(_resolver, limit=5)
+    assert rc == 1
+
+
+@pytest.mark.asyncio
+async def test_doctor_sees_drift_on_nested_models(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`model_extra` is top-level only.
+
+    Checking just that made doctor print "OK" while the runtime validator was
+    logging drift on `sender` — a false clean bill of health from the one tool
+    whose job is catching drift before a user does.
+    """
+    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces/AAA/messages").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "messages": [_message({"sender": {"name": "users/1", "newSenderField": "x"}})]
+                },
+            )
+        )
+        mock.get("/spaces/AAA/members").mock(
+            return_value=httpx.Response(200, json={"memberships": []})
+        )
+        rc = await _run_doctor(_resolver, limit=5)
+    assert rc == 1
+    assert "sender.newSenderField" in capsys.readouterr().err
