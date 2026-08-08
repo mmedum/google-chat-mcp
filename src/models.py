@@ -22,7 +22,13 @@ from pydantic import (
 
 
 class _Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    # `use_attribute_docstrings` is what makes the docstrings below this class
+    # reach the MCP tool schemas. Without it every one of them is dev-only
+    # commentary — the calling model sees a bare `{"type": "integer"}` and none
+    # of the guidance we wrote for it.
+    model_config = ConfigDict(
+        extra="forbid", strict=True, frozen=True, use_attribute_docstrings=True
+    )
 
 
 # ---------- tool I/O ----------
@@ -44,7 +50,13 @@ UserId = Annotated[str, StringConstraints(pattern=rf"^users/{_ID}$")]
 GroupId = Annotated[str, StringConstraints(pattern=rf"^groups/{_ID}$")]
 MembershipName = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/members/{_ID}$")]
 
+# Input filter — only values Google accepts as a `spaces.list` filter.
 SpaceType = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"]
+# Output — Google also returns `SPACE_TYPE_UNSPECIFIED`, and can add members to
+# the enum. Anything we don't recognise maps here at the tool boundary rather
+# than failing the row: `type` is on every space, so a closed Literal on the
+# response model would take down every space-shaped tool at once.
+SpaceTypeOut = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT", "SPACE_TYPE_UNSPECIFIED"]
 MemberKind = Literal["HUMAN", "GROUP"]
 MemberRole = Literal["ROLE_UNSPECIFIED", "ROLE_MEMBER", "ROLE_MANAGER"]
 MemberState = Literal["MEMBERSHIP_STATE_UNSPECIFIED", "JOINED", "INVITED", "NOT_A_MEMBER"]
@@ -61,7 +73,7 @@ _LEGACY_SPACE_TYPE_ALIASES: dict[str, str] = {
 
 class SpaceSummary(_Strict):
     space_id: SpaceId
-    type: SpaceType
+    type: SpaceTypeOut
     display_name: str
 
 
@@ -327,7 +339,7 @@ class GetMessagesInput(_Strict):
 
 class SpaceDetails(_Strict):
     space_id: SpaceId
-    type: SpaceType
+    type: SpaceTypeOut
     display_name: str
     single_user_bot_dm: bool | None = None
     external_user_allowed: bool | None = None
@@ -499,23 +511,11 @@ class SearchMessagesResult(_Strict):
     """True when scanning stopped at `max_pages` before finding `limit` matches.
     Caller should either narrow the query, raise `created_after`, or accept
     the partial result."""
-    # `description` rather than only a docstring: `_Strict` doesn't set
-    # `use_attribute_docstrings`, so a bare docstring never reaches the tool's
-    # output schema — and a caller that can't see this field can't tell a
-    # broken parser from an empty space, which is the whole point of it.
-    unparsed: Annotated[
-        int,
-        Field(
-            ge=0,
-            description=(
-                "Messages counted in `scanned` that failed validation and were "
-                "never searched. Non-zero means the server's models are stale "
-                "against the Chat API and `matches` is INCOMPLETE — this is not "
-                "the same as 'no matches'. Report it rather than concluding the "
-                "space has nothing."
-            ),
-        ),
-    ] = 0
+    unparsed: Annotated[int, Field(ge=0)] = 0
+    """Messages counted in `scanned` that failed validation and were never
+    searched. Non-zero means the server's models are stale against the Chat API
+    and `matches` is INCOMPLETE — this is not the same as "no matches". Report
+    it rather than concluding the space has nothing."""
 
 
 class ReactionEntry(_Strict):
@@ -570,7 +570,12 @@ class _ChatBase(BaseModel):
 
 class _ChatUser(_ChatBase):
     name: UserId
-    type_: Literal["HUMAN", "BOT"] | None = Field(default=None, alias="type")
+    # `str`, not `Literal` — see the rule on `_ChatMessageResponse`. Google's
+    # User.Type also has `TYPE_UNSPECIFIED`, and `_ChatUser` is embedded in
+    # every message's `sender` and every membership's `member`, so a Literal
+    # here fails every row of both resources. Nothing reads this field:
+    # `Member.kind` comes from which of `member`/`groupMember` is populated.
+    type_: str | None = Field(default=None, alias="type")
     display_name: str | None = Field(default=None, alias="displayName")
     domain_id: str | None = Field(default=None, alias="domainId")
     is_anonymous: bool | None = Field(default=None, alias="isAnonymous")
@@ -628,7 +633,11 @@ class _ChatMessageResponse(_ChatBase):
 
 class _ChatSpaceResponse(_ChatBase):
     name: SpaceId
-    type_: Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"] = Field(alias="type")
+    # `str`, not `Literal` — `type` is present on every space, so a closed set
+    # here fails every space-shaped tool at once the moment Google returns a
+    # value we don't know (`SPACE_TYPE_UNSPECIFIED` already exists). The tool
+    # boundary narrows it via `space_type_out`.
+    type_: str = Field(alias="type")
     display_name: str | None = Field(default=None, alias="displayName")
     space_type: str | None = Field(default=None, alias="spaceType")
     single_user_bot_dm: bool | None = Field(default=None, alias="singleUserBotDm")
@@ -668,7 +677,10 @@ class _ChatSpaceResponse(_ChatBase):
     @classmethod
     def _normalize_legacy_space_type(cls, v: object) -> object:
         # Covers the older shape where only `type` was returned, using the
-        # pre-GA aliases (ROOM / DM / GROUP_DM) before the Literal rejects them.
+        # pre-GA aliases (ROOM / DM / GROUP_DM). Still load-bearing now that
+        # `type_` is a plain `str`: without it, `ROOM` would reach
+        # `space_type_out`, bucket into SPACE_TYPE_UNSPECIFIED and raise a
+        # false drift alert on every legacy space.
         return _LEGACY_SPACE_TYPE_ALIASES.get(v, v) if isinstance(v, str) else v
 
 
@@ -685,8 +697,13 @@ class _ChatGroup(_ChatBase):
 
 class _ChatMembershipResponse(_ChatBase):
     name: MembershipName
-    state: MemberState = Field(alias="state")
-    role: MemberRole | None = None
+    # `str`, not `Literal`. `state` is required and present on every membership
+    # row, so a closed set here is `affiliation` all over again the first time
+    # Google extends MembershipState. The tool boundary narrows both via
+    # `narrow_enum`, bucketing anything new into the `*_UNSPECIFIED` member
+    # these enums already carry.
+    state: str
+    role: str | None = None
     create_time: datetime | None = Field(default=None, alias="createTime")
     delete_time: datetime | None = Field(default=None, alias="deleteTime")
     # Exactly one of `member` (human) or `groupMember` (Google Group) is

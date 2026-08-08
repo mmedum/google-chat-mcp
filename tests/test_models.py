@@ -21,6 +21,11 @@ from src.models import (
     _ChatMessageResponse,
     _ChatSpaceResponse,
 )
+from src.tools._common import (
+    member_role_out,
+    member_state_out,
+    space_type_out,
+)
 
 
 @pytest.mark.parametrize(
@@ -203,3 +208,61 @@ def test_membership_response_accepts_affiliation() -> None:
     )
     assert model.affiliation == "AFFILIATION_DIRECT"
     assert model.state == "JOINED"
+
+
+@pytest.mark.parametrize(
+    ("wire_type", "expected"),
+    [
+        ("SPACE", "SPACE"),
+        ("ROOM", "SPACE"),  # pre-GA alias, still normalised
+        ("SPACE_TYPE_UNSPECIFIED", "SPACE_TYPE_UNSPECIFIED"),
+        ("SOME_TYPE_GOOGLE_ADDS_LATER", "SPACE_TYPE_UNSPECIFIED"),
+    ],
+)
+def test_space_type_narrows_instead_of_raising(wire_type: str, expected: str) -> None:
+    """An enum value we don't know must not fail the row.
+
+    `type` is on every space, so a closed `Literal` on the response model takes
+    down every space-shaped tool at once — the same total outage an unknown
+    field causes. Reverting the wire field to a Literal fails this test.
+    """
+    space = _ChatSpaceResponse.model_validate({"name": "spaces/AAA", "type": wire_type})
+    assert space_type_out(space) == expected
+
+
+@pytest.mark.parametrize(
+    ("state", "role"),
+    [
+        ("JOINED", "ROLE_MANAGER"),
+        ("A_STATE_GOOGLE_ADDS_LATER", "A_ROLE_GOOGLE_ADDS_LATER"),
+    ],
+)
+def test_membership_enums_narrow_instead_of_raising(state: str, role: str) -> None:
+    """`state` is required and on every membership row — a Literal there is an outage."""
+    m = _ChatMembershipResponse.model_validate(
+        {
+            "name": "spaces/AAA/members/111",
+            "state": state,
+            "role": role,
+            "member": {"name": "users/222"},
+        }
+    )
+    assert member_state_out(m.state) in ("JOINED", "MEMBERSHIP_STATE_UNSPECIFIED")
+    assert member_role_out(m.role) in ("ROLE_MANAGER", "ROLE_UNSPECIFIED")
+
+
+def test_unknown_enum_value_is_counted_as_drift() -> None:
+    """The metric the runbook tells operators to alert on must actually fire."""
+    before = _drift_count("_ChatSpaceResponse.type")
+    space = _ChatSpaceResponse.model_validate(
+        {"name": "spaces/AAA", "type": "YET_ANOTHER_NEW_TYPE"}
+    )
+    assert space_type_out(space) == "SPACE_TYPE_UNSPECIFIED"
+    assert _drift_count("_ChatSpaceResponse.type") == before + 1
+
+
+def _drift_count(location: str) -> float:
+    from src.observability import REGISTRY
+
+    value = REGISTRY.get_sample_value("mcp_schema_drift_total", {"location": location})
+    return value or 0.0

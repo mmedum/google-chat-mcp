@@ -147,5 +147,15 @@ mcp_active_users = Gauge(
     "Users with a request in the last 5 minutes.",
     registry=REGISTRY,
 )
+# Alert on any non-zero rate. Google ships additive response fields without
+# notice and `extra="forbid"` turns that into a total outage, so this is the
+# signal that says "the models are stale" before users start reporting it.
+# `location` is a model/field path, never a value.
+mcp_schema_drift_total = Counter(
+    "mcp_schema_drift_total",
+    "Chat API responses that did not match our models.",
+    labelnames=("location",),
+    registry=REGISTRY,
+)
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)

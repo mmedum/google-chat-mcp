@@ -5,8 +5,13 @@ from __future__ import annotations
 from fastmcp.exceptions import ToolError
 
 from ..chat_client import ChatApiError, _build_add_member_body
-from ..models import AddMemberInput, AddMemberResult, _ChatMembershipResponse
-from ._common import CHAT_MEMBERSHIPS, ToolContext, invoke_tool
+from ..models import AddMemberInput, AddMemberResult
+from ._common import (
+    CHAT_MEMBERSHIPS,
+    ToolContext,
+    invoke_tool,
+    write_result,
+)
 
 
 async def add_member_handler(ctx: ToolContext, payload: AddMemberInput) -> AddMemberResult:
@@ -41,11 +46,13 @@ async def add_member_handler(ctx: ToolContext, payload: AddMemberInput) -> AddMe
             if _is_already_exists(exc):
                 raise ToolError(f"{user_email} is already a member of {payload.space_id}.") from exc
             raise
-        parsed = _ChatMembershipResponse(**raw)
-        return AddMemberResult(
-            membership_name=parsed.name,
-            space_id=payload.space_id,
-            user_email=payload.user_email,
+        return write_result(
+            lambda: AddMemberResult(
+                membership_name=raw["name"],
+                space_id=payload.space_id,
+                user_email=payload.user_email,
+            ),
+            action="add_member",
         )
 
     return await invoke_tool(

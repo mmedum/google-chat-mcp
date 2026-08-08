@@ -36,11 +36,18 @@ from cryptography.fernet import Fernet, InvalidToken
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from pydantic import BaseModel
 
 from .app import build_app
+from .chat_client import ChatClient
 from .config import GOOGLE_OAUTH_SCOPES, Settings
+from .models import (
+    _ChatMembershipResponse,
+    _ChatMessageResponse,
+    _ChatSpaceResponse,
+)
 from .observability import configure_logging
-from .tools._common import AuthInfo, AuthResolver
+from .tools._common import AuthInfo, AuthResolver, drift_fields
 
 # ---------- constants ----------
 
@@ -564,6 +571,81 @@ def cmd_serve(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Validate live Chat API responses against our models.
+
+    Schema drift is invisible until someone runs a tool and gets
+    `Internal error.` — that is how the `markupSyntax` outage sat on PyPI for
+    months. This checks on demand, against the caller's own spaces, using the
+    token already on disk. No shared credential, so it works for any deployer
+    and can be put on a cron.
+
+    Output goes to stdout deliberately: this is a CLI command, not the MCP
+    server, so the stdout-hygiene rule that applies to `serve` doesn't bind
+    here. Field paths only — never message text.
+    """
+    store = _open_store()
+    if not store.exists():
+        print(
+            "error: no local credentials. Run `google-chat-mcp login "
+            "--client-secret <path>` first.",
+            file=sys.stderr,
+        )
+        return 2
+    _relax_oauthlib_token_scope()
+    configure_logging("WARNING", stream=sys.stderr)
+    identity = store.load()
+    resolver = _build_stdio_resolver(store, identity)
+    return asyncio.run(_run_doctor(resolver, limit=args.spaces))
+
+
+async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
+    """Fetch a sample of live data and report every model mismatch."""
+    client = ChatClient()
+    problems: list[str] = []
+    checked = 0
+
+    def check(model: type[BaseModel], raw: dict[str, Any], where: str) -> None:
+        nonlocal checked
+        checked += 1
+        try:
+            model(**raw)
+        except Exception as exc:
+            fields = drift_fields(exc) or [type(exc).__name__]
+            problems.append(f"{where}: {', '.join(fields)}")
+
+    try:
+        auth = await resolver()
+        token = auth.access_token
+        spaces = await client.list_spaces(token, limit=limit)
+        print(f"Checking {len(spaces)} space(s)...")
+        for raw_space in spaces:
+            check(_ChatSpaceResponse, raw_space, "space")
+            space_id = raw_space.get("name")
+            if not isinstance(space_id, str):
+                continue
+            for raw_msg in await client.list_messages(token, space_id=space_id, limit=5):
+                check(_ChatMessageResponse, raw_msg, f"message in {space_id}")
+            for raw_member in await client.list_members(token, space_id=space_id, limit=10):
+                check(_ChatMembershipResponse, raw_member, f"membership in {space_id}")
+    finally:
+        await client.close()
+
+    if not problems:
+        print(f"OK — {checked} live objects matched the models.")
+        return 0
+    unique = sorted(set(problems))
+    print(f"\nSCHEMA DRIFT — {len(problems)}/{checked} objects failed:\n", file=sys.stderr)
+    for line in unique:
+        print(f"  {line}", file=sys.stderr)
+    print(
+        "\nAdd the named field(s) to the matching model in src/models.py as an "
+        "optional `str`, then release. See docs/runbook.md.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 # ---------- argparse ----------
 
 
@@ -596,6 +678,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "serve", help="Run the MCP server over stdio (default; equivalent to no subcommand)."
     )
     serve.set_defaults(func=cmd_serve)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help="Check live Chat API responses against our models; exit 1 on schema drift.",
+    )
+    doctor.add_argument(
+        "--spaces",
+        type=int,
+        default=5,
+        help="How many spaces to sample (default: 5).",
+    )
+    doctor.set_defaults(func=cmd_doctor)
 
     return parser
 

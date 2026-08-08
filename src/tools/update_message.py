@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from ..chat_client import _build_update_message_body
-from ..models import UpdateMessageInput, UpdateMessageResult, _ChatMessageResponse
-from ._common import CHAT_MESSAGES, ToolContext, invoke_tool, space_id_from_message_name
+from ..models import UpdateMessageInput, UpdateMessageResult
+from ._common import (
+    CHAT_MESSAGES,
+    ToolContext,
+    invoke_tool,
+    space_id_from_message_name,
+    write_result,
+)
 
 
 async def update_message_handler(
@@ -33,10 +39,12 @@ async def update_message_handler(
                 rendered_payload=rendered,
             )
         raw = await ctx.client.update_message(access_token, payload.message_name, payload.text)
-        parsed = _ChatMessageResponse(**raw)
-        return UpdateMessageResult(
-            message_name=parsed.name,
-            text=parsed.text,
+        return write_result(
+            lambda: UpdateMessageResult(
+                message_name=raw["name"],
+                text=raw.get("text", ""),
+            ),
+            action="update_message",
         )
 
     return await invoke_tool(

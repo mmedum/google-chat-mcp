@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastmcp.exceptions import ToolError
 
 from ..chat_client import ChatApiError
-from ..models import DirectMessageResult, _ChatSpaceResponse
+from ..models import DirectMessageResult
 from ._common import (
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
@@ -16,6 +16,7 @@ from ._common import (
     format_missing_scope_message,
     invoke_tool,
     is_missing_scope_error,
+    write_result,
 )
 
 
@@ -25,8 +26,7 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
     async def body(access_token: str, _user_sub: str) -> DirectMessageResult:
         found = await ctx.client.find_direct_message(access_token, user_email)
         if found is not None:
-            space = _ChatSpaceResponse(**found)
-            return DirectMessageResult(space_id=space.name)
+            return DirectMessageResult(space_id=found["name"])
         try:
             created = await ctx.client.create_dm(access_token, user_email)
         except ChatApiError as exc:
@@ -42,8 +42,10 @@ async def find_direct_message_handler(ctx: ToolContext, user_email: str) -> Dire
                 f"Could not find or create DM with {user_email}. "
                 f"Is the user in your Workspace directory?"
             ) from exc
-        space = _ChatSpaceResponse(**created)
-        return DirectMessageResult(space_id=space.name)
+        return write_result(
+            lambda: DirectMessageResult(space_id=created["name"]),
+            action="find_direct_message",
+        )
 
     return await invoke_tool(
         "find_direct_message",

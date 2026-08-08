@@ -46,9 +46,41 @@ exists. Writes are the dangerous case — they succeeded and still reported
   Paths only, never values — `str(ValidationError)` embeds `input_value=...`,
   which would carry message content past the key-based log redaction.
 
+- **Write tools no longer fail after the write lands.** `send_message`,
+  `update_message`, `add_member`, `create_space`, `create_group_chat`,
+  `update_space` and `find_direct_message` parsed a full response model — 8 to
+  27 fields — to read one or two identifiers they re-validate anyway. Any drift
+  in the other fields turned a completed write into `Internal error.` They now
+  read only what they return. If a result genuinely cannot be built, the error
+  says the write SUCCEEDED and must not be retried. `create_space` and
+  `create_group_chat` were the worst case and went unlisted before: a retry
+  makes a second space.
+- **Closed enums removed from response models.** `_ChatUser.type`,
+  `_ChatSpaceResponse.type`, `_ChatMembershipResponse.state` and `.role` were
+  `Literal`s on fields present in every row, so a value Google adds to any of
+  those enums was another total outage waiting — the same failure as an added
+  field, from a different direction. They are `str` on the wire now and narrowed
+  to the closed set at the tool boundary, with anything unrecognised bucketed
+  into the existing `*_UNSPECIFIED` member, logged, and counted.
+
+### Added
+- **`google-chat-mcp doctor`** — validates live Chat API responses against the
+  models using the token already on disk, names any drifted field paths, and
+  exits non-zero, so it works as a cron job. Nothing detected drift before a
+  user did; this closes that. No shared credential is involved — each deployer
+  checks with their own token.
+- `mcp_schema_drift_total{location}` — a metric that fires the first time a
+  response doesn't match our models, so drift is alertable instead of waiting
+  on a user report. `location` is a model/field path, never a value.
+
 ### Changed
 - `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so
   existing callers are unaffected).
+- Tool schemas now carry the field descriptions that were already written.
+  `_Strict` didn't set `use_attribute_docstrings`, so every attribute docstring
+  in `src/models.py` was dev-only commentary — a calling model saw
+  `{"type": "integer"}` with no guidance attached, including `space_id`'s
+  "the server will NOT search across spaces".
 
 ### Security
 - Refreshed `uv.lock` against current advisories. CI's `audit` and `container`
@@ -59,6 +91,14 @@ exists. Writes are the dangerous case — they succeeded and still reported
   cross-origin redirect; decompression DoS), `pyjwt` 2.12.1 → 2.13.0,
   `python-multipart` 0.0.26 → 0.0.32, `pyasn1` 0.6.3 → 0.6.4 (parser DoS),
   and `pydantic-settings` 2.14.0 → 2.15.0.
+- **FastMCP 3.2.4 → 3.4.6**, which the relock pulled in alongside the advisory
+  fixes. Two minor versions: 3.4.0 migrated the auth stack's JWT handling to
+  `joserfc`, and upstream repackaged `fastmcp` as a shim over a new
+  `fastmcp-slim` distribution. Both transports run on FastMCP, so this is a
+  larger change than the rest of the refresh. Verified against a live HTTPS
+  deployment — OAuth metadata, RFC 9728 discovery and JWT verification all
+  behave — but CI cannot cover it, because the integration test stubs
+  `TokenVerifier`.
 - `cryptography` 46.0.7 → 50.0.0, which required widening the `pyproject.toml`
   pin from `~=46.0` to `~=50.0`. Covers a PKCS#7 decryption oracle, exponential
   blowup on chains with duplicate self-signed certificates, a name-constraint

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import logging
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,8 +11,10 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+import structlog
 from cryptography.fernet import Fernet
 from src.chat_client import ChatClient
+from src.observability import configure_logging
 from src.rate_limit import ActiveUserTracker, TokenBucketLimiter
 from src.storage import Database, lifespan_database
 from src.tools._common import ToolContext
@@ -91,3 +95,30 @@ def person_payload(email: str, display_name: str | None = None) -> dict[str, obj
     if display_name is not None:
         payload["names"] = [{"metadata": {"primary": True}, "displayName": display_name}]
     return payload
+
+
+@pytest.fixture
+def structlog_stream() -> Iterator[io.StringIO]:
+    """Capture structlog output through the REAL processor chain.
+
+    `structlog.testing.capture_logs` replaces the chain, so it cannot see
+    redaction or rendering — this fixture is for asserting on what an operator
+    would actually read.
+
+    Teardown restores the *previous config object* rather than rebuilding one.
+    That matters: `configure_logging` installs a fresh processor list, and
+    `cache_logger_on_first_use=True` means any module-level logger bound
+    earlier still points at the old list. `capture_logs` mutates the current
+    list in place, so a rebuilt config silently stops intercepting those
+    loggers and later tests see no output. Root handlers are likewise restored,
+    not cleared — pytest keeps its `caplog` handlers there.
+    """
+    buf = io.StringIO()
+    saved_handlers = list(logging.getLogger().handlers)
+    saved_config = structlog.get_config()
+    configure_logging("INFO", stream=buf)
+    try:
+        yield buf
+    finally:
+        structlog.configure(**saved_config)
+        logging.getLogger().handlers[:] = saved_handlers

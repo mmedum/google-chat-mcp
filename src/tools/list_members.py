@@ -17,7 +17,13 @@ from ..models import (
 )
 from ..observability import logger
 from ..storage import DirectoryCache
-from ._common import CHAT_MEMBERSHIPS_READONLY, ToolContext, invoke_tool
+from ._common import (
+    CHAT_MEMBERSHIPS_READONLY,
+    ToolContext,
+    invoke_tool,
+    member_role_out,
+    member_state_out,
+)
 from ._directory import fetch_person
 
 
@@ -64,7 +70,8 @@ async def _to_member(
     m: _ChatMembershipResponse,
     ctx: ToolContext,
 ) -> Member:
-    role = m.role or "ROLE_UNSPECIFIED"
+    role = member_role_out(m.role)
+    state = member_state_out(m.state)
     if m.member is not None:
         email, display_name = await _resolve_human(
             access_token, m.member.name, ctx.directory_cache, ctx
@@ -75,7 +82,7 @@ async def _to_member(
             display_name=display_name or m.member.display_name,
             email=email,
             role=role,
-            state=m.state,
+            state=state,
         )
     if m.group_member is not None:
         return Member(
@@ -84,7 +91,7 @@ async def _to_member(
             display_name=m.group_member.display_name,
             email=None,
             role=role,
-            state=m.state,
+            state=state,
         )
     # Should not happen — Google always populates exactly one of the two.
     raise ValueError(f"Membership {m.name!r} has neither member nor groupMember")

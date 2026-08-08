@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from ..chat_client import _build_send_message_body
-from ..models import SendMessageInput, SendMessageResult, _ChatMessageResponse
-from ._common import CHAT_MESSAGES_CREATE, ToolContext, invoke_tool
+from ..models import SendMessageInput, SendMessageResult
+from ._common import (
+    CHAT_MESSAGES_CREATE,
+    ToolContext,
+    invoke_tool,
+    write_result,
+)
 
 
 async def send_message_handler(ctx: ToolContext, payload: SendMessageInput) -> SendMessageResult:
@@ -32,11 +37,13 @@ async def send_message_handler(ctx: ToolContext, payload: SendMessageInput) -> S
             text=payload.text,
             thread_name=payload.thread_name,
         )
-        msg = _ChatMessageResponse(**raw)
-        return SendMessageResult(
-            message_id=msg.name,
-            space_id=payload.space_id,
-            thread_id=msg.thread.name,
+        return write_result(
+            lambda: SendMessageResult(
+                message_id=raw["name"],
+                space_id=payload.space_id,
+                thread_id=raw["thread"]["name"],
+            ),
+            action="send_message",
         )
 
     return await invoke_tool(

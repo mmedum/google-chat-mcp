@@ -15,7 +15,7 @@ import hmac
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
@@ -36,10 +36,11 @@ from ..config import (
     DIRECTORY_READONLY,
     OPENID_SCOPE,
 )
-from ..models import _ChatSpaceResponse
+from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
 from ..observability import (
     logger,
     mcp_rate_limit_hits_total,
+    mcp_schema_drift_total,
     mcp_tool_calls_total,
     mcp_tool_latency_seconds,
 )
@@ -115,8 +116,13 @@ __all__ = [
     "format_missing_scope_message",
     "invoke_tool",
     "is_missing_scope_error",
+    "member_role_out",
+    "member_state_out",
+    "narrow_enum",
     "space_display_name",
     "space_id_from_message_name",
+    "space_type_out",
+    "write_result",
 ]
 
 
@@ -214,9 +220,14 @@ def drift_fields(exc: Exception) -> list[str]:
     fails every row of that resource — the field path is the whole diagnosis.
     `str(exc)` would carry it, but it renders `input_value=...` inline, and a
     drifted field holding message text or an email would then reach the logs
-    as a preformatted string that `_redact_sensitive` cannot see into. The
-    `include_*=False` kwargs keep the value out of the dicts we read; the
-    `ctx` one matters too, since a wrapped `ValueError` message can embed it.
+    as a preformatted string that `_redact_sensitive` cannot see into.
+
+    **The safety here is that only `loc` is read.** The `include_*=False` kwargs
+    are belt-and-braces, not the protection — `msg` and `ctx` still contain the
+    value even with them set (a wrapped `ValueError` renders `got {v!r}`). If
+    you ever extend this to return `err["msg"]` to make drift "more
+    diagnosable", you reintroduce exactly the leak this function exists to
+    prevent.
 
     Field paths are safe to log only while no model declares a
     `dict[str, <validated type>]`: pydantic puts *dict keys* into `loc`, so
@@ -230,6 +241,31 @@ def drift_fields(exc: Exception) -> list[str]:
         ".".join(str(part) for part in err["loc"])
         for err in exc.errors(include_input=False, include_url=False, include_context=False)
     ]
+
+
+def write_result[T](build: Callable[[], T], *, action: str) -> T:
+    """Build a write tool's result, making a post-write failure non-retryable.
+
+    By the time we read the response the write has already landed. A bare
+    exception here becomes `Internal error.`, and a caller that reasonably
+    retries posts the message twice — that is how the `markupSyntax` drift
+    turned into duplicates rather than a clean failure.
+
+    Write handlers therefore read only the identifiers they return, straight
+    from the raw JSON, instead of validating a full response model to reach two
+    fields. The result model still validates what it is handed, so this fires
+    only if Google stops returning those identifiers at all.
+    """
+    try:
+        return build()
+    except Exception as exc:
+        logger.warning("write_response_unusable", action=action, fields=drift_fields(exc))
+        mcp_schema_drift_total.labels(action).inc()
+        raise ToolError(
+            f"The {action} call SUCCEEDED, but its response could not be read, so "
+            "no result is available. Do NOT retry — retrying would duplicate it. "
+            "The server's response models are stale against the Chat API."
+        ) from exc
 
 
 async def _resolve_auth_via_fastmcp() -> AuthInfo:
@@ -305,11 +341,19 @@ async def invoke_tool[T](
         raise
     except Exception as exc:
         error_code = exc.__class__.__name__
-        # `fields` is what makes a schema-drift outage diagnosable: the caller
-        # only ever sees "Internal error.", and the processor chain has no
-        # format_exc_info, so `exc_info` renders as a bare `true`. Without this
-        # the drifted field name reaches nobody.
-        logger.exception("tool_unhandled", tool=tool_name, fields=drift_fields(exc))
+        # The caller only ever sees "Internal error.", and the processor chain
+        # has no format_exc_info, so `exc_info` renders as a bare `true`.
+        # Without these two keys nothing about the failure reaches anyone:
+        # `error_type` for ordinary bugs, `fields` for schema drift. Neither
+        # carries a value.
+        if isinstance(exc, ValidationError):
+            mcp_schema_drift_total.labels(tool_name).inc()
+        logger.exception(
+            "tool_unhandled",
+            tool=tool_name,
+            error_type=exc.__class__.__name__,
+            fields=drift_fields(exc),
+        )
         raise ToolError("Internal error.") from exc
     finally:
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -330,6 +374,56 @@ async def invoke_tool[T](
             latency_ms=latency_ms,
             error_code=error_code,
         )
+
+
+def narrow_enum[T: str](value: object, allowed: tuple[T, ...], fallback: T, *, location: str) -> T:
+    """Map a wire enum string onto our closed set, bucketing anything new.
+
+    Wire models type enum-shaped fields as `str`, because these fields sit on
+    every row of their resource — a closed `Literal` there fails the whole
+    resource the first time Google extends the enum, which is the same total
+    outage an unknown *field* causes. Callers still get a closed set: anything
+    unrecognised lands in `fallback` and is logged and counted instead.
+
+    Pass `allowed` as `get_args(<the Literal>)`, never a hand-written tuple: a
+    copy silently rots the moment someone extends the Literal, and the symptom
+    is a value we *do* support being bucketed away and reported as drift.
+
+    The value is safe to log: these are Google's enum names, not user content.
+    """
+    if isinstance(value, str) and value in allowed:
+        return value  # ty: ignore[invalid-return-type]
+    if value is not None:
+        logger.warning("enum_value_unrecognised", location=location, value=value)
+        mcp_schema_drift_total.labels(location).inc()
+    return fallback
+
+
+def space_type_out(s: _ChatSpaceResponse) -> SpaceTypeOut:
+    """Narrow a wire space type to the tool-facing enum."""
+    return narrow_enum(
+        s.type_,
+        get_args(SpaceTypeOut),
+        "SPACE_TYPE_UNSPECIFIED",
+        location="_ChatSpaceResponse.type",
+    )
+
+
+def member_role_out(value: object) -> MemberRole:
+    """Narrow a wire membership role to the tool-facing enum."""
+    return narrow_enum(
+        value, get_args(MemberRole), "ROLE_UNSPECIFIED", location="_ChatMembershipResponse.role"
+    )
+
+
+def member_state_out(value: object) -> MemberState:
+    """Narrow a wire membership state to the tool-facing enum."""
+    return narrow_enum(
+        value,
+        get_args(MemberState),
+        "MEMBERSHIP_STATE_UNSPECIFIED",
+        location="_ChatMembershipResponse.state",
+    )
 
 
 def space_display_name(s: _ChatSpaceResponse) -> str:
