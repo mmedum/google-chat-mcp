@@ -27,22 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejecting an unrecognised key from a calling model is a real safety property
   — a misspelled `dry_run` must not silently post for real.
 
-### Fixed
-- **`send_message` could post twice on a transient upstream error.** The client
-  retries 429/5xx, and a 5xx can arrive *after* Google created the message — so
-  the retry posted a second copy. Nothing to do with schema drift; it predates
-  all of that. Each send now carries a client-assigned `messageId`, generated
-  once per call rather than per attempt, so Google rejects the retry as
-  `ALREADY_EXISTS` and the client fetches the message that actually landed.
-  Verified against the live API: user OAuth accepts `messageId`, a repeat
-  returns 409, and `spaces/{space}/messages/{messageId}` reads the message back.
-
-### Changed
-- Pinned GitHub Actions bumped to current releases, including two majors:
-  `actions/checkout` v6 → v7.0.1 and `astral-sh/setup-uv` v8 → v9.0.0. The only
-  breaking change that touches us is setup-uv's `prune-cache` now defaulting to
-  false, which trades Actions cache usage for less load on PyPI.
-
 ## [1.1.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
@@ -91,6 +75,14 @@ exists. Writes are the dangerous case — they succeeded and still reported
   says the write SUCCEEDED and must not be retried. `create_space` and
   `create_group_chat` were the worst case and went unlisted before: a retry
   makes a second space.
+- **`send_message` could post twice on a transient upstream error.** The client
+  retries 429/5xx, and a 5xx can arrive *after* Google created the message — so
+  the retry posted a second copy. Unrelated to schema drift; it predates all of
+  it. Each send now carries a client-assigned `messageId`, generated once per
+  call rather than per attempt, so Google rejects the retry as `ALREADY_EXISTS`
+  and the client fetches the message that actually landed. Verified live: user
+  OAuth accepts `messageId`, a repeat returns 409, and
+  `spaces/{space}/messages/{messageId}` reads the message back.
 - **Closed enums removed from response models.** `_ChatUser.type`,
   `_ChatSpaceResponse.type`, `_ChatMembershipResponse.state` and `.role` were
   `Literal`s on fields present in every row, so a value Google adds to any of
@@ -112,6 +104,10 @@ exists. Writes are the dangerous case — they succeeded and still reported
 ### Changed
 - `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so
   existing callers are unaffected).
+- Pinned GitHub Actions bumped to current releases, including two majors:
+  `actions/checkout` v6 → v7.0.1 and `astral-sh/setup-uv` v8 → v9.0.0. The only
+  breaking change that touches us is setup-uv's `prune-cache` now defaulting to
+  false, trading Actions cache usage for less load on PyPI.
 - Tool schemas now carry the field descriptions that were already written.
   `_Strict` didn't set `use_attribute_docstrings`, so every attribute docstring
   in `src/models.py` was dev-only commentary — a calling model saw
