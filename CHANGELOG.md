@@ -7,27 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **Chat API response models accept unknown fields instead of rejecting them**
-  (`_ChatBase`: `extra="forbid"` → `extra="allow"`). An unknown field is kept,
-  logged once per process as `schema_drift` with its `Model.field` location, and
-  counted in `mcp_schema_drift_total`. This reverses the rule in
-  `docs/architecture.md`, which cost two total outages: Google adds response
-  fields without notice — AIP-180 explicitly permits it — and each lands on
-  *every* row of its resource, so rejecting them failed every tool at once. The
-  detection that rule promised never materialised; both events were found by a
-  user. The invariant is now **drift must be observable**, not fatal.
-
-  What still fails loudly is unchanged: fields the handlers read have no
-  defaults, so a removal or type change raises. A *renamed* field is caught too
-  — the new name arrives as an unknown key even though the old one merely goes
-  missing. `doctor` reports unmodelled fields on rows that parse fine.
-
-  **Tool I/O keeps `extra="forbid"`.** That side is our own contract, and
-  rejecting an unrecognised key from a calling model is a real safety property
-  — a misspelled `dry_run` must not silently post for real.
-
-## [1.1.0] - 2026-08-08
+## [1.2.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
 tool is broken against the live Google Chat API, and no client-side workaround
@@ -102,6 +82,24 @@ exists. Writes are the dangerous case — they succeeded and still reported
   on a user report. `location` is a model/field path, never a value.
 
 ### Changed
+- **Chat API response models accept unknown fields instead of rejecting them**
+  (`_ChatBase`: `extra="forbid"` → `extra="allow"`). An unknown field is kept,
+  logged once per process as `schema_drift` with its `Model.field` location, and
+  counted in `mcp_schema_drift_total`. This reverses the rule in
+  `docs/architecture.md`, which cost two total outages: Google adds response
+  fields without notice — AIP-180 explicitly permits it — and each lands on
+  *every* row of its resource, so rejecting them failed every tool at once. The
+  detection that rule promised never materialised; both events were found by a
+  user. The invariant is now **drift must be observable**, not fatal.
+
+  What still fails loudly is unchanged: fields the handlers read have no
+  defaults, so a removal or type change raises. A *renamed* field is caught too
+  — the new name arrives as an unknown key even though the old one merely goes
+  missing. `doctor` reports unmodelled fields on rows that parse fine.
+
+  **Tool I/O keeps `extra="forbid"`.** That side is our own contract, and
+  rejecting an unrecognised key from a calling model is a real safety property
+  — a misspelled `dry_run` must not silently post for real.
 - `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so
   existing callers are unaffected).
 - Pinned GitHub Actions bumped to current releases, including two majors:
@@ -554,8 +552,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.1.0
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.2.0
 [1.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...v0.4.0
