@@ -7,12 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-08
+
+Upgrade if you run the stdio transport. Two warnings appeared on stderr on
+every session while meaning nothing, in the one channel `docs/runbook.md` tells
+stdio operators to watch — stdio has no `/metrics` endpoint, so stderr is the
+only place degraded People lookups show up. Routine noise there teaches people
+to ignore it.
+
+Minor rather than patch: no tool is removed, renamed or reshaped, but
+`tokens.json` changes what it records, a scope check that had never fired
+starts enforcing, and denied calls start producing audit rows. See the rollback
+caveat below before downgrading.
+
 ### Fixed
-- **Two warnings on stderr that never meant anything.** stdio has no `/metrics`
-  endpoint, so `docs/runbook.md` points operators at stderr as the only signal
-  that People lookups are degrading. Both of these fired on `serve`, not just
-  `doctor`, so they reached that channel on every session and trained people to
-  ignore it.
+- **Two warnings on stderr that never meant anything.** Both fired on `serve`,
+  not just `doctor`, so they reached every stdio user's client log on every
+  session.
   - `UserWarning: directory "/run/secrets" does not exist` — that path exists
     only in the Docker deployment, but `secrets_dir` was passed unconditionally.
     It is now passed only when the directory is really there.
@@ -758,7 +769,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.2.0
 [1.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v1.0.1
