@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Refreshed `uv.lock` against current advisories. CI's `audit` and `container`
+  jobs had gone red on `main` without a code change: the lockfile had not moved
+  since April, so newly published advisories accumulated against pinned
+  versions. Notable fixes: `starlette` 1.0.0 → 1.5.0 (SSRF via UNC paths in
+  `StaticFiles`; form-limit DoS), `urllib3` 2.6.3 → 2.7.0 (header leak on
+  cross-origin redirect; decompression DoS), `pyjwt` 2.12.1 → 2.13.0,
+  `python-multipart` 0.0.26 → 0.0.32, `pyasn1` 0.6.3 → 0.6.4 (parser DoS),
+  and `pydantic-settings` 2.14.0 → 2.15.0.
+- `cryptography` 46.0.7 → 50.0.0, which required widening the `pyproject.toml`
+  pin from `~=46.0` to `~=50.0`. Covers a PKCS#7 decryption oracle, exponential
+  blowup on chains with duplicate self-signed certificates, a name-constraint
+  bypass via wildcard SANs, and the statically linked OpenSSL in the wheels.
+- Runtime image no longer ships `pip`. The app runs from `/app/.venv` and never
+  installs at runtime, but pip's bundled `_vendor/` tree is scanned as real
+  packages — it was the sole source of the `setuptools` 70.3.0 and `msgpack`
+  1.1.2 findings, neither of which is a project dependency or fixable from the
+  lockfile.
+
 ## [1.0.1] - 2026-04-24
 
 Packaging-only release. No API changes.

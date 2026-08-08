@@ -30,10 +30,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.14-slim AS runtime
 # Apply Debian security updates at build time so the image ships with current
 # fixes rather than whatever shipped in the base tag on its cut date.
+#
+# pip is also dropped: the app runs out of /app/.venv and never installs
+# anything at runtime, but pip's bundled `_vendor/` tree (msgpack, setuptools,
+# ...) is scanned as real packages and pins the image to whatever versions the
+# base tag happened to vendor. Removing it clears those findings at the source
+# and trims the runtime attack surface.
 RUN apt-get update \
  && apt-get -y upgrade \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/local/lib/python3.*/site-packages/pip \
+           /usr/local/lib/python3.*/site-packages/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.* \
  && useradd --system --uid 1000 --home-dir /app --shell /sbin/nologin mcp \
  && mkdir -p /var/lib/google-chat-mcp \
  && chown mcp:mcp /var/lib/google-chat-mcp
