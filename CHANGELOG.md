@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-08
+
+Upgrade immediately if you are on 1.0.x: the read side of the server is
+broken against the live Google Chat API, and no client-side workaround exists.
+
 ### Fixed
 - **Every read tool was broken against the live Chat API.** Google added
   `markupSyntax` (on messages) and `affiliation` (on memberships); with
@@ -458,7 +463,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.3.3...v0.4.0
