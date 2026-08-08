@@ -5,9 +5,11 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from src.models import SearchMessagesInput
+from pydantic import ValidationError
+from src.models import SearchMessagesInput, _ChatMessageResponse
 from src.tools import search_messages_handler
 from src.tools._common import ToolContext
+from src.tools.search_messages import _drift_fields
 
 
 def _msg(m_id: str, text: str, ts: str = "2026-04-19T10:00:00Z") -> dict[str, object]:
@@ -186,3 +188,21 @@ async def test_unparsed_is_zero_when_every_message_validates(
             SearchMessagesInput(space_id="spaces/AAA", query="hello"),
         )
     assert out.unparsed == 0
+
+
+def test_drift_fields_names_the_field_without_its_value() -> None:
+    """The drift log must identify the field but never carry its content.
+
+    `_redact_sensitive` masks by key, so it cannot see into a preformatted
+    string — `str(exc)` would smuggle `input_value=...` past it.
+    """
+    secret = "salary review notes"
+    with pytest.raises(ValidationError) as excinfo:
+        _ChatMessageResponse.model_validate(_msg("M.1", "hi") | {"newQuotedText": secret})
+    fields = _drift_fields(excinfo.value)
+    assert fields == ["newQuotedText"]
+    assert secret not in repr(fields)
+
+
+def test_drift_fields_empty_for_non_validation_errors() -> None:
+    assert _drift_fields(TypeError("raw was not a mapping")) == []

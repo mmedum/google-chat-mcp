@@ -6,6 +6,8 @@ import os
 import re
 from datetime import UTC
 
+from pydantic import ValidationError
+
 from ..models import (
     SearchMatch,
     SearchMessagesInput,
@@ -69,7 +71,7 @@ async def search_messages_handler(
                             "search_message_unparsed",
                             space_id=payload.space_id,
                             error=type(exc).__name__,
-                            detail=str(exc),
+                            fields=_drift_fields(exc),
                         )
                     unparsed += 1
                     continue
@@ -101,6 +103,19 @@ async def search_messages_handler(
         target_space_id=payload.space_id,
         required_scope=CHAT_MESSAGES_READONLY,
     )
+
+
+def _drift_fields(exc: Exception) -> list[str]:
+    """Field paths that failed validation, without their values.
+
+    `str(exc)` renders `input_value=...` inline, so a drifted field carrying
+    message text or an email would reach the logs as a preformatted string —
+    past `_redact_sensitive`, which masks by key and cannot see inside one.
+    The field path alone is what identifies the drift.
+    """
+    if not isinstance(exc, ValidationError):
+        return []
+    return [".".join(str(part) for part in err["loc"]) for err in exc.errors()]
 
 
 def _result(
