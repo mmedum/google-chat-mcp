@@ -6,8 +6,6 @@ import os
 import re
 from datetime import UTC
 
-from pydantic import ValidationError
-
 from ..models import (
     SearchMatch,
     SearchMessagesInput,
@@ -15,7 +13,7 @@ from ..models import (
     _ChatMessageResponse,
 )
 from ..observability import logger
-from ._common import CHAT_MESSAGES_READONLY, ToolContext, invoke_tool
+from ._common import CHAT_MESSAGES_READONLY, ToolContext, drift_fields, invoke_tool
 from ._messages import ensure_utc
 
 _DEFAULT_MAX_PAGES = 10
@@ -53,15 +51,11 @@ async def search_messages_handler(
             )
             for raw in raw_page:
                 scanned += 1
-                # Pydantic's ValidationError is a ValueError; TypeError is the only
-                # other realistic failure (non-mapping raw). Catch both via the
-                # common base — written as Exception narrowing because ruff-format
-                # in the pinned 0.15.x rewrites tuple except clauses.
+                # Pydantic's ValidationError is a ValueError; TypeError is the
+                # only other realistic failure (non-mapping raw).
                 try:
                     msg = _ChatMessageResponse(**raw)
-                except Exception as exc:
-                    if not isinstance(exc, TypeError | ValueError):
-                        raise
+                except (TypeError, ValueError) as exc:
                     # Skipping is right — one bad row must not fail the search.
                     # Doing it silently is not: schema drift then reads as
                     # "no matches in this space" instead of "search is broken".
@@ -71,7 +65,7 @@ async def search_messages_handler(
                             "search_message_unparsed",
                             space_id=payload.space_id,
                             error=type(exc).__name__,
-                            fields=_drift_fields(exc),
+                            fields=drift_fields(exc),
                         )
                     unparsed += 1
                     continue
@@ -89,12 +83,12 @@ async def search_messages_handler(
                     )
                 )
                 if len(matches) >= payload.limit:
-                    return _result(matches, scanned, unparsed, cap_reached=False)
+                    return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=False)
             if not next_token:
-                return _result(matches, scanned, unparsed, cap_reached=False)
+                return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=False)
             page_token = next_token
         # Fell out of the loop with a next_token still available: cap reached.
-        return _result(matches, scanned, unparsed, cap_reached=True)
+        return _result(matches, scanned=scanned, unparsed=unparsed, cap_reached=True)
 
     return await invoke_tool(
         "search_messages",
@@ -105,21 +99,8 @@ async def search_messages_handler(
     )
 
 
-def _drift_fields(exc: Exception) -> list[str]:
-    """Field paths that failed validation, without their values.
-
-    `str(exc)` renders `input_value=...` inline, so a drifted field carrying
-    message text or an email would reach the logs as a preformatted string —
-    past `_redact_sensitive`, which masks by key and cannot see inside one.
-    The field path alone is what identifies the drift.
-    """
-    if not isinstance(exc, ValidationError):
-        return []
-    return [".".join(str(part) for part in err["loc"]) for err in exc.errors()]
-
-
 def _result(
-    matches: list[SearchMatch], scanned: int, unparsed: int, *, cap_reached: bool
+    matches: list[SearchMatch], *, scanned: int, unparsed: int, cap_reached: bool
 ) -> SearchMessagesResult:
     return SearchMessagesResult(
         matches=matches, scanned=scanned, cap_reached=cap_reached, unparsed=unparsed

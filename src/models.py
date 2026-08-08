@@ -547,7 +547,8 @@ class WhoamiResult(_Strict):
 
 # ---------- Chat API response shapes ----------
 # Pydantic validators for raw Google JSON. `extra="forbid"` catches additions
-# from Google — surfaced as an ApiValidationError and logged.
+# from Google as a ValidationError; `invoke_tool` logs the drifted field paths
+# via `drift_fields` and returns "Internal error." to the caller.
 
 
 class _ChatBase(BaseModel):
@@ -582,13 +583,12 @@ class _ChatMessageResponse(_ChatBase):
     fallback_text: str | None = Field(default=None, alias="fallbackText")
     thread_reply: bool | None = Field(default=None, alias="threadReply")
     client_assigned_message_id: str | None = Field(default=None, alias="clientAssignedMessageId")
-    # Added by Google on messages.list/get some time before 2026-08; observed
-    # value `MARKUP_SYNTAX_CHAT`. Typed as `str`, not a Literal — a new syntax
-    # name must not be able to reject the message it arrives on.
-    markup_syntax: str | None = Field(default=None, alias="markupSyntax")
     # Opaque fields — we don't render them, but `extra="forbid"` would
     # otherwise reject any message carrying them. Keep one-per-field so
-    # unexpected drift still surfaces (CLAUDE.md rule).
+    # unexpected drift still surfaces (CLAUDE.md rule). Enum-shaped ones are
+    # `str`, never `Literal`: a value we don't know yet must not be able to
+    # reject the message it arrives on.
+    markup_syntax: str | None = Field(default=None, alias="markupSyntax")
     attachment: list[dict[str, object]] | None = None
     cards_v2: list[dict[str, object]] | None = Field(default=None, alias="cardsV2")
     cards: list[dict[str, object]] | None = None
@@ -680,9 +680,8 @@ class _ChatMembershipResponse(_ChatBase):
     # populated per membership, per Google's response shape.
     member: _ChatUser | None = None
     group_member: _ChatGroup | None = Field(default=None, alias="groupMember")
-    # Added by Google on spaces.members.list some time before 2026-08 (whether
-    # the member joined directly or via their domain). `str` for the same
-    # reason as `markup_syntax` above.
+    # Opaque: whether the member joined directly or via their domain. `str`,
+    # never `Literal`, for the same reason as `_ChatMessageResponse`'s.
     affiliation: str | None = None
 
 

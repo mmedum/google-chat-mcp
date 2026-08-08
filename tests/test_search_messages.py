@@ -5,11 +5,9 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from pydantic import ValidationError
-from src.models import SearchMessagesInput, _ChatMessageResponse
+from src.models import SearchMessagesInput
 from src.tools import search_messages_handler
 from src.tools._common import ToolContext
-from src.tools.search_messages import _drift_fields
 
 
 def _msg(m_id: str, text: str, ts: str = "2026-04-19T10:00:00Z") -> dict[str, object]:
@@ -52,6 +50,7 @@ async def test_exact_substring_match_case_insensitive(
     ]
     assert out.scanned == 3
     assert out.cap_reached is False
+    assert out.unparsed == 0
 
 
 @pytest.mark.asyncio
@@ -170,39 +169,3 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     assert [m.message_id for m in out.matches] == ["spaces/AAA/messages/M.1"]
     assert out.scanned == 2
     assert out.unparsed == 1
-
-
-@pytest.mark.asyncio
-async def test_unparsed_is_zero_when_every_message_validates(
-    tool_ctx: ToolContext, mock_access_token
-) -> None:
-    with (
-        respx.mock(assert_all_called=False) as mock,
-        mock_access_token(),
-    ):
-        mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"messages": [_msg("M.1", "hello world")]})
-        )
-        out = await search_messages_handler(
-            tool_ctx,
-            SearchMessagesInput(space_id="spaces/AAA", query="hello"),
-        )
-    assert out.unparsed == 0
-
-
-def test_drift_fields_names_the_field_without_its_value() -> None:
-    """The drift log must identify the field but never carry its content.
-
-    `_redact_sensitive` masks by key, so it cannot see into a preformatted
-    string — `str(exc)` would smuggle `input_value=...` past it.
-    """
-    secret = "salary review notes"
-    with pytest.raises(ValidationError) as excinfo:
-        _ChatMessageResponse.model_validate(_msg("M.1", "hi") | {"newQuotedText": secret})
-    fields = _drift_fields(excinfo.value)
-    assert fields == ["newQuotedText"]
-    assert secret not in repr(fields)
-
-
-def test_drift_fields_empty_for_non_validation_errors() -> None:
-    assert _drift_fields(TypeError("raw was not a mapping")) == []

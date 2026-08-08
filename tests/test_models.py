@@ -161,12 +161,19 @@ def test_message_response_accepts_embedded_space_dict() -> None:
     assert model.space == {"name": "spaces/AAA", "type": "SPACE", "any": "field"}
 
 
-def test_message_response_accepts_markup_syntax() -> None:
+@pytest.mark.parametrize(
+    "syntax",
+    ["MARKUP_SYNTAX_CHAT", "MARKUP_SYNTAX_SOMETHING_NEW"],
+)
+def test_message_response_accepts_markup_syntax(syntax: str) -> None:
     """`markupSyntax` appeared on live messages.list/get responses in 2026.
 
     Every message in every space carries it, so rejecting it took the whole
     read side of the server down: get_messages/get_message/get_thread raised,
     and search_messages returned zero matches over a full scan.
+
+    The second case is the reason it's typed `str` and not a `Literal` — a
+    syntax name we don't know yet must not reject the message carrying it.
     """
     model = _ChatMessageResponse.model_validate(
         {
@@ -175,26 +182,11 @@ def test_message_response_accepts_markup_syntax() -> None:
             "createTime": "2026-04-19T17:00:00Z",
             "thread": {"name": "spaces/AAA/threads/333"},
             "text": "hi",
-            "markupSyntax": "MARKUP_SYNTAX_CHAT",
+            "markupSyntax": syntax,
         }
     )
-    assert model.markup_syntax == "MARKUP_SYNTAX_CHAT"
+    assert model.markup_syntax == syntax
     assert model.text == "hi"
-
-
-def test_message_response_accepts_unknown_markup_syntax_value() -> None:
-    """Typed as `str`, not a Literal — a syntax name we don't know yet must
-    not reject the message carrying it."""
-    model = _ChatMessageResponse.model_validate(
-        {
-            "name": "spaces/AAA/messages/111",
-            "sender": {"name": "users/222"},
-            "createTime": "2026-04-19T17:00:00Z",
-            "thread": {"name": "spaces/AAA/threads/333"},
-            "markupSyntax": "MARKUP_SYNTAX_SOMETHING_NEW",
-        }
-    )
-    assert model.markup_syntax == "MARKUP_SYNTAX_SOMETHING_NEW"
 
 
 def test_membership_response_accepts_affiliation() -> None:

@@ -188,14 +188,18 @@ tradeoff is explicit.
 string. `markupSyntax` arrives as `MARKUP_SYNTAX_CHAT` today; pinning the
 literal set would hand Google a second way to break the same message later.
 
-**How to identify the field fast.** The error names the model but not always
-the payload. Dump the raw response and diff its keys against the model:
+**How to identify the field fast.** The caller only ever sees
+`Internal error.`, so read the server log instead. `invoke_tool` names the
+drifted field paths on the `tool_unhandled` event:
 
-```python
-raw = await client.list_messages(token, space_id="spaces/AAA", limit=5)
-print(sorted({k for m in raw for k in m}))
-print(sorted(_ChatMessageResponse.model_fields | {"markupSyntax"}))
+```json
+{"event": "tool_unhandled", "tool": "get_messages", "fields": ["markupSyntax"]}
 ```
+
+`search_messages` degrades rather than failing, so it logs
+`search_message_unparsed` with the same `fields` key and reports a non-zero
+`unparsed` in its result. Both carry field paths only — never values, which
+would put message text past the key-based log redaction.
 
 **Two real occurrences, both mid-2026:**
 
@@ -205,7 +209,9 @@ print(sorted(_ChatMessageResponse.model_fields | {"markupSyntax"}))
 | `affiliation` | membership | `list_members`, in every space |
 
 Both are additive fields that appear on *every* row of their resource, which
-is the worst case: the failure is total, not partial. Expect that shape again.
+is the worst case: the failure is total, not partial. Expect that shape again —
+and note that nothing detects it before a user does. A scheduled check that
+validates the models against a recorded live payload is tracked separately.
 
 ### 401 Unauthorized on every tool call immediately after a deploy
 
