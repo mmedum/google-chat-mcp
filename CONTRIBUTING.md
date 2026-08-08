@@ -71,9 +71,11 @@ Release cutting is maintainer-only:
   enforced by `ruff` + `ty`. Don't reformat untouched code.
 - Comments explain WHY (non-obvious constraints, invariants,
   workarounds). Don't narrate WHAT the code does.
-- Pydantic models at tool I/O use `extra="forbid"`; Chat-API response
-  models also use `extra="forbid"` so schema drift surfaces as
-  validation errors rather than silent drops.
+- Pydantic models at tool I/O use `extra="forbid"` — that is our own
+  contract, and an unrecognised key from a calling model must be
+  rejected. Chat-API response models use `extra="allow"` and report
+  unknown keys via `schema_drift` + `mcp_schema_drift_total`: drift must
+  be observable, not fatal. See `docs/architecture.md`.
 - Secret fields in `Settings` are `pydantic.SecretStr`; read them via
   `.get_secret_value()`.
 

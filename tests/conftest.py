@@ -122,3 +122,19 @@ def structlog_stream() -> Iterator[io.StringIO]:
     finally:
         structlog.configure(**saved_config)
         logging.getLogger().handlers[:] = saved_handlers
+
+
+@pytest.fixture(autouse=True)
+def _reset_drift_dedup() -> Iterator[None]:
+    """Clear the process-wide `schema_drift` dedup between tests.
+
+    `src.models._reported_drift` suppresses repeat reports of the same
+    `Model.field`. Without a reset, whether a test sees its log line depends on
+    whether an earlier test happened to use the same key — order-dependent, and
+    the failure message points at the wrong test.
+    """
+    from src import models
+
+    models._reported_drift.clear()
+    yield
+    models._reported_drift.clear()

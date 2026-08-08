@@ -148,8 +148,10 @@ mcp_active_users = Gauge(
     registry=REGISTRY,
 )
 # Alert on any non-zero rate. Google ships additive response fields without
-# notice and `extra="forbid"` turns that into a total outage, so this is the
-# signal that says "the models are stale" before users start reporting it.
+# notice; since `extra="allow"` they no longer break anything, which is exactly
+# why this counter matters — it is the only runtime signal that the models have
+# gone stale. Incremented per occurrence (the matching log is deduped, the
+# counter deliberately is not, or the rate would self-resolve).
 # `location` is a model/field path, never a value.
 mcp_schema_drift_total = Counter(
     "mcp_schema_drift_total",

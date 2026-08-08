@@ -599,6 +599,28 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return asyncio.run(_run_doctor(resolver, limit=args.spaces))
 
 
+def _unmodelled_paths(model: BaseModel, prefix: str = "") -> list[str]:
+    """Every unknown field on `model`, including nested ones, as dotted paths.
+
+    `model_extra` is top-level only. Checking just that made `doctor` print
+    "OK" while the runtime validator was logging drift on `sender`, `thread` or
+    `emoji` — a false clean bill of health from the one tool whose whole job is
+    catching drift before a user does.
+
+    Paths only; values are message text and emails and never leave here.
+    """
+    found = [f"{prefix}{key}" for key in sorted(model.model_extra or {})]
+    for name in type(model).model_fields:
+        value = getattr(model, name, None)
+        children = value if isinstance(value, list) else [value]
+        for index, child in enumerate(children):
+            if not isinstance(child, BaseModel):
+                continue
+            label = f"{name}[{index}]" if isinstance(value, list) else name
+            found.extend(_unmodelled_paths(child, f"{prefix}{label}."))
+    return found
+
+
 async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
     """Fetch a sample of live data and report every model mismatch."""
     client = ChatClient()
@@ -619,7 +641,7 @@ async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
         # parses fine and carries fields we've never modelled. That is exactly
         # the drift `doctor` exists to surface — the server keeps working, but
         # the models are behind and nobody would otherwise notice.
-        unknown = sorted(parsed.model_extra or {})
+        unknown = _unmodelled_paths(parsed)
         if unknown:
             problems.append(f"{where}: unmodelled {', '.join(unknown)}")
 

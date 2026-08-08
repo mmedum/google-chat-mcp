@@ -5,8 +5,8 @@ Schema-drift quirks we've observed from the live Google Chat API:
 - `lastActiveTime` is populated on spaces.list entries
 - Message responses embed a `space` object whose shape we don't consume
 
-The `extra="forbid"` guarantee must still hold for truly unknown fields so
-future drift keeps surfacing instead of being silently dropped.
+Unknown fields are accepted and reported rather than rejected; a field we
+read changing shape still raises. Both halves are asserted below.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from src.tools._common import (
     member_state_out,
     space_type_out,
 )
+from structlog.testing import capture_logs
 
 
 @pytest.mark.parametrize(
@@ -95,7 +96,7 @@ def test_removing_a_field_we_read_still_fails_loudly() -> None:
     Fields the handlers actually consume have no defaults, so a removal or a
     type change still raises — which is the half of the old rule worth keeping.
     """
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="sender"):
         _ChatMessageResponse.model_validate(
             {
                 "name": "spaces/AAA/messages/111",
@@ -293,3 +294,20 @@ def _drift_count(location: str) -> float:
 
     value = REGISTRY.get_sample_value("mcp_schema_drift_total", {"location": location})
     return value or 0.0
+
+
+def test_drift_is_logged_once_but_counted_every_time() -> None:
+    """One log line per key; the counter still moves on every occurrence.
+
+    The runbook tells operators to alert on `rate(mcp_schema_drift_total)`. If
+    the counter were deduped like the log, the rate would spike once and then
+    self-resolve while the models were still stale.
+    """
+    payload = {"name": "spaces/AAA", "type": "SPACE", "repeatedNewField": "x"}
+    before = _drift_count("_ChatSpaceResponse.repeatedNewField")
+    with capture_logs() as logs:
+        for _ in range(3):
+            _ChatSpaceResponse.model_validate(payload)
+    drift_logs = [e for e in logs if e["event"] == "schema_drift"]
+    assert len(drift_logs) == 1, "log is deduped per process"
+    assert _drift_count("_ChatSpaceResponse.repeatedNewField") == before + 3

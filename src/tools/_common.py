@@ -216,8 +216,9 @@ def format_missing_scope_message(scope: str) -> str:
 def drift_fields(exc: Exception) -> list[str]:
     """Field paths that failed validation, without their values.
 
-    Chat API response models are `extra="forbid"`, so a field Google adds
-    fails every row of that resource — the field path is the whole diagnosis.
+    Response models are `extra="allow"`, so this fires for a field we *read*
+    changing shape or disappearing — the field path is the whole diagnosis.
+    (An added field no longer raises; that path reports via `schema_drift`.)
     `str(exc)` would carry it, but it renders `input_value=...` inline, and a
     drifted field holding message text or an email would then reach the logs
     as a preformatted string that `_redact_sensitive` cannot see into.

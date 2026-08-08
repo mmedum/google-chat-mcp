@@ -564,9 +564,10 @@ class WhoamiResult(_Strict):
 
 
 # ---------- Chat API response shapes ----------
-# Pydantic validators for raw Google JSON. `extra="forbid"` catches additions
-# from Google as a ValidationError; `invoke_tool` logs the drifted field paths
-# via `drift_fields` and returns "Internal error." to the caller.
+# Pydantic validators for raw Google JSON. `extra="allow"`: additions from
+# Google are kept and reported (`schema_drift` + `mcp_schema_drift_total`)
+# rather than rejected. A field we *read* changing shape still raises, and
+# `invoke_tool` logs its path via `drift_fields`.
 
 
 # Unknown wire keys already reported, so drift is logged once per process
@@ -602,13 +603,18 @@ class _ChatBase(BaseModel):
     def _report_unknown_fields(self) -> _ChatBase:
         for key in self.model_extra or {}:
             location = f"{type(self).__name__}.{key}"
+            # Count every occurrence but log only the first. The runbook tells
+            # operators to alert on `rate(mcp_schema_drift_total)`; if the
+            # counter were deduped too, the rate would spike once and then
+            # self-resolve while the models were still stale. The log is deduped
+            # because one line per row per page is noise, not signal.
+            mcp_schema_drift_total.labels(location).inc()
             if location in _reported_drift:
                 continue
             _reported_drift.add(location)
             # Key names only — never the value. Google's field names are safe
             # to log; the content behind them is message text and emails.
             logger.warning("schema_drift", location=location)
-            mcp_schema_drift_total.labels(location).inc()
         return self
 
 
@@ -638,16 +644,16 @@ class _ChatMessageResponse(_ChatBase):
     text: str = ""
     formatted_text: str | None = Field(default=None, alias="formattedText")
     thread: _ChatThread
-    # The embedded space reference varies in shape — `_ChatBase` with
-    # `extra="forbid"` rejects it outright. We don't read any of its fields.
+    # The embedded space reference varies in shape and we read none of it,
+    # so it stays an opaque dict rather than a nested model.
     space: dict[str, object] | None = None
     argument_text: str | None = Field(default=None, alias="argumentText")
     fallback_text: str | None = Field(default=None, alias="fallbackText")
     thread_reply: bool | None = Field(default=None, alias="threadReply")
     client_assigned_message_id: str | None = Field(default=None, alias="clientAssignedMessageId")
-    # Opaque fields — we don't render them, but `extra="forbid"` would
-    # otherwise reject any message carrying them. Keep one-per-field so
-    # unexpected drift still surfaces (CLAUDE.md rule). Enum-shaped ones are
+    # Opaque fields — declared but never rendered. Since `extra="allow"` they
+    # would parse either way; declaring them keeps `schema_drift` quiet for
+    # shapes we already know about. Enum-shaped ones are
     # `str`, never `Literal`: a value we don't know yet must not be able to
     # reject the message it arrives on.
     markup_syntax: str | None = Field(default=None, alias="markupSyntax")

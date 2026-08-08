@@ -92,10 +92,13 @@ exists. Writes are the dangerous case — they succeeded and still reported
   detection that rule promised never materialised; both events were found by a
   user. The invariant is now **drift must be observable**, not fatal.
 
-  What still fails loudly is unchanged: fields the handlers read have no
-  defaults, so a removal or type change raises. A *renamed* field is caught too
-  — the new name arrives as an unknown key even though the old one merely goes
-  missing. `doctor` reports unmodelled fields on rows that parse fine.
+  What still fails loudly: `name`, `sender`, `create_time` and `thread` have no
+  defaults, so removing or retyping one raises. Fields that *do* have defaults —
+  `text`, `displayName`, `member` — do not: a renamed `text` yields empty
+  message bodies and a successful call. The signal there is the new key
+  arriving, which fires `schema_drift`, moves the counter, and shows up in
+  `doctor`. Observation, not failure — which is why `doctor` has to actually be
+  run.
 
   **Tool I/O keeps `extra="forbid"`.** That side is our own contract, and
   rejecting an unrecognised key from a calling model is a real safety property
