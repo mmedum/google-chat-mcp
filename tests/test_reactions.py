@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
+from fastmcp.exceptions import ToolError
 from src.models import (
     AddReactionInput,
     ListReactionsInput,
@@ -352,3 +353,79 @@ def test_remove_reaction_input_requires_exactly_one_shape() -> None:
     # Neither shape fully populated — reject.
     with pytest.raises(ValueError, match="reaction_name OR"):
         RemoveReactionInput(message_name="spaces/AAA/messages/M.1", emoji="🙂")
+
+
+@pytest.mark.asyncio
+async def test_remove_reaction_refuses_to_claim_already_gone_when_a_lookup_fails(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """`removed: false` means "already gone" — it must not also mean "we couldn't tell".
+
+    The filter shape matches reactors by email. Once a People API failure
+    degrades to a null email instead of raising, an unresolvable reactor is
+    silently skipped, and the tool used to fall through to
+    `removed: false` — telling a calling model the reaction was already
+    removed while it is still there.
+    """
+    tool_ctx.client._max_retries = 0
+    # `assert_all_called=False`: the DELETE route going uncalled is the result
+    # under test, not a mis-specified mock.
+    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+        mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(
+                200, json={"reactions": [_reaction_obj("r10", "🙂", "users/111")]}
+            )
+        )
+        mock.get("https://people.test/v1/people/111").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "status": "PERMISSION_DENIED",
+                        "message": "Request had insufficient authentication scopes.",
+                    }
+                },
+            )
+        )
+        deleted = mock.delete(url__startswith="https://chat.test/v1/spaces/AAA/messages/M.1")
+        with pytest.raises(ToolError) as exc:
+            await remove_reaction_handler(
+                tool_ctx,
+                RemoveReactionInput(
+                    message_name="spaces/AAA/messages/M.1",
+                    emoji="🙂",
+                    user_email="alice@example.com",
+                ),
+            )
+
+    assert "could not verify" in str(exc.value).lower()
+    assert "list_reactions" in str(exc.value)
+    assert not deleted.called, "nothing may be deleted on an unverified match"
+
+
+@pytest.mark.asyncio
+async def test_remove_reaction_still_reports_already_gone_on_a_clean_miss(
+    tool_ctx: ToolContext, mock_access_token
+) -> None:
+    """When every reactor resolves and none match, `removed: false` is the truth."""
+    with respx.mock() as mock, mock_access_token():
+        mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(
+                200, json={"reactions": [_reaction_obj("r10", "🙂", "users/111")]}
+            )
+        )
+        mock.get("https://people.test/v1/people/111").mock(
+            return_value=httpx.Response(200, json=person_payload("bob@example.com", "Bob"))
+        )
+        out = await remove_reaction_handler(
+            tool_ctx,
+            RemoveReactionInput(
+                message_name="spaces/AAA/messages/M.1",
+                emoji="🙂",
+                user_email="alice@example.com",
+            ),
+        )
+
+    assert out.removed is False
+    assert out.reaction_name is None

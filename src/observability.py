@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
+from contextvars import ContextVar
 from typing import Any, TextIO
 
 import structlog
@@ -159,5 +160,35 @@ mcp_schema_drift_total = Counter(
     labelnames=("location",),
     registry=REGISTRY,
 )
+# People API lookups that degraded to `email=None`. The row is still returned —
+# that is the point — so nothing else marks the degradation. A sustained
+# non-zero rate means every `sender_email` / `Member.email` the server hands
+# back is unreliable while it lasts — re-check the `directory.readonly` grant
+# and the People API quota.
+mcp_people_lookup_failures_total = Counter(
+    "mcp_people_lookup_failures_total",
+    "People API lookups that degraded to a null email.",
+    labelnames=("tool",),
+    registry=REGISTRY,
+)
+# Audit writes are deliberately fail-open — the tool result matters more than
+# the bookkeeping — so nothing else would reveal that `audit_log` has stopped
+# recording. `docs/security.md` treats the audit log as a control, which makes
+# a silent stop worth alerting on. Any non-zero rate means calls are completing
+# unrecorded.
+mcp_audit_write_failures_total = Counter(
+    "mcp_audit_write_failures_total",
+    "Audit-log writes that failed; the tool call still completed.",
+    registry=REGISTRY,
+)
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+# Name of the MCP tool currently executing, set once by `invoke_tool`. Lets
+# code far below the handler — People API enrichment, for instance — label a
+# metric with the tool that triggered it without threading the name through
+# every intervening signature, where it would be a second hand-written copy of
+# what `invoke_tool` was already passed and free to drift from it.
+# `ContextVar` is correct here where a module global is not: concurrent tool
+# calls each get their own value, and `asyncio.gather` children inherit a copy.
+current_tool: ContextVar[str] = ContextVar("current_tool", default="unknown")

@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import math
+
 import httpx
 import pytest
 import respx
-from src.chat_client import ChatApiError, ChatClient
+from src.chat_client import (
+    _MAX_BACKOFF_SECONDS,
+    ChatApiError,
+    ChatClient,
+    _backoff_seconds,
+)
 
 
 @pytest.mark.asyncio
@@ -46,6 +53,70 @@ async def test_retries_on_429_with_retry_after(chat_client: ChatClient) -> None:
             ]
         )
         await chat_client.list_spaces(access_token="tok", limit=50)
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        # Honoured as-is between the floor and the ceiling.
+        ("5", 5.0),
+        ("30", 30.0),
+        # Clamped. An unclamped `Retry-After: 3600` parked one attempt for an
+        # hour — no output, no error, indistinguishable from a hang.
+        ("3600", _MAX_BACKOFF_SECONDS),
+        ("86400", _MAX_BACKOFF_SECONDS),
+    ],
+)
+def test_retry_after_honoured_up_to_the_ceiling(header: str, expected: float) -> None:
+    resp = httpx.Response(429, headers={"Retry-After": header})
+    assert _backoff_seconds(1, resp) == expected
+
+
+@pytest.mark.parametrize("header", ["0", "-5", "0.001"])
+def test_retry_after_below_the_floor_is_raised_to_it(header: str) -> None:
+    """`Retry-After: 0` means "retry now", which is a burst, not backpressure.
+
+    Without a floor these spend every attempt in microseconds against an
+    upstream that just asked us to slow down. The floor carries jitter, so this
+    asserts the band rather than an exact value: a bare floor would wake every
+    concurrent retry at the identical instant, which is the herd the jitter on
+    the computed path exists to break up.
+    """
+    delay = _backoff_seconds(1, httpx.Response(429, headers={"Retry-After": header}))
+    base = 0.5
+    assert base <= delay <= base * 1.25
+
+
+_NO_HEADER = "<<absent>>"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "not-a-number",
+        "Wed, 21 Oct 2026 07:28:00 GMT",  # the header also permits an HTTP-date
+        "",  # present, but empty
+        "nan",  # parses as a float, and NaN would reach asyncio.sleep
+        "inf",
+        _NO_HEADER,
+    ],
+)
+def test_unusable_retry_after_falls_back_to_exponential(header: str) -> None:
+    """Never a crash, never a non-finite sleep.
+
+    `float()` alone is not a sufficient filter: it accepts `"nan"` and
+    `"inf"`, and NaN survives both `min` and `max` to reach `asyncio.sleep`,
+    which rejects it outright on 3.13+ and poisons the timer heap before that.
+    """
+    headers = {} if header == _NO_HEADER else {"Retry-After": header}
+    delay = _backoff_seconds(1, httpx.Response(429, headers=headers))
+    assert math.isfinite(delay)
+    assert 0 < delay <= _MAX_BACKOFF_SECONDS
+
+
+def test_exponential_backoff_respects_ceiling() -> None:
+    for attempt in range(1, 12):
+        assert 0 < _backoff_seconds(attempt, httpx.Response(503)) <= _MAX_BACKOFF_SECONDS
 
 
 @pytest.mark.asyncio

@@ -36,7 +36,7 @@ async def get_message_handler(ctx: ToolContext, message_name: str) -> MessageDet
             sender_display_name=display_name or msg.sender.display_name,
             text=msg.text,
             timestamp=ensure_utc(msg.create_time),
-            last_update_time=msg.last_update_time,
+            last_update_time=(ensure_utc(msg.last_update_time) if msg.last_update_time else None),
             reactions=reactions,
             reactions_paged=paged,
         )

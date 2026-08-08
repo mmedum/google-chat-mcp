@@ -8,6 +8,7 @@ it via FastMCP's `get_access_token()` dependency).
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -802,16 +803,42 @@ def _is_retryable(status: int) -> bool:
     return status == 429 or 500 <= status < 600
 
 
+# Ceiling on any *single* retry sleep — not a budget for the call, which can
+# still spend roughly this much per attempt. An MCP tool call is an interactive
+# request: the caller is a model waiting on a response, so a long sleep is
+# indistinguishable from a hang, and bounding each sleep keeps the call
+# answering in a time a caller can reason about.
+_MAX_BACKOFF_SECONDS = 30.0
+
+
 def _backoff_seconds(attempt: int, resp: httpx.Response) -> float:
-    retry_after = resp.headers.get("Retry-After")
-    if retry_after:
-        try:
-            return float(retry_after)
-        except ValueError:
-            pass
+    """Seconds to sleep before the next attempt, never above `_MAX_BACKOFF_SECONDS`.
+
+    `Retry-After` is honoured, but bounded on both sides by the exponential
+    schedule: floored at the jittered base so a `0` (or negative) value cannot
+    produce a zero-delay burst that spends every attempt in microseconds
+    against an upstream that just asked for backpressure, and capped at the
+    ceiling. The floor carries the jitter for the same reason the computed path
+    does — a header value at or below `base` is sent to *every* concurrent
+    request, so a bare floor would wake them all at the identical instant and
+    re-trigger the 429 in lockstep.
+
+    Values that are not finite numbers fall through to the exponential path.
+    `float()` alone is not enough of a filter: it accepts `"nan"`, and NaN
+    propagates through `min`/`max` to reach `asyncio.sleep`, which rejects it
+    outright on 3.13+ and silently poisons the timer heap before that.
+    """
     base = 0.5 * (2 ** (attempt - 1))
     jitter = random.uniform(0, 0.25 * base)  # noqa: S311 — jitter, not crypto
-    return min(base + jitter, 30.0)
+    floor = base + jitter
+    try:
+        seconds = float(resp.headers.get("Retry-After", ""))
+    except ValueError:
+        pass  # absent, HTTP-date, or junk — fall through to exponential
+    else:
+        if math.isfinite(seconds):
+            return min(max(seconds, floor), _MAX_BACKOFF_SECONDS)
+    return min(floor, _MAX_BACKOFF_SECONDS)
 
 
 def _parse_error_payload(resp: httpx.Response) -> tuple[str, str | None, str | None]:

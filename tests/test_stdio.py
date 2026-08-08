@@ -282,12 +282,17 @@ def test_logout_revokes_and_deletes(stdio_home: Path) -> None:
 
     import argparse
 
+    stdio_mod._load_or_create_audit_pepper()
+    assert (stdio_home / "audit_pepper").exists()
+
     with patch.object(stdio_mod, "_http_post_form", side_effect=fake_post_form):
         rc = stdio_mod.cmd_logout(argparse.Namespace())
     assert rc == 0
     assert revoke_calls == [{"url": stdio_mod._GOOGLE_REVOKE, "token": "r-to-revoke"}]
+    # Every local secret goes, not just the two that decrypt tokens.
     assert not (stdio_home / "tokens.json").exists()
     assert not (stdio_home / "fernet.key").exists()
+    assert not (stdio_home / "audit_pepper").exists()
 
 
 def test_logout_when_already_logged_out_exits_cleanly(stdio_home: Path) -> None:

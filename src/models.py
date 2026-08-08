@@ -189,6 +189,41 @@ class SearchPeopleInput(_Strict):
     consumer Gmail deployers get useful results."""
 
 
+# Addresses we RECEIVE from Google are typed `str`, not `EmailStr`, wherever they
+# reach a tool result. Read that as a statement about where validation belongs,
+# not as "these can be junk".
+#
+# **None of these come from Chat.** The Chat API's `User` object has no email
+# field at all — it returns `name`, `displayName`, `domainId`, `type` and
+# `isAnonymous`, and the docs say only the canonical `users/{id}` is returned.
+# So `sender_email` and `Member.email` are People API lookups of that ID, and
+# `WhoamiResult.email` is the OIDC `/userinfo` claim. Chat guarantees nothing
+# about them because Chat never supplies them.
+#
+# And People documents no format contract: `EmailAddress.value` is described as
+# "The email address", with no stated validation or formatting requirement.
+# Declaring `EmailStr` on our side would assert a guarantee the upstream
+# explicitly does not make. `searchContacts` is the sharp end — it searches the
+# caller's own grouped contacts, i.e. cards a human typed — and a contact saved
+# as `bob@nas.local` used to fail the entire `search_people` call.
+#
+# The deeper reason is that `EmailStr` HERE enforces nothing. The address
+# already exists upstream; validating on the way out cannot make it valid, only
+# cost us the row or blank the field. Enforcement happens where it is
+# meaningful — on *inputs*, which keep `EmailStr`, so an unusable address is
+# rejected by `add_member` / `create_space` / `find_direct_message` before it
+# reaches Google, with a message naming the problem. Permissive out, strict in.
+#
+# Same trade `_ChatBase` makes with `extra="allow"`: an upstream we do not
+# control must not be able to turn its own data into our outage.
+#
+# If a stronger output contract is ever wanted (every non-null email guaranteed
+# parseable), the place to do it is `_directory.primary_email` — the single
+# point every People-sourced address passes through — by nulling invalid values
+# rather than raising. Do NOT reintroduce per-call-site checks: that shape was
+# already missed on the cache-hit path once.
+
+
 class PersonHit(_Strict):
     """One hit from a search_people call.
 
@@ -200,7 +235,7 @@ class PersonHit(_Strict):
     """
 
     user_id: UserId | None
-    email: EmailStr | None
+    email: str | None
     display_name: str | None
     source: PeopleSearchSource
 
@@ -363,7 +398,7 @@ class Member(_Strict):
     display_name: str | None
     # Populated for humans via People API (cached). Groups may surface an
     # email if Google returns one; often None.
-    email: EmailStr | None
+    email: str | None
     role: MemberRole
     state: MemberState
 
@@ -371,7 +406,7 @@ class Member(_Strict):
 class ChatMessage(_Strict):
     message_id: MessageId
     sender_user_id: UserId
-    sender_email: EmailStr | None
+    sender_email: str | None
     sender_display_name: str | None
     text: str
     timestamp: datetime
@@ -541,7 +576,7 @@ class MessageDetails(_Strict):
     space_id: SpaceId
     thread_id: ThreadName
     sender_user_id: UserId
-    sender_email: EmailStr | None
+    sender_email: str | None
     sender_display_name: str | None
     text: str
     timestamp: datetime
@@ -558,7 +593,7 @@ class WhoamiResult(_Strict):
     """Identity of the authenticated user."""
 
     user_sub: str
-    email: EmailStr | None
+    email: str | None
     display_name: str | None
     picture_url: str | None = None
 
@@ -811,12 +846,31 @@ class _ChatReactionsListResponse(_ChatBase):
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 
-class _UserInfoResponse(BaseModel):
-    """OIDC /userinfo payload. `extra="allow"` — Google adds locale, hd, etc. per account."""
+class _UserInfoResponse(_ChatBase):
+    """OIDC /userinfo payload.
 
-    model_config = ConfigDict(extra="allow")
+    Derives from `_ChatBase`, not bare `BaseModel`: it took the permissive half
+    of the convention (`extra="allow"`) without the half that makes drift
+    visible, so a new OIDC claim incremented no counter and logged nothing.
+    HTTPS deployments have no `doctor` command, so that was the only signal
+    they would ever get. The standard
+    OIDC claims below are declared even though only four are read: `doctor`
+    reports every unmodelled key it sees, and Google returns `given_name`,
+    `family_name` and `locale` for any account with the `profile` scope plus
+    `hd` for any Workspace account. Leaving them undeclared made `doctor`
+    report drift on every run for every user — an alert that always fires is
+    the same as no alert.
+
+    `email` is a plain `str` for the same reason every Google-sourced address
+    in this module is.
+    """
+
     sub: str
-    email: EmailStr | None = None
+    email: str | None = None
     email_verified: bool | None = None
     name: str | None = None
     picture: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    locale: str | None = None
+    hd: str | None = None

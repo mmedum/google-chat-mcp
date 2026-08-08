@@ -7,8 +7,6 @@ that `get_messages` also populates.
 
 from __future__ import annotations
 
-import asyncio
-
 from ..models import (
     ListMembersInput,
     Member,
@@ -16,7 +14,6 @@ from ..models import (
     _ChatMembershipsListResponse,
 )
 from ..observability import logger, mcp_schema_drift_total
-from ..storage import DirectoryCache
 from ._common import (
     CHAT_MEMBERSHIPS_READONLY,
     ToolContext,
@@ -24,7 +21,7 @@ from ._common import (
     member_role_out,
     member_state_out,
 )
-from ._directory import fetch_person
+from ._directory import resolve_people
 
 
 async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> list[Member]:
@@ -37,30 +34,30 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
         parsed = _ChatMembershipsListResponse(
             memberships=[_ChatMembershipResponse(**r) for r in raw]
         ).memberships
-        # One People lookup per unique human member ID — gathered to parallelise
-        # the cold-cache path. Exceptions don't blank the batch: a single failed
-        # lookup surfaces as email=None for that member, not a dropped row.
-        results = await asyncio.gather(
-            *[_to_member(access_token, m, ctx) for m in parsed],
-            return_exceptions=True,
+        # One batched cache read plus one People request per genuine miss, for
+        # the whole page. A failed lookup surfaces as email=None for that
+        # member, not a dropped row (see `resolve_people`), so the failure
+        # branch below now means genuine drift only.
+        by_member = await resolve_people(
+            ctx, access_token, (m.member.name for m in parsed if m.member is not None)
         )
         out: list[Member] = []
-        for m, res in zip(parsed, results, strict=True):
-            if isinstance(res, BaseException):
+        for m in parsed:
+            try:
+                out.append(_to_member(m, by_member))
+            except (TypeError, ValueError) as exc:
                 logger.warning(
                     "list_members_enrich_failed",
                     membership=m.name,
-                    error=type(res).__name__,
+                    error=type(exc).__name__,
                 )
                 # A dropped row shortens the list with no signal to the caller,
                 # who reads it as the complete membership. `_to_member` raises
-                # when neither `member` nor `groupMember` is set — i.e. when
-                # Google adds a third kind of member — so this is a drift
-                # symptom, not just a failed People API lookup, and it has to
+                # only when neither `member` nor `groupMember` is set — i.e.
+                # when Google adds a third kind of member — so this is a drift
+                # symptom, never a failed People API lookup, and it has to
                 # reach the metric operators alert on.
                 mcp_schema_drift_total.labels("list_members.dropped_row").inc()
-                continue
-            out.append(res)
         return out
 
     return await invoke_tool(
@@ -72,17 +69,14 @@ async def list_members_handler(ctx: ToolContext, payload: ListMembersInput) -> l
     )
 
 
-async def _to_member(
-    access_token: str,
+def _to_member(
     m: _ChatMembershipResponse,
-    ctx: ToolContext,
+    by_member: dict[str, tuple[str | None, str | None]],
 ) -> Member:
     role = member_role_out(m.role)
     state = member_state_out(m.state)
     if m.member is not None:
-        email, display_name = await _resolve_human(
-            access_token, m.member.name, ctx.directory_cache, ctx
-        )
+        email, display_name = by_member.get(m.member.name, (None, None))
         return Member(
             kind="HUMAN",
             member_id=m.member.name,
@@ -102,21 +96,3 @@ async def _to_member(
         )
     # Should not happen — Google always populates exactly one of the two.
     raise ValueError(f"Membership {m.name!r} has neither member nor groupMember")
-
-
-async def _resolve_human(
-    access_token: str,
-    user_id: str,
-    cache: DirectoryCache,
-    ctx: ToolContext,
-) -> tuple[str | None, str | None]:
-    cached = await cache.get(user_id)
-    if cached is not None:
-        return cached
-    fetched = await fetch_person(ctx.client, access_token, user_id)
-    if fetched is None:
-        return None, None
-    email, display_name = fetched
-    if email:
-        await cache.put(user_id, email, display_name)
-    return email, display_name

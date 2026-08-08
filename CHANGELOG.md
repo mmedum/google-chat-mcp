@@ -7,6 +7,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-08
+
+Upgrade if you read messages or members. On 1.2.0 and earlier, `get_messages`,
+`get_thread` and `list_members` returned an **empty list** — not an error —
+whenever Google's People API refused an email lookup, which happens whenever
+`directory.readonly` was never granted. An agent reads that as "this space is
+empty" and says so confidently. Minor, not major: no tool removed or renamed,
+no input shape changed.
+
+No data migration, and no existing table is touched: the retention fix is in
+the query. The one schema change is a new `schema_migrations` bookkeeping
+table, created automatically on first start.
+
+### Fixed
+- **`get_messages`, `get_thread` and `list_members` returned an empty list
+  whenever the People API refused a lookup.** Email resolution runs after the
+  Chat API call, and a 403 (`directory.readonly` not granted), 429, 5xx or a
+  transport timeout propagated out of the per-row enrichment — where each of
+  these gathers with `return_exceptions=True`, so the row was dropped. With
+  every lookup failing, every row was dropped and the tool returned `[]`. A
+  calling model reads that as *this space is empty*, not *lookups are broken*:
+  the same silent-emptiness failure as the `markupSyntax` outage, where
+  `search_messages` reported zero matches over a scan that never parsed a row.
+  - `get_message` returns a single message rather than a list, so the same
+    failure surfaced there as a hard `ToolError` naming the Chat API — wrong
+    and misleading, since the message itself had been fetched successfully.
+  - `remove_reaction`'s `(message, emoji, user_email)` shape resolves each
+    reactor's email the same way, and a failed lookup made it skip that reactor
+    and report `removed: false` — which the tool documents as "already gone",
+    so a calling model stops looking. It now raises instead whenever any
+    reactor's address failed to resolve: an unresolved reactor means a match
+    cannot be ruled out, so an absence must not be reported as established.
+  - Enrichment now degrades to `email: null` and keeps the row, which is what
+    `docs/runbook.md` already described. New `mcp_people_lookup_failures_total`
+    counter makes the degradation visible; the previous behaviour had no metric
+    at all.
+- **A `Retry-After` header could park a tool call for hours.** `Retry-After` was
+  honoured verbatim, bypassing the 30s backoff ceiling that applied to the
+  computed path, so a 429 carrying `Retry-After: 3600` slept for an hour per
+  attempt — up to three times in one call, with no output and no error. It is
+  now bounded on both sides by the exponential schedule: capped at 30s, and
+  floored at the attempt's base delay so that `0` or a negative value cannot
+  spend every attempt in microseconds against an upstream that just asked for
+  backpressure. Non-numeric values (the header also permits an HTTP-date) fall
+  back to exponential backoff.
+- **`prune_audit_log` deleted up to 24h more history than the retention window.**
+  The cutoff was bound as `datetime.isoformat()` while rows store SQLite's
+  `CURRENT_TIMESTAMP` format. `TIMESTAMP` carries NUMERIC affinity, so the two
+  were compared lexicographically — and `T` (0x54) sorts after the stored space
+  (0x20), making every row that shared the cutoff's calendar date compare as
+  older. Under the default 90-day retention each daily prune silently discarded
+  an extra day of audit records. The cutoff is now formatted to match the
+  stored representation, which also keeps `idx_audit_log_timestamp` usable.
+- **A failing audit write replaced the tool's actual result.** The audit row is
+  written in `invoke_tool`'s `finally`, and an exception escaping a `finally`
+  supersedes the value or exception in flight — so a locked or full SQLite file
+  turned a completed call into an unrelated `OperationalError`. For a write
+  tool that is the duplicate hazard again: the write landed, the caller saw a
+  database error, and a retry would repeat it. Audit failures are now logged
+  (`audit_write_failed`), counted (`mcp_audit_write_failures_total`) and
+  swallowed — fail-open, but not silently, since nothing else would reveal that
+  `audit_log` had stopped recording.
+- `get_message` now normalises `last_update_time` to UTC, matching `timestamp`.
+  A naive value from Google previously passed through untouched.
+- **`doctor` reported a clean bill of health for shapes it never sampled.** It
+  checked spaces, messages and memberships only, so drift in the reaction
+  models (`list_reactions`, `add_reaction`) or the OIDC payload (`whoami`)
+  passed unnoticed — the failure `doctor` exists to catch, in the tool meant to
+  catch it. It now samples both, and honours `GCM_CHAT_API_BASE` /
+  `GCM_PEOPLE_API_BASE` instead of always checking Google's production URLs
+  regardless of where the server points — via `Settings`, so the
+  `*.googleapis.com` restriction that protects the access token still applies.
+  `--spaces 0` is rejected rather than issuing a request with `pageSize=0`.
+- **`doctor` reported schema drift on every run.** `_UserInfoResponse` did not
+  model `given_name`, `family_name`, `locale` or `hd`, which Google returns for
+  any account with the `profile` scope and any Workspace account respectively.
+  A health check that always fails is the same as no health check. Those claims
+  are now declared, and `userinfo.email` is a plain `str` so an address
+  pydantic rejects cannot fail `whoami` for the account it belongs to.
+- **`doctor` crashed instead of reporting an unreachable upstream.** Its guard
+  covered parsing, not fetching, so a missing `openid` scope or a message
+  deleted mid-run killed the process — the same exit code as real drift, with
+  the findings already collected thrown away. Every fetch now degrades to a
+  reported problem, as does a revoked or expired refresh token, which no fetch
+  guard could have covered because it fails before the first request.
+  - Exit codes now distinguish the cases: `0` clean, `1` schema drift, `2`
+    could not check (auth failed, or an upstream call did not answer). "We
+    could not look" was previously printed under a `SCHEMA DRIFT` banner with
+    remediation telling the operator to edit `src/models.py`.
+- A `Retry-After` of `nan` or `inf` reached `asyncio.sleep`, which rejects
+  non-finite delays on Python 3.13+ and corrupts the timer heap before that.
+  `float()` accepts both, so the value is now range-checked.
+- `google-chat-mcp logout` left `audit_pepper` on disk. No stored data was
+  affected — stdio sets `audit_hash_user_sub=False`, so the pepper has never
+  been read and audit rows hold the raw sub either way — but logout should
+  remove every local secret, not only the two that decrypt tokens. The SQLite
+  database is still kept: it holds the audit log and email cache, which are
+  records rather than secrets.
+
+### Changed
+- People API resolution is consolidated into a single `resolve_person_cached`
+  that owns the cache lookup, the fetch and the degrade. The cache-check →
+  fetch → cache-put sequence had been copy-pasted three ways, which is why the
+  fix above needed applying twice and still missed `remove_reaction`.
+- Message enrichment resolves one lookup per *unique sender* rather than per
+  message. A 50-message thread between three people previously issued 50
+  concurrent People API calls, since all of them missed the cold cache before
+  any result was written back.
+- The tool name reaches enrichment through a `current_tool` context variable set
+  by `invoke_tool`, rather than being passed down by each handler. Every handler
+  previously spelled its own name twice — once to `invoke_tool`, once to the
+  enrichment call — with nothing keeping the two in sync.
+- **Migrations now run once instead of on every startup.** Applied filenames are
+  recorded in a new `schema_migrations` table (created automatically; no
+  existing table is touched). Previously every `.sql` file was re-executed on
+  each boot, which forced them all to be idempotent and made a migration that
+  *transforms* data impossible to express. Every migration must still be
+  replay-safe — see `Database.migrate`.
+- **`search_people` failed outright on a personal contact with an unusual
+  address.** The `CONTACTS` source returns the caller's own address book —
+  cards typed by a human, not addresses issued by Workspace — so one saved as
+  `bob@nas.local`, `admin@router` or with a trailing dot failed
+  `PersonHit.email`'s strict `EmailStr` and turned the whole call into
+  `Internal error.`, hiding every other hit. Email fields on tool *results* are
+  now typed `str`: `ChatMessage.sender_email`, `MessageDetails.sender_email`,
+  `Member.email`, `PersonHit.email` and `WhoamiResult.email`.
+  - Only `PersonHit` had a reachable failure; the other four resolve through
+    the Workspace directory or the OIDC `/userinfo` claim, which in practice
+    hold addresses on verified, owned domains. They are relaxed for consistency
+    — and because Google documents no format contract for the field we read
+    (`EmailAddress.value` is described only as "The email address"), so
+    `EmailStr` on our side asserted a guarantee the upstream never made. Note
+    also that the Chat API's `User` object carries no email at all; every
+    address here is a People API or OIDC lookup, so Chat guarantees nothing
+    about them either.
+  - Validating these on the way *out* protected nobody: the client receives a
+    JSON string either way. Same reasoning as `extra="allow"` on the response
+    models — an upstream we do not control must not be able to turn its own
+    data into our outage. `EmailStr` is unchanged on *inputs*, where rejecting
+    a hallucinated address from a calling model is the point.
+  - Two visible consequences: the output schema loses `"format": "email"` on
+    those five fields (advisory in JSON Schema), and addresses are no longer
+    silently normalised — `EmailStr` had been rewriting
+    `Alice <alice@example.com>` to `alice@example.com` and stripping
+    surrounding whitespace.
+- **The directory cache is read once per call, not once per row.** A page of
+  senders or members resolves concurrently, so the per-row read opened one
+  SQLite connection — and one OS thread — per row, every one of them missing
+  before any could write back. At the 200-member cap that was 200 of each to
+  read rows sitting in a single file: measured 74ms and 202 threads, now 7ms
+  and none. A warm cache also now costs zero People API requests, where before
+  it cost one per row on the first call.
+
 ## [1.2.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
@@ -557,7 +710,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.2.0
 [1.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v0.4.0...v1.0.0

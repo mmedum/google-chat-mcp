@@ -27,7 +27,7 @@ import os
 import secrets
 import sys
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -44,7 +44,9 @@ from .config import GOOGLE_OAUTH_SCOPES, Settings
 from .models import (
     _ChatMembershipResponse,
     _ChatMessageResponse,
+    _ChatReactionResponse,
     _ChatSpaceResponse,
+    _UserInfoResponse,
 )
 from .observability import configure_logging
 from .tools._common import AuthInfo, AuthResolver, drift_fields
@@ -434,10 +436,17 @@ def cmd_logout(_args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"warning: revoke returned {exc} — deleting local tokens anyway", file=sys.stderr)
 
+    # Remove every local secret, not just the ones that decrypt tokens: the
+    # audit pepper is generated at first run and was left behind, so a
+    # logout/login cycle silently reused the old one.
     tokens_path.unlink(missing_ok=True)
     fernet_path = _config_dir() / _FERNET_KEY_FILE
     fernet_path.unlink(missing_ok=True)
-    print(f"Deleted {tokens_path} and {fernet_path}.")
+    pepper_path = _config_dir() / _AUDIT_PEPPER_FILE
+    pepper_path.unlink(missing_ok=True)
+    print(f"Deleted {tokens_path}, {fernet_path} and {pepper_path}.")
+    # The local SQLite database is left in place: it holds the audit log and
+    # the email cache, which are the user's own records rather than secrets.
     return 0
 
 
@@ -592,11 +601,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.spaces < 1:
+        print("error: --spaces must be at least 1", file=sys.stderr)
+        return 2
     _relax_oauthlib_token_scope()
     configure_logging("WARNING", stream=sys.stderr)
     identity = store.load()
     resolver = _build_stdio_resolver(store, identity)
-    return asyncio.run(_run_doctor(resolver, limit=args.spaces))
+    settings = _build_stdio_settings(identity)
+    return asyncio.run(_run_doctor(resolver, settings, limit=args.spaces))
+
+
+def _doctor_client(settings: Settings) -> ChatClient:
+    """A client honouring the same upstream overrides `serve` accepts.
+
+    Built from `Settings`, never from raw environment variables. `Settings`
+    applies `_restrict_upstream_base`, which refuses any base that is not
+    `https://…googleapis.com` unless `GCM_DEV_MODE=1`. Reading the env directly
+    here would have skipped that check and handed the caller's live Google
+    access token to whatever host the variable named — over plain HTTP, with no
+    opt-in. For a stdio server those variables come from the MCP client's
+    config file, so anything able to edit that file could exfiltrate the token.
+    """
+    return ChatClient(base_chat=settings.chat_api_base, base_people=settings.people_api_base)
 
 
 def _unmodelled_paths(model: BaseModel, prefix: str = "") -> list[str]:
@@ -621,11 +648,35 @@ def _unmodelled_paths(model: BaseModel, prefix: str = "") -> list[str]:
     return found
 
 
-async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
-    """Fetch a sample of live data and report every model mismatch."""
-    client = ChatClient()
+async def _run_doctor(resolver: AuthResolver, settings: Settings, *, limit: int) -> int:
+    """Fetch a sample of live data and report every model mismatch.
+
+    Samples every response model a tool actually parses: spaces, messages,
+    memberships, reactions and the OIDC userinfo payload. Checking only the
+    first three left `list_reactions` / `add_reaction` and `whoami` able to
+    break on drift that `doctor` had just reported as clean.
+
+    Every fetch is guarded. A health check that dies on the first upstream
+    error is worse than useless: it exits non-zero with a traceback — the same
+    exit code as real drift — and discards the findings it had already
+    collected. A missing scope or a message deleted mid-run is a *result* to
+    report, not a crash.
+    """
+    client = _doctor_client(settings)
     problems: list[str] = []
+    unreachable: list[str] = []
     checked = 0
+
+    async def fetch[T](what: str, coro: Awaitable[T], fallback: T) -> T:
+        try:
+            return await coro
+        except Exception as exc:
+            # Kept apart from `problems`: "we could not look" is a different
+            # answer from "the models are stale", needs different remediation,
+            # and would otherwise be counted into a failed/checked ratio it is
+            # not part of.
+            unreachable.append(f"{what}: could not be fetched ({type(exc).__name__})")
+            return fallback
 
     def check(model: type[BaseModel], raw: dict[str, Any], where: str) -> None:
         nonlocal checked
@@ -646,27 +697,85 @@ async def _run_doctor(resolver: AuthResolver, *, limit: int) -> int:
             problems.append(f"{where}: unmodelled {', '.join(unknown)}")
 
     try:
-        auth = await resolver()
+        try:
+            auth = await resolver()
+        except Exception as exc:
+            # The likeliest doctor failure of all: a refresh token that was
+            # revoked or expired. `fetch` cannot cover this one — nothing has
+            # been fetched yet — and an unhandled `RefreshError` here exits
+            # with a traceback and the same code as real drift, telling the
+            # user nothing about what to do.
+            print(
+                f"\nCANNOT AUTHENTICATE ({type(exc).__name__}).\n\n"
+                "Run `google-chat-mcp login --client-secret <path>` to re-authorize.",
+                file=sys.stderr,
+            )
+            return 2
         token = auth.access_token
-        spaces = await client.list_spaces(token, limit=limit)
+        userinfo = await fetch("userinfo", client.get_userinfo(token), {})
+        if userinfo:
+            check(_UserInfoResponse, userinfo, "userinfo")
+        spaces = await fetch("spaces", client.list_spaces(token, limit=limit), [])
         print(f"Checking {len(spaces)} space(s)...")
         for raw_space in spaces:
             check(_ChatSpaceResponse, raw_space, "space")
             space_id = raw_space.get("name")
             if not isinstance(space_id, str):
                 continue
-            for raw_msg in await client.list_messages(token, space_id=space_id, limit=5):
+            messages = await fetch(
+                f"messages in {space_id}",
+                client.list_messages(token, space_id=space_id, limit=5),
+                [],
+            )
+            for raw_msg in messages:
                 check(_ChatMessageResponse, raw_msg, f"message in {space_id}")
-            for raw_member in await client.list_members(token, space_id=space_id, limit=10):
+                # Only messages that already advertise reactions — reactions.list
+                # on every sampled message would multiply the call count for
+                # nothing, since most messages have none.
+                message_name = raw_msg.get("name")
+                if not raw_msg.get("emojiReactionSummaries") or not isinstance(message_name, str):
+                    continue
+                listed = await fetch(
+                    f"reactions on {message_name}",
+                    client.list_reactions(token, message_name=message_name, limit=10),
+                    {},
+                )
+                reactions = listed.get("reactions")
+                for raw_reaction in reactions if isinstance(reactions, list) else []:
+                    check(_ChatReactionResponse, raw_reaction, f"reaction in {space_id}")
+            members = await fetch(
+                f"memberships in {space_id}",
+                client.list_members(token, space_id=space_id, limit=10),
+                [],
+            )
+            for raw_member in members:
                 check(_ChatMembershipResponse, raw_member, f"membership in {space_id}")
     finally:
         await client.close()
 
+    if unreachable:
+        print(
+            f"\nCOULD NOT CHECK — {len(set(unreachable))} upstream call(s) failed:\n",
+            file=sys.stderr,
+        )
+        for line in sorted(set(unreachable)):
+            print(f"  {line}", file=sys.stderr)
+        print(
+            "\nThis is a reachability or permission problem, not schema drift. "
+            "Check the granted scopes and that Google is reachable, then re-run.",
+            file=sys.stderr,
+        )
     if not problems:
+        if unreachable:
+            # Some shapes were never sampled, so "OK" would overstate it.
+            print(f"{checked} live object(s) matched the models.", file=sys.stderr)
+            return 2
         print(f"OK — {checked} live objects matched the models.")
         return 0
     unique = sorted(set(problems))
-    print(f"\nSCHEMA DRIFT — {len(problems)}/{checked} objects failed:\n", file=sys.stderr)
+    print(
+        f"\nSCHEMA DRIFT — {len(unique)} of {checked} sampled object(s) failed:\n", file=sys.stderr
+    )
     for line in unique:
         print(f"  {line}", file=sys.stderr)
     print(
