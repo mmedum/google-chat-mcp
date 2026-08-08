@@ -99,6 +99,11 @@ exists. Writes are the dangerous case — they succeeded and still reported
   deployment — OAuth metadata, RFC 9728 discovery and JWT verification all
   behave — but CI cannot cover it, because the integration test stubs
   `TokenVerifier`.
+- `release.yml` now refuses to publish unless `ci` succeeded for the tagged
+  commit. A tag is only a pointer, so nothing previously stopped one landing on
+  a commit whose CI never ran or ran red — and every job below it writes
+  somewhere irreversible, PyPI most of all. Same blind spot that let the
+  lockfile sit stale for months, applied to the release path.
 - `cryptography` 46.0.7 → 50.0.0, which required widening the `pyproject.toml`
   pin from `~=46.0` to `~=50.0`. Covers a PKCS#7 decryption oracle, exponential
   blowup on chains with duplicate self-signed certificates, a name-constraint

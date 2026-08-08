@@ -11,11 +11,42 @@ permissions:
   attestations: write   # provenance/SBOM attestations on the image
 
 jobs:
+  # A tag is just a pointer — nothing stops one landing on a commit whose CI
+  # never ran or ran red. Everything below publishes somewhere irreversible
+  # (GHCR, a GitHub release, and PyPI, which allows no re-upload), so require a
+  # green `ci` run for this exact SHA first. The lockfile sat stale for months
+  # with CI red and nobody noticed; the same blind spot on the release path
+  # ships the artifact.
+  verify-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require a successful ci run for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          conclusion=$(gh api \
+            "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=completed" \
+            --jq '[.workflow_runs[] | select(.conclusion != null)][0].conclusion // "none"')
+          echo "ci conclusion for ${SHA}: ${conclusion}"
+          if [ "${conclusion}" != "success" ]; then
+            echo "::error::Refusing to release ${SHA}: ci is '${conclusion}', not 'success'." \
+                 "Push the tag only after ci passes on this commit."
+            exit 1
+          fi
+
   # One job per arch on a native runner (`ubuntu-24.04-arm` for arm64) to
   # skip QEMU emulation on the project-install layer. Each leg pushes by
   # digest only; `docker-merge` below assembles the manifest list and
   # applies the semver tags.
   docker-build:
+    needs: verify-ci
     strategy:
       fail-fast: false
       matrix:
