@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Dependency refresh.** `structlog` 25.5.0 → 26.1.0 and `ty` 0.0.31 → 0.0.69,
+  plus a relock that moved `starlette` 1.5.0 → 1.6.0 and `virtualenv` 21.7.2 →
+  21.7.3. The Docker builder's uv image goes 0.11 → 0.12, and
+  `pypa/gh-action-pypi-publish` moves to v1.14.2.
+
+  structlog numbers releases by year, so 26.1.0 is not a semver major. Its one
+  behavioural change here is that the module-global registry mapping output
+  files to write locks became a `WeakKeyDictionary`, so a file no longer stays
+  reachable for the life of the process just because a logger once wrote to it.
+  Our sinks are unaffected either way — `PrintLogger` still holds its file
+  strongly, and both production callers pass `sys.stdout` or `sys.stderr`. The
+  release notes describe this as the loggers holding weak references to their
+  files; the code does not, and it is worth reading rather than trusting if
+  this ever looks load-bearing.
+- **`ty` 0.0.31 → 0.0.69 stranded 12 of the 15 `ty: ignore` directives.** The
+  newer checker no longer reports `missing-argument` on Pydantic model
+  construction, nor the three `invalid-argument-type`/`unknown-argument` cases
+  in `src/`. `unused-ignore-comment` is only a warning but still exits 1, so
+  the dead suppressions would have failed CI; they are removed and three remain
+  load-bearing. Four `# type: ignore[...]` comments in the mypy spelling went
+  with them — there is no mypy in this project, and ty ignores the coded form,
+  so they had never suppressed anything.
+- `ci.yml` reads the uv version from one `UV_VERSION` env key instead of
+  repeating it across four jobs, and it now tracks the Dockerfile's uv tag.
+  Dependabot's `github-actions` ecosystem bumps a `uses:` SHA but never a
+  `with:` input, so those four literals were a pin nothing watched — CI had
+  been resolving the lockfile on a different uv minor than the image is built
+  with.
+
+### Fixed
+- **The Docker quickstart deployed a 0.2 image.** `compose.yml` and the
+  README pinned `ghcr.io/mmedum/google-chat-mcp:0.2` while `release.yml` had
+  been publishing `1.4`, `1.4.0` and `latest` — the tag had not moved in five
+  minor releases, so anyone following "docker compose up -d" in the README got
+  a server from the 0.2 era. Both now pin `:1.4`, which tracks patches within
+  the current minor without ever jumping a major on its own.
+
+  The release checklist in `CONTRIBUTING.md` never mentioned this pin, which is
+  how it rotted. It does now, and `ci.yml` fails when the compose tag disagrees
+  with the newest CHANGELOG heading, so a forgotten bump breaks the release
+  commit instead of shipping a stale quickstart.
+- Trivy pinned to v0.73.0 (was v0.70.0). The container scan was three minors
+  behind, on the job that gates the image.
+
+### Security
+- **The gitleaks version was written in two places and only one was watched.**
+  The `.pre-commit-config.yaml` rev sat on v8.21.2 while upstream reached
+  v8.30.1 — nine releases of detection rules — because Dependabot covered
+  `github-actions`, `uv` and `docker` but not `pre-commit`. Worse, the copy
+  that actually gates merges is `ci.yml`'s `gitleaks` job, which curled the
+  tarball by literal version: invisible to *every* ecosystem, since no
+  ecosystem parses a URL inside a `run:` step. Bumping only the hook would have
+  left the gate on the old ruleset while appearing fixed.
+
+  Both are now current and there is one source of truth: the CI job reads the
+  rev out of `.pre-commit-config.yaml`, and a new `pre-commit` ecosystem in
+  `.github/dependabot.yml` moves that rev. The upgraded scan passes clean over
+  the whole tree.
+- `docs/security.md` gains an **Accepted advisories** section, starting with
+  the `diskcache` pickle advisory (CVE-2025-69872 / PYSEC-2026-2447) that
+  `ci.yml` has suppressed since April. The suppression's comment cited a
+  "project risk assessment" that had never been written down anywhere; now it
+  points at one. No dependency changed — this records reasoning that was
+  already load-bearing.
+
 ## [1.4.0] - 2026-08-08
 
 Upgrade if you run the stdio transport. Two warnings appeared on stderr on

@@ -753,7 +753,7 @@ class _ChatSpaceResponse(_ChatBase):
         # overwrite `type` so `type_` reflects reality.
         if not isinstance(data, dict):
             return data
-        space_type = data.get("spaceType")  # ty: ignore[invalid-argument-type]
+        space_type = data.get("spaceType")
         if isinstance(space_type, str) and space_type:
             return {**data, "type": space_type}
         return data

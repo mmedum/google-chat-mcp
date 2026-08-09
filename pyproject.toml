@@ -27,7 +27,7 @@ dependencies = [
     "pydantic~=2.13",
     "pydantic-settings~=2.14",
     "httpx~=0.28",
-    "structlog~=25.5",
+    "structlog~=26.1",
     "prometheus-client~=0.24",
     "py-key-value-aio[disk]~=0.4",
     "cryptography~=50.0",
@@ -38,7 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ty==0.0.31",
+    "ty==0.0.69",
     "ruff~=0.15",
     "pytest~=9.0",
     "pytest-asyncio~=1.3",
@@ -129,11 +129,14 @@ ignore = [
 quote-style = "double"
 
 # ---------- ty ----------
-# ty is beta as of April 2026 (0.0.31); do NOT enable strict mode until 1.0 ships.
-# Leaving the default diagnostic level in place is intentional.
+# ty is 0.0.x beta; do NOT enable strict mode until 1.0 ships. Leaving the
+# default diagnostic level in place is intentional. The exact pin lives in
+# `[project.optional-dependencies]` — don't restate it here.
 #
-# ty 0.0.x does not yet accept a user-configurable `[tool.ty]` block with the
-# same shape as ruff; when 1.0 ships, move strict/src/rules config here.
+# A `[tool.ty]` block is accepted as of the pinned version, so config can move
+# here when there is a reason. There isn't one yet: the defaults are what
+# caught 12 stale `ty: ignore` directives on the last bump, and every knob
+# worth setting so far would only turn a diagnostic down.
 
 # ---------- pytest ----------
 

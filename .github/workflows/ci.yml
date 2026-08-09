@@ -15,6 +15,14 @@ permissions:
   # changed files; requires PR-metadata read access in addition to contents.
   pull-requests: read
 
+env:
+  # One place for the uv CI runs on. Dependabot's `github-actions` ecosystem
+  # bumps the `uses:` SHA but never a `with:` input, so a per-job literal here
+  # is a pin nothing watches. Keep it in step with the Dockerfile's
+  # `ghcr.io/astral-sh/uv` tag: CI resolves the lockfile the image is built
+  # from, and a split between them is only ever discovered the hard way.
+  UV_VERSION: "0.12.3"
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -51,7 +59,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          version: "0.11.7"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - name: Sync
         run: uv sync --frozen --extra dev
@@ -73,6 +81,27 @@ jobs:
         with:
           dockerfile: Dockerfile
           config: .hadolint.yaml
+      - name: Published image tag matches the current release
+        # compose.yml is what the README tells deployers to run, and its
+        # `image:` tag is a version nothing watches — it sat on 0.2 through
+        # five minor releases while `release.yml` was publishing 1.4. Anchor
+        # it to the newest CHANGELOG heading, which the release commit updates
+        # first, so a forgotten bump fails here instead of shipping a stale
+        # quickstart.
+        run: |
+          set -euo pipefail
+          want=$(sed -n 's/^## \[\([0-9]\+\.[0-9]\+\)\.[0-9]\+\].*/\1/p' CHANGELOG.md | head -1)
+          got=$(sed -n 's|^[[:space:]]*image:[[:space:]]*ghcr\.io/.*/google-chat-mcp:\(.*\)$|\1|p' compose.yml | head -1)
+          echo "CHANGELOG major.minor: ${want}   compose.yml tag: ${got}"
+          if [ -z "$want" ] || [ -z "$got" ]; then
+            echo "::error::Could not parse the release version or the compose image tag"
+            exit 1
+          fi
+          if [ "$want" != "$got" ]; then
+            echo "::error::compose.yml pins :${got} but the current release is ${want}." \
+                 "Update the image tag in compose.yml and README.md."
+            exit 1
+          fi
 
   test:
     needs: changes
@@ -91,7 +120,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          version: "0.11.7"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       # `uv sync --extra dev` (no --frozen) here — `uv.lock` is resolved
@@ -112,14 +141,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          version: "0.11.7"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - name: Sync
         run: uv sync --frozen --extra dev
       # Audit the exported lockfile rather than the environment so pip-audit
       # doesn't try (and fail) to resolve `google-chat-mcp` itself on PyPI.
       # `--no-emit-project` drops the self-package from the export.
-      # CVE-2025-69872 ignored per project risk assessment; revisit on upstream fix.
+      # CVE-2025-69872 (diskcache pickle) has no upstream fix at any version.
+      # Assessed and accepted under "Accepted advisories" in docs/security.md;
+      # revisit there on an upstream release.
       - name: pip-audit
         run: |
           uv export --format requirements-txt --no-emit-project --no-hashes -q \
@@ -144,9 +175,11 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          # Pin the Trivy CLI explicitly; the action's bundled 0.69.3 nags
-          # about newer releases in scan output. Bump when a newer ships.
-          version: v0.70.0
+          # Pin the Trivy CLI explicitly; the action's bundled build nags about
+          # newer releases in scan output. No Dependabot ecosystem reads a
+          # `with:` input, so this only moves when someone looks — check it
+          # when touching this job.
+          version: v0.73.0
           image-ref: google-chat-mcp:ci
           severity: HIGH,CRITICAL
           exit-code: "1"
@@ -164,9 +197,24 @@ jobs:
       - name: Install gitleaks
         # Direct install with a pinned tag; avoids the third-party
         # gitleaks-action wrapper and its GITHUB_TOKEN / comment-posting surface.
+        #
+        # The tag is read out of `.pre-commit-config.yaml` rather than written
+        # here. This job is the merge gate (the hook is opt-in — CONTRIBUTING
+        # says so, and `--no-verify` skips it), and a version baked into a
+        # `run:` step is invisible to every Dependabot ecosystem. Written twice,
+        # only the hook copy got bumped and the gate silently kept scanning
+        # v8.21.2 rules. One source of truth, one PR moves both.
         run: |
+          set -euo pipefail
+          rev=$(sed -n 's/^[[:space:]]*rev:[[:space:]]*\(v[0-9][^[:space:]]*\).*/\1/p' \
+            .pre-commit-config.yaml | head -1)
+          if [ -z "$rev" ]; then
+            echo "::error::Could not read the gitleaks rev from .pre-commit-config.yaml"
+            exit 1
+          fi
+          echo "gitleaks rev from .pre-commit-config.yaml: ${rev}"
           curl -sSfL -o /tmp/gitleaks.tar.gz \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+            "https://github.com/gitleaks/gitleaks/releases/download/${rev}/gitleaks_${rev#v}_linux_x64.tar.gz"
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
