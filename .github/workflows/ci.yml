@@ -81,6 +81,27 @@ jobs:
         with:
           dockerfile: Dockerfile
           config: .hadolint.yaml
+      - name: Published image tag matches the current release
+        # compose.yml is what the README tells deployers to run, and its
+        # `image:` tag is a version nothing watches — it sat on 0.2 through
+        # five minor releases while `release.yml` was publishing 1.4. Anchor
+        # it to the newest CHANGELOG heading, which the release commit updates
+        # first, so a forgotten bump fails here instead of shipping a stale
+        # quickstart.
+        run: |
+          set -euo pipefail
+          want=$(sed -n 's/^## \[\([0-9]\+\.[0-9]\+\)\.[0-9]\+\].*/\1/p' CHANGELOG.md | head -1)
+          got=$(sed -n 's|^[[:space:]]*image:[[:space:]]*ghcr\.io/.*/google-chat-mcp:\(.*\)$|\1|p' compose.yml | head -1)
+          echo "CHANGELOG major.minor: ${want}   compose.yml tag: ${got}"
+          if [ -z "$want" ] || [ -z "$got" ]; then
+            echo "::error::Could not parse the release version or the compose image tag"
+            exit 1
+          fi
+          if [ "$want" != "$got" ]; then
+            echo "::error::compose.yml pins :${got} but the current release is ${want}." \
+                 "Update the image tag in compose.yml and README.md."
+            exit 1
+          fi
 
   test:
     needs: changes
@@ -154,9 +175,11 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          # Pin the Trivy CLI explicitly; the action's bundled 0.69.3 nags
-          # about newer releases in scan output. Bump when a newer ships.
-          version: v0.70.0
+          # Pin the Trivy CLI explicitly; the action's bundled build nags about
+          # newer releases in scan output. No Dependabot ecosystem reads a
+          # `with:` input, so this only moves when someone looks — check it
+          # when touching this job.
+          version: v0.73.0
           image-ref: google-chat-mcp:ci
           severity: HIGH,CRITICAL
           exit-code: "1"

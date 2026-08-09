@@ -59,7 +59,10 @@ For workflow edits, sanity-check with
 Release cutting is maintainer-only:
 
 1. Land a `release: cut vX.Y.Z …` commit on `main` that updates
-   `CHANGELOG.md`.
+   `CHANGELOG.md`. On a minor bump, that commit must also move the
+   `ghcr.io/mmedum/google-chat-mcp:X.Y` tag in `compose.yml` and
+   `README.md` — that pin is what the quickstart deploys, and CI fails
+   the commit if it disagrees with the newest CHANGELOG heading.
 2. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z: …" && git push origin vX.Y.Z`.
 3. `release.yml` picks it up, builds the multi-arch image, pushes to
    GHCR with SBOM + provenance, and creates the GitHub release from the

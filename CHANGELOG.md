@@ -37,6 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   been resolving the lockfile on a different uv minor than the image is built
   with.
 
+### Fixed
+- **The Docker quickstart deployed a 0.2 image.** `compose.yml` and the
+  README pinned `ghcr.io/mmedum/google-chat-mcp:0.2` while `release.yml` had
+  been publishing `1.4`, `1.4.0` and `latest` — the tag had not moved in five
+  minor releases, so anyone following "docker compose up -d" in the README got
+  a server from the 0.2 era. Both now pin `:1.4`, which tracks patches within
+  the current minor without ever jumping a major on its own.
+
+  The release checklist in `CONTRIBUTING.md` never mentioned this pin, which is
+  how it rotted. It does now, and `ci.yml` fails when the compose tag disagrees
+  with the newest CHANGELOG heading, so a forgotten bump breaks the release
+  commit instead of shipping a stale quickstart.
+- Trivy pinned to v0.73.0 (was v0.70.0). The container scan was three minors
+  behind, on the job that gates the image.
+
 ### Security
 - **The gitleaks version was written in two places and only one was watched.**
   The `.pre-commit-config.yaml` rev sat on v8.21.2 while upstream reached
