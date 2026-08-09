@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-09
+
+Maintenance only — no behaviour changes, no tool changes. Nothing here forces
+an upgrade. Take it if you want the refreshed dependency set: `structlog` moves
+to 26.1.0 in the package metadata, and the published image is rebuilt on uv
+0.12.
+
+Patch rather than minor: the twenty-one tools and three resources are
+untouched, log output is byte-identical (the processor chain in
+`src/observability.py` is unchanged and stable across the structlog bump), and
+no configuration key was added, renamed, or given a new default.
+
+Docker users on the README's quickstart should note the fix below — the compose
+file had been pinning a 0.2 image, and that is corrected on `main` regardless
+of this tag.
+
 ### Changed
 - **Dependency refresh.** `structlog` 25.5.0 → 26.1.0 and `ty` 0.0.31 → 0.0.69,
   plus a relock that moved `starlette` 1.5.0 → 1.6.0 and `virtualenv` 21.7.2 →
@@ -835,7 +851,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.1...v1.2.0
