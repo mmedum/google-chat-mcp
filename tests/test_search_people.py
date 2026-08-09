@@ -122,7 +122,7 @@ async def test_hybrid_fan_out_merges_and_dedupes(tool_ctx: ToolContext, mock_acc
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="a"),  # ty: ignore[missing-argument]
+            SearchPeopleInput(query="a"),
         )
     assert result.total_returned == 2
     by_email = {h.email: h for h in result.people}
@@ -169,7 +169,7 @@ async def test_one_source_missing_scope_continues_with_the_other(
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="bob"),  # ty: ignore[missing-argument]
+            SearchPeopleInput(query="bob"),
         )
     assert result.sources_attempted == ["DIRECTORY", "CONTACTS"]
     assert result.sources_succeeded == ["CONTACTS"]
@@ -210,7 +210,7 @@ async def test_directory_sharing_disabled_degrades_to_contacts(
         )
         result = await search_people_handler(
             tool_ctx,
-            SearchPeopleInput(query="janedoe"),  # ty: ignore[missing-argument]
+            SearchPeopleInput(query="janedoe"),
         )
     assert result.sources_succeeded == ["CONTACTS"]
     assert result.total_returned == 1
@@ -246,7 +246,7 @@ async def test_all_sources_non_scope_error_raises_with_reasons(
         with pytest.raises(ToolError, match="all sources failed"):
             await search_people_handler(
                 tool_ctx,
-                SearchPeopleInput(query="x"),  # ty: ignore[missing-argument]
+                SearchPeopleInput(query="x"),
             )
 
 
@@ -278,7 +278,7 @@ async def test_all_sources_missing_scope_raises(tool_ctx: ToolContext, mock_acce
         with pytest.raises(ToolError, match="scope"):
             await search_people_handler(
                 tool_ctx,
-                SearchPeopleInput(query="nobody"),  # ty: ignore[missing-argument]
+                SearchPeopleInput(query="nobody"),
             )
 
 
@@ -286,20 +286,20 @@ def test_empty_query_rejected_at_model_boundary() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        SearchPeopleInput(query="")  # ty: ignore[missing-argument]
+        SearchPeopleInput(query="")
 
 
 def test_limit_bounds_enforced() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        SearchPeopleInput(query="x", limit=0)  # ty: ignore[missing-argument]
+        SearchPeopleInput(query="x", limit=0)
     with pytest.raises(ValidationError):
-        SearchPeopleInput(query="x", limit=101)  # ty: ignore[missing-argument]
+        SearchPeopleInput(query="x", limit=101)
 
 
 def test_default_sources_is_hybrid() -> None:
-    payload = SearchPeopleInput(query="x")  # ty: ignore[missing-argument]
+    payload = SearchPeopleInput(query="x")
     assert payload.sources == ["DIRECTORY", "CONTACTS"]
 
 

@@ -56,7 +56,10 @@ Threat model and trust boundaries live in
 - Python 3.12–3.14 (`requires-python = ">=3.12,<3.15"` in `pyproject.toml`; `.python-version` pins dev/CI default to 3.14)
 - FastMCP `~= 3.2` (current 3.4.6; 3.4.0 migrated auth JWTs to `joserfc`, and
   `fastmcp` is now a shim over `fastmcp-slim`)
-- `ty == 0.0.31` (pinned exactly — it's 0.0.x beta, every patch can have breaking changes; no strict mode)
+- `ty == 0.0.69` (pinned exactly — it's 0.0.x beta, every patch can have
+  breaking changes; no strict mode). Expect a bump to strand `ty: ignore`
+  directives: `unused-ignore-comment` is a warning that still exits 1, so CI
+  names the stale ones for you — `rg "ty: ignore" src tests` to see what's live
 - `ruff ~= 0.15` (current 0.16.2; 0.16 stabilised `PLR0917`, hence its entry in
   the ignore list)
 - Pydantic v2: tool I/O models use `extra="forbid"` + `strict=True`; Chat API response models use `extra="allow"` and report unknown keys via `schema_drift` + `mcp_schema_drift_total` (drift must be observable, not fatal — see `docs/architecture.md`)

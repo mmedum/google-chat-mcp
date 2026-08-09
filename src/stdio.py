@@ -618,8 +618,8 @@ def cmd_serve(_args: argparse.Namespace) -> int:
         resolver: AuthResolver = _stub_auth_resolver()
         identity: dict[str, Any] = {}
     else:
-        identity = store.load()  # type: ignore[unbound]
-        resolver = _build_stdio_resolver(store, identity)  # type: ignore[unbound]
+        identity = store.load()
+        resolver = _build_stdio_resolver(store, identity)
     settings = _build_stdio_settings(identity)
     app = build_app(settings, resolver=resolver)
     app.run()  # Default transport is stdio.

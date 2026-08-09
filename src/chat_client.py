@@ -878,7 +878,7 @@ def _scrub_query(url: str, params: _QueryParams | None) -> str:
         return url
     pairs = params.items() if isinstance(params, Mapping) else params
     safe = [(k, v) for k, v in pairs if k != "access_token"]
-    return f"{url}?{urlencode(safe)}"  # ty: ignore[invalid-argument-type]
+    return f"{url}?{urlencode(safe)}"
 
 
 @asynccontextmanager

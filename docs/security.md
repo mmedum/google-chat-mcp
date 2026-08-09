@@ -44,6 +44,28 @@ table and its own set of at-rest assumptions.
 - DOS / rate-limit evasion / regex DOS (project doesn't claim DOS resistance).
 - Prompt-injection of the MCP client's LLM via tool result content (client-side concern).
 
+## Accepted advisories
+
+Advisories with no upstream fix, suppressed in CI so the audit job stays
+meaningful. `ci.yml`'s `pip-audit` step points here. Revisit each on an
+upstream release.
+
+- **`diskcache` 5.6.3 — CVE-2025-69872 / PYSEC-2026-2447** (medium, CVSS 4.0
+  5.2). diskcache serializes with pickle, so anyone who can write to the cache
+  directory gets code execution in the reading process. Every release through
+  5.6.3 is affected and there is no fixed version, so this cannot be resolved
+  by upgrading.
+
+  Reachable only on the HTTPS transport: `DiskStore` in `src/server.py` backs
+  the OAuth token store at `kv_store_path`. The stdio transport never
+  constructs it. The `FernetEncryptionWrapper` around that store does **not**
+  mitigate it — diskcache unpickles the file before the Fernet layer sees the
+  value, so encryption protects the token at rest and nothing else.
+
+  Accepted because reaching it requires write access to `kv_store_path` inside
+  the container, which is already "compromise of the host OS / root" above.
+  It buys an attacker who holds that nothing they did not already have.
+
 ## Security-relevant invariants (enforced by code)
 
 These properties are guaranteed by Pydantic validation and config-parse

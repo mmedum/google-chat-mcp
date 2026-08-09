@@ -216,12 +216,12 @@ class Settings(BaseSettings):
     @classmethod
     def from_env(cls) -> Settings:
         """Construct from `GCM_*` env vars + `/run/secrets/GCM_*` (HTTPS transport)."""
-        return cls()  # type: ignore[call-arg]
+        return cls()
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> Settings:
         """Construct from an explicit mapping, bypassing env/secrets auto-load (stdio transport)."""
-        return cls(_env_file=None, **values)  # ty: ignore[unknown-argument]
+        return cls(_env_file=None, **values)
 
     @model_validator(mode="after")
     def _validate_audit_pepper(self) -> Settings:

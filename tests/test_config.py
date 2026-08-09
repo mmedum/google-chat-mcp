@@ -231,7 +231,7 @@ def test_from_mapping_bypasses_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_from_env_matches_bare_construction() -> None:
     # Classmethod is a thin alias; behavior parity with cls() must hold.
     a = Settings.from_env()
-    b = Settings()  # type: ignore[call-arg]
+    b = Settings()
     assert a.base_url == b.base_url
     assert a.google_client_id.get_secret_value() == b.google_client_id.get_secret_value()
 

@@ -10,6 +10,15 @@ permissions:
   id-token: write       # OIDC for Sigstore provenance attestations
   attestations: write   # provenance/SBOM attestations on the image
 
+env:
+  # Keep in step with ci.yml's UV_VERSION and the Dockerfile's
+  # `ghcr.io/astral-sh/uv` tag. Workflows can't share an `env:` block, so this
+  # is duplicated deliberately — a bare `${{ env.UV_VERSION }}` with nothing
+  # defining it expands to the empty string and setup-uv quietly installs
+  # latest, which on the publish path means building the sdist and wheel with
+  # an unpinned toolchain.
+  UV_VERSION: "0.12.3"
+
 jobs:
   # A tag is just a pointer — nothing stops one landing on a commit whose CI
   # never ran or ran red. Everything below publishes somewhere irreversible
@@ -223,12 +232,12 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          version: "0.11.7"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - name: Build sdist and wheel
         run: uv build
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
         with:
           packages-dir: dist/
           print-hash: true
