@@ -38,7 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ty==0.0.69",
+    "ty==0.0.71",
     "ruff~=0.15",
     "pytest~=9.0",
     "pytest-asyncio~=1.3",
