@@ -16,7 +16,12 @@ from src.tools import (
     list_reactions_handler,
     remove_reaction_handler,
 )
-from src.tools._common import ToolContext
+from src.tools._common import (
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES_READONLY,
+    AuthInfo,
+    ToolContext,
+)
 
 from tests.conftest import person_payload
 
@@ -154,6 +159,50 @@ async def test_list_reactions_paginates(tool_ctx: ToolContext, mock_access_token
     assert out.reactions[0].emoji == "🙂"
     assert out.reactions[0].reaction_name == "spaces/AAA/messages/M.1/reactions/r1"
     assert out.next_page_token == "cursor-xyz"
+
+
+@pytest.mark.asyncio
+async def test_list_reactions_accepts_message_readonly_scope(tool_ctx: ToolContext) -> None:
+    async def resolver() -> AuthInfo:
+        return AuthInfo(
+            access_token="upstream-access-token",
+            user_sub="test-user-sub",
+            granted_scopes=(CHAT_MESSAGES_READONLY,),
+        )
+
+    tool_ctx.resolver = resolver
+    with respx.mock() as mock:
+        route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(200, json={"reactions": []})
+        )
+        out = await list_reactions_handler(
+            tool_ctx, ListReactionsInput(message_name="spaces/AAA/messages/M.1")
+        )
+
+    assert out.reactions == []
+    assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_reactions_preserves_reaction_scope_support(tool_ctx: ToolContext) -> None:
+    async def resolver() -> AuthInfo:
+        return AuthInfo(
+            access_token="upstream-access-token",
+            user_sub="test-user-sub",
+            granted_scopes=(CHAT_MESSAGES_REACTIONS,),
+        )
+
+    tool_ctx.resolver = resolver
+    with respx.mock() as mock:
+        route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(200, json={"reactions": []})
+        )
+        out = await list_reactions_handler(
+            tool_ctx, ListReactionsInput(message_name="spaces/AAA/messages/M.1")
+        )
+
+    assert out.reactions == []
+    assert route.call_count == 1
 
 
 @pytest.mark.asyncio

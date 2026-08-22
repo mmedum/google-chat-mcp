@@ -300,13 +300,14 @@ async def invoke_tool[T](
     *,
     target_space_id: str | None = None,
     required_scope: str | None = None,
+    accepted_scopes: tuple[str, ...] | None = None,
 ) -> T:
     """Run a tool handler with audit, metrics, rate-limit, and auth context.
 
-    `required_scope`, when provided, drives the missing-scope error wrapping:
-    on an upstream 403 matching Google's insufficient-scope shape, the user-
-    facing ToolError names the exact scope so the MCP client can prompt for
-    re-auth.
+    `required_scope`, when provided, drives the missing-scope error wrapping.
+    `accepted_scopes` can list equivalent grants for APIs that accept more than
+    one scope; the preferred `required_scope` remains the one shown in re-auth
+    prompts. When omitted, only `required_scope` satisfies the pre-flight check.
     """
     auth = await (ctx.resolver() if ctx.resolver is not None else _resolve_auth_via_fastmcp())
     user_sub = auth.user_sub
@@ -331,10 +332,12 @@ async def invoke_tool[T](
         # purpose: it denies the same call the 403 path denies, so it has to
         # leave the same audit row, metric and `missing_scope` code rather than
         # returning an error no one can account for afterwards.
+        scope_options = accepted_scopes or ((required_scope,) if required_scope is not None else ())
         if (
             required_scope is not None
             and auth.granted_scopes is not None
-            and required_scope not in auth.granted_scopes
+            and scope_options
+            and not any(scope in auth.granted_scopes for scope in scope_options)
         ):
             error_code = "missing_scope"
             logger.warning(
