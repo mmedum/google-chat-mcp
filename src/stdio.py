@@ -362,12 +362,13 @@ def cmd_login(args: argparse.Namespace) -> int:
         client_secret_path, scopes=list(GOOGLE_OAUTH_SCOPES)
     )
     # port=0 → OS picks a random loopback port (RFC 8252 desktop flow).
-    # The flow library handles PKCE + state, opens the browser, prints the URL
-    # first (so headless users can paste), and blocks until the callback.
+    # The flow library handles PKCE + state, prints the authorization URL, and
+    # blocks until the loopback callback. Browser launch is deliberately off so
+    # login works consistently on desktops, servers, and remote shells.
     credentials = flow.run_local_server(
         host="127.0.0.1",
         port=0,
-        open_browser=True,
+        open_browser=False,
         authorization_prompt_message=(
             "\nOpen this URL in a browser to authorize google-chat-mcp:\n\n  {url}\n"
         ),

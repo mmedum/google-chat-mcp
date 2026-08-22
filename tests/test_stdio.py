@@ -215,6 +215,7 @@ def test_login_end_to_end(
     run_kwargs = fake_flow.run_local_server.call_args.kwargs
     assert run_kwargs["host"] == "127.0.0.1"
     assert run_kwargs["port"] == 0
+    assert run_kwargs["open_browser"] is False
     # URL prompt shown to the user (headless-safe).
     assert "Open this URL" in run_kwargs["authorization_prompt_message"]
 
