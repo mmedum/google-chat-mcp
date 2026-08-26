@@ -44,144 +44,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.1] - 2026-08-09
 
-Maintenance only — no behaviour changes, no tool changes. Nothing here forces
-an upgrade. Take it if you want the refreshed dependency set: `structlog` moves
-to 26.1.0 in the package metadata, and the published image is rebuilt on uv
-0.12.
+Maintenance only. No tool or behaviour changes, so nothing here forces an
+upgrade — take it for the refreshed dependency set.
 
-Patch rather than minor: the twenty-one tools and three resources are
-untouched, log output is byte-identical (the processor chain in
-`src/observability.py` is unchanged and stable across the structlog bump), and
-no configuration key was added, renamed, or given a new default.
-
-Docker users on the README's quickstart should note the fix below — the compose
-file had been pinning a 0.2 image, and that is corrected on `main` regardless
-of this tag.
+Docker users on the README quickstart should take the compose fix below.
 
 ### Changed
-- **Dependency refresh.** `structlog` 25.5.0 → 26.1.0 and `ty` 0.0.31 → 0.0.69,
-  plus a relock that moved `starlette` 1.5.0 → 1.6.0 and `virtualenv` 21.7.2 →
-  21.7.3. The Docker builder's uv image goes 0.11 → 0.12, and
-  `pypa/gh-action-pypi-publish` moves to v1.14.2.
-
-  structlog numbers releases by year, so 26.1.0 is not a semver major. Its one
-  behavioural change here is that the module-global registry mapping output
-  files to write locks became a `WeakKeyDictionary`, so a file no longer stays
-  reachable for the life of the process just because a logger once wrote to it.
-  Our sinks are unaffected either way — `PrintLogger` still holds its file
-  strongly, and both production callers pass `sys.stdout` or `sys.stderr`. The
-  release notes describe this as the loggers holding weak references to their
-  files; the code does not, and it is worth reading rather than trusting if
-  this ever looks load-bearing.
-- **`ty` 0.0.31 → 0.0.69 stranded 12 of the 15 `ty: ignore` directives.** The
-  newer checker no longer reports `missing-argument` on Pydantic model
-  construction, nor the three `invalid-argument-type`/`unknown-argument` cases
-  in `src/`. `unused-ignore-comment` is only a warning but still exits 1, so
-  the dead suppressions would have failed CI; they are removed and three remain
-  load-bearing. Four `# type: ignore[...]` comments in the mypy spelling went
-  with them — there is no mypy in this project, and ty ignores the coded form,
-  so they had never suppressed anything.
-- `ci.yml` reads the uv version from one `UV_VERSION` env key instead of
-  repeating it across four jobs, and it now tracks the Dockerfile's uv tag.
-  Dependabot's `github-actions` ecosystem bumps a `uses:` SHA but never a
-  `with:` input, so those four literals were a pin nothing watched — CI had
-  been resolving the lockfile on a different uv minor than the image is built
-  with.
+- **Dependency refresh.** `structlog` 25.5.0 → 26.1.0, `ty` 0.0.31 → 0.0.69,
+  `starlette` 1.5.0 → 1.6.0, `virtualenv` 21.7.2 → 21.7.3. The Docker builder
+  moves to uv 0.12 and `pypa/gh-action-pypi-publish` to v1.14.2. Log output is
+  unchanged across the structlog bump.
+- **`ty` 0.0.31 → 0.0.69 stranded 12 of the 15 `ty: ignore` directives**, plus
+  four `# type: ignore` comments in the mypy spelling that had never suppressed
+  anything. Removed; three remain load-bearing.
+- `ci.yml` reads the uv version from one `UV_VERSION` key instead of repeating
+  it across four jobs, and tracks the Dockerfile's uv tag. Dependabot never
+  bumps a `with:` input, so those literals were a pin nothing watched.
 
 ### Fixed
-- **The Docker quickstart deployed a 0.2 image.** `compose.yml` and the
-  README pinned `ghcr.io/mmedum/google-chat-mcp:0.2` while `release.yml` had
-  been publishing `1.4`, `1.4.0` and `latest` — the tag had not moved in five
-  minor releases, so anyone following "docker compose up -d" in the README got
-  a server from the 0.2 era. Both now pin `:1.4`, which tracks patches within
-  the current minor without ever jumping a major on its own.
-
-  The release checklist in `CONTRIBUTING.md` never mentioned this pin, which is
-  how it rotted. It does now, and `ci.yml` fails when the compose tag disagrees
-  with the newest CHANGELOG heading, so a forgotten bump breaks the release
-  commit instead of shipping a stale quickstart.
-- Trivy pinned to v0.73.0 (was v0.70.0). The container scan was three minors
-  behind, on the job that gates the image.
+- **The Docker quickstart deployed a 0.2 image.** `compose.yml` and the README
+  pinned `:0.2` while releases had been publishing `1.4`, so `docker compose up
+  -d` from the README gave you a server five minors old. Both now pin `:1.4`,
+  and CI fails if the compose tag falls behind the changelog.
+- Trivy pinned to v0.73.0, was v0.70.0 — three minors behind on the job that
+  gates the image.
 
 ### Security
 - **The gitleaks version was written in two places and only one was watched.**
-  The `.pre-commit-config.yaml` rev sat on v8.21.2 while upstream reached
-  v8.30.1 — nine releases of detection rules — because Dependabot covered
-  `github-actions`, `uv` and `docker` but not `pre-commit`. Worse, the copy
-  that actually gates merges is `ci.yml`'s `gitleaks` job, which curled the
-  tarball by literal version: invisible to *every* ecosystem, since no
-  ecosystem parses a URL inside a `run:` step. Bumping only the hook would have
-  left the gate on the old ruleset while appearing fixed.
-
-  Both are now current and there is one source of truth: the CI job reads the
-  rev out of `.pre-commit-config.yaml`, and a new `pre-commit` ecosystem in
-  `.github/dependabot.yml` moves that rev. The upgraded scan passes clean over
-  the whole tree.
-- `docs/security.md` gains an **Accepted advisories** section, starting with
-  the `diskcache` pickle advisory (CVE-2025-69872 / PYSEC-2026-2447) that
-  `ci.yml` has suppressed since April. The suppression's comment cited a
-  "project risk assessment" that had never been written down anywhere; now it
-  points at one. No dependency changed — this records reasoning that was
-  already load-bearing.
+  The pre-commit hook sat nine releases behind, and the CI job that actually
+  gates merges fetched by literal version inside a `run:` step, invisible to
+  every Dependabot ecosystem. Both are current, CI now reads the version from
+  `.pre-commit-config.yaml`, and a `pre-commit` ecosystem keeps it moving.
+- `docs/security.md` gains an **Accepted advisories** section, starting with the
+  `diskcache` pickle advisory (CVE-2025-69872) that CI has suppressed since
+  April. No dependency changed — this writes down reasoning that was already
+  load-bearing.
 
 ## [1.4.0] - 2026-08-08
 
-Upgrade if you run the stdio transport. Two warnings appeared on stderr on
-every session while meaning nothing, in the one channel `docs/runbook.md` tells
-stdio operators to watch — stdio has no `/metrics` endpoint, so stderr is the
-only place degraded People lookups show up. Routine noise there teaches people
-to ignore it.
+Upgrade if you run the stdio transport. Two warnings hit stderr on every
+session while meaning nothing — and stderr is the only place stdio surfaces
+degraded lookups, so noise there teaches people to ignore it.
 
-Minor rather than patch: no tool is removed, renamed or reshaped, but
-`tokens.json` changes what it records, a scope check that had never fired
-starts enforcing, and denied calls start producing audit rows. See the rollback
-caveat below before downgrading.
+Minor rather than patch: no tool changes, but `tokens.json` changes what it
+records, a scope check that had never fired starts enforcing, and denied calls
+start producing audit rows. Note the rollback caveat below.
 
 ### Fixed
-- **Two warnings on stderr that never meant anything.** Both fired on `serve`,
-  not just `doctor`, so they reached every stdio user's client log on every
-  session.
-  - `UserWarning: directory "/run/secrets" does not exist` — that path exists
-    only in the Docker deployment, but `secrets_dir` was passed unconditionally.
-    It is now passed only when the directory is really there.
-  - `Not all requested scopes were granted by the authorization server, missing
-    scopes email, profile` — Google accepts `email` and `profile` on the
-    authorization request and reports them back as their `userinfo.*` URLs.
-    google-auth compares the two lists verbatim on every token refresh and
-    warned about scopes that had in fact been granted. The aliases are now
-    translated to the URL form Google echoes back, so the mismatch is gone
-    rather than muted: a scope that was genuinely withheld still warns.
-- **`tokens.json` recorded the requested scopes under the key `granted_scopes`.**
-  `credentials.scopes` is only ever the list we asked for — it is never
-  reconciled against the token response — so the stored set always contained
-  every scope in `GOOGLE_OAUTH_SCOPES`. The pre-flight scope check in
-  `invoke_tool` compares against that set, which meant it could never fire, and
-  a scope the user had declined surfaced only as an upstream 403. Login now
-  stores `credentials.granted_scopes`, what Google actually returned.
-  - Existing `tokens.json` files keep working and need no re-login: the alias
-    translation above is applied when the stored scopes are read, so the refresh
-    warning stops immediately. The pre-flight check starts reflecting reality at
-    the next `google-chat-mcp login`.
-  - A missing, empty or malformed stored scope list is now reported as *unknown*
-    rather than as *nothing granted*. The latter made the pre-flight check
-    reject every tool call locally; it now defers to Google's 403, matching the
-    HTTPS transport. A hand-edited `"granted_scopes": "openid email"` (a string
-    where a list belongs) is treated the same way instead of being compared one
-    character at a time.
-  - Every refresh response now updates the stored scopes. A `tokens.json`
-    written before this fix corrects itself on the next refresh rather than
-    waiting for a re-login, and a scope revoked in Google account settings stops
-    being honoured locally.
+- **Two meaningless warnings on stderr.** `directory "/run/secrets" does not
+  exist` fired outside Docker because `secrets_dir` was passed unconditionally;
+  it is now passed only when the directory exists. `missing scopes email,
+  profile` fired on every token refresh because Google echoes those two back as
+  `userinfo.*` URLs and google-auth compared the lists verbatim; the aliases are
+  translated, so a genuinely withheld scope still warns.
+- **`tokens.json` recorded the scopes we asked for, not the ones Google
+  granted.** The stored set therefore always looked complete, so the pre-flight
+  scope check could never fire and a declined scope showed up only as an
+  upstream 403. Login now stores `credentials.granted_scopes`.
+  - Existing files keep working with no re-login. The refresh warning stops
+    immediately; the scope check starts reflecting reality at the next login,
+    and every refresh updates the stored set from then on.
+  - A missing or malformed scope list now reads as *unknown* and defers to
+    Google's 403, rather than as *nothing granted* — which had rejected every
+    call locally.
   - **Rollback caveat:** if Google returns no scope list at login, this version
-    stores an empty one. Version 1.3.0 and earlier read that as *nothing
-    granted* and refuse every tool call. Re-run `google-chat-mcp login` after
-    downgrading.
-- **A locally-denied tool call left no trace.** The pre-flight scope check
-  raised before the rate limiter, the latency metric and the audit write, so a
-  denial recorded nothing — while the identical denial caught as an upstream 403
-  was audited as `missing_scope`. The check now runs inside the instrumented
-  block and records the same way. It had never fired in a release, so no
-  existing audit history is affected.
+    stores an empty one, and 1.3.0 and earlier read that as nothing granted and
+    refuse every tool call. Re-run `google-chat-mcp login` after downgrading.
+- **A locally-denied tool call left no trace.** The scope check raised before
+  the audit write, so a local denial recorded nothing while the identical
+  upstream 403 was audited. It now records the same way. The check had never
+  fired in a release, so no existing audit history is affected.
 
 ## [1.3.0] - 2026-08-08
 
@@ -189,294 +121,143 @@ Upgrade if you read messages or members. On 1.2.0 and earlier, `get_messages`,
 `get_thread` and `list_members` returned an **empty list** — not an error —
 whenever Google's People API refused an email lookup, which happens whenever
 `directory.readonly` was never granted. An agent reads that as "this space is
-empty" and says so confidently. Minor, not major: no tool removed or renamed,
-no input shape changed.
+empty" and says so confidently.
 
-No data migration, and no existing table is touched: the retention fix is in
-the query. The one schema change is a new `schema_migrations` bookkeeping
+No data migration. The one schema change is a `schema_migrations` bookkeeping
 table, created automatically on first start.
 
 ### Fixed
-- **`get_messages`, `get_thread` and `list_members` returned an empty list
-  whenever the People API refused a lookup.** Email resolution runs after the
-  Chat API call, and a 403 (`directory.readonly` not granted), 429, 5xx or a
-  transport timeout propagated out of the per-row enrichment — where each of
-  these gathers with `return_exceptions=True`, so the row was dropped. With
-  every lookup failing, every row was dropped and the tool returned `[]`. A
-  calling model reads that as *this space is empty*, not *lookups are broken*:
-  the same silent-emptiness failure as the `markupSyntax` outage, where
-  `search_messages` reported zero matches over a scan that never parsed a row.
-  - `get_message` returns a single message rather than a list, so the same
-    failure surfaced there as a hard `ToolError` naming the Chat API — wrong
-    and misleading, since the message itself had been fetched successfully.
-  - `remove_reaction`'s `(message, emoji, user_email)` shape resolves each
-    reactor's email the same way, and a failed lookup made it skip that reactor
-    and report `removed: false` — which the tool documents as "already gone",
-    so a calling model stops looking. It now raises instead whenever any
-    reactor's address failed to resolve: an unresolved reactor means a match
-    cannot be ruled out, so an absence must not be reported as established.
-  - Enrichment now degrades to `email: null` and keeps the row, which is what
-    `docs/runbook.md` already described. New `mcp_people_lookup_failures_total`
-    counter makes the degradation visible; the previous behaviour had no metric
-    at all.
-- **A `Retry-After` header could park a tool call for hours.** `Retry-After` was
-  honoured verbatim, bypassing the 30s backoff ceiling that applied to the
-  computed path, so a 429 carrying `Retry-After: 3600` slept for an hour per
-  attempt — up to three times in one call, with no output and no error. It is
-  now bounded on both sides by the exponential schedule: capped at 30s, and
-  floored at the attempt's base delay so that `0` or a negative value cannot
-  spend every attempt in microseconds against an upstream that just asked for
-  backpressure. Non-numeric values (the header also permits an HTTP-date) fall
-  back to exponential backoff.
-- **`prune_audit_log` deleted up to 24h more history than the retention window.**
-  The cutoff was bound as `datetime.isoformat()` while rows store SQLite's
-  `CURRENT_TIMESTAMP` format. `TIMESTAMP` carries NUMERIC affinity, so the two
-  were compared lexicographically — and `T` (0x54) sorts after the stored space
-  (0x20), making every row that shared the cutoff's calendar date compare as
-  older. Under the default 90-day retention each daily prune silently discarded
-  an extra day of audit records. The cutoff is now formatted to match the
-  stored representation, which also keeps `idx_audit_log_timestamp` usable.
-- **A failing audit write replaced the tool's actual result.** The audit row is
-  written in `invoke_tool`'s `finally`, and an exception escaping a `finally`
-  supersedes the value or exception in flight — so a locked or full SQLite file
-  turned a completed call into an unrelated `OperationalError`. For a write
-  tool that is the duplicate hazard again: the write landed, the caller saw a
-  database error, and a retry would repeat it. Audit failures are now logged
-  (`audit_write_failed`), counted (`mcp_audit_write_failures_total`) and
-  swallowed — fail-open, but not silently, since nothing else would reveal that
-  `audit_log` had stopped recording.
-- `get_message` now normalises `last_update_time` to UTC, matching `timestamp`.
-  A naive value from Google previously passed through untouched.
-- **`doctor` reported a clean bill of health for shapes it never sampled.** It
-  checked spaces, messages and memberships only, so drift in the reaction
-  models (`list_reactions`, `add_reaction`) or the OIDC payload (`whoami`)
-  passed unnoticed — the failure `doctor` exists to catch, in the tool meant to
-  catch it. It now samples both, and honours `GCM_CHAT_API_BASE` /
-  `GCM_PEOPLE_API_BASE` instead of always checking Google's production URLs
-  regardless of where the server points — via `Settings`, so the
-  `*.googleapis.com` restriction that protects the access token still applies.
-  `--spaces 0` is rejected rather than issuing a request with `pageSize=0`.
-- **`doctor` reported schema drift on every run.** `_UserInfoResponse` did not
-  model `given_name`, `family_name`, `locale` or `hd`, which Google returns for
-  any account with the `profile` scope and any Workspace account respectively.
-  A health check that always fails is the same as no health check. Those claims
-  are now declared, and `userinfo.email` is a plain `str` so an address
-  pydantic rejects cannot fail `whoami` for the account it belongs to.
-- **`doctor` crashed instead of reporting an unreachable upstream.** Its guard
-  covered parsing, not fetching, so a missing `openid` scope or a message
-  deleted mid-run killed the process — the same exit code as real drift, with
-  the findings already collected thrown away. Every fetch now degrades to a
-  reported problem, as does a revoked or expired refresh token, which no fetch
-  guard could have covered because it fails before the first request.
-  - Exit codes now distinguish the cases: `0` clean, `1` schema drift, `2`
-    could not check (auth failed, or an upstream call did not answer). "We
-    could not look" was previously printed under a `SCHEMA DRIFT` banner with
-    remediation telling the operator to edit `src/models.py`.
-- A `Retry-After` of `nan` or `inf` reached `asyncio.sleep`, which rejects
-  non-finite delays on Python 3.13+ and corrupts the timer heap before that.
-  `float()` accepts both, so the value is now range-checked.
+- **Read tools returned an empty list when the People API refused a lookup.**
+  Email resolution runs after the Chat API call, and a 403, 429, 5xx or timeout
+  dropped the row it was enriching — so with every lookup failing, every row was
+  dropped. Enrichment now degrades to `email: null` and keeps the row, with a
+  new `mcp_people_lookup_failures_total` counter making it visible.
+  - `get_message` surfaced the same failure as a hard error naming the Chat API,
+    which was misleading — the message itself had been fetched fine.
+  - `remove_reaction`'s `(message, emoji, user_email)` shape skipped reactors it
+    could not resolve and reported `removed: false`, documented as "already
+    gone". It now raises instead: an unresolved reactor means absence cannot be
+    established.
+- **A `Retry-After` header could park a tool call for hours.** It was honoured
+  verbatim, bypassing the 30s backoff ceiling, so `Retry-After: 3600` slept for
+  an hour per attempt. Now capped at 30s and floored at the attempt's base
+  delay; non-numeric and non-finite values fall back to exponential backoff.
+- **`prune_audit_log` deleted up to 24h more history than the retention
+  window.** The cutoff was formatted differently from the stored timestamps and
+  compared lexicographically, so every row sharing the cutoff's date looked
+  older. Fixed, which also keeps the timestamp index usable.
+- **A failing audit write replaced the tool's actual result.** The write happens
+  in a `finally`, so a locked or full SQLite file turned a completed call into
+  an unrelated database error — the duplicate hazard again on write tools.
+  Audit failures are now logged, counted and swallowed.
+- **`doctor` was unreliable in three ways.** It never sampled the reaction or
+  OIDC shapes, so drift there passed unnoticed. It reported drift on every run
+  because four fields Google always returns were undeclared. And it crashed
+  instead of reporting when an upstream was unreachable, discarding the findings
+  it had already collected. Exit codes now distinguish clean (`0`), drift (`1`)
+  and could-not-check (`2`), and it honours the configured API base URLs.
+- `get_message` normalises `last_update_time` to UTC, matching `timestamp`.
 - `google-chat-mcp logout` left `audit_pepper` on disk. No stored data was
-  affected — stdio sets `audit_hash_user_sub=False`, so the pepper has never
-  been read and audit rows hold the raw sub either way — but logout should
-  remove every local secret, not only the two that decrypt tokens. The SQLite
-  database is still kept: it holds the audit log and email cache, which are
-  records rather than secrets.
+  affected, but logout should remove every local secret.
 
 ### Changed
-- People API resolution is consolidated into a single `resolve_person_cached`
-  that owns the cache lookup, the fetch and the degrade. The cache-check →
-  fetch → cache-put sequence had been copy-pasted three ways, which is why the
-  fix above needed applying twice and still missed `remove_reaction`.
-- Message enrichment resolves one lookup per *unique sender* rather than per
-  message. A 50-message thread between three people previously issued 50
-  concurrent People API calls, since all of them missed the cold cache before
-  any result was written back.
-- The tool name reaches enrichment through a `current_tool` context variable set
-  by `invoke_tool`, rather than being passed down by each handler. Every handler
-  previously spelled its own name twice — once to `invoke_tool`, once to the
-  enrichment call — with nothing keeping the two in sync.
-- **Migrations now run once instead of on every startup.** Applied filenames are
-  recorded in a new `schema_migrations` table (created automatically; no
-  existing table is touched). Previously every `.sql` file was re-executed on
-  each boot, which forced them all to be idempotent and made a migration that
-  *transforms* data impossible to express. Every migration must still be
-  replay-safe — see `Database.migrate`.
 - **`search_people` failed outright on a personal contact with an unusual
-  address.** The `CONTACTS` source returns the caller's own address book —
-  cards typed by a human, not addresses issued by Workspace — so one saved as
-  `bob@nas.local`, `admin@router` or with a trailing dot failed
-  `PersonHit.email`'s strict `EmailStr` and turned the whole call into
-  `Internal error.`, hiding every other hit. Email fields on tool *results* are
-  now typed `str`: `ChatMessage.sender_email`, `MessageDetails.sender_email`,
-  `Member.email`, `PersonHit.email` and `WhoamiResult.email`.
-  - Only `PersonHit` had a reachable failure; the other four resolve through
-    the Workspace directory or the OIDC `/userinfo` claim, which in practice
-    hold addresses on verified, owned domains. They are relaxed for consistency
-    — and because Google documents no format contract for the field we read
-    (`EmailAddress.value` is described only as "The email address"), so
-    `EmailStr` on our side asserted a guarantee the upstream never made. Note
-    also that the Chat API's `User` object carries no email at all; every
-    address here is a People API or OIDC lookup, so Chat guarantees nothing
-    about them either.
-  - Validating these on the way *out* protected nobody: the client receives a
-    JSON string either way. Same reasoning as `extra="allow"` on the response
-    models — an upstream we do not control must not be able to turn its own
-    data into our outage. `EmailStr` is unchanged on *inputs*, where rejecting
-    a hallucinated address from a calling model is the point.
-  - Two visible consequences: the output schema loses `"format": "email"` on
-    those five fields (advisory in JSON Schema), and addresses are no longer
-    silently normalised — `EmailStr` had been rewriting
-    `Alice <alice@example.com>` to `alice@example.com` and stripping
-    surrounding whitespace.
-- **The directory cache is read once per call, not once per row.** A page of
-  senders or members resolves concurrently, so the per-row read opened one
-  SQLite connection — and one OS thread — per row, every one of them missing
-  before any could write back. At the 200-member cap that was 200 of each to
-  read rows sitting in a single file: measured 74ms and 202 threads, now 7ms
-  and none. A warm cache also now costs zero People API requests, where before
-  it cost one per row on the first call.
+  address.** The contacts source returns the caller's own address book, so an
+  entry like `bob@nas.local` failed strict email validation and turned the whole
+  call into `Internal error.`, hiding every other hit. Email fields on tool
+  *results* are now plain strings; inputs keep strict validation, where
+  rejecting a hallucinated address is the point. Two visible consequences: the
+  output schema loses `"format": "email"` on five fields, and addresses are no
+  longer silently normalised.
+- **Migrations run once instead of on every startup**, recorded in the new
+  `schema_migrations` table. Re-running every file on each boot forced them all
+  to be idempotent and made data-transforming migrations impossible.
+- **The directory cache is read once per call, not once per row.** At the
+  200-member cap that was 200 SQLite connections and 200 OS threads against a
+  single file: measured 74ms and 202 threads, now 7ms and none. Message
+  enrichment also resolves one lookup per unique sender rather than per message.
+- People API resolution is consolidated into a single `resolve_person_cached`.
+  The cache-check → fetch → degrade sequence had been copy-pasted three ways,
+  which is why the fix above needed applying twice and still missed one caller.
 
 ## [1.2.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
-tool is broken against the live Google Chat API, and no client-side workaround
-exists. Writes are the dangerous case — they succeeded and still reported
-`Internal error.`, so retries may have posted duplicates.
+tool is broken against the live Chat API, with no client-side workaround. Writes
+are the dangerous case — they succeeded and still reported `Internal error.`, so
+retries may have posted duplicates. Check affected spaces.
 
 ### Fixed
-- **Every message- and membership-touching tool was broken against the live
-  Chat API.** Google added `markupSyntax` (on messages) and `affiliation` (on
-  memberships); with `extra="forbid"` on the response models, every message and
-  every membership failed validation. Both fields are now accepted as optional
-  `str`.
-  - Reads: `get_messages`, `get_message`, `get_thread` and `list_members`
-    raised on every call in every space; `search_messages` returned zero
-    matches over a full scan.
-  - **Writes, and this is the damaging part: the write succeeded and the tool
-    still reported `Internal error.`** `send_message` and `update_message`
-    parse the create/patch response, which carries `markupSyntax` — so the
-    message was posted or edited, then validation threw. A caller seeing an
-    error would reasonably retry, posting twice. `add_member` parses the same
-    membership shape and has the same hazard. If you ran 1.0.x recently, check
-    affected spaces for duplicates.
-  - Space-shaped responses never drifted, so `list_spaces`, `get_space`,
-    `create_space`, `create_group_chat`, `update_space` and `whoami` kept
-    working — which is what made this look like a permissions or network
-    problem rather than schema drift.
-- `search_messages` no longer drops unvalidatable messages silently. It still
-  skips them — one bad row must not fail the search — but counts them in the
-  new `unparsed` field of the result and logs the first one per call. A
-  non-zero `unparsed` means the result is incomplete, which is what made the
-  drift above look like an empty space rather than a broken parser.
-- Schema drift is now diagnosable from the logs on *every* tool, not just
-  `search_messages`. `invoke_tool` names the drifted field paths on the
-  `tool_unhandled` event; previously the caller got `Internal error.` and the
-  field name reached nobody, because the log chain has no `format_exc_info`.
-  Paths only, never values — `str(ValidationError)` embeds `input_value=...`,
-  which would carry message content past the key-based log redaction.
-
-- **Write tools no longer fail after the write lands.** `send_message`,
-  `update_message`, `add_member`, `create_space`, `create_group_chat`,
-  `update_space` and `find_direct_message` parsed a full response model — 8 to
-  27 fields — to read one or two identifiers they re-validate anyway. Any drift
-  in the other fields turned a completed write into `Internal error.` They now
-  read only what they return. If a result genuinely cannot be built, the error
-  says the write SUCCEEDED and must not be retried. `create_space` and
-  `create_group_chat` were the worst case and went unlisted before: a retry
-  makes a second space.
-- **`send_message` could post twice on a transient upstream error.** The client
-  retries 429/5xx, and a 5xx can arrive *after* Google created the message — so
-  the retry posted a second copy. Unrelated to schema drift; it predates all of
-  it. Each send now carries a client-assigned `messageId`, generated once per
-  call rather than per attempt, so Google rejects the retry as `ALREADY_EXISTS`
-  and the client fetches the message that actually landed. Verified live: user
-  OAuth accepts `messageId`, a repeat returns 409, and
-  `spaces/{space}/messages/{messageId}` reads the message back.
-- **Closed enums removed from response models.** `_ChatUser.type`,
-  `_ChatSpaceResponse.type`, `_ChatMembershipResponse.state` and `.role` were
-  `Literal`s on fields present in every row, so a value Google adds to any of
-  those enums was another total outage waiting — the same failure as an added
-  field, from a different direction. They are `str` on the wire now and narrowed
-  to the closed set at the tool boundary, with anything unrecognised bucketed
-  into the existing `*_UNSPECIFIED` member, logged, and counted.
+- **Every message- and membership-touching tool was broken against the live Chat
+  API.** Google added `markupSyntax` to messages and `affiliation` to
+  memberships; with `extra="forbid"` on the response models, every row failed
+  validation. Both are now accepted.
+  - Reads raised on every call in every space, and `search_messages` returned
+    zero matches over a full scan.
+  - Writes are the damaging part: `send_message`, `update_message` and
+    `add_member` parse the response, so the write landed and *then* validation
+    threw. A caller seeing an error would reasonably retry.
+  - Space-shaped responses never drifted, which is what made this look like a
+    permissions or network problem.
+- **Write tools no longer fail after the write lands.** Seven tools parsed a
+  full 8-27 field response model to read one or two identifiers. They now read
+  only what they return, and if a result genuinely cannot be built the error
+  says the write SUCCEEDED and must not be retried. `create_space` was the worst
+  case — a retry makes a second space.
+- **`send_message` could post twice on a transient upstream error.** A 5xx can
+  arrive after Google created the message, so the retry posted a second copy.
+  Each send now carries a client-assigned `messageId` generated once per call,
+  so Google rejects the retry and the client fetches the message that landed.
+- **Closed enums removed from response models.** Four `Literal` fields present
+  on every row meant a value Google adds to any of those enums was another total
+  outage waiting. They are strings on the wire now, narrowed at the tool
+  boundary, with anything unrecognised bucketed, logged and counted.
+- `search_messages` no longer drops unvalidatable messages silently — it still
+  skips them, but counts them in a new `unparsed` field. Schema drift is now
+  diagnosable from the logs on every tool, by field path only, never values.
 
 ### Added
 - **`google-chat-mcp doctor`** — validates live Chat API responses against the
-  models using the token already on disk, names any drifted field paths
-  (including nested ones, as dotted paths), and exits non-zero, so it works as
-  a cron job. Nothing detected drift before a user did; this closes that. No
-  shared credential is involved — each deployer checks with their own token.
-- `mcp_schema_drift_total{location}` — incremented on every response that
-  doesn't match our models, so `rate()` stays non-zero while the models are
-  stale rather than self-resolving after the first hit. The matching log line
-  is deduped per process; the counter deliberately is not. `location` is a
-  model/field path, never a value. Alert on any non-zero rate.
+  models using the token already on disk, names drifted field paths, and exits
+  non-zero so it works as a cron job. Nothing detected drift before a user did.
+- `mcp_schema_drift_total{location}` — incremented on every mismatched response,
+  so the rate stays non-zero while the models are stale. Alert on any non-zero
+  rate.
 
 ### Changed
 - **Chat API response models accept unknown fields instead of rejecting them**
-  (`_ChatBase`: `extra="forbid"` → `extra="allow"`). An unknown field is kept,
-  logged once per process as `schema_drift` with its `Model.field` location, and
-  counted in `mcp_schema_drift_total`. This reverses the rule in
-  `docs/architecture.md`, which cost two total outages: Google adds response
-  fields without notice — AIP-180 explicitly permits it — and each lands on
-  *every* row of its resource, so rejecting them failed every tool at once. The
-  detection that rule promised never materialised; both events were found by a
-  user. The invariant is now **drift must be observable**, not fatal.
+  (`extra="forbid"` → `extra="allow"`). Unknown fields are kept, logged once per
+  process, and counted. This reverses a rule that cost two total outages: Google
+  adds response fields without notice, and each lands on *every* row, so
+  rejecting them failed every tool at once. The invariant is now **drift must be
+  observable**, not fatal — which is why `doctor` has to actually be run.
 
-  What still fails loudly: `name`, `sender`, `create_time` and `thread` have no
-  defaults, so removing or retyping one raises. Fields that *do* have defaults —
-  `text`, `displayName`, `member` — do not: a renamed `text` yields empty
-  message bodies and a successful call. The signal there is the new key
-  arriving, which fires `schema_drift`, moves the counter, and shows up in
-  `doctor`. Observation, not failure — which is why `doctor` has to actually be
-  run.
-
-  **Tool I/O keeps `extra="forbid"`.** That side is our own contract, and
-  rejecting an unrecognised key from a calling model is a real safety property
-  — a misspelled `dry_run` must not silently post for real.
-- `SearchMessagesResult` gains an `unparsed: int` field (defaults to `0`, so
-  existing callers are unaffected).
-- Pinned GitHub Actions bumped to current releases, including two majors:
-  `actions/checkout` v6 → v7.0.1 and `astral-sh/setup-uv` v8 → v9.0.0. The only
-  breaking change that touches us is setup-uv's `prune-cache` now defaulting to
-  false, trading Actions cache usage for less load on PyPI.
-- Tool schemas now carry the field descriptions that were already written.
-  `_Strict` didn't set `use_attribute_docstrings`, so every attribute docstring
-  in `src/models.py` was dev-only commentary — a calling model saw
-  `{"type": "integer"}` with no guidance attached, including `space_id`'s
-  "the server will NOT search across spaces".
+  Tool I/O keeps `extra="forbid"`. That side is our own contract, and rejecting
+  an unrecognised key from a calling model is a real safety property.
+- `SearchMessagesResult` gains `unparsed: int`, defaulting to `0`.
+- Tool schemas now carry the field descriptions that were already written but
+  never emitted — a calling model saw `{"type": "integer"}` with no guidance.
+- Pinned GitHub Actions bumped, including `actions/checkout` v6 → v7 and
+  `astral-sh/setup-uv` v8 → v9.
 
 ### Security
-- Refreshed `uv.lock` against current advisories. CI's `audit` and `container`
-  jobs had gone red on `main` without a code change: the lockfile had not moved
-  since April, so newly published advisories accumulated against pinned
-  versions. Notable fixes: `starlette` 1.0.0 → 1.5.0 (SSRF via UNC paths in
-  `StaticFiles`; form-limit DoS), `urllib3` 2.6.3 → 2.7.0 (header leak on
-  cross-origin redirect; decompression DoS), `pyjwt` 2.12.1 → 2.13.0,
-  `python-multipart` 0.0.26 → 0.0.32, `pyasn1` 0.6.3 → 0.6.4 (parser DoS),
-  and `pydantic-settings` 2.14.0 → 2.15.0.
-- **FastMCP 3.2.4 → 3.4.6**, which the relock pulled in alongside the advisory
-  fixes. Two minor versions: 3.4.0 migrated the auth stack's JWT handling to
-  `joserfc`, and upstream repackaged `fastmcp` as a shim over a new
-  `fastmcp-slim` distribution. Both transports run on FastMCP, so this is a
-  larger change than the rest of the refresh. Verified against a live HTTPS
-  deployment — OAuth metadata, RFC 9728 discovery and JWT verification all
-  behave — but CI cannot cover it, because the integration test stubs
-  `TokenVerifier`.
-- `release.yml` now refuses to publish unless `ci` succeeded for the tagged
-  commit. A tag is only a pointer, so nothing previously stopped one landing on
-  a commit whose CI never ran or ran red — and every job below it writes
-  somewhere irreversible, PyPI most of all. Same blind spot that let the
-  lockfile sit stale for months, applied to the release path.
-- `cryptography` 46.0.7 → 50.0.0, which required widening the `pyproject.toml`
-  pin from `~=46.0` to `~=50.0`. Covers a PKCS#7 decryption oracle, exponential
-  blowup on chains with duplicate self-signed certificates, a name-constraint
-  bypass via wildcard SANs, and the statically linked OpenSSL in the wheels.
-- Runtime image no longer ships `pip`. The app runs from `/app/.venv` and never
-  installs at runtime, but pip's bundled `_vendor/` tree is scanned as real
-  packages — it was the sole source of the `setuptools` 70.3.0 and `msgpack`
-  1.1.2 findings, neither of which is a project dependency or fixable from the
-  lockfile.
+- **Refreshed `uv.lock` against current advisories.** CI had gone red on `main`
+  without a code change: the lockfile had not moved since April. Notable:
+  `starlette` 1.0.0 → 1.5.0 (SSRF, form-limit DoS), `urllib3` 2.6.3 → 2.7.0
+  (header leak on cross-origin redirect), `cryptography` 46.0.7 → 50.0.0
+  (PKCS#7 decryption oracle, name-constraint bypass), plus `pyjwt`,
+  `python-multipart`, `pyasn1` and `pydantic-settings`.
+- **FastMCP 3.2.4 → 3.4.6**, pulled in by the relock. 3.4.0 migrated the auth
+  stack's JWT handling to `joserfc` and repackaged `fastmcp` as a shim over
+  `fastmcp-slim`. Both transports run on FastMCP, so this is larger than the
+  rest of the refresh; verified against a live HTTPS deployment, since CI stubs
+  the token verifier.
+- `release.yml` refuses to publish unless CI succeeded for the tagged commit. A
+  tag is only a pointer, so nothing previously stopped one landing on a commit
+  whose CI never ran — and every job below it writes somewhere irreversible.
+- Runtime image no longer ships `pip`. The app never installs at runtime, but
+  pip's bundled `_vendor/` tree is scanned as real packages and was the sole
+  source of two findings that were not project dependencies.
 
 ## [1.0.1] - 2026-04-24
 
