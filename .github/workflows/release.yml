@@ -107,6 +107,14 @@ jobs:
       # ever published. The untagged digest is left unreferenced.
       - name: Trivy scan (gates the tagged release)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        env:
+          # The digest pushed by this job is a single-arch image, but Trivy
+          # defaults to looking for a linux/amd64 child and fails on the arm64
+          # runner with "no child with platform linux/amd64 in index". The
+          # action exposes no `platform` input, so this goes through Trivy's
+          # own env var. Without it the arm64 half is never actually scanned —
+          # which is the gap this step exists to close.
+          TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
