@@ -632,7 +632,28 @@ def test_graphical_browser_detection(
     for key, value in env.items():
         monkeypatch.delenv(key, raising=False) if value is None else monkeypatch.setenv(key, value)
     monkeypatch.setattr(stdio_mod.sys, "platform", platform)
+    # Stub the registry: without this the result depends on what browsers the
+    # machine running the suite happens to have, so it passes on a laptop and
+    # fails on a bare CI runner. The registry itself is covered below.
+    monkeypatch.setattr(
+        stdio_mod.webbrowser, "get", lambda *a: MagicMock(spec=webbrowser.BaseBrowser)
+    )
     assert stdio_mod._graphical_browser_available() is expected
+
+
+def test_graphical_browser_declines_when_registry_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DISPLAY set but nothing registered — a bare X session, or a CI runner."""
+    monkeypatch.delenv("BROWSER", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(stdio_mod.sys, "platform", "linux")
+
+    def _raise(*_a: object) -> None:
+        raise webbrowser.Error("could not locate runnable browser")
+
+    monkeypatch.setattr(stdio_mod.webbrowser, "get", _raise)
+    assert stdio_mod._graphical_browser_available() is False
 
 
 def test_graphical_browser_rejects_text_browser(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -693,6 +714,10 @@ def test_login_no_browser_flag_and_env_force_it_off(
     """--no-browser and GCM_NO_BROWSER override detection on a desktop."""
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(stdio_mod.sys, "platform", "linux")
+    # Same reason as the detection test: don't depend on the runner's browsers.
+    monkeypatch.setattr(
+        stdio_mod.webbrowser, "get", lambda *a: MagicMock(spec=webbrowser.BaseBrowser)
+    )
 
     def _run(no_browser: bool) -> bool:
         fake_flow = MagicMock()
