@@ -22,7 +22,19 @@ from src.tools._common import ToolContext
 
 @pytest.fixture(autouse=True)
 def _env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Baseline env for Settings.from_env(): every required var satisfied."""
+    """Baseline env for Settings.from_env(): every required var satisfied.
+
+    Also pins `GCM_CONFIG_DIR` into `tmp_path` for *every* test. `cmd_login`
+    writes tokens.json through `_open_store()`, which resolves that variable
+    at call time — so a test that exercises it without opting into isolation
+    overwrites the developer's own `~/.config/google-chat-mcp/tokens.json`
+    and destroys their refresh token. That happened. Opting in per-test was
+    the design and it failed the first time someone added a login test
+    without remembering, so the default is now safe and tests that care
+    about config-dir behaviour override it themselves.
+    """
+    monkeypatch.setenv("GCM_CONFIG_DIR", str(tmp_path / "gcm-config"))
+    monkeypatch.setenv("GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME", "1")
     monkeypatch.setenv("GCM_BASE_URL", "https://mcp.example.test")
     monkeypatch.setenv("GCM_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("GCM_GOOGLE_CLIENT_ID", "test-client-id")
