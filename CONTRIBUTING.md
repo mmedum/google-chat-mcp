@@ -44,6 +44,12 @@ For workflow edits, sanity-check with
   recent `git log` for the tone.
 - Keep the subject under 72 chars; use the body for context and `Why`.
 - Never commit directly to `main`. All work lands via PR.
+- Force-push freely before your first review. After a maintainer has
+  commented, add commits instead — we squash-merge, so intermediate
+  history is discarded at merge anyway, and force-pushing orphans review
+  comments and re-arms the CI approval gate on fork PRs. If you do
+  force-push, use `--force-with-lease`; maintainers sometimes push
+  directly to PR branches.
 
 ## PR process
 
