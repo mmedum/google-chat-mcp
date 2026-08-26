@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
+Fixed, Security — in that order. Changes that require deployer action before
+upgrading are marked **Breaking:** and say what to do.
+
+Two caveats on the history below. Releases before 1.0.0 predate the stability
+policy, so 0.x minors and patches carry breaking scope changes freely; 0.3.3 in
+particular ships seven new tools and three new OAuth scopes. And there is no
+1.1.0 — 1.0.1 is followed by 1.2.0.
+
 ## [Unreleased]
 
 ### Fixed
@@ -126,6 +135,26 @@ empty" and says so confidently.
 No data migration. The one schema change is a `schema_migrations` bookkeeping
 table, created automatically on first start.
 
+### Changed
+- **`search_people` failed outright on a personal contact with an unusual
+  address.** The contacts source returns the caller's own address book, so an
+  entry like `bob@nas.local` failed strict email validation and turned the whole
+  call into `Internal error.`, hiding every other hit. Email fields on tool
+  *results* are now plain strings; inputs keep strict validation, where
+  rejecting a hallucinated address is the point. Two visible consequences: the
+  output schema loses `"format": "email"` on five fields, and addresses are no
+  longer silently normalised.
+- **Migrations run once instead of on every startup**, recorded in the new
+  `schema_migrations` table. Re-running every file on each boot forced them all
+  to be idempotent and made data-transforming migrations impossible.
+- **The directory cache is read once per call, not once per row.** At the
+  200-member cap that was 200 SQLite connections and 200 OS threads against a
+  single file: measured 74ms and 202 threads, now 7ms and none. Message
+  enrichment also resolves one lookup per unique sender rather than per message.
+- People API resolution is consolidated into a single `resolve_person_cached`.
+  The cache-check → fetch → degrade sequence had been copy-pasted three ways,
+  which is why the fix above needed applying twice and still missed one caller.
+
 ### Fixed
 - **Read tools returned an empty list when the People API refused a lookup.**
   Email resolution runs after the Chat API call, and a 403, 429, 5xx or timeout
@@ -160,32 +189,36 @@ table, created automatically on first start.
 - `google-chat-mcp logout` left `audit_pepper` on disk. No stored data was
   affected, but logout should remove every local secret.
 
-### Changed
-- **`search_people` failed outright on a personal contact with an unusual
-  address.** The contacts source returns the caller's own address book, so an
-  entry like `bob@nas.local` failed strict email validation and turned the whole
-  call into `Internal error.`, hiding every other hit. Email fields on tool
-  *results* are now plain strings; inputs keep strict validation, where
-  rejecting a hallucinated address is the point. Two visible consequences: the
-  output schema loses `"format": "email"` on five fields, and addresses are no
-  longer silently normalised.
-- **Migrations run once instead of on every startup**, recorded in the new
-  `schema_migrations` table. Re-running every file on each boot forced them all
-  to be idempotent and made data-transforming migrations impossible.
-- **The directory cache is read once per call, not once per row.** At the
-  200-member cap that was 200 SQLite connections and 200 OS threads against a
-  single file: measured 74ms and 202 threads, now 7ms and none. Message
-  enrichment also resolves one lookup per unique sender rather than per message.
-- People API resolution is consolidated into a single `resolve_person_cached`.
-  The cache-check → fetch → degrade sequence had been copy-pasted three ways,
-  which is why the fix above needed applying twice and still missed one caller.
-
 ## [1.2.0] - 2026-08-08
 
 Upgrade immediately if you are on 1.0.x: every message- and membership-touching
 tool is broken against the live Chat API, with no client-side workaround. Writes
 are the dangerous case — they succeeded and still reported `Internal error.`, so
 retries may have posted duplicates. Check affected spaces.
+
+### Added
+- **`google-chat-mcp doctor`** — validates live Chat API responses against the
+  models using the token already on disk, names drifted field paths, and exits
+  non-zero so it works as a cron job. Nothing detected drift before a user did.
+- `mcp_schema_drift_total{location}` — incremented on every mismatched response,
+  so the rate stays non-zero while the models are stale. Alert on any non-zero
+  rate.
+
+### Changed
+- **Chat API response models accept unknown fields instead of rejecting them**
+  (`extra="forbid"` → `extra="allow"`). Unknown fields are kept, logged once per
+  process, and counted. This reverses a rule that cost two total outages: Google
+  adds response fields without notice, and each lands on *every* row, so
+  rejecting them failed every tool at once. The invariant is now **drift must be
+  observable**, not fatal — which is why `doctor` has to actually be run.
+
+  Tool I/O keeps `extra="forbid"`. That side is our own contract, and rejecting
+  an unrecognised key from a calling model is a real safety property.
+- `SearchMessagesResult` gains `unparsed: int`, defaulting to `0`.
+- Tool schemas now carry the field descriptions that were already written but
+  never emitted — a calling model saw `{"type": "integer"}` with no guidance.
+- Pinned GitHub Actions bumped, including `actions/checkout` v6 → v7 and
+  `astral-sh/setup-uv` v8 → v9.
 
 ### Fixed
 - **Every message- and membership-touching tool was broken against the live Chat
@@ -215,30 +248,6 @@ retries may have posted duplicates. Check affected spaces.
 - `search_messages` no longer drops unvalidatable messages silently — it still
   skips them, but counts them in a new `unparsed` field. Schema drift is now
   diagnosable from the logs on every tool, by field path only, never values.
-
-### Added
-- **`google-chat-mcp doctor`** — validates live Chat API responses against the
-  models using the token already on disk, names drifted field paths, and exits
-  non-zero so it works as a cron job. Nothing detected drift before a user did.
-- `mcp_schema_drift_total{location}` — incremented on every mismatched response,
-  so the rate stays non-zero while the models are stale. Alert on any non-zero
-  rate.
-
-### Changed
-- **Chat API response models accept unknown fields instead of rejecting them**
-  (`extra="forbid"` → `extra="allow"`). Unknown fields are kept, logged once per
-  process, and counted. This reverses a rule that cost two total outages: Google
-  adds response fields without notice, and each lands on *every* row, so
-  rejecting them failed every tool at once. The invariant is now **drift must be
-  observable**, not fatal — which is why `doctor` has to actually be run.
-
-  Tool I/O keeps `extra="forbid"`. That side is our own contract, and rejecting
-  an unrecognised key from a calling model is a real safety property.
-- `SearchMessagesResult` gains `unparsed: int`, defaulting to `0`.
-- Tool schemas now carry the field descriptions that were already written but
-  never emitted — a calling model saw `{"type": "integer"}` with no guidance.
-- Pinned GitHub Actions bumped, including `actions/checkout` v6 → v7 and
-  `astral-sh/setup-uv` v8 → v9.
 
 ### Security
 - **Refreshed `uv.lock` against current advisories.** CI had gone red on `main`
@@ -301,263 +310,130 @@ is now stable.
 ## [0.4.0] - 2026-04-21
 
 Closes the last high-value gap in the per-user-OAuth Chat API surface
-(`update_space`) and widens Python support for mainstream deployer
-installs. Ships alongside two scope-correctness fixes surfaced by a
-pre-release audit, a Code of Conduct, and a versioning policy — the
-final pre-1.0 maturity pass.
+(`update_space`) and widens Python support. Ships with two scope-correctness
+fixes from a pre-release audit, a Code of Conduct, and a versioning policy —
+the final pre-1.0 maturity pass.
 
 ### Added
+- **`update_space`** — rename a space or edit its description. Takes any
+  combination of `display_name` (1-128 chars) and `description` (≤150); at
+  least one required. Supports `dry_run`. Tool surface is now 21 tools.
 
-- **`update_space`** — rename a space or edit its description via
-  `spaces.patch`. Accepts any combination of `display_name` (1-128 chars)
-  and `description` (≤150 chars); at least one must be set. Supports
-  `dry_run=true` for preview-without-post, same parity contract as
-  `send_message` / `update_message`. Tool surface is now 21 tools.
-  (`src/tools/update_space.py`, `src/chat_client.py::update_space`,
-  `src/models.py::UpdateSpaceInput` + `UpdateSpaceResult`).
-
-### Changed (breaking for deployers)
-
-- **New `chat.spaces` umbrella scope required** for `update_space`.
-  Google's `spaces.patch` accepts only the umbrella under user OAuth —
-  the granular `chat.spaces.create` / `chat.spaces.readonly` we already
-  hold do **not** cover patch. Existing deployers must re-consent (stdio:
-  `google-chat-mcp logout && google-chat-mcp login`; HTTPS: re-consent
-  in your MCP client) or `update_space` will 403 with the scope-named
-  re-auth prompt. `chat.spaces` is in Google's **restricted tier**,
-  joining `chat.messages` (added in v0.3.2) — Internal Workspace apps
-  skip verification; Externally-published apps' existing CASA review
-  covers the new scope (single CASA per Cloud project, no additional
-  fee). See `docs/runbook.md` for the opt-out path.
-- **Python 3.12+ required.** `requires-python` widened from
-  `>=3.14,<3.15` to `>=3.12,<3.15`; `[tool.ruff] target-version` lowered
-  to `py312` to match. CI exercises 3.12 / 3.13 / 3.14 in a matrix. The
-  shipped Docker image stays on `python:3.14-slim`; the widening
-  benefits `uv tool install` on mainstream distros (Ubuntu 24.04 ships
-  3.12 default; RHEL 9 + Debian 13 have 3.12/3.13 available).
+### Changed
+- **Breaking: `update_space` needs the new `chat.spaces` umbrella scope.**
+  Google's `spaces.patch` accepts only the umbrella under user OAuth — the
+  granular scopes we already hold do not cover patch. Re-consent before using
+  it: stdio runs `google-chat-mcp logout && google-chat-mcp login`, HTTPS
+  re-consents in the MCP client. `chat.spaces` is restricted-tier, joining
+  `chat.messages`; Internal Workspace apps skip verification, and an externally
+  published app's existing CASA review covers it.
+- **Breaking: Python 3.12+ required**, widened from 3.14-only. CI covers 3.12,
+  3.13 and 3.14. The Docker image stays on 3.14; the widening is for
+  `uv tool install` on mainstream distros.
+- `README.md` gains a "Versioning and support" section, `CODE_OF_CONDUCT.md`
+  adopts Contributor Covenant 3.0, and the runbook documents both restricted
+  scopes plus the People API's null results for non-self users.
+- `_is_missing_scope_error` renamed to `is_missing_scope_error`. Four modules
+  already imported it, so the underscore was misleading.
 
 ### Fixed
-
-- **`find_direct_message` no longer masks missing-scope 403s, and now
-  names the correct scope.** Pre-fix, the create-on-miss path
-  (`spaces.setup`, requires `chat.spaces.create`) wrapped every
-  `ChatApiError` into a generic "is the user in your Workspace
-  directory?" `ToolError` — hiding the scope-specific re-auth prompt a
-  deployer without `chat.spaces.create` would need. Now the handler
-  detects missing-scope on the create path and raises a `ToolError`
-  naming `chat.spaces.create` directly, rather than relying on
-  `invoke_tool`'s generic wrapper (which would have named the
-  pre-flight tag `chat.spaces.readonly` — wrong scope, misleading
-  re-auth prompt). (`src/tools/find_direct_message.py`).
-- **`list_reactions` scope tag corrected** from
-  `chat.messages.readonly` (restricted tier) to `chat.messages.reactions`
-  (sensitive tier). The narrower scope also permits
-  `spaces.messages.reactions.list`, and using it in the missing-scope
-  re-auth prompt keeps deployers who declined the restricted umbrella
+- **`find_direct_message` masked missing-scope 403s and named the wrong
+  scope.** Its create-on-miss path wrapped every error into a generic "is the
+  user in your directory?" message, hiding the re-auth prompt a deployer
+  without `chat.spaces.create` needs. It now names that scope directly.
+- **`list_reactions` scope tag corrected** from `chat.messages.readonly`
+  (restricted) to `chat.messages.reactions` (sensitive). The narrower scope
+  also permits the call, so deployers who declined the restricted umbrella stay
   inside the sensitive tier. No granted-scope change.
-  (`src/tools/list_reactions.py`).
-
-### Documented
-
-- **`CODE_OF_CONDUCT.md`** — Contributor Covenant 3.0 with the default
-  enforcement ladder; reports go to the maintainer via email or GitHub
-  security advisory.
-- **`README.md`** gains a "Versioning and support" section: tool names
-  and I/O shapes are semver-stable from v1.0; breaking changes get a
-  major bump and at least one minor-version deprecation warning.
-- **`docs/runbook.md`** — restricted-tier scope section now covers both
-  `chat.messages` and `chat.spaces`; adds a "sender_email / display_name
-  are null on non-self users" section documenting the People API
-  limitation that was previously implicit.
-- **`docs/gcp-setup.md`** — scope paste-list includes `chat.spaces`;
-  restricted-tier note updated.
-
-### Internal
-
-- Renamed `_is_missing_scope_error` → `is_missing_scope_error`
-  (`src/tools/_common.py`). The function was already imported by four
-  modules across the codebase; dropping the leading underscore makes
-  the cross-module import an explicit public API instead of a
-  private-namespace reach.
 
 ## [0.3.3] - 2026-04-21
 
-Security release. Closes 2 High and 5 Medium findings from a comprehensive
-security audit, plus a long tail of low-severity hardening. Subsumes the
-unreleased v0.3.2 feature content; `0.3.3` is the first tagged artifact
-for the entire v0.3.x train (7 new tools + 3 new OAuth scopes). See
-`docs/security.md` for the threat model and the full set of
-security-relevant invariants.
-
-### Security — High
-
-- **`GCM_CHAT_API_BASE` / `GCM_PEOPLE_API_BASE` token-exfil closed**
-  (`src/config.py`). Pre-fix, these env-overridable Settings fields
-  accepted plain `http://` and any host — an attacker with env-write on
-  the host could redirect every Chat API call to themselves and capture
-  the user's Google access token from the `Authorization` header. Now
-  the validator requires `https://*.googleapis.com` unless the explicit
-  `GCM_DEV_MODE=1` env gate is set (integration-test use only).
-- **Path-traversal in resource-name regexes closed** (`src/models.py`).
-  The shared `_ID = r"[A-Za-z0-9._-]+"` admitted bare `..` segments;
-  httpx normalized them via RFC 3986 before sending, so
-  `delete_message("spaces/T/messages/..")` resolved to
-  `DELETE /v1/spaces/T` — wrong-resource call with the audit log
-  recording the intended target. Tightened to require ≥1 alphanumeric
-  per segment.
-
-### Security — Medium
-
-- **`emoji` parameter constrained** to block AIP-160 filter injection in
-  `remove_reaction`'s lookup path (`src/models.py`). Pre-fix, `"` in the
-  emoji could break out of `emoji.unicode = "{value}"` and broaden the
-  filter to delete the wrong reaction.
-- **`allowed_client_redirects` validator tightened** (`src/config.py`).
-  Rejects bare-TLD hosts, multi-`*` wildcards, and `*` in TLD position;
-  preserves the documented single `*.subdomain` pattern.
-- **Weak-key rejection at config-parse** (`src/config.py`).
-  `jwt_signing_key.min_length=32`, `fernet_key` exactly 44 chars (real
-  Fernet shape). Catches operator typos before mid-OAuth-flow crashes.
-- **`DirectoryCache.put` gated on `users/{numeric}` shape**
-  (`src/storage.py`). The single-write path now silently drops bot/app/
-  contact-derived IDs — matches the bulk `put_many` invariant the
-  docstring already promised.
-- **Concurrent-writer race on `fernet.key` / `audit_pepper` closed**
-  (`src/stdio.py`). Pre-fix, two `login` invocations could both observe
-  "no key", both generate, and both write — losing one user's session
-  silently. Replaced with `tempfile.mkstemp` + `os.link` for atomic
-  exclusive create-or-read.
-
-### Security — Low (defense-in-depth)
-
-- Stdio `cmd_login` hard-fails when `user_sub` is unresolvable from
-  both id_token and OIDC `/userinfo` — drops the literal `"stdio-user"`
-  fallback that would have polluted audit logs.
-- Stdio resolver pre-flight scope check (`src/tools/_common.py`):
-  `granted_scopes` from tokens.json compared against `required_scope`
-  before the upstream API call. Matches HTTPS's reactive-via-403 shape.
-- `GCM_CONFIG_DIR` outside `~/` requires `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME=1`
-  — closes the silent chmod-0700 footgun.
-- Stdio Fernet/JWT placeholder constants made deterministic-public (no
-  longer `Fernet.generate_key()` per import) — `_STDIO_FERNET_PLACEHOLDER`
-  and `_STDIO_JWT_PLACEHOLDER` are recognizable literals so any
-  accidental real use fails loudly.
-- `_atomic_write_bytes` now opens the temp with `O_CREAT|O_TRUNC` at
-  final perms in one syscall — closes the create-then-chmod window.
-- `asyncio.Lock` around stdio resolver's refresh+save — serializes
-  Google token rotation across concurrent tool calls.
-- `chat_client._request` rejects 3xx responses (was misclassified as
-  success and returned `{}`).
-- Log redaction walks nested dicts — `logger.info("x", payload={"access_token": ...})`
-  no longer leaks plaintext.
+Security release closing 2 High and 5 Medium findings from a full audit, plus
+a long tail of hardening. Also the first tagged artifact for the whole 0.3.x
+train — seven new tools and three new OAuth scopes, previously unreleased. See
+`docs/security.md` for the threat model.
 
 ### Added
+Seven tools, and one re-consent round covers all three new scopes.
 
-Seven new tools across the v0.3.x train, three new OAuth scopes (two
-sensitive, one restricted); one re-consent round covers all three.
-Feature content unchanged from the unreleased v0.3.2 cut.
+- `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM, 2-20
+  members. No new scope.
+- `create_space(member_emails, display_name, dry_run)` — named space, 1-20
+  initial members. No new scope.
+- `add_member(space_id, user_email, dry_run)` — invite by email. Google returns
+  the existing membership on a duplicate add, so it is idempotent in practice.
+- `remove_member(membership_name, dry_run)` — delete by resource name.
+  Idempotent on 404 and non-scope 403. There is no email-filter shape, because
+  non-self People API resolution is unreliable and a lookup could silently miss.
+- `search_people(query, limit, sources)` — hybrid lookup over the Workspace
+  directory and the caller's contacts, run in parallel and tagged per hit.
+  Directory hits back-fill the email cache; contact hits do not, since they use
+  a different namespace and would poison it.
+- `update_message(message_name, text, dry_run)` — replace the text of a message
+  you sent. Text only; cards and attachments are untouched.
+- `delete_message(message_name, dry_run)` — delete by resource name. Idempotent
+  on 404 and non-scope 403; missing-scope 403s still raise.
+- **Integration test harness** — both transports now run end-to-end in CI, with
+  a stdout-hygiene regression guard over the full stdio serve path.
 
-- `create_group_chat(member_emails, dry_run)` — unnamed multi-person DM
-  (`spaceType=GROUP_CHAT`). `member_emails` excludes the caller; 2-20
-  members (self-imposed UX cap; Google's real limit is 49). No new scope
-  — uses the existing `chat.spaces.create`.
-- `create_space(member_emails, display_name, dry_run)` — named space
-  (`spaceType=SPACE`); 1-20 initial members; `display_name` required.
-  Same scope as above.
-- `add_member(space_id, user_email, dry_run)` — invite a user to a space
-  via `spaces.members.create`. In practice Google returns HTTP 200 with
-  the existing membership record on duplicate adds (idempotent-by-nature);
-  the older 409 `ALREADY_EXISTS` path is still wrapped as a `ToolError`
-  for Workspace editions that surface it. See the runbook for the
-  operator-facing framing.
-- `remove_member(membership_name, dry_run)` — delete a membership by
-  full resource name. Idempotent: double-delete returns `removed=false`
-  on 404 NOT_FOUND or 403 PERMISSION_DENIED. Missing-scope 403s are
-  excluded from the idempotent path so callers still see the re-auth
-  prompt. There is no email-filter shape — non-self People API
-  resolution is unreliable (see the runbook's People API caveats), so
-  an email-based lookup would silently miss the target.
-- `search_people(query, limit, sources)` — hybrid lookup over Workspace
-  directory (`people:searchDirectoryPeople`) + caller's contacts
-  (`people:searchContacts`). Runs both sources in parallel via
-  `asyncio.gather` by default; sources tagged per hit. Workspace-profile
-  hits back-fill the `DirectoryCache` so later `get_messages` /
-  `list_members` resolve `sender_email` without another People API call.
-  Contact-ID hits surface but do NOT back-fill — different namespace,
-  would poison `users/{id}` lookups.
-- `update_message(message_name, text, dry_run)` — replace the text of a
-  message you previously sent (`spaces.messages.patch` with
-  `updateMask=text`). Text-only edits — cards / attachments stay
-  untouched. 1-4096 chars (cap mirrors `send_message` for project-wide
-  consistency).
-- `delete_message(message_name, dry_run)` — delete a message by full
-  resource name. Idempotent: double-delete returns `deleted=false` on
-  404 / non-scope 403 (mirrors `remove_member` shape). Missing-scope
-  403s still raise.
-- **Integration test harness** (merged in PR #13 ahead of this release):
-  HTTPS and stdio transports now exercised end-to-end in CI; stdout-
-  hygiene regression guard covers the full stdio serve path.
+### Changed
+- **Breaking: three new OAuth scopes.** `chat.memberships` (sensitive) for the
+  member tools, `contacts.readonly` (sensitive) for the `search_people` consumer
+  fallback, and `chat.messages` (**restricted**) for edit and delete — Google's
+  narrower create/readonly scopes do not authorize patch or delete, so the
+  umbrella that 0.2.0 dropped comes back. Every HTTPS deployer updates the
+  consent screen and every user re-consents; stdio users run
+  `google-chat-mcp logout && google-chat-mcp login`.
+- **Internal Workspace apps skip Google's verification entirely**, sensitive and
+  restricted alike — set the consent screen to Internal and just declare the
+  scopes. Publicly published apps with `chat.messages` need annual CASA review.
+  The runbook covers the trade-off, the admin toggle that gates directory
+  search, and the consumer-Gmail fallback.
+- `ChatClient.create_dm` is now a thin delegate over a shared `_setup_space`
+  helper, with `displayName` sent only for named spaces — Google 400s otherwise.
+  Adds a `_patch` helper and a bulk directory-cache writer gated on the
+  `users/{id}` shape.
 
-### Changed (breaking for deployers)
-- **OAuth scopes**: three new entries in `GOOGLE_OAUTH_SCOPES`.
-  - `https://www.googleapis.com/auth/chat.memberships` (sensitive tier) —
-    `add_member` + `remove_member`.
-  - `https://www.googleapis.com/auth/contacts.readonly` (sensitive tier) —
-    `search_people` consumer-Gmail fallback.
-  - `https://www.googleapis.com/auth/chat.messages` (**restricted tier**) —
-    `update_message` + `delete_message`. Re-introduces the umbrella
-    scope that v0.2.0 explicitly dropped — Google's narrower
-    `.create` / `.readonly` scopes don't authorize patch + delete.
-
-  Every HTTPS deployer updates the OAuth consent screen; every user
-  re-consents on next MCP call. Stdio users re-run `google-chat-mcp logout &&
-  google-chat-mcp login`.
-- **Internal Workspace apps (`External → Internal` in the OAuth consent
-  screen) skip Google's verification entirely** — both sensitive AND
-  restricted tiers. Deployers publishing internally — the primary
-  audience — don't file paperwork; just declare the scopes. Public-
-  published apps with the `chat.messages` scope need annual CASA review;
-  the runbook covers the deployer trade-off.
-
-### Documented
-- `docs/runbook.md`: new "People API non-self resolution caveats" section
-  — non-self Workspace users return `email=null, display_name=null` in
-  practice; affects `remove_reaction`'s filter path and `sender_email`
-  nullability throughout the read-side tools.
-- `docs/runbook.md`: new sections covering `search_people` operational
-  quirks — the External directory sharing admin toggle that gates
-  `searchDirectoryPeople`, the consumer-Gmail `CONTACTS`-only fallback,
-  and the `add_member` idempotent-by-nature behavior (HTTP 200 with
-  existing record rather than 409). Runbook is the authoritative source
-  for admin-console paths; see those entries for exact navigation.
-- `docs/runbook.md`: new section on the `chat.messages` restricted-tier
-  scope — CASA-review trade-off for public-published apps; Internal-app
-  deployers skip.
-- `docs/gcp-setup.md`: updated scope list with all three v0.3.x additions.
-
-### Internal
-- `ChatClient.create_dm` is now a thin delegate over an internal
-  `_setup_space` + pure `_build_setup_space_body` helper. `displayName`
-  is included in the request body only when `space_type == "SPACE"`;
-  Google 400s otherwise.
-- `DirectoryCache.put_many` + `workspace_user_id` helper — bulk writer
-  keyed on `users/{id}` with a regex gate that filters contact-ID
-  resource names before any cache write.
-- `ChatClient._patch` helper alongside `_post` / `_delete`; pure
-  `_build_update_message_body` builder for dry/real parity on
-  `update_message`.
+### Security
+- **`GCM_CHAT_API_BASE` / `GCM_PEOPLE_API_BASE` token exfiltration closed.**
+  These accepted plain `http://` and any host, so anyone with env-write on the
+  host could redirect every Chat API call to themselves and capture the user's
+  access token from the header. They now require `https://*.googleapis.com`
+  unless the explicit `GCM_DEV_MODE=1` gate is set. *(High)*
+- **Path traversal in resource-name patterns closed.** The shared ID pattern
+  admitted bare `..` segments, which httpx normalised before sending — so
+  `delete_message("spaces/T/messages/..")` resolved to a delete on the space
+  itself, with the audit log recording the intended target. Segments now
+  require at least one alphanumeric. *(High)*
+- **Concurrent-writer race on `fernet.key` and `audit_pepper` closed.** Two
+  `login` runs could both see "no key", both generate one, and both write,
+  silently losing one user's session. Now an atomic exclusive create-or-read.
+- **`emoji` constrained** to block filter injection in `remove_reaction`'s
+  lookup, where a quote could broaden the filter and delete the wrong reaction.
+- **`allowed_client_redirects` tightened** — rejects bare-TLD hosts, multiple
+  wildcards, and a wildcard in TLD position, while preserving the documented
+  single-subdomain pattern.
+- **Weak keys rejected at config parse** rather than mid-OAuth-flow, and the
+  directory cache's single-write path now drops bot, app and contact IDs to
+  match the invariant its bulk path already held.
+- Hardening: stdio login fails rather than falling back to a placeholder user
+  ID that would pollute audit logs; a pre-flight scope check mirrors the HTTPS
+  transport; `GCM_CONFIG_DIR` outside home requires an explicit opt-in; atomic
+  writes open at final permissions in one syscall; token refresh is serialised
+  across concurrent calls; 3xx responses are no longer misread as success; and
+  log redaction walks nested dictionaries.
 
 ## [0.2.1] - 2026-04-20
 
 Patch release — release-infrastructure improvements, ops hygiene, and a
 GHCR description fix. No application-level or tool-surface changes.
 
-### Fixed
-- GHCR package page now displays the repository description. The
-  multi-arch index was missing the
-  `org.opencontainers.image.description` annotation (labels only land
-  on per-arch image configs, not on the index GHCR reads). Release
-  workflow now emits annotations at both manifest and index level.
+### Added
+- `CONTRIBUTING.md` at repo root; `.github/pull_request_template.md`;
+  issue forms for bug reports and feature requests; issue-config that
+  redirects security reports to GitHub Security Advisories.
+- README badges for CI status, latest release, container image,
+  license, and Python version.
 
 ### Changed
 - **Release builds skip QEMU.** `release.yml` runs a matrix of native
@@ -575,17 +451,17 @@ GHCR description fix. No application-level or tool-surface changes.
 - **Dependabot** now covers `uv` (pyproject + uv.lock) and `docker`
   (base images) alongside the existing `github-actions` ecosystem.
 
+### Fixed
+- GHCR package page now displays the repository description. The
+  multi-arch index was missing the
+  `org.opencontainers.image.description` annotation (labels only land
+  on per-arch image configs, not on the index GHCR reads). Release
+  workflow now emits annotations at both manifest and index level.
+
 ### Security
 - Release workflow verifies SBOM + provenance attestations landed on
   the multi-arch index after push. Catches silent regressions in
   buildx referrer-following rather than shipping un-attested images.
-
-### Added
-- `CONTRIBUTING.md` at repo root; `.github/pull_request_template.md`;
-  issue forms for bug reports and feature requests; issue-config that
-  redirects security reports to GitHub Security Advisories.
-- README badges for CI status, latest release, container image,
-  license, and Python version.
 
 ## [0.2.0] - 2026-04-20
 
@@ -621,7 +497,7 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - **Documentation:** `docs/gcp-setup.md` (one-time GCP walkthrough),
   `docs/runbook.md` (operator procedures), `SECURITY.md`.
 
-### Changed (breaking for deployers)
+### Changed
 - **OAuth scopes narrowed.** Drop the umbrella `chat.messages`; add
   `chat.messages.create` + `chat.messages.reactions`. Every deployer must
   re-consent.
@@ -635,19 +511,7 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - **`send_message` posts body verbatim.** No server-side suffix or identity
   injection.
 
-### Security
-- Secret fields in `Settings` are `pydantic.SecretStr`; accidental
-  `log.info(settings=...)` or `model_dump()` masks them.
-- Observability redaction widened: `id_token`, `state`, `code`, `email`,
-  `user_sub`, `sub`, cookies, JWT signing + Fernet + audit pepper keys.
-- Audit-log `user_sub` HMAC-SHA256-hashed with a per-deployment pepper
-  (default on HTTPS).
-- Stdio config dir + all files tightened: 0700 parent, 0600 secrets,
-  0700 audit-DB subdir.
-- `.github/workflows/ci.yml` gates on `gitleaks`, `hadolint`, `trivy`,
-  `pip-audit`, ruff, ty, pytest with an 80 % coverage floor.
-
-### Fixed (surfaced during live testing)
+### Fixed
 - Stdio stdout hygiene — structlog now routes through the configured
   stream; previously it wrote to stdout and corrupted JSON-RPC frames on
   any error-path log line.
@@ -678,3 +542,15 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 [0.3.3]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.1...v0.3.3
 [0.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v0.2.0
+
+### Security
+- Secret fields in `Settings` are `pydantic.SecretStr`; accidental
+  `log.info(settings=...)` or `model_dump()` masks them.
+- Observability redaction widened: `id_token`, `state`, `code`, `email`,
+  `user_sub`, `sub`, cookies, JWT signing + Fernet + audit pepper keys.
+- Audit-log `user_sub` HMAC-SHA256-hashed with a per-deployment pepper
+  (default on HTTPS).
+- Stdio config dir + all files tightened: 0700 parent, 0600 secrets,
+  0700 audit-DB subdir.
+- `.github/workflows/ci.yml` gates on `gitleaks`, `hadolint`, `trivy`,
+  `pip-audit`, ruff, ty, pytest with an 80 % coverage floor.

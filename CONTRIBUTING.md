@@ -54,6 +54,31 @@ For workflow edits, sanity-check with
 3. A maintainer reviews and merges. Squash-merge is the default.
 4. After merge, the branch is deleted.
 
+## Changelog
+
+Every user-visible change gets an entry under `## [Unreleased]` in
+`CHANGELOG.md`, in the same PR that makes the change. Internal refactors
+with no user-visible effect do not.
+
+- **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+  set and nothing else — Added, Changed, Deprecated, Removed, Fixed,
+  Security — in that order. Not `Internal`, not `Documented`, not a
+  severity split like `Security — High`.
+- **Length: 3-6 lines per entry.** What changed, who it affects, what it
+  does now. Do not narrate the investigation, quote logs, or defend the
+  fix against alternatives you rejected — that is what the PR is for, and
+  the reader can click through.
+- **Breaking changes** are marked `**Breaking:**` and say what the deployer
+  has to do, in the imperative. Anything needing an OAuth re-consent, a
+  re-login, or a config change is breaking.
+- **Write for someone deciding whether to upgrade.** Lead with the impact,
+  not the mechanism.
+
+`release.yml` lifts the matching section verbatim into the GitHub release
+notes, so the entry is the release note. Versioning follows
+[SemVer](https://semver.org/spec/v2.0.0.html) — see "Versioning and support"
+in the README for what counts as breaking.
+
 ## Release process
 
 Release cutting is maintainer-only:
