@@ -53,16 +53,41 @@ Threat model and trust boundaries live in
 
 ## Tooling pins
 
-- Python 3.12–3.14 (`requires-python = ">=3.12,<3.15"` in `pyproject.toml`; `.python-version` pins dev/CI default to 3.14)
-- FastMCP `~= 3.2` (current 3.4.6; 3.4.0 migrated auth JWTs to `joserfc`, and
-  `fastmcp` is now a shim over `fastmcp-slim`)
-- `ty == 0.0.69` (pinned exactly — it's 0.0.x beta, every patch can have
-  breaking changes; no strict mode). Expect a bump to strand `ty: ignore`
-  directives: `unused-ignore-comment` is a warning that still exits 1, so CI
-  names the stale ones for you — `rg "ty: ignore" src tests` to see what's live
-- `ruff ~= 0.15` (current 0.16.2; 0.16 stabilised `PLR0917`, hence its entry in
-  the ignore list)
-- Pydantic v2: tool I/O models use `extra="forbid"` + `strict=True`; Chat API response models use `extra="allow"` and report unknown keys via `schema_drift` + `mcp_schema_drift_total` (drift must be observable, not fatal — see `docs/architecture.md`)
+Versions live in `pyproject.toml` and `uv.lock`. Read them there — do not
+restate them here, where they go stale silently. What those files don't say:
+
+- **`ty` is pinned exactly, not with a range.** It's 0.0.x beta and every patch
+  can break. Expect a bump to strand `ty: ignore` directives:
+  `unused-ignore-comment` is a warning that still exits 1, so CI names the
+  stale ones for you — `rg "ty: ignore" src tests` to see what's live. Strict
+  mode is off.
+- **`fastmcp` is a shim over `fastmcp-slim`** as of 3.4.0, which also moved auth
+  JWTs to `joserfc`. Both transports run on it, so a minor bump is a larger
+  change than it looks, and CI can't cover the HTTPS auth path — the integration
+  test stubs the token verifier. Verify against a live deployment.
+- **Python's lower bound is deliberate.** The image is built on 3.14 and
+  `.python-version` pins dev and CI there, but the floor exists so
+  `uv tool install` works on mainstream distros. CI runs the full matrix.
+- **`ruff`'s ignore list tracks stabilised rules** — `PLR0917` is in it because
+  0.16 stabilised it. A ruff minor can add entries the same way.
+- **Pydantic v2 splits the contract in two.** Tool I/O uses `extra="forbid"` +
+  `strict=True`; Chat API response models use `extra="allow"` and report unknown
+  keys via `schema_drift` + `mcp_schema_drift_total`. Drift must be observable,
+  not fatal — see `docs/architecture.md`.
+
+## Writing
+
+Plain and short, everywhere it lands — CHANGELOG entries, release notes, PR
+bodies, commit messages, code comments. Lead with the outcome, one idea per
+sentence. Long-winded prose that narrates the investigation reads as
+machine-generated and buries what the reader needs.
+
+CHANGELOG rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md) under "Changelog"
+and are not optional: the Keep a Changelog sections only (Added, Changed,
+Deprecated, Removed, Fixed, Security, in that order), 3-6 lines per entry,
+`**Breaking:**` on anything needing deployer action. `release.yml` lifts the
+section verbatim into the GitHub release notes, so the entry *is* the release
+note — never claim something ships that the diff does not deliver.
 
 ## Secrets
 

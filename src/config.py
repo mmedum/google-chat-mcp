@@ -301,6 +301,41 @@ DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
 # contacts + "other contacts" auto-populated from interactions. Sensitive tier.
 CONTACTS_READONLY = "https://www.googleapis.com/auth/contacts.readonly"
 
+# Google accepts an umbrella scope wherever it accepts one of the narrower
+# scopes split out of it. Verified against the Chat API Discovery document
+# (revision 20260820): every method our tools call lists the umbrella
+# alongside the granular scope, so a user who granted the umbrella already
+# has permission and must not be asked for a second grant.
+#
+# Without this, 14 of the 19 tools denied a caller locally for a call Google
+# would have allowed — and they denied the users who had paid the *most* for
+# consent, since the umbrellas are the restricted-tier scopes.
+#
+# Keyed by the scope the user holds; the value is what it satisfies. Only
+# scopes in GOOGLE_OAUTH_SCOPES matter here, because nothing else can appear
+# in a granted set.
+SCOPE_IMPLIES: dict[str, frozenset[str]] = {
+    CHAT_MESSAGES: frozenset(
+        {CHAT_MESSAGES_READONLY, CHAT_MESSAGES_CREATE, CHAT_MESSAGES_REACTIONS}
+    ),
+    CHAT_SPACES: frozenset({CHAT_SPACES_READONLY, CHAT_SPACES_CREATE}),
+    CHAT_MEMBERSHIPS: frozenset({CHAT_MEMBERSHIPS_READONLY}),
+}
+
+
+def scope_satisfied(required: str, granted: tuple[str, ...]) -> bool:
+    """True when any granted scope authorizes `required`.
+
+    A scope satisfies itself, or satisfies anything it implies. This is the
+    whole of the rule — per-method exceptions, where Google accepts a scope
+    that is not an umbrella of the required one, are declared at the call
+    site with `invoke_tool(..., also_accepts=...)`.
+    """
+    return any(
+        scope == required or required in SCOPE_IMPLIES.get(scope, frozenset()) for scope in granted
+    )
+
+
 GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     OPENID_SCOPE,
     EMAIL_SCOPE,

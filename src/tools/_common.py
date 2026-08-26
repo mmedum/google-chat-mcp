@@ -36,6 +36,7 @@ from ..config import (
     CONTACTS_READONLY,
     DIRECTORY_READONLY,
     OPENID_SCOPE,
+    scope_satisfied,
 )
 from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
 from ..observability import (
@@ -340,24 +341,25 @@ async def invoke_tool[T](
         # purpose: it denies the same call the 403 path denies, so it has to
         # leave the same audit row, metric and `missing_scope` code rather than
         # returning an error no one can account for afterwards.
-        scope_options = (required_scope, *also_accepts)
-        if (
-            required_scope is not None
-            and auth.granted_scopes is not None
-            and not any(scope in auth.granted_scopes for scope in scope_options)
-        ):
-            error_code = "missing_scope"
-            logger.warning(
-                "tool_missing_scope",
-                tool=tool_name,
-                required_scope=required_scope,
-                # The full set that was evaluated. Without it an operator
-                # triaging these reads only the preferred scope and tells
-                # users to grant it — which matters most when that is the
-                # expensive tier and a cheaper alternative would have done.
-                accepted_scopes=scope_options,
-            )
-            raise ToolError(format_missing_scope_message(required_scope))
+        granted = auth.granted_scopes
+        if required_scope is not None and granted is not None:
+            # Each option is run through `scope_satisfied`, so an umbrella
+            # grant covers the preferred scope and every per-method
+            # alternative alike.
+            scope_options = (required_scope, *also_accepts)
+            if not any(scope_satisfied(option, granted) for option in scope_options):
+                error_code = "missing_scope"
+                logger.warning(
+                    "tool_missing_scope",
+                    tool=tool_name,
+                    required_scope=required_scope,
+                    # The full set that was evaluated. Without it an operator
+                    # triaging these reads only the preferred scope and tells
+                    # users to grant it — which matters most when that is the
+                    # expensive tier and a cheaper alternative would have done.
+                    accepted_scopes=scope_options,
+                )
+                raise ToolError(format_missing_scope_message(required_scope))
         result = await body(upstream_access_token, user_sub)
         success = True
         return result
