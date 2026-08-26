@@ -17,8 +17,8 @@ particular ships seven new tools and three new OAuth scopes. And there is no
 ## [Unreleased]
 
 ### Changed
-- **Dependencies.** `fastmcp` 3.4.6 → 3.4.7, `ty` 0.0.69 → 0.0.73, `ruff`
-  0.16.2 → 0.16.3, `pre-commit` 4.6.1 → 4.6.2. In CI, `setup-uv` 9 → 10 and
+- **Dependencies.** `fastmcp` 3.4.6 → 3.4.7, `ty` 0.0.69 → 0.0.74, `ruff`
+  0.16.2 → 0.16.4, `pre-commit` 4.6.1 → 4.6.2. In CI, `setup-uv` 9 → 10 and
   `setup-buildx-action` 4.2 → 4.3.
 
   fastmcp 3.4.7 is a security release for the HTTPS transport: it fixes client
