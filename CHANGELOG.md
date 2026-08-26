@@ -16,6 +16,15 @@ particular ships seven new tools and three new OAuth scopes. And there is no
 
 ## [Unreleased]
 
+### Fixed
+- **Running the test suite could destroy a developer's own login.** The stdio
+  config directory was isolated by an opt-in fixture, so a login test that
+  did not request it wrote through to `~/.config/google-chat-mcp/tokens.json`
+  and overwrote the real refresh token with fixture data. Isolation is now
+  applied to every test by default, with an assertion that fails if the
+  config directory ever resolves inside the real home. No shipped behaviour
+  changes — this only affects contributors running `pytest`.
+
 ## [1.5.0] - 2026-08-26
 
 Take this one if you run the Docker image or the stdio transport.

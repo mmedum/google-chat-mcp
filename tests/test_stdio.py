@@ -672,6 +672,7 @@ def test_graphical_browser_rejects_text_browser(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_login_prompt_goes_to_stderr_not_stdout(
+    stdio_home: Path,
     client_secret_file: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -708,6 +709,7 @@ def test_login_prompt_goes_to_stderr_not_stdout(
 
 
 def test_login_no_browser_flag_and_env_force_it_off(
+    stdio_home: Path,
     client_secret_file: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -737,7 +739,7 @@ def test_login_no_browser_flag_and_env_force_it_off(
     assert _run(no_browser=False) is False
 
 
-def test_login_cancelled_exits_cleanly(client_secret_file: Path) -> None:
+def test_login_cancelled_exits_cleanly(stdio_home: Path, client_secret_file: Path) -> None:
     """Ctrl-C during the now human-paced wait must not dump a traceback."""
     fake_flow = MagicMock()
     fake_flow.run_local_server.side_effect = KeyboardInterrupt
@@ -749,3 +751,17 @@ def test_login_cancelled_exits_cleanly(client_secret_file: Path) -> None:
             argparse.Namespace(client_secret=str(client_secret_file), no_browser=False)
         )
     assert rc == 130
+
+
+def test_config_dir_never_resolves_to_the_real_home() -> None:
+    """No test may reach the developer's own ~/.config/google-chat-mcp.
+
+    `cmd_login` writes tokens.json through `_config_dir()`, so a login test
+    that forgets to isolate silently overwrites a real refresh token. This
+    asserts the autouse fixture in conftest is doing its job; if it is ever
+    removed or reordered, this fails instead of someone's credentials.
+    """
+    resolved = stdio_mod._config_dir().resolve()
+    real = (Path.home() / ".config" / "google-chat-mcp").resolve()
+    assert resolved != real
+    assert real not in resolved.parents
