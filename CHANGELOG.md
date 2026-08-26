@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Dependencies.** `fastmcp` 3.4.6 → 3.4.7, `ty` 0.0.69 → 0.0.73, `ruff`
+  0.16.2 → 0.16.3, `pre-commit` 4.6.1 → 4.6.2. In CI, `setup-uv` 9 → 10 and
+  `setup-buildx-action` 4.2 → 4.3.
+
+  fastmcp 3.4.7 is a security release for the HTTPS transport: it fixes client
+  assertion validation for OAuth proxy deployments served at a bare origin.
+  The declared `fastmcp ~= 3.2` range is unchanged, so this moves the lockfile
+  and the image, not the package metadata.
+
 ### Fixed
 - **Docker images stopped picking up Debian security updates.** The runtime
   stage runs `apt-get upgrade`, but nothing in that layer's hash changes when
@@ -23,16 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`apt-get upgrade` could skip a security update and still report success.**
   It holds back any upgrade needing a new package pulled in. Now uses
   `--with-new-pkgs`.
-
-### Changed
-- **Dependencies.** `fastmcp` 3.4.6 → 3.4.7, `ty` 0.0.69 → 0.0.73, `ruff`
-  0.16.2 → 0.16.3, `pre-commit` 4.6.1 → 4.6.2. In CI, `setup-uv` 9 → 10 and
-  `setup-buildx-action` 4.2 → 4.3.
-
-  fastmcp 3.4.7 is a security release for the HTTPS transport: it fixes client
-  assertion validation for OAuth proxy deployments served at a bare origin.
-  The declared `fastmcp ~= 3.2` range is unchanged, so this moves the lockfile
-  and the image, not the package metadata.
 
 ## [1.4.1] - 2026-08-09
 
