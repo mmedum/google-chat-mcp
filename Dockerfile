@@ -41,8 +41,13 @@ FROM python:3.14-slim AS runtime
 # The two assertions matter: an unmatched glob still exits 0, so if a future
 # base image moves site-packages the removal silently becomes a no-op, the
 # findings return, and the build stays green. Fail loudly instead.
+#
+# `--with-new-pkgs` (not plain `upgrade`): apt holds back any update that
+# needs a new binary package pulled in, and still exits 0, so a security fix
+# would be skipped with a green build. Not `dist-upgrade`, which also permits
+# removals.
 RUN apt-get update \
- && apt-get -y upgrade \
+ && apt-get -y --with-new-pkgs upgrade \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && rm -rf /usr/local/lib/python3.*/site-packages/pip \
