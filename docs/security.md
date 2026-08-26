@@ -17,7 +17,7 @@ table and its own set of at-rest assumptions.
 | MCP client ↔ stdio subprocess | OS process boundary (stdin/stdout) | "User is the process owner" — the MCP client and stdio subprocess share an OS user; no auth between them. |
 | Server ↔ Google APIs | TLS, OAuth client-credentialed | httpx default `verify=True` against bundled certifi CA. No TLS-skip path anywhere in the tree. |
 | Server ↔ disk | File system, 0700 dir / 0600 files | Token store + audit pepper + Fernet key co-located under `~/.config/google-chat-mcp/`; encryption-at-rest is defense-in-depth for backup leaks, NOT against an attacker with directory read. |
-| Stdio host user ↔ loopback OAuth listener | `127.0.0.1:<random>` for ~seconds during `login` | Kernel-routed loopback socket; PKCE + state enforced by `google-auth-oauthlib`. Co-resident processes can't bind-race. |
+| Stdio host user ↔ loopback OAuth listener | `127.0.0.1:<random>` during `login` — seconds when a browser opens, otherwise as long as the user takes | Kernel-routed loopback socket; PKCE + state enforced by `google-auth-oauthlib`. Co-resident processes can't bind-race. |
 
 ## Assets
 

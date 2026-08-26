@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import stat
 import subprocess
 import sys
+import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +17,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cryptography.fernet import Fernet
 from src import stdio as stdio_mod
+
+
+def _fake_credentials() -> MagicMock:
+    """Credentials shaped like a successful login."""
+    creds = MagicMock()
+    creds.client_id = "test-client-id.apps.googleusercontent.com"
+    creds.client_secret = "TEST_SECRET"
+    creds.refresh_token = "refresh-xyz"
+    creds.token = "access-abc"
+    creds.id_token = _fake_id_token(sub="109876543210", email="alice@example.com")
+    creds.scopes = ["openid", "email", "profile"]
+    creds.granted_scopes = ["openid"]
+    return creds
+
 
 # ---------- fixtures ----------
 
@@ -175,9 +191,12 @@ def test_login_end_to_end(
 ) -> None:
     """Patches `InstalledAppFlow.run_local_server` to return fake Credentials.
 
-    The Google OAuth library handles the loopback + PKCE + browser; we don't
-    re-test its internals. What matters here is that cmd_login saves the
-    right shape to tokens.json and extracts identity from the id_token.
+    The Google OAuth library handles the loopback + PKCE; we don't re-test
+    its internals. Browser launch is ours — the library opens it before
+    printing the URL, so we decide whether to ask for it at all. What matters
+    here is that cmd_login saves the right shape to tokens.json and extracts
+    identity from the id_token. Browser and stream behaviour are pinned by
+    the tests below.
     """
     fake_credentials = MagicMock()
     fake_credentials.client_id = "test-client-id.apps.googleusercontent.com"
@@ -202,7 +221,9 @@ def test_login_end_to_end(
     ) as from_file:
         import argparse
 
-        rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=str(client_secret_file)))
+        rc = stdio_mod.cmd_login(
+            argparse.Namespace(client_secret=str(client_secret_file), no_browser=False)
+        )
     assert rc == 0
 
     # The flow was built from the user's client_secret.json with the v2 scopes.
@@ -215,8 +236,10 @@ def test_login_end_to_end(
     run_kwargs = fake_flow.run_local_server.call_args.kwargs
     assert run_kwargs["host"] == "127.0.0.1"
     assert run_kwargs["port"] == 0
-    # URL prompt shown to the user (headless-safe).
+
+    # The prompt carries the URL placeholder the library substitutes.
     assert "Open this URL" in run_kwargs["authorization_prompt_message"]
+    assert "{url}" in run_kwargs["authorization_prompt_message"]
 
     # Tokens saved; content decrypts and carries the stored identity.
     store = stdio_mod._open_store()
@@ -237,7 +260,7 @@ def test_login_end_to_end(
 def test_login_requires_client_secret(stdio_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     import argparse
 
-    rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=None))
+    rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=None, no_browser=False))
     assert rc == 2
     assert "--client-secret is required" in capsys.readouterr().err
 
@@ -248,7 +271,7 @@ def test_login_rejects_missing_file(
     import argparse
 
     rc = stdio_mod.cmd_login(
-        argparse.Namespace(client_secret=str(tmp_path / "does-not-exist.json"))
+        argparse.Namespace(client_secret=str(tmp_path / "does-not-exist.json"), no_browser=False)
     )
     assert rc == 2
     assert "does not exist" in capsys.readouterr().err
@@ -272,7 +295,9 @@ def test_login_refuses_when_refresh_token_missing(
     ):
         import argparse
 
-        rc = stdio_mod.cmd_login(argparse.Namespace(client_secret=str(client_secret_file)))
+        rc = stdio_mod.cmd_login(
+            argparse.Namespace(client_secret=str(client_secret_file), no_browser=False)
+        )
     assert rc == 1
     assert "refresh_token" in capsys.readouterr().err
 
@@ -582,3 +607,145 @@ def _fake_id_token(*, sub: str, email: str) -> str:
     payload_json = json.dumps({"sub": sub, "email": email, "iss": "test"})
     payload = base64.urlsafe_b64encode(payload_json.encode()).rstrip(b"=").decode()
     return f"{header}.{payload}.not-a-real-sig"
+
+
+# ---------- login: browser detection + stream hygiene ----------
+
+
+@pytest.mark.parametrize(
+    ("env", "platform", "expected"),
+    [
+        ({"DISPLAY": None, "WAYLAND_DISPLAY": None, "BROWSER": None}, "linux", False),
+        ({"DISPLAY": ":0", "WAYLAND_DISPLAY": None, "BROWSER": None}, "linux", True),
+        ({"DISPLAY": None, "WAYLAND_DISPLAY": "wl-0", "BROWSER": None}, "linux", True),
+        ({"DISPLAY": None, "WAYLAND_DISPLAY": None, "BROWSER": "/x"}, "linux", True),
+        ({"DISPLAY": None, "WAYLAND_DISPLAY": None, "BROWSER": None}, "darwin", True),
+    ],
+)
+def test_graphical_browser_detection(
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str | None],
+    platform: str,
+    expected: bool,
+) -> None:
+    """A headless Linux box must be the only case that declines the browser."""
+    for key, value in env.items():
+        monkeypatch.delenv(key, raising=False) if value is None else monkeypatch.setenv(key, value)
+    monkeypatch.setattr(stdio_mod.sys, "platform", platform)
+    # Stub the registry: without this the result depends on what browsers the
+    # machine running the suite happens to have, so it passes on a laptop and
+    # fails on a bare CI runner. The registry itself is covered below.
+    monkeypatch.setattr(
+        stdio_mod.webbrowser, "get", lambda *a: MagicMock(spec=webbrowser.BaseBrowser)
+    )
+    assert stdio_mod._graphical_browser_available() is expected
+
+
+def test_graphical_browser_declines_when_registry_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DISPLAY set but nothing registered — a bare X session, or a CI runner."""
+    monkeypatch.delenv("BROWSER", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(stdio_mod.sys, "platform", "linux")
+
+    def _raise(*_a: object) -> None:
+        raise webbrowser.Error("could not locate runnable browser")
+
+    monkeypatch.setattr(stdio_mod.webbrowser, "get", _raise)
+    assert stdio_mod._graphical_browser_available() is False
+
+
+def test_graphical_browser_rejects_text_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A registered lynx/w3m must not count.
+
+    `webbrowser.get()` succeeds on a server with TERM set and a text browser
+    installed, returning a GenericBrowser whose open() blocks on p.wait().
+    Launching that seizes the terminal login is running in and withholds the
+    URL, which is worse than not launching anything.
+    """
+    monkeypatch.delenv("BROWSER", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(stdio_mod.sys, "platform", "linux")
+    monkeypatch.setattr(stdio_mod.webbrowser, "get", lambda *a: webbrowser.GenericBrowser("lynx"))
+    assert stdio_mod._graphical_browser_available() is False
+
+
+def test_login_prompt_goes_to_stderr_not_stdout(
+    client_secret_file: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The authorization URL must not land on stdout.
+
+    The library prints it with a bare `print()` and then blocks indefinitely.
+    Python block-buffers stdout when it is not a TTY, so on that stream a
+    piped `login | tee` shows nothing at all and hangs. stderr is
+    line-buffered.
+    """
+    fake_credentials = _fake_credentials()
+    fake_flow = MagicMock()
+
+    def _emit_prompt(**kwargs: object) -> MagicMock:
+        prompt = kwargs["authorization_prompt_message"]
+        assert isinstance(prompt, str)
+        # What the library does: print() to whatever sys.stdout currently is.
+        sys.stdout.write(prompt.format(url="https://accounts.google.com/o/oauth2/auth?x=1") + "\n")
+        return fake_credentials
+
+    fake_flow.run_local_server.side_effect = _emit_prompt
+
+    with patch.object(
+        stdio_mod.InstalledAppFlow, "from_client_secrets_file", return_value=fake_flow
+    ):
+        rc = stdio_mod.cmd_login(
+            argparse.Namespace(client_secret=str(client_secret_file), no_browser=False)
+        )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "accounts.google.com" in captured.err
+    assert "accounts.google.com" not in captured.out
+
+
+def test_login_no_browser_flag_and_env_force_it_off(
+    client_secret_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--no-browser and GCM_NO_BROWSER override detection on a desktop."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(stdio_mod.sys, "platform", "linux")
+    # Same reason as the detection test: don't depend on the runner's browsers.
+    monkeypatch.setattr(
+        stdio_mod.webbrowser, "get", lambda *a: MagicMock(spec=webbrowser.BaseBrowser)
+    )
+
+    def _run(no_browser: bool) -> bool:
+        fake_flow = MagicMock()
+        fake_flow.run_local_server.return_value = _fake_credentials()
+        with patch.object(
+            stdio_mod.InstalledAppFlow, "from_client_secrets_file", return_value=fake_flow
+        ):
+            stdio_mod.cmd_login(
+                argparse.Namespace(client_secret=str(client_secret_file), no_browser=no_browser)
+            )
+        return bool(fake_flow.run_local_server.call_args.kwargs["open_browser"])
+
+    assert _run(no_browser=False) is True
+    assert _run(no_browser=True) is False
+
+    monkeypatch.setenv("GCM_NO_BROWSER", "1")
+    assert _run(no_browser=False) is False
+
+
+def test_login_cancelled_exits_cleanly(client_secret_file: Path) -> None:
+    """Ctrl-C during the now human-paced wait must not dump a traceback."""
+    fake_flow = MagicMock()
+    fake_flow.run_local_server.side_effect = KeyboardInterrupt
+
+    with patch.object(
+        stdio_mod.InstalledAppFlow, "from_client_secrets_file", return_value=fake_flow
+    ):
+        rc = stdio_mod.cmd_login(
+            argparse.Namespace(client_secret=str(client_secret_file), no_browser=False)
+        )
+    assert rc == 130
