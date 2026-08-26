@@ -16,13 +16,6 @@ particular ships seven new tools and three new OAuth scopes. And there is no
 
 ## [Unreleased]
 
-### Fixed
-- **The release workflow's arm64 image scan could not run.** Trivy defaults to
-  `linux/amd64`, but the digest each build job pushes is single-arch, so on
-  the arm64 runner it failed with "no child with platform linux/amd64". The
-  scan added in 1.5.0 therefore never covered arm64 — the gap it was added to
-  close. Fixed by passing the matrix platform through `TRIVY_PLATFORM`.
-
 ## [1.5.0] - 2026-08-26
 
 Take this one if you run the Docker image or the stdio transport.
