@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`list_reactions` was denied for users who held a scope Google accepts.**
+  Google takes any of four scopes for `reactions.list`; the pre-flight check
+  compared against one. A user granted the `chat.messages` umbrella, or
+  `chat.messages.readonly`, was refused locally and told to grant a second
+  scope for a call that would have succeeded. The check now accepts all three
+  the server requests.
+
+  The scope named in the re-auth prompt is unchanged — still the
+  sensitive-tier `chat.messages.reactions`, so a deployer who declined the
+  restricted umbrella is not pushed back into that tier by the prompt.
+
+### Fixed
 - **The image stopped applying Debian security updates.** The runtime stage
   runs `apt-get upgrade` so the image ships current fixes rather than whatever
   the base tag carried on its cut date. Nothing in that layer's hash changes
