@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The image stopped applying Debian security updates.** The runtime stage
+  runs `apt-get upgrade` so the image ships current fixes rather than whatever
+  the base tag carried on its cut date. Nothing in that layer's hash changes
+  when Debian publishes an update, though, so a warm GitHub Actions layer cache
+  replayed a stale package set and the upgrade quietly became a no-op. Only a
+  rebuild of the `python:3.14-slim` base tag invalidated it.
+
+  The gap was real, not theoretical. `util-linux` 2.41.5-0+deb13u1 fixed four
+  HIGH CVEs (CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-53615 —
+  three local privilege escalations against SUID `mount(8)`, one integer
+  overflow in `libblkid`'s DOS partition parser) and reached `trixie-security`
+  well before Docker Hub rebuilt the base tag. In between, builds kept shipping
+  the vulnerable 2.41-5 across nine binary packages, and the `container` job
+  went red on unrelated pull requests.
+
+  `no-cache-filters: runtime` now rebuilds that stage on every build. The
+  builder stage, which is the slow one, keeps its cache.
+
+### Changed
+- **Dependency refresh.** `fastmcp` 3.4.6 → 3.4.7 in the lockfile, plus `ty`
+  0.0.69 → 0.0.73 (also in `pyproject.toml`), `ruff` 0.16.2 → 0.16.3, and
+  `pre-commit` 4.6.1 → 4.6.2. In CI, `astral-sh/setup-uv` 9.0.0 → 10.0.1 and
+  `docker/setup-buildx-action` 4.2.0 → 4.3.0.
+
+  fastmcp 3.4.7 is a security release for the HTTPS transport: it restores CIMD
+  `private_key_jwt` authentication for `OAuthProxy` deployments served at a bare
+  origin, validating client assertions against the exact token endpoint the
+  authorization server advertises instead of a doubled-slash variant. The
+  declared `fastmcp ~= 3.2` range is unchanged, so this moves the lockfile and
+  the published image, not the package metadata.
+
+  Unlike the 0.0.31 → 0.0.69 jump in 1.4.1, `ty` 0.0.73 stranded no
+  `ty: ignore` directives; the three live suppressions all still fire.
+
 ## [1.4.1] - 2026-08-09
 
 Maintenance only — no behaviour changes, no tool changes. Nothing here forces
