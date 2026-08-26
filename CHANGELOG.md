@@ -16,6 +16,20 @@ particular ships seven new tools and three new OAuth scopes. And there is no
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-26
+
+Take this one if you run the Docker image or the stdio transport.
+
+The published image had stopped picking up Debian security updates, and
+nothing scanned it before release — so the fixes below are the reason to
+upgrade rather than the dependency refresh. On the stdio side, most tools
+were refusing calls that Google would have allowed, and `login` crashed
+outright on a host with no browser.
+
+Minor rather than patch: the twenty-one tools and three resources are
+unchanged, and no existing behaviour is removed, but `login` gains a
+`--no-browser` flag and a `GCM_NO_BROWSER` environment variable.
+
 ### Changed
 - **Dependencies.** `fastmcp` 3.4.6 → 3.4.7, `ty` 0.0.69 → 0.0.74, `ruff`
   0.16.2 → 0.16.4, `pre-commit` 4.6.1 → 4.6.2. In CI, `setup-uv` 9 → 10 and
@@ -554,7 +568,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.2.0...v1.3.0
