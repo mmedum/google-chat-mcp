@@ -76,7 +76,11 @@ Refresh tokens are persisted by FastMCP via
 
 `src/stdio.py` uses
 `google_auth_oauthlib.flow.InstalledAppFlow` for the loopback-desktop
-flow (RFC 8252 §6 — PKCE, state, browser, token exchange). Refresh on
+flow (RFC 8252 §6 — PKCE, state, token exchange). Browser launch is *not*
+delegated: the library opens the browser before printing the authorization
+URL, so a host with no usable browser dies before the URL is ever shown.
+`_graphical_browser_available` decides instead, and the prompt is written to
+stderr so a piped stdout cannot swallow it. Refresh on
 expired uses `google.oauth2.credentials.Credentials.refresh()`. The
 trust model is "the user is the process owner"; tokens live `0600`
 under `~/.config/google-chat-mcp/`. No `GoogleProvider` on this path,

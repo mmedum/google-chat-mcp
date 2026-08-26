@@ -27,6 +27,21 @@ particular ships seven new tools and three new OAuth scopes. And there is no
   and the image, not the package metadata.
 
 ### Fixed
+- **`login` crashed on a host with no browser.** `google-auth-oauthlib` opens
+  the browser *before* it prints the authorization URL, so on a headless host
+  the launch raised and the URL was never shown. It now checks first and only
+  asks for a browser when one can actually help — and prints the URL either
+  way. `--no-browser` (or `GCM_NO_BROWSER=1`) forces the printed-URL path.
+
+  A registered text browser is treated as no browser. On a server with `TERM`
+  set and lynx or w3m installed the launch *succeeds* and blocks the terminal
+  login is running in, which is worse than not launching at all.
+
+  The prompt also moves from stdout to stderr. Python block-buffers stdout
+  when it isn't a terminal, so `login | tee` printed nothing and then hung
+  forever. Ctrl-C during the wait now exits cleanly instead of dumping a
+  traceback.
+
 - **14 of the 19 tools refused calls that Google would have allowed.** Each
   tool declares the one scope it needs, and the pre-flight check compared
   against that exactly — but Google accepts an umbrella scope wherever it

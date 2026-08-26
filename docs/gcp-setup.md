@@ -114,8 +114,10 @@ uv tool install google-chat-mcp
 google-chat-mcp login --client-secret /path/to/client_secret.json
 ```
 
-The login prints the consent URL to stdout, opens your browser (or asks
-you to paste the URL if it can't), and saves Fernet-encrypted tokens
+The login prints the consent URL to stderr and opens your browser when one
+is available — on a headless host it prints the URL and waits for you to open
+it yourself. Pass `--no-browser` to force that. It then saves Fernet-encrypted
+tokens
 to `~/.config/google-chat-mcp/tokens.json` (0600). Now wire the binary
 into your MCP client — see the [README](../README.md#3-wire-into-your-mcp-client).
 
