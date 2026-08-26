@@ -89,13 +89,30 @@ in the README for what counts as breaking.
 
 Release cutting is maintainer-only:
 
-1. Land a `release: cut vX.Y.Z …` commit on `main` that updates
+1. Check the `[Unreleased]` dependency entry against reality before writing
+   the heading. Dependabot never edits `CHANGELOG.md`, so a bump that landed
+   after the entry was written leaves it understating what ships — and
+   `release.yml` lifts the section verbatim into the release notes. Compare
+   the versions named there with `pyproject.toml` and `uv.lock`:
+
+   ```bash
+   uv run python -c "import tomllib;print(sorted((p['name'],p['version']) for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name'] in {'fastmcp','ruff','ty','pre-commit','structlog'}))"
+   ```
+
+   This is a checklist step rather than a CI gate on purpose: gating every PR
+   that touches `uv.lock` on a `CHANGELOG.md` edit would fail every Dependabot
+   PR by construction, which moves the friction rather than removing it.
+
+2. Land a `release: cut vX.Y.Z …` commit on `main` that updates
    `CHANGELOG.md`. On a minor bump, that commit must also move the
    `ghcr.io/mmedum/google-chat-mcp:X.Y` tag in `compose.yml` and
    `README.md` — that pin is what the quickstart deploys, and CI fails
    the commit if it disagrees with the newest CHANGELOG heading.
-2. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z: …" && git push origin vX.Y.Z`.
-3. `release.yml` picks it up, builds the multi-arch image, pushes to
+3. Wait for `ci.yml` to pass on that exact commit — `release.yml`'s
+   `verify-ci` gate requires a green run for the tagged SHA, so tagging
+   first fails the release.
+4. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z: …" && git push origin vX.Y.Z`.
+5. `release.yml` picks it up, builds the multi-arch image, pushes to
    GHCR with SBOM + provenance, and creates the GitHub release from the
    matching CHANGELOG section.
 
