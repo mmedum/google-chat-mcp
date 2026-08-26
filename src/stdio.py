@@ -27,6 +27,7 @@ import os
 import secrets
 import sys
 import tempfile
+import webbrowser
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,7 @@ _CONFIG_DIR_ENV = "GCM_CONFIG_DIR"
 _CONFIG_DIR_OVERRIDE_ENV = "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME"
 _TOKENS_PATH_ENV = "GCM_TOKENS_PATH"
 _CLIENT_SECRET_ENV = "GCM_CLIENT_SECRET"
+_NO_BROWSER_ENV = "GCM_NO_BROWSER"
 _DEFAULT_CONFIG_DIR = Path.home() / ".config" / "google-chat-mcp"
 _TOKENS_FILE = "tokens.json"
 _FERNET_KEY_FILE = "fernet.key"
@@ -342,6 +344,37 @@ def _identity_from_userinfo(access_token: str) -> tuple[str | None, str | None]:
 # ---------- login subcommand ----------
 
 
+def _graphical_browser_available() -> bool:
+    """True when opening a browser will actually help the user.
+
+    Two distinct failure modes have to be excluded, and checking only the
+    first is the trap:
+
+    1. `webbrowser.get()` raises `webbrowser.Error` when nothing is
+       registered — the plain headless case.
+    2. It *succeeds* on a server that has `TERM` set and lynx / w3m /
+       www-browser installed, returning a `GenericBrowser` whose `open()`
+       shells out and then blocks on `p.wait()`. That seizes the terminal
+       login is running in, and nobody completes Google's consent screen in
+       a text browser.
+
+    An explicit `$BROWSER` is trusted as-is: VS Code Remote and Codespaces
+    set it to a helper that forwards the URL to the user's real browser, and
+    second-guessing that would break a flow which works today.
+    """
+    if os.environ.get("BROWSER"):
+        return True
+    if sys.platform in ("darwin", "win32"):
+        return True
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return False
+    try:
+        browser = webbrowser.get()
+    except webbrowser.Error:
+        return False
+    return not isinstance(browser, webbrowser.GenericBrowser)
+
+
 def cmd_login(args: argparse.Namespace) -> int:
     client_secret_arg = args.client_secret or os.environ.get(_CLIENT_SECRET_ENV)
     if not client_secret_arg:
@@ -361,19 +394,43 @@ def cmd_login(args: argparse.Namespace) -> int:
     flow = InstalledAppFlow.from_client_secrets_file(
         client_secret_path, scopes=list(GOOGLE_OAUTH_SCOPES)
     )
-    # port=0 → OS picks a random loopback port (RFC 8252 desktop flow).
-    # The flow library handles PKCE + state, prints the authorization URL, and
-    # blocks until the loopback callback. Browser launch is deliberately off so
-    # login works consistently on desktops, servers, and remote shells.
-    credentials = flow.run_local_server(
-        host="127.0.0.1",
-        port=0,
-        open_browser=False,
-        authorization_prompt_message=(
-            "\nOpen this URL in a browser to authorize google-chat-mcp:\n\n  {url}\n"
-        ),
-        success_message=("You may close this window. google-chat-mcp received the code."),
-    )
+    open_browser = _graphical_browser_available()
+    if args.no_browser or os.environ.get(_NO_BROWSER_ENV):
+        open_browser = False
+
+    # port=0 → OS picks a random loopback port (RFC 8252 desktop flow). The
+    # flow library handles PKCE + state and blocks until the loopback callback.
+    #
+    # Two things here are load-bearing, both because the library opens the
+    # browser BEFORE it prints the URL:
+    #
+    # `open_browser` is computed, never hard-coded. Passing True on a host
+    # with no usable browser raises `webbrowser.Error` — or worse, launches a
+    # text browser that blocks — before the URL is ever printed, so login dies
+    # with a traceback and no way to continue. Passing False unconditionally
+    # would instead cost every desktop user a one-click login. See
+    # `_graphical_browser_available`.
+    #
+    # stdout is redirected to stderr for the duration. The library prints the
+    # prompt with a bare `print()` and then blocks indefinitely in
+    # `handle_request()`; Python block-buffers stdout when it is not a TTY, so
+    # a piped `login | tee` would show nothing at all and hang. stderr is
+    # line-buffered, and every other user-facing message in this file already
+    # goes there.
+    with contextlib.redirect_stdout(sys.stderr):
+        try:
+            credentials = flow.run_local_server(
+                host="127.0.0.1",
+                port=0,
+                open_browser=open_browser,
+                authorization_prompt_message=(
+                    "\nOpen this URL in a browser to authorize google-chat-mcp:\n\n  {url}\n"
+                ),
+                success_message=("You may close this window. google-chat-mcp received the code."),
+            )
+        except KeyboardInterrupt:
+            print("\nlogin cancelled; nothing was saved", file=sys.stderr)
+            return 130
 
     if not credentials.refresh_token:
         print("error: Google did not return a refresh_token", file=sys.stderr)
@@ -851,6 +908,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Path to Google's downloaded Desktop-app client_secret.json. "
             f"Env: {_CLIENT_SECRET_ENV}."
+        ),
+    )
+    login.add_argument(
+        "--no-browser",
+        action="store_true",
+        help=(
+            "Never open a browser; print the authorization URL and wait. "
+            "Detected automatically — use this to force it, e.g. when "
+            f"authorizing on a remote host. Env: {_NO_BROWSER_ENV}."
         ),
     )
     login.set_defaults(func=cmd_login)

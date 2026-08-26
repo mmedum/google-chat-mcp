@@ -119,19 +119,26 @@ google-chat-mcp login --client-secret ./client_secret.json
 ```
 
 The login command:
-- Prints the authorization URL to stdout; open it manually in a browser.
-- Never launches a browser automatically, so it works on headless machines.
+- Prints the authorization URL to stderr, and opens it in a browser when one
+  is available. On a headless host it prints the URL and waits — pass
+  `--no-browser` (or set `GCM_NO_BROWSER=1`) to force that anywhere.
 - Receives the callback on `127.0.0.1:<random>`, exchanges the code (PKCE + state throughout).
 - Stores tokens at `~/.config/google-chat-mcp/tokens.json` (0600, Fernet-encrypted).
 
-When the command runs on a remote host, the browser must still reach that
-host's loopback callback. Use a browser on the remote host, or forward the
-random callback port shown in the URL's `redirect_uri` before opening it
-locally, for example:
+Running it over SSH needs one extra step, because the callback goes to the
+*remote* host's loopback address and your browser is local. The port is chosen
+at random and only printed once login is already waiting, so open a second
+local terminal, read the port out of the printed URL, and forward it there:
 
 ```bash
+# On your local machine, in a second terminal. <port> is the number in the
+# printed URL's redirect_uri (shown percent-encoded, as 127.0.0.1%3A<port>).
 ssh -N -L <port>:127.0.0.1:<port> user@remote-host
 ```
+
+Then open the URL locally. If that port is already taken on your machine,
+`ssh` reports `bind: Address already in use` and the callback never arrives —
+cancel the login with Ctrl-C and re-run it to draw a different port.
 
 Log out with `google-chat-mcp logout` — revokes the refresh token at
 Google and deletes local files.
