@@ -42,6 +42,13 @@ particular ships seven new tools and three new OAuth scopes. And there is no
   forever. Ctrl-C during the wait now exits cleanly instead of dumping a
   traceback.
 
+- **`list_reactions` was denied for users holding a scope Google accepts.**
+  Google takes any of four scopes for `reactions.list`; the check compared
+  against one. Tools can now declare per-method alternatives with
+  `also_accepts`, for cases the umbrella rule below does not cover — here,
+  `chat.messages.readonly`, which is not an umbrella of the reactions scope
+  but is accepted for this one method.
+
 - **14 of the 19 tools refused calls that Google would have allowed.** Each
   tool declares the one scope it needs, and the pre-flight check compared
   against that exactly — but Google accepts an umbrella scope wherever it

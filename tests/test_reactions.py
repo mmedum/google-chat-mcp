@@ -11,12 +11,19 @@ from src.models import (
     ListReactionsInput,
     RemoveReactionInput,
 )
+from src.storage import Database
 from src.tools import (
     add_reaction_handler,
     list_reactions_handler,
     remove_reaction_handler,
 )
-from src.tools._common import ToolContext
+from src.tools._common import (
+    CHAT_MESSAGES,
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES_READONLY,
+    AuthInfo,
+    ToolContext,
+)
 
 from tests.conftest import person_payload
 
@@ -154,6 +161,88 @@ async def test_list_reactions_paginates(tool_ctx: ToolContext, mock_access_token
     assert out.reactions[0].emoji == "🙂"
     assert out.reactions[0].reaction_name == "spaces/AAA/messages/M.1/reactions/r1"
     assert out.next_page_token == "cursor-xyz"
+
+
+@pytest.mark.parametrize(
+    "granted",
+    [CHAT_MESSAGES_REACTIONS, CHAT_MESSAGES_READONLY, CHAT_MESSAGES],
+    ids=["reactions", "messages-readonly", "messages-umbrella"],
+)
+@pytest.mark.asyncio
+async def test_list_reactions_accepts_any_scope_google_accepts(
+    tool_ctx: ToolContext, granted: str
+) -> None:
+    """Google takes any of these for reactions.list, so the pre-flight must too.
+
+    The umbrella case is the one that matters most: it is restricted-tier and
+    a user who granted it has already paid the expensive consent, so denying
+    them and demanding a second grant is the exact false denial this check
+    exists to avoid.
+    """
+
+    async def resolver() -> AuthInfo:
+        return AuthInfo(
+            access_token="upstream-access-token",
+            user_sub="test-user-sub",
+            granted_scopes=(granted,),
+        )
+
+    tool_ctx.resolver = resolver
+    with respx.mock() as mock:
+        route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(200, json={"reactions": []})
+        )
+        out = await list_reactions_handler(
+            tool_ctx, ListReactionsInput(message_name="spaces/AAA/messages/M.1")
+        )
+
+    assert out.reactions == []
+    assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_reactions_denies_when_no_accepted_scope_granted(
+    tool_ctx: ToolContext, db: Database
+) -> None:
+    """The deny case — without it, deleting the gate leaves the suite green.
+
+    Asserts all three things the denial owes: no upstream request, a prompt
+    naming the sensitive-tier scope rather than either restricted-tier
+    alternative, and an audit row so the denial is accountable afterwards.
+    """
+
+    async def resolver() -> AuthInfo:
+        return AuthInfo(
+            access_token="upstream-access-token",
+            user_sub="test-user-sub",
+            granted_scopes=("openid",),
+        )
+
+    tool_ctx.resolver = resolver
+    # assert_all_called=False: the route existing but never being hit is the
+    # assertion, not an oversight.
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
+            return_value=httpx.Response(200, json={"reactions": []})
+        )
+        with pytest.raises(ToolError) as excinfo:
+            await list_reactions_handler(
+                tool_ctx, ListReactionsInput(message_name="spaces/AAA/messages/M.1")
+            )
+
+    assert route.call_count == 0
+    assert CHAT_MESSAGES_REACTIONS in str(excinfo.value)
+    assert CHAT_MESSAGES_READONLY not in str(excinfo.value)
+
+    async with db.cursor() as conn:
+        cur = await conn.execute(
+            "SELECT tool_name, success, error_code FROM audit_log ORDER BY id DESC LIMIT 1"
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    assert row["tool_name"] == "list_reactions"
+    assert not row["success"]
+    assert row["error_code"] == "missing_scope"
 
 
 @pytest.mark.asyncio

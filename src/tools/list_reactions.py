@@ -8,7 +8,13 @@ from ..models import (
     ReactionEntry,
     _ChatReactionsListResponse,
 )
-from ._common import CHAT_MESSAGES_REACTIONS, ToolContext, invoke_tool, space_id_from_message_name
+from ._common import (
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES_READONLY,
+    ToolContext,
+    invoke_tool,
+    space_id_from_message_name,
+)
 
 
 async def list_reactions_handler(
@@ -44,10 +50,16 @@ async def list_reactions_handler(
         ctx,
         body,
         target_space_id=space_id,
-        # spaces.messages.reactions.list accepts the narrower .reactions scope
-        # (sensitive tier) in addition to chat.messages.readonly (restricted).
-        # Tagging with the narrower one keeps missing-scope re-auth prompts
-        # inside the sensitive tier so a deployer who declined the restricted
-        # umbrella still gets a usable prompt.
+        # `required_scope` stays on the sensitive-tier reactions scope: it is
+        # the one named in the re-auth prompt, and v0.4.0 moved it here
+        # deliberately so a deployer who declined the restricted umbrella is
+        # not pushed back into that tier by the prompt.
+        #
+        # `chat.messages.readonly` is a genuine per-method exception. Google
+        # accepts it for reactions.list even though it is not an umbrella of
+        # the reactions scope, so `SCOPE_IMPLIES` cannot express it. The
+        # umbrella `chat.messages` is *not* listed — SCOPE_IMPLIES already
+        # covers it, and repeating it here would be a second place to update.
         required_scope=CHAT_MESSAGES_REACTIONS,
+        also_accepts=(CHAT_MESSAGES_READONLY,),
     )

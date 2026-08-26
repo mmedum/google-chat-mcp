@@ -57,9 +57,9 @@ class AuthInfo:
     """Resolved auth for a single tool call: upstream Google token + user sub.
 
     `granted_scopes` is the set Google reported granting, so `invoke_tool` can
-    fail fast with a re-consent prompt when the caller asks for a tool whose
-    `required_scope` is missing. The stdio resolver reads it from the local
-    tokens.json.
+    fail fast with a re-consent prompt when the caller holds none of the scopes
+    a tool accepts — `required_scope` plus any `also_accepts`. The stdio
+    resolver reads it from the local tokens.json.
 
     None means *the granted set is unknown*, not *nothing was granted*: the
     pre-flight check is skipped and an upstream 403 becomes the authority. Both
@@ -301,6 +301,7 @@ async def invoke_tool[T](
     *,
     target_space_id: str | None = None,
     required_scope: str | None = None,
+    also_accepts: tuple[str, ...] = (),
 ) -> T:
     """Run a tool handler with audit, metrics, rate-limit, and auth context.
 
@@ -308,6 +309,14 @@ async def invoke_tool[T](
     on an upstream 403 matching Google's insufficient-scope shape, the user-
     facing ToolError names the exact scope so the MCP client can prompt for
     re-auth.
+
+    `also_accepts` lists *additional* grants Google will take for the same
+    endpoint — several Chat methods accept a umbrella scope as well as a
+    narrow one. It widens the pre-flight check only; `required_scope` stays
+    the scope named in prompts, so keep it the cheapest tier that works.
+    Deliberately additive rather than a full replacement set: the check and
+    the remedy must never be able to disagree about whether a held scope
+    counts.
     """
     auth = await (ctx.resolver() if ctx.resolver is not None else _resolve_auth_via_fastmcp())
     user_sub = auth.user_sub
@@ -332,18 +341,25 @@ async def invoke_tool[T](
         # purpose: it denies the same call the 403 path denies, so it has to
         # leave the same audit row, metric and `missing_scope` code rather than
         # returning an error no one can account for afterwards.
-        if (
-            required_scope is not None
-            and auth.granted_scopes is not None
-            and not scope_satisfied(required_scope, auth.granted_scopes)
-        ):
-            error_code = "missing_scope"
-            logger.warning(
-                "tool_missing_scope",
-                tool=tool_name,
-                required_scope=required_scope,
-            )
-            raise ToolError(format_missing_scope_message(required_scope))
+        granted = auth.granted_scopes
+        if required_scope is not None and granted is not None:
+            # Each option is run through `scope_satisfied`, so an umbrella
+            # grant covers the preferred scope and every per-method
+            # alternative alike.
+            scope_options = (required_scope, *also_accepts)
+            if not any(scope_satisfied(option, granted) for option in scope_options):
+                error_code = "missing_scope"
+                logger.warning(
+                    "tool_missing_scope",
+                    tool=tool_name,
+                    required_scope=required_scope,
+                    # The full set that was evaluated. Without it an operator
+                    # triaging these reads only the preferred scope and tells
+                    # users to grant it — which matters most when that is the
+                    # expensive tier and a cheaper alternative would have done.
+                    accepted_scopes=scope_options,
+                )
+                raise ToolError(format_missing_scope_message(required_scope))
         result = await body(upstream_access_token, user_sub)
         success = True
         return result
