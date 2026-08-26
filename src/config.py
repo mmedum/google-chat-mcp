@@ -332,8 +332,7 @@ def scope_satisfied(required: str, granted: tuple[str, ...]) -> bool:
     site with `invoke_tool(..., also_accepts=...)`.
     """
     return any(
-        scope == required or required in SCOPE_IMPLIES.get(scope, frozenset())
-        for scope in granted
+        scope == required or required in SCOPE_IMPLIES.get(scope, frozenset()) for scope in granted
     )
 
 
