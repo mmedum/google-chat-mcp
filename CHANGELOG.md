@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **14 of the 19 tools refused calls that Google would have allowed.** Each
+  tool declares the one scope it needs, and the pre-flight check compared
+  against that exactly — but Google accepts an umbrella scope wherever it
+  accepts a scope split out of it. A user who granted `chat.messages`,
+  `chat.spaces` or `chat.memberships` was denied locally and told to grant a
+  second scope, having already given the broader one.
+
+  It hit the users who had paid the most for consent: the umbrellas are
+  Google's restricted tier. `SCOPE_IMPLIES` in `src/config.py` now records
+  the relationship, verified against the Chat API Discovery document, and the
+  check consults it.
+
+### Fixed
 - **The image stopped applying Debian security updates.** The runtime stage
   runs `apt-get upgrade` so the image ships current fixes rather than whatever
   the base tag carried on its cut date. Nothing in that layer's hash changes
