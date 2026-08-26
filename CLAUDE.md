@@ -75,6 +75,20 @@ restate them here, where they go stale silently. What those files don't say:
   keys via `schema_drift` + `mcp_schema_drift_total`. Drift must be observable,
   not fatal — see `docs/architecture.md`.
 
+## Writing
+
+Plain and short, everywhere it lands — CHANGELOG entries, release notes, PR
+bodies, commit messages, code comments. Lead with the outcome, one idea per
+sentence. Long-winded prose that narrates the investigation reads as
+machine-generated and buries what the reader needs.
+
+CHANGELOG rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md) under "Changelog"
+and are not optional: the Keep a Changelog sections only (Added, Changed,
+Deprecated, Removed, Fixed, Security, in that order), 3-6 lines per entry,
+`**Breaking:**` on anything needing deployer action. `release.yml` lifts the
+section verbatim into the GitHub release notes, so the entry *is* the release
+note — never claim something ships that the diff does not deliver.
+
 ## Secrets
 
 Never commit secrets. Production mounts Docker secrets at `/run/secrets/GCM_<name>`; local dev reads from `GCM_*` env vars. Missing secret → `Settings()` construction raises. Secret fields are `pydantic.SecretStr`; read them via `.get_secret_value()`. Required (host file path / container path / env var name):
