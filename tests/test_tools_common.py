@@ -15,6 +15,7 @@ import structlog
 from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 from src.chat_client import ChatApiError, ChatClient
+from src.config import CHAT_SPACES
 from src.models import ListSpacesInput, _ChatMessageResponse
 from src.storage import lifespan_database
 from src.tools import list_spaces_handler
@@ -253,6 +254,28 @@ def _ctx_with_scopes(db, chat_client, granted: tuple[str, ...] | None) -> ToolCo
         audit_hash_user_sub=True,
         resolver=fake_resolver,
     )
+
+
+@pytest.mark.asyncio
+async def test_preflight_accepts_the_umbrella_scope(
+    chat_client: ChatClient,
+    tmp_path: Path,
+) -> None:
+    """Holding `chat.spaces` must satisfy a tool tagged `chat.spaces.readonly`.
+
+    Google accepts the umbrella wherever it accepts the scope split out of it,
+    so denying here would refuse a call that would have returned 200 — and
+    refuse it to a user who already granted the restricted-tier scope. The
+    upstream request going out is the assertion.
+    """
+    async with lifespan_database(tmp_path / "test.sqlite") as db:
+        ctx = _ctx_with_scopes(db, chat_client, granted=(CHAT_SPACES,))
+        with respx.mock(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+            out = await list_spaces_handler(ctx, ListSpacesInput())
+
+    assert out == []
+    assert route.call_count == 1
 
 
 @pytest.mark.asyncio

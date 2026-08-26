@@ -36,6 +36,7 @@ from ..config import (
     CONTACTS_READONLY,
     DIRECTORY_READONLY,
     OPENID_SCOPE,
+    scope_satisfied,
 )
 from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
 from ..observability import (
@@ -334,7 +335,7 @@ async def invoke_tool[T](
         if (
             required_scope is not None
             and auth.granted_scopes is not None
-            and required_scope not in auth.granted_scopes
+            and not scope_satisfied(required_scope, auth.granted_scopes)
         ):
             error_code = "missing_scope"
             logger.warning(
