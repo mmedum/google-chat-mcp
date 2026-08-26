@@ -317,6 +317,16 @@ changes get a major-version bump and ship with at least one minor-version
 deprecation warning before removal. We support the Python versions listed
 in [`pyproject.toml`](pyproject.toml) under `requires-python`.
 
+Every release is described in [`CHANGELOG.md`](CHANGELOG.md), which is also
+what the GitHub release notes are generated from. Changes needing deployer
+action — an OAuth re-consent, a re-login, a config change — are marked
+**Breaking:** and say what to do.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, the gates CI
+enforces, branch and commit conventions, and the changelog rules.
+
 ## Code of conduct
 
 See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant 3.0.

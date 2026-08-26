@@ -22,6 +22,10 @@ env:
   # `ghcr.io/astral-sh/uv` tag: CI resolves the lockfile the image is built
   # from, and a split between them is only ever discovered the hard way.
   UV_VERSION: "0.12.3"
+  # Same reasoning as UV_VERSION: no Dependabot ecosystem reads a `with:`
+  # input. release.yml scans the published image and pins this separately —
+  # workflows can't share an `env:` block, so keep the two in step.
+  TRIVY_VERSION: "v0.73.0"
 
 jobs:
   changes:
@@ -187,11 +191,10 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          # Pin the Trivy CLI explicitly; the action's bundled build nags about
-          # newer releases in scan output. No Dependabot ecosystem reads a
-          # `with:` input, so this only moves when someone looks — check it
-          # when touching this job.
-          version: v0.73.0
+          # Pinned via the workflow `env:` block above, which release.yml
+          # mirrors. The action's bundled build nags about newer releases in
+          # scan output; this only moves when someone looks.
+          version: ${{ env.TRIVY_VERSION }}
           image-ref: google-chat-mcp:ci
           severity: HIGH,CRITICAL
           exit-code: "1"

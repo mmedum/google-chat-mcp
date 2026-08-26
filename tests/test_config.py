@@ -10,12 +10,23 @@ from pydantic import SecretStr
 from pydantic_settings import SettingsError
 from src import config as config_mod
 from src.config import (
+    CHAT_MEMBERSHIPS,
+    CHAT_MEMBERSHIPS_READONLY,
+    CHAT_MESSAGES,
+    CHAT_MESSAGES_CREATE,
+    CHAT_MESSAGES_REACTIONS,
+    CHAT_MESSAGES_READONLY,
+    CHAT_SPACES,
+    CHAT_SPACES_CREATE,
+    CHAT_SPACES_READONLY,
     EMAIL_SCOPE,
     GOOGLE_OAUTH_SCOPES,
     OPENID_SCOPE,
     PROFILE_SCOPE,
+    SCOPE_IMPLIES,
     Settings,
     canonical_scopes,
+    scope_satisfied,
 )
 
 
@@ -319,3 +330,57 @@ def test_alias_table_matches_fastmcp() -> None:
     from fastmcp.server.auth.providers.google import GOOGLE_SCOPE_ALIASES
 
     assert config_mod._OIDC_ALIAS_CANONICAL == GOOGLE_SCOPE_ALIASES
+
+
+# ---------- scope implications ----------
+
+
+def test_scope_satisfied_exact_match() -> None:
+    assert scope_satisfied(CHAT_MESSAGES_READONLY, (CHAT_MESSAGES_READONLY,))
+
+
+def test_scope_satisfied_rejects_unrelated() -> None:
+    assert not scope_satisfied(CHAT_MESSAGES_READONLY, ("openid", CHAT_SPACES))
+
+
+@pytest.mark.parametrize(
+    ("umbrella", "narrow"),
+    [
+        (CHAT_MESSAGES, CHAT_MESSAGES_READONLY),
+        (CHAT_MESSAGES, CHAT_MESSAGES_CREATE),
+        (CHAT_MESSAGES, CHAT_MESSAGES_REACTIONS),
+        (CHAT_SPACES, CHAT_SPACES_READONLY),
+        (CHAT_SPACES, CHAT_SPACES_CREATE),
+        (CHAT_MEMBERSHIPS, CHAT_MEMBERSHIPS_READONLY),
+    ],
+)
+def test_umbrella_satisfies_the_scopes_split_out_of_it(umbrella: str, narrow: str) -> None:
+    """Holding the umbrella must never require a second grant.
+
+    These are the restricted-tier scopes, so a user holding one has already
+    paid the most expensive consent. Denying them locally for a call Google
+    would allow is the worst version of this bug.
+    """
+    assert scope_satisfied(narrow, (umbrella,))
+
+
+def test_implication_is_one_directional() -> None:
+    """A narrow grant must not satisfy the umbrella.
+
+    `chat.messages.readonly` cannot authorize a delete; if this ever passes,
+    the map has been inverted and the pre-flight is waving through calls
+    Google will reject.
+    """
+    assert not scope_satisfied(CHAT_MESSAGES, (CHAT_MESSAGES_READONLY,))
+    assert not scope_satisfied(CHAT_SPACES, (CHAT_SPACES_CREATE,))
+    assert not scope_satisfied(CHAT_MEMBERSHIPS, (CHAT_MEMBERSHIPS_READONLY,))
+
+
+def test_every_implied_scope_is_actually_requested() -> None:
+    """The map may only mention scopes that can appear in a granted set.
+
+    An entry outside GOOGLE_OAUTH_SCOPES is dead weight that reads as
+    coverage — nothing can ever grant it, so it silently never fires.
+    """
+    mentioned = set(SCOPE_IMPLIES) | {s for v in SCOPE_IMPLIES.values() for s in v}
+    assert mentioned <= set(GOOGLE_OAUTH_SCOPES)
