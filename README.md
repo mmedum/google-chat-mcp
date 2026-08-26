@@ -208,7 +208,7 @@ docker compose logs -f mcp
 ```
 
 `compose.yml` pulls the published multi-arch image
-(`ghcr.io/mmedum/google-chat-mcp:1.4`) by default — `linux/amd64` +
+(`ghcr.io/mmedum/google-chat-mcp:1.5`) by default — `linux/amd64` +
 `linux/arm64`, published with SBOM and SLSA provenance attestations on
 every `v*.*.*` tag. For local dev builds, swap the `image:` line for
 the commented `build:` block in `compose.yml`.
