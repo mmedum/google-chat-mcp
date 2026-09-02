@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import ValidationError
 from src.chat_client import _build_setup_space_body
 from src.models import CreateGroupChatInput
 from src.tools import create_group_chat_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 @pytest.mark.asyncio
@@ -19,11 +20,11 @@ async def test_happy_path_returns_space_id_and_member_count(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces:setup").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/GC1",
@@ -48,7 +49,7 @@ async def test_dry_run_omits_display_name_and_does_not_post(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces:setup")
@@ -80,11 +81,11 @@ async def test_dry_run_parity_with_real_post_body(tool_ctx: ToolContext, mock_ac
     """rendered_payload on dry-run equals the body the real POST would send."""
     payload = CreateGroupChatInput(member_emails=["a@example.com", "b@example.com"])
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces:setup").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"name": "spaces/GC2", "type": "GROUP_CHAT", "spaceType": "GROUP_CHAT"},
             )

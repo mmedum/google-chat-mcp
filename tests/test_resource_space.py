@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from src.models import SpaceDetails
 from src.resources.space import register_space_resource
 from src.tools._common import AuthInfo, ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 @pytest.fixture
@@ -35,9 +36,9 @@ def space_mcp(chat_client, db, mocker=None):
 
 @pytest.mark.asyncio
 async def test_space_resource_reads_via_chat_client(space_mcp) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces/AAA").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA",

@@ -19,6 +19,8 @@ from src.config import (
     CHAT_SPACES,
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
+    CHAT_USERS_SECTIONS,
+    CHAT_USERS_SECTIONS_READONLY,
     EMAIL_SCOPE,
     GOOGLE_OAUTH_SCOPES,
     OPENID_SCOPE,
@@ -352,6 +354,7 @@ def test_scope_satisfied_rejects_unrelated() -> None:
         (CHAT_SPACES, CHAT_SPACES_READONLY),
         (CHAT_SPACES, CHAT_SPACES_CREATE),
         (CHAT_MEMBERSHIPS, CHAT_MEMBERSHIPS_READONLY),
+        (CHAT_USERS_SECTIONS, CHAT_USERS_SECTIONS_READONLY),
     ],
 )
 def test_umbrella_satisfies_the_scopes_split_out_of_it(umbrella: str, narrow: str) -> None:
@@ -374,6 +377,7 @@ def test_implication_is_one_directional() -> None:
     assert not scope_satisfied(CHAT_MESSAGES, (CHAT_MESSAGES_READONLY,))
     assert not scope_satisfied(CHAT_SPACES, (CHAT_SPACES_CREATE,))
     assert not scope_satisfied(CHAT_MEMBERSHIPS, (CHAT_MEMBERSHIPS_READONLY,))
+    assert not scope_satisfied(CHAT_USERS_SECTIONS, (CHAT_USERS_SECTIONS_READONLY,))
 
 
 def test_every_implied_scope_is_actually_requested() -> None:

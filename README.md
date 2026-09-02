@@ -61,6 +61,13 @@ Pick one path and jump straight to its setup.
 | `remove_reaction` | Delete by resource name, or by `(message, emoji, user)` via server-side filter | `chat.messages.reactions` |
 | `list_reactions` | Paginated reactions on a message | `chat.messages.reactions` |
 | `search_messages` | Client-side exact / regex scan of one space; always pass `space_id` and `created_after` | `chat.messages.readonly` |
+| `list_sections` | Sections in your own Chat sidebar, system and custom | `chat.users.sections.readonly` |
+| `list_section_items` | Spaces filed under a section, or which section one space sits in | `chat.users.sections.readonly` |
+| `create_section` | Create a custom section (1-80 chars); no dedupe by name; `dry_run` previews | `chat.users.sections` |
+| `rename_section` | Rename a custom section; `dry_run` previews | `chat.users.sections` |
+| `delete_section` | Delete a custom section; its spaces fall back to the defaults; idempotent | `chat.users.sections` |
+| `position_section` | Reorder a section by absolute `sort_order` or `relative_position`; `dry_run` previews | `chat.users.sections` |
+| `move_space_to_section` | File a space under a section; no-ops when already there; pass `item_name` from `list_section_items` to skip the per-space lookup; `dry_run` previews | `chat.users.sections` |
 
 Three MCP **Resources** are dual-exposed for host-UI inclusion:
 
@@ -208,7 +215,7 @@ docker compose logs -f mcp
 ```
 
 `compose.yml` pulls the published multi-arch image
-(`ghcr.io/mmedum/google-chat-mcp:1.5`) by default — `linux/amd64` +
+(`ghcr.io/mmedum/google-chat-mcp:1.6`) by default — `linux/amd64` +
 `linux/arm64`, published with SBOM and SLSA provenance attestations on
 every `v*.*.*` tag. For local dev builds, swap the `image:` line for
 the commented `build:` block in `compose.yml`.
@@ -221,13 +228,13 @@ bearer token for subsequent tool calls.
 
 ### Transport-security notes (HTTPS)
 
-FastMCP 3.x enforces these per the MCP spec (2025-06-18). You shouldn't
+FastMCP enforces these per the MCP spec. You shouldn't
 need to touch them, but don't disable them:
 
 - **`Origin` header validation** on every request (DNS-rebinding defense).
 - **Localhost-only bind for dev** (`127.0.0.1`). Use `0.0.0.0` only behind
   a real reverse proxy.
-- **`MCP-Protocol-Version: 2025-06-18`** header required; server returns
+- **`MCP-Protocol-Version`** header required; server returns
   400 on invalid/missing version.
 - Authentication (the FastMCP-issued JWT via `GoogleProvider`) is
   mandatory — never expose the HTTP endpoint unauthenticated.
@@ -270,7 +277,7 @@ you own for a stable hostname.
 ```
 MCP client ──(stdio OR HTTP)──► FastMCP
                                  ├── Tools + Resources (see table above)
-                                 ├── chat_client — shared httpx.AsyncClient with retry/backoff
+                                 ├── chat_client — shared httpx2.AsyncClient with retry/backoff
                                  ├── SQLite (audit_log, user_directory cache)
                                  ├── Rate limiter (60/min per user)
                                  └── Auth resolver (transport-specific)

@@ -152,13 +152,17 @@ jobs:
       # Audit the exported lockfile rather than the environment so pip-audit
       # doesn't try (and fail) to resolve `google-chat-mcp` itself on PyPI.
       # `--no-emit-project` drops the self-package from the export.
-      # CVE-2025-69872 (diskcache pickle) has no upstream fix at any version.
-      # Assessed and accepted under "Accepted advisories" in docs/security.md;
-      # revisit there on an upstream release.
+      # The diskcache pickle issue has no upstream fix at any version. Assessed
+      # and accepted under "Accepted advisories" in docs/security.md; revisit
+      # there on an upstream release. Both IDs are listed because the advisory
+      # databases carry it under each, and only the matching one suppresses:
+      # PYSEC-2026-2447 appeared later and failed this job while the CVE alone
+      # was ignored, even though nothing about the dependency had changed.
       - name: pip-audit
         run: |
           uv export --format requirements-txt --no-emit-project --no-hashes -q \
-            | uv run pip-audit --strict -r /dev/stdin --ignore-vuln CVE-2025-69872
+            | uv run pip-audit --strict -r /dev/stdin \
+                --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-2447
 
   container:
     needs: changes

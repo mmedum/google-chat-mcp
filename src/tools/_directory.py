@@ -118,7 +118,7 @@ async def _lookup_person(
     """One People fetch, absorbing every failure. The caller does the caching.
 
     `except Exception` is deliberately broad, not a list of status codes:
-    `ChatClient._request` does not wrap transport errors, so `httpx`
+    `ChatClient._request` does not wrap transport errors, so `httpx2`
     `TimeoutException` / `ConnectError` arrive raw — exactly the flaky-upstream
     case this exists for. The invariant is "nothing here may cost a row", and
     enumerating failure types re-litigates it per exception.

@@ -8,7 +8,7 @@ from ._common import (
     CHAT_MEMBERSHIPS,
     ToolContext,
     invoke_tool,
-    is_missing_scope_error,
+    is_already_gone,
 )
 
 
@@ -43,7 +43,7 @@ async def remove_member_handler(ctx: ToolContext, payload: RemoveMemberInput) ->
         try:
             await ctx.client.remove_member(access_token, payload.membership_name)
         except ChatApiError as exc:
-            if _is_gone_or_forbidden(exc):
+            if is_already_gone(exc, forbidden_means_gone=True):
                 return RemoveMemberResult(
                     membership_name=payload.membership_name,
                     removed=False,
@@ -61,15 +61,6 @@ async def remove_member_handler(ctx: ToolContext, payload: RemoveMemberInput) ->
         target_space_id=_space_id_from_membership(payload.membership_name),
         required_scope=CHAT_MEMBERSHIPS,
     )
-
-
-def _is_gone_or_forbidden(exc: ChatApiError) -> bool:
-    """True when the membership is already gone. Excludes missing-scope 403s."""
-    if is_missing_scope_error(exc):
-        return False
-    if exc.status_code == 404 or exc.google_status == "NOT_FOUND":
-        return True
-    return exc.status_code == 403 and exc.google_status == "PERMISSION_DENIED"
 
 
 def _space_id_from_membership(membership_name: str) -> str:

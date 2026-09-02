@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from src.models import (
     AddReactionInput,
@@ -27,6 +26,8 @@ from src.tools._common import (
 
 from tests.conftest import person_payload
 
+from ._httpx2_mock import mock_api
+
 
 def _reaction_obj(rid: str, unicode_emoji: str, user_name: str) -> dict[str, object]:
     return {
@@ -39,11 +40,11 @@ def _reaction_obj(rid: str, unicode_emoji: str, user_name: str) -> dict[str, obj
 @pytest.mark.asyncio
 async def test_add_reaction_posts_unicode_emoji(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         route = mock.post("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(200, json=_reaction_obj("r1", "🙂", "users/me"))
+            return_value=httpx2.Response(200, json=_reaction_obj("r1", "🙂", "users/me"))
         )
         out = await add_reaction_handler(
             tool_ctx, AddReactionInput(message_name="spaces/AAA/messages/M.1", emoji="🙂")
@@ -65,11 +66,11 @@ async def test_add_reaction_409_presents_as_idempotent_success(
     reaction via reactions.list and returning success with that reaction_name.
     """
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         create_route = mock.post("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 409,
                 json={
                     "error": {
@@ -81,7 +82,7 @@ async def test_add_reaction_409_presents_as_idempotent_success(
             )
         )
         list_route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"reactions": [_reaction_obj("r_existing", "🙂", "users/test-user-sub")]},
             )
@@ -112,11 +113,11 @@ async def test_add_reaction_409_with_empty_list_re_raises(
     from fastmcp.exceptions import ToolError
 
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.post("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 409,
                 json={
                     "error": {
@@ -128,7 +129,7 @@ async def test_add_reaction_409_with_empty_list_re_raises(
             )
         )
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(200, json={"reactions": []})
+            return_value=httpx2.Response(200, json={"reactions": []})
         )
         with pytest.raises(ToolError, match="409"):
             await add_reaction_handler(
@@ -139,11 +140,11 @@ async def test_add_reaction_409_with_empty_list_re_raises(
 @pytest.mark.asyncio
 async def test_list_reactions_paginates(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "reactions": [
@@ -188,9 +189,9 @@ async def test_list_reactions_accepts_any_scope_google_accepts(
         )
 
     tool_ctx.resolver = resolver
-    with respx.mock() as mock:
+    with mock_api() as mock:
         route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(200, json={"reactions": []})
+            return_value=httpx2.Response(200, json={"reactions": []})
         )
         out = await list_reactions_handler(
             tool_ctx, ListReactionsInput(message_name="spaces/AAA/messages/M.1")
@@ -221,9 +222,9 @@ async def test_list_reactions_denies_when_no_accepted_scope_granted(
     tool_ctx.resolver = resolver
     # assert_all_called=False: the route existing but never being hit is the
     # assertion, not an oversight.
-    with respx.mock(assert_all_called=False) as mock:
+    with mock_api(assert_all_called=False) as mock:
         route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(200, json={"reactions": []})
+            return_value=httpx2.Response(200, json={"reactions": []})
         )
         with pytest.raises(ToolError) as excinfo:
             await list_reactions_handler(
@@ -250,11 +251,11 @@ async def test_remove_reaction_by_name_direct_delete(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r1").mock(
-            return_value=httpx.Response(200, json={})
+            return_value=httpx2.Response(200, json={})
         )
         out = await remove_reaction_handler(
             tool_ctx,
@@ -271,11 +272,11 @@ async def test_remove_reaction_by_filter_list_then_delete(
 ) -> None:
     """Filter path: server-side filter on emoji only, then People-API resolve per reaction."""
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         list_route = mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "reactions": [
@@ -286,13 +287,13 @@ async def test_remove_reaction_by_filter_list_then_delete(
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(200, json=person_payload("bob@example.com", "Bob"))
+            return_value=httpx2.Response(200, json=person_payload("bob@example.com", "Bob"))
         )
         mock.get("https://people.test/v1/people/222").mock(
-            return_value=httpx.Response(200, json=person_payload("alice@example.com", "Alice"))
+            return_value=httpx2.Response(200, json=person_payload("alice@example.com", "Alice"))
         )
         del_route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r42").mock(
-            return_value=httpx.Response(200, json={})
+            return_value=httpx2.Response(200, json={})
         )
         out = await remove_reaction_handler(
             tool_ctx,
@@ -321,20 +322,20 @@ async def test_remove_reaction_by_filter_email_case_insensitive(
 ) -> None:
     """Mismatched case on user_email still matches — Google emails are case-insensitive."""
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"reactions": [_reaction_obj("r1", "🙂", "users/111")]},
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(200, json=person_payload("Alice@Example.com"))
+            return_value=httpx2.Response(200, json=person_payload("Alice@Example.com"))
         )
         del_route = mock.delete("https://chat.test/v1/spaces/AAA/messages/M.1/reactions/r1").mock(
-            return_value=httpx.Response(200, json={})
+            return_value=httpx2.Response(200, json={})
         )
         out = await remove_reaction_handler(
             tool_ctx,
@@ -354,11 +355,11 @@ async def test_remove_reaction_by_filter_no_match_empty_list(
 ) -> None:
     """Empty reaction list → removed=False, no DELETE."""
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(200, json={"reactions": []})
+            return_value=httpx2.Response(200, json={"reactions": []})
         )
         del_route = mock.delete(url__regex=r".*/reactions/.*")
         out = await remove_reaction_handler(
@@ -380,17 +381,17 @@ async def test_remove_reaction_by_filter_no_email_match(
 ) -> None:
     """Emoji matched, but no resolved email matches the target → removed=False."""
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"reactions": [_reaction_obj("r1", "🙂", "users/999")]},
             )
         )
         mock.get("https://people.test/v1/people/999").mock(
-            return_value=httpx.Response(200, json=person_payload("someone.else@example.com"))
+            return_value=httpx2.Response(200, json=person_payload("someone.else@example.com"))
         )
         del_route = mock.delete(url__regex=r".*/reactions/.*")
         out = await remove_reaction_handler(
@@ -459,14 +460,14 @@ async def test_remove_reaction_refuses_to_claim_already_gone_when_a_lookup_fails
     tool_ctx.client._max_retries = 0
     # `assert_all_called=False`: the DELETE route going uncalled is the result
     # under test, not a mis-specified mock.
-    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+    with mock_api(assert_all_called=False) as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"reactions": [_reaction_obj("r10", "🙂", "users/111")]}
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -498,14 +499,14 @@ async def test_remove_reaction_still_reports_already_gone_on_a_clean_miss(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     """When every reactor resolves and none match, `removed: false` is the truth."""
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"reactions": [_reaction_obj("r10", "🙂", "users/111")]}
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(200, json=person_payload("bob@example.com", "Bob"))
+            return_value=httpx2.Response(200, json=person_payload("bob@example.com", "Bob"))
         )
         out = await remove_reaction_handler(
             tool_ctx,

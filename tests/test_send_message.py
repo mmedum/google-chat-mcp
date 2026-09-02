@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from src.chat_client import _build_send_message_body
 from src.models import SendMessageInput
 from src.tools import send_message_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 @pytest.mark.asyncio
@@ -17,7 +18,7 @@ async def test_dry_run_returns_rendered_payload_and_zero_posts(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/messages")
@@ -44,11 +45,11 @@ async def test_dry_run_parity_with_real_post_body(tool_ctx: ToolContext, mock_ac
 
     # Run a real post, capture the body it sends.
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",
@@ -73,7 +74,7 @@ async def test_dry_run_parity_with_real_post_body(tool_ctx: ToolContext, mock_ac
 async def test_dry_run_still_writes_audit_row(tool_ctx: ToolContext, mock_access_token) -> None:
     """dry_run cannot bypass observability — audit row + rate-limit bucket still fire."""
     with (
-        respx.mock(base_url="https://chat.test/v1"),
+        mock_api(base_url="https://chat.test/v1"),
         mock_access_token(),
     ):
         await send_message_handler(
@@ -102,11 +103,11 @@ async def test_write_survives_a_drifted_response(tool_ctx: ToolContext, mock_acc
     entirely.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",
@@ -135,11 +136,11 @@ async def test_unreadable_write_response_says_do_not_retry(
     duplicates it.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"unexpected": "shape"})
+            return_value=httpx2.Response(200, json={"unexpected": "shape"})
         )
         with pytest.raises(ToolError) as excinfo:
             await send_message_handler(tool_ctx, SendMessageInput(space_id="spaces/AAA", text="hi"))
@@ -158,11 +159,11 @@ async def test_send_message_carries_an_idempotency_key(
     created the message.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",
@@ -190,11 +191,11 @@ async def test_already_exists_recovers_instead_of_duplicating(
     duplicate-message path this key exists to close.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 409,
                 json={
                     "error": {
@@ -206,7 +207,7 @@ async def test_already_exists_recovers_instead_of_duplicating(
             )
         )
         get_route = mock.get(url__regex=r".*/spaces/AAA/messages/client-.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",

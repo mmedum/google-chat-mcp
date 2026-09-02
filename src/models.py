@@ -42,7 +42,7 @@ class _Strict(BaseModel):
 # alphanumerics. The middle `[A-Za-z0-9]` is mandatory — at least one
 # alphanumeric character must appear somewhere in the segment. This closes
 # a path-traversal vector where bare `.` or `..` segments would pass the
-# regex and let httpx normalize them via RFC 3986 §5.2.4 dot-segment
+# regex and let httpx2 normalize them via RFC 3986 §5.2.4 dot-segment
 # resolution, rewriting the upstream URL to target a different resource
 # (e.g. `spaces/T/messages/..` → `DELETE /v1/spaces/T`). Pydantic v2's
 # Rust regex engine doesn't support lookarounds, so the constraint is
@@ -54,6 +54,30 @@ MessageId = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/messages/{
 UserId = Annotated[str, StringConstraints(pattern=rf"^users/{_ID}$")]
 GroupId = Annotated[str, StringConstraints(pattern=rf"^groups/{_ID}$")]
 MembershipName = Annotated[str, StringConstraints(pattern=rf"^spaces/{_ID}/members/{_ID}$")]
+# Sidebar sections. Google addresses the calling user as `me`, a numeric id, or
+# an email, and canonicalises to the id in responses. `_ID` has no `@`, so the
+# email form is rejected here — no loss, since these endpoints only ever serve
+# the caller and every name we hand back is one Google already canonicalised.
+SectionName = Annotated[str, StringConstraints(pattern=rf"^users/{_ID}/sections/{_ID}$")]
+# The trailing `{item}` segment arrives in two shapes and both must validate.
+# Google's live API returns base64url of the space resource name — verified
+# against a live account; for the placeholder `spaces/AAA` that encoding would
+# be `c3BhY2VzL0FBQQ==` — while its own docs write the segment out unencoded as
+# `.../items/spaces/123456`. Accepting only one form risks a total outage on
+# every listing the day Google serves the other, so the optional `spaces/`
+# prefix is deliberate.
+#
+# `=` is allowed for the same reason. Every id we have seen is *unpadded*
+# base64url, but padded base64 of a space name is the obvious third spelling,
+# and `_ID` rejects `=` — one padded id would fail `_ChatSectionItemResponse`
+# and take down the whole listing, not just its own row, because the
+# comprehension in `list_section_items` validates rows inline. Cheap to allow,
+# and it is neither a path separator nor a dot segment, so it widens nothing
+# that matters: the tail can still gain at most the one `spaces/` literal.
+_SECTION_ITEM_ID = r"(?:spaces/)?[A-Za-z0-9._=-]*[A-Za-z0-9][A-Za-z0-9._=-]*"
+SectionItemName = Annotated[
+    str, StringConstraints(pattern=rf"^users/{_ID}/sections/{_ID}/items/{_SECTION_ITEM_ID}$")
+]
 
 # Input filter — only values Google accepts as a `spaces.list` filter.
 SpaceType = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"]
@@ -62,6 +86,18 @@ SpaceType = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT"]
 # than failing the row: `type` is on every space, so a closed Literal on the
 # response model would take down every space-shaped tool at once.
 SpaceTypeOut = Literal["SPACE", "DIRECT_MESSAGE", "GROUP_CHAT", "SPACE_TYPE_UNSPECIFIED"]
+# Output — same reasoning as `SpaceTypeOut`: `type` is on every section, so an
+# unrecognised value buckets into the unspecified member instead of failing the
+# listing. Google's system sections are the three `DEFAULT_*` values.
+SectionTypeOut = Literal[
+    "CUSTOM_SECTION",
+    "DEFAULT_DIRECT_MESSAGES",
+    "DEFAULT_SPACES",
+    "DEFAULT_APPS",
+    "SECTION_TYPE_UNSPECIFIED",
+]
+# Where `position_section` puts a section when no absolute `sort_order` is given.
+SectionRelativePosition = Literal["START", "END"]
 MemberKind = Literal["HUMAN", "GROUP"]
 MemberRole = Literal["ROLE_UNSPECIFIED", "ROLE_MEMBER", "ROLE_MANAGER"]
 MemberState = Literal["MEMBERSHIP_STATE_UNSPECIFIED", "JOINED", "INVITED", "NOT_A_MEMBER"]
@@ -598,6 +634,213 @@ class WhoamiResult(_Strict):
     picture_url: str | None = None
 
 
+# ---------- sidebar sections ----------
+# Sections are per-user client state: what the caller sees in their own Chat
+# navigation panel, not anything about the space itself. Nobody else's view
+# changes, and every endpoint here addresses the caller as `users/me`.
+
+
+class ListSectionsInput(_Strict):
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+    page_token: str | None = None
+    """`next_page_token` from a previous call, to read the next page."""
+
+
+class SectionSummary(_Strict):
+    section_name: SectionName
+    display_name: str
+    """Google populates this only for `CUSTOM_SECTION`. System sections get a
+    synthetic parenthesised label here, the same way `space_display_name`
+    labels an unnamed space."""
+    type: SectionTypeOut
+    sort_order: int | None = None
+    """Output-only rank in the sidebar. `position_section` sets it."""
+
+
+class ListSectionsResult(_Strict):
+    sections: list[SectionSummary]
+    next_page_token: str | None = None
+    """Non-null means `limit` cut the listing short and more sections exist.
+    A bare list would make that indistinguishable from a complete answer."""
+    unparsed: int = 0
+    """Rows this listing could not parse and skipped. Non-zero means the
+    result is INCOMPLETE and the response models are stale — not that the
+    section is that small. One bad row must never fail the whole page."""
+
+
+class CreateSectionInput(_Strict):
+    """Create a custom section in the caller's own sidebar."""
+
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=80)]
+    dry_run: bool = False
+
+
+class CreateSectionResult(_Strict):
+    section_name: SectionName | None = None
+    """None on dry-run — Google assigns the id."""
+    display_name: str
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
+class RenameSectionInput(_Strict):
+    """Rename a custom section. `displayName` is the only patchable field."""
+
+    section_name: SectionName
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=80)]
+    dry_run: bool = False
+
+
+class RenameSectionResult(_Strict):
+    section_name: SectionName
+    display_name: str
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+    # No `update_mask` field, unlike `UpdateSpaceResult`: that one reports a
+    # mask the request *derives* from which fields were supplied. Here Google
+    # documents exactly one patchable field, so the mask is the constant
+    # `displayName` and echoing it back tells the caller nothing they could
+    # act on. `UpdateMessageResult` — the other fixed-mask patch — omits it
+    # for the same reason.
+
+
+class DeleteSectionInput(_Strict):
+    section_name: SectionName
+    dry_run: bool = False
+
+
+class DeleteSectionResult(_Strict):
+    section_name: SectionName
+    deleted: bool
+    """False on idempotent re-delete (404 NOT_FOUND)."""
+    dry_run: bool = False
+
+
+class PositionSectionInput(_Strict):
+    """Move a section up or down the sidebar.
+
+    Exactly one of `sort_order` (absolute, 1-based — everything at or below
+    shifts down) or `relative_position` ('START' / 'END'). Google models these
+    as a union, so sending both is a 400; the validator rejects it here.
+    """
+
+    section_name: SectionName
+    sort_order: Annotated[int, Field(ge=1)] | None = None
+    relative_position: SectionRelativePosition | None = None
+    dry_run: bool = False
+
+    @model_validator(mode="after")
+    def _exactly_one_position(self) -> PositionSectionInput:
+        if (self.sort_order is None) == (self.relative_position is None):
+            raise ValueError("Set exactly one of `sort_order` or `relative_position`.")
+        return self
+
+
+class PositionSectionResult(_Strict):
+    section_name: SectionName
+    sort_order: int | None = None
+    """Rank Google reports after the move, when it returns one."""
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
+class ListSectionItemsInput(_Strict):
+    """List the spaces filed under a section, or find where one space sits.
+
+    Supply `section_name` to read one section, `space_id` to locate a single
+    space across all of them, or both to check one space against one section.
+    At least one is required: Google documents the `-` wildcard parent only in
+    combination with a space filter, and an unfiltered wildcard listing is not
+    a shape we can promise behaves.
+    """
+
+    section_name: SectionName | None = None
+    space_id: SpaceId | None = None
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+    page_token: str | None = None
+    """`next_page_token` from a previous call, to read the next page."""
+
+    @model_validator(mode="after")
+    def _require_a_selector(self) -> ListSectionItemsInput:
+        if self.section_name is None and self.space_id is None:
+            raise ValueError("Set at least one of `section_name` or `space_id`.")
+        return self
+
+
+class SectionItemSummary(_Strict):
+    item_name: SectionItemName
+    section_name: SectionName
+    """The section this item currently sits in, sliced off `item_name`."""
+    space_id: SpaceId | None = None
+    """Google's `SectionItem.item` is a union and only spaces are members of it
+    today. None means a member we don't model yet arrived."""
+
+
+class ListSectionItemsResult(_Strict):
+    items: list[SectionItemSummary]
+    next_page_token: str | None = None
+    """Non-null means `limit` cut the listing short and more spaces are filed
+    under this section. A section with more than `limit` spaces is the case
+    that makes a bare list dangerous: a bulk re-sort built on a silently
+    truncated listing skips the rows it never saw."""
+    unparsed: int = 0
+    """Rows this listing could not parse and skipped. Non-zero means the
+    result is INCOMPLETE and the response models are stale — not that the
+    section is that small. One bad row must never fail the whole page."""
+
+
+class MoveSpaceToSectionInput(_Strict):
+    """File a space under a section in the caller's sidebar.
+
+    Two upstream calls by default: locate the space's current section item,
+    then move it. Every space already sits in some section (a `DEFAULT_*` one
+    until you move it), so this both files and re-files.
+    """
+
+    space_id: SpaceId
+    section_name: SectionName
+    item_name: SectionItemName | None = None
+    """Optional fast path: the space's current section item, as returned by
+    `list_section_items`. Supplying it skips the per-space lookup, turning a
+    bulk sort of N spaces from 2N requests into one listing per section plus
+    one write per space that actually moves.
+
+    The pairing is the caller's to keep straight: nothing re-checks that
+    `item_name` belongs to `space_id` (checking would cost the very lookup
+    the hint exists to skip), so a mismatched pair moves one space while the
+    audit row names the other. Both are the caller's own sidebar under their
+    own token, so this misreports rather than escalates.
+
+    `space_id` stays required alongside it, never derived from the item id.
+    That id has two documented-vs-observed spellings — Google's live API
+    returns base64url of the space resource name, its docs write the name out
+    plainly — so a decode step here would be a silent mis-attribution waiting
+    on a format change, and `space_id` is what the audit row and the result
+    report.
+
+    A stale hint fails loudly rather than moving the wrong space: `item_name`
+    encodes the section the item was in, so if the space has since moved,
+    that path no longer exists and Google 404s."""
+    dry_run: bool = False
+
+
+class MoveSpaceToSectionResult(_Strict):
+    space_id: SpaceId
+    section_name: SectionName
+    """The requested target."""
+    item_name: SectionItemName
+    from_section: SectionName
+    """Where the space sat before the move — a `DEFAULT_*` section if it had
+    never been filed. Resolved before anything is written, so it is populated
+    on dry runs too; a space with no section item raises instead."""
+    moved: bool
+    """False without an error in two cases: a dry run, and a space already in
+    the target section. The second skips the move but not the lookup that
+    found it, so re-running a converged sort is half price, not free."""
+    dry_run: bool = False
+    rendered_payload: dict[str, Any] | None = None
+
+
 # ---------- Chat API response shapes ----------
 # Pydantic validators for raw Google JSON. `extra="allow"`: additions from
 # Google are kept and reported (`schema_drift` + `mcp_schema_drift_total`)
@@ -772,6 +1015,28 @@ class _ChatSpaceResponse(_ChatBase):
 class _ChatSpacesListResponse(_ChatBase):
     spaces: list[_ChatSpaceResponse] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+# No `*ListResponse` envelope models for sections, deliberately. The paginator
+# unwraps `sections` / `sectionItems` and the page token before any model sees
+# the response, so an envelope here would be handed an already-validated list —
+# it would revalidate nothing, and its own `nextPageToken` field could never
+# populate. The row models below are where drift on this endpoint shows up.
+class _ChatSectionResponse(_ChatBase):
+    name: SectionName
+    # `str`, not `Literal` — the rule the message and space models follow.
+    # `type` rides on every section, so a value we don't know yet must not be
+    # able to fail the whole listing. `section_type_out` narrows it.
+    type_: str | None = Field(default=None, alias="type")
+    display_name: str | None = Field(default=None, alias="displayName")
+    sort_order: int | None = Field(default=None, alias="sortOrder")
+
+
+class _ChatSectionItemResponse(_ChatBase):
+    name: SectionItemName
+    # Optional because `item` is a union: a future member type arrives with
+    # `space` absent, and that must not fail the rows around it.
+    space: SpaceId | None = None
 
 
 class _ChatGroup(_ChatBase):

@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**google-chat-mcp** is a FastMCP 3.x server that exposes Google Chat as MCP tools and resources. Two transports ship:
+**google-chat-mcp** is a FastMCP 4.x server that exposes Google Chat as MCP tools and resources. Two transports ship:
 
 - **HTTPS** (`src/server.py`) — self-hosted in Docker; FastMCP's `GoogleProvider` handles the MCP-layer JWT + upstream OAuth proxy; compose file + mounted secrets.
 - **stdio** (`src/stdio.py`) — per-user CLI (`google-chat-mcp login / logout / serve`; `mcp-server-google-chat` primary alias per Anthropic convention); loopback OAuth on `127.0.0.1:<random>` + Fernet-encrypted local token store at `~/.config/google-chat-mcp/`.
 
 Both entry points share `src/app.py::build_app(settings, resolver=, auth=)` — tool and resource registration is transport-agnostic. Per-user OAuth throughout; no service account, no domain-wide delegation, no centralized app (each deployer owns their Google app, their tokens, their rollout).
 
-Twenty-one tools, three resources:
+Twenty-eight tools, three resources:
 
 - Tools (read-side): `list_spaces`, `find_direct_message`, `get_messages`, `get_space`, `list_members`, `whoami`, `get_thread`, `get_message`, `list_reactions`, `search_messages` (space-scoped, client-side exact/regex), `search_people` (hybrid Workspace directory + caller contacts lookup; back-fills the email cache as a side effect).
-- Tools (write-side): `send_message` (optional `dry_run: true` previews the payload without posting), `update_message` (text-only edit via `updateMask=text`; restricted-tier scope), `delete_message` (idempotent on 404 / non-scope 403; restricted-tier scope), `add_reaction`, `remove_reaction` (by resource name OR server-side-filtered `(message, emoji, user)`), `create_group_chat` (unnamed multi-person DM; 2-20 members; `dry_run`), `create_space` (named space; 1-20 members; `display_name` required; `dry_run`), `add_member` (invite by email; idempotent-by-nature on Google's side; `dry_run`), `remove_member` (delete by resource name; idempotent).
+- Tools (write-side): `send_message` (optional `dry_run: true` previews the payload without posting), `update_message` (text-only edit via `updateMask=text`; restricted-tier scope), `delete_message` (idempotent on 404 / non-scope 403; restricted-tier scope), `add_reaction`, `remove_reaction` (by resource name OR server-side-filtered `(message, emoji, user)`), `create_group_chat` (unnamed multi-person DM; 2-20 members; `dry_run`), `create_space` (named space; 1-20 members; `display_name` required; `dry_run`), `add_member` (invite by email; idempotent-by-nature on Google's side; `dry_run`), `remove_member` (delete by resource name; idempotent), `update_space` (rename or edit the description via `spaces.patch`; restricted-tier scope; `dry_run`).
+- Tools (sidebar sections): `list_sections`, `list_section_items` (by section, or by space via Google's `-` wildcard parent), `create_section`, `rename_section`, `delete_section` (idempotent on 404; a plain 403 is a *system* section refusing deletion and is NOT swallowed), `position_section` (absolute `sort_order` XOR `relative_position` — prefer repeated `START` moves to build an order; absolute inserts do not settle where the docs imply), `move_space_to_section` (locates the space's section item, then moves it; no-ops when already filed; optional `item_name` skips that lookup, which is what makes a bulk sort cost one listing per section rather than a request per space). Sections are per-user sidebar state — nothing here changes a space or anyone else's view. Sensitive-tier `chat.users.sections` / `.readonly`.
 - Resources: `gchat://spaces/{id}`, `gchat://spaces/{id}/messages/{id}`, `gchat://spaces/{id}/threads/{id}` — same content shape as the matching `get_*` tools.
 
 `send_message` posts the body verbatim — no server-side suffix is appended. Missing-scope 403s from Google are wrapped as a `ToolError` that names the exact scope URL (see `is_missing_scope_error` + `format_missing_scope_message` in `src/tools/_common.py`).
@@ -61,10 +62,40 @@ restate them here, where they go stale silently. What those files don't say:
   `unused-ignore-comment` is a warning that still exits 1, so CI names the
   stale ones for you — `rg "ty: ignore" src tests` to see what's live. Strict
   mode is off.
-- **`fastmcp` is a shim over `fastmcp-slim`** as of 3.4.0, which also moved auth
-  JWTs to `joserfc`. Both transports run on it, so a minor bump is a larger
-  change than it looks, and CI can't cover the HTTPS auth path — the integration
-  test stubs the token verifier. Verify against a live deployment.
+- **`fastmcp` is a shim over `fastmcp-slim`** — still true on 4.x, where the
+  wrapper pins `fastmcp-slim[client,server]` at the same version. Both
+  transports run on it, so even a minor bump is a larger change than it looks,
+  and CI can't cover the HTTPS auth path — the integration test stubs the token
+  verifier. Verify against a live deployment.
+- **4.0 carried three changes worth remembering.** It runs on the MCP SDK v2,
+  which renamed tool-annotation fields to snake_case. Reading `.readOnlyHint`
+  raises a deprecation warning, and `filterwarnings = ["error"]` makes that
+  fatal; passing a camelCase *key* to `@mcp.tool(annotations=...)` is silently
+  accepted, and a typo'd one is silently dropped — so the registration side
+  gives you no signal at all. It moved fastmcp's HTTP stack to `httpx2`, and
+  ours followed. And `OAuthProxy` now advertises `issuer_url` rather than
+  `base_url` as the OAuth issuer — we pass no `issuer_url`, so it falls back to
+  `base_url` and nothing is mismatched. Setting them differently is what forces
+  every client to re-authorize.
+- **`httpx2` everywhere; plain `httpx` is not installed at all.** Runtime and
+  tests both. That cost us respx, which type-checks responses with
+  `isinstance(return_value, httpx.Response)` and so cannot mock `httpx2`
+  without dragging `httpx` back in. `tests/_httpx2_mock.py` replaces it: a
+  respx-shaped router over `httpx2.MockTransport`, mirroring the API the suite
+  already used so the call sites read unchanged.
+  **The part worth knowing before you touch it:** interception is two-layered.
+  `conftest.chat_client` injects the transport directly, *and* an autouse
+  fixture patches both client classes' `__init__` so clients the code builds
+  itself — inside the HTTPS app's lifespan, or `_doctor_client` — are caught
+  too. Only the first layer existed at first, and the doctor and integration
+  tests quietly made real calls to Google. A client naming its own transport is
+  left alone, which is what keeps the ASGI harness working.
+- **TLS trust moved with it, but only half the tree.** `httpx2` validates
+  against the OS trust store via `truststore`, where `httpx` 0.x used certifi.
+  That covers Chat and People calls. The stdio OAuth path — login, refresh,
+  revoke, `/userinfo` — runs on `google-auth`'s `requests`, which still uses
+  certifi, so behind a TLS-inspecting proxy tool calls can succeed while
+  `login` fails. `docs/security.md` records both.
 - **Python's lower bound is deliberate.** The image is built on 3.14 and
   `.python-version` pins dev and CI there, but the floor exists so
   `uv tool install` works on mainstream distros. CI runs the full matrix.
@@ -105,7 +136,7 @@ Set `GCM_AUDIT_HASH_USER_SUB=false` to disable hashing and store raw Google subs
 
 ## Tests
 
-Pytest + pytest-asyncio + respx. `tests/conftest.py` provides:
+Pytest + pytest-asyncio, with HTTP mocked by `tests/_httpx2_mock.py` (respx cannot mock `httpx2`). `tests/conftest.py` provides:
 - autouse `_env` fixture that seeds the `GCM_*` vars per-test (Settings always validates)
 - `db`, `chat_client`, `tool_ctx` — fresh instances per test
 - `mock_access_token` — patches `src.tools._common.get_access_token` to return a fake upstream token; use this in every test that touches a tool handler

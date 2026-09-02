@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx2
 import pytest
 import pytest_asyncio
 import structlog
@@ -18,6 +19,15 @@ from src.observability import configure_logging
 from src.rate_limit import ActiveUserTracker, TokenBucketLimiter
 from src.storage import Database, lifespan_database
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import dispatch_transport, intercept_all_clients
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network() -> Iterator[None]:
+    """No test may reach the network, including via a client it did not build."""
+    with intercept_all_clients():
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +62,15 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
 
 @pytest_asyncio.fixture
 async def chat_client() -> AsyncIterator[ChatClient]:
-    client = ChatClient(base_chat="https://chat.test/v1", base_people="https://people.test/v1")
+    # Transport-injected rather than globally patched: `mock_api()` sets the
+    # active router, and this client's transport looks it up per request. A
+    # request outside any `mock_api()` block raises instead of reaching the
+    # network.
+    client = ChatClient(
+        base_chat="https://chat.test/v1",
+        base_people="https://people.test/v1",
+        client=httpx2.AsyncClient(transport=dispatch_transport()),
+    )
     try:
         yield client
     finally:
@@ -92,6 +110,36 @@ def _patch_access_token(
 def mock_access_token():
     """Yield a context-manager that patches fastmcp's get_access_token."""
     return _patch_access_token
+
+
+def scope_403() -> httpx2.Response:
+    """Google's insufficient-scope 403, in the exact shape `is_missing_scope_error` parses.
+
+    Shared because it guards a security invariant: every idempotent-delete path
+    must keep raising on this rather than reporting a quiet `deleted=False`.
+    The envelope was hand-rebuilt across the suite with no copy authoritative;
+    the identical ones now import this. Three files still build their own
+    because their payloads genuinely differ: `test_tools.py` adds a `domain`
+    key, `test_tools_common.py` varies the envelope to exercise the parser,
+    and `test_degraded_enrichment.py` omits `@type` and reuses one response
+    object across calls. New tests should import this one.
+    """
+    return httpx2.Response(
+        403,
+        json={
+            "error": {
+                "code": 403,
+                "message": "Request had insufficient authentication scopes.",
+                "status": "PERMISSION_DENIED",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                    }
+                ],
+            }
+        },
+    )
 
 
 def person_payload(email: str, display_name: str | None = None) -> dict[str, object]:

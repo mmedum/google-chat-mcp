@@ -14,16 +14,66 @@ policy, so 0.x minors and patches carry breaking scope changes freely; 0.3.3 in
 particular ships seven new tools and three new OAuth scopes. And there is no
 1.1.0 — 1.0.1 is followed by 1.2.0.
 
-## [Unreleased]
+## [1.6.0] - 2026-09-02
+
+Take this one if you want Chat's sidebar sections under tool control, and
+read the scope note first either way.
+
+Seven new tools group spaces into custom sections — the thing you could
+previously only do by hand in the Chat UI. They need two new OAuth scopes,
+and on the HTTPS transport the scope gate is all-or-nothing, so authorize
+before you upgrade rather than after.
+
+The server also moves to FastMCP 4 and to `httpx2`, which together leave one
+HTTP stack in the image instead of two. Both were verified against a live
+Google deployment, including the OAuth flow end to end.
+
+### Added
+- **Seven tools for Chat's sidebar sections.** `list_sections`,
+  `list_section_items`, `create_section`, `rename_section`, `delete_section`,
+  `position_section` and `move_space_to_section` wrap Google's
+  `users.sections` API, so a client can group spaces into custom sections
+  instead of doing it by hand. Sections are per-user: they change the caller's
+  own sidebar and nobody else's. Every write supports `dry_run`. Now 28 tools.
+- **Bulk sorting costs one listing per section, not one lookup per space.**
+  `move_space_to_section` takes an optional `item_name` — the value
+  `list_section_items` returns — and skips the per-space lookup when given it.
+  Sorting 40 spaces drops from ~80 requests to a listing per section plus one
+  write per space that actually moves.
+
+### Changed
+- **Breaking: two new OAuth scopes.** The section tools need
+  `chat.users.sections` and `chat.users.sections.readonly`, both *sensitive*
+  tier — no CASA review. Add both to your consent screen (`docs/gcp-setup.md`
+  §4) and re-authorize **before** upgrading. On HTTPS the scope gate is
+  all-or-nothing: a token without them fails every tool, not just the section
+  ones. Stdio degrades per tool instead.
+- **Breaking: runs on FastMCP 4.x.** Brings the MCP SDK v2 and its
+  `2026-07-28` protocol era. The tool surface, schemas and result shapes are
+  unchanged. **HTTPS deployers: re-deploy in a quiet window and expect clients
+  may re-authorize** — 4.0 adds an RFC 9207 `iss` parameter and an `iss` claim
+  on minted tokens. Stdio is unaffected; it never builds the OAuth proxy.
+- **Now runs on `httpx2`, and only `httpx2`.** Pydantic's maintained
+  continuation of httpx, which FastMCP 4 already uses — `httpx` is no longer
+  a dependency at runtime or in tests. Chat/People calls now trust the OS
+  store via `truststore` rather than certifi. Note the stdio OAuth path still
+  goes through `google-auth`, which keeps using certifi.
+- **Dependencies refreshed.** pydantic 2.13.5, cryptography 50.0.1,
+  google-auth 2.57.0, authlib 1.8.0; ruff 0.16.5 and `ty` 0.0.77 on the dev
+  side. Every direct dependency is now at its latest release.
 
 ### Fixed
+- **CI's dependency audit had started failing on an advisory it already
+  accepts.** The diskcache pickle issue is carried under two IDs and only the
+  matching one suppresses, so `PYSEC-2026-2447` failed the job while
+  `CVE-2025-69872` alone was ignored. Both are listed now. No dependency
+  changed; `docs/security.md` already assessed it.
 - **Running the test suite could destroy a developer's own login.** The stdio
-  config directory was isolated by an opt-in fixture, so a login test that
-  did not request it wrote through to `~/.config/google-chat-mcp/tokens.json`
-  and overwrote the real refresh token with fixture data. Isolation is now
-  applied to every test by default, with an assertion that fails if the
-  config directory ever resolves inside the real home. No shipped behaviour
-  changes — this only affects contributors running `pytest`.
+  config directory was isolated by an opt-in fixture, so a login test that did
+  not request it wrote through to `~/.config/google-chat-mcp/tokens.json` and
+  overwrote the real refresh token. Isolation now applies to every test by
+  default, with an assertion that fails if the config directory resolves
+  inside the real home. Contributors only; no shipped behaviour changes.
 
 ## [1.5.0] - 2026-08-26
 
@@ -577,7 +627,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...v1.4.0

@@ -512,6 +512,49 @@ sensitive-tier scopes. The opt-out groupings:
 
 This is the supported opt-out path; both groups are modular.
 
+The sections scopes are **not** in this tier. `chat.users.sections` and
+`chat.users.sections.readonly` (v1.6.0) are sensitive-tier, so they add
+3-5 day self-service verification for an Externally-published app and
+nothing at all for an Internal one. They follow the same opt-out shape
+if you don't want them: drop both from `GOOGLE_OAUTH_SCOPES` and remove
+the seven section tool registrations in `src/app.py`.
+
+## After upgrading to v1.6.0, EVERY tool 403s on HTTPS
+
+Symptom: on the HTTPS transport, every tool fails after the upgrade —
+`whoami` and `list_spaces` included, not just the section tools.
+
+**Cause:** `src/server.py` passes the whole of `GOOGLE_OAUTH_SCOPES` to
+`GoogleProvider` as `required_scopes`, and that gate is all-or-nothing.
+A token that predates v1.6.0, or a consent screen missing the two new
+scopes, fails verification for the *session*, not for the section tools.
+So the symptom does not point at sections at all — which is why this
+entry sits above the per-tool one below.
+
+**Fix:** add both scopes to the consent screen (`docs/gcp-setup.md` §4)
+and have every user re-authorize. There is no partial mode: the scopes
+are mandatory once they are in `GOOGLE_OAUTH_SCOPES`. A deployer who
+does not want the section tools should drop both scopes *and* the seven
+registrations, per the opt-out above.
+
+## A section tool 403s while everything else works
+
+Symptom: on **stdio**, `list_sections` or `move_space_to_section` returns
+a missing-scope `ToolError` naming `chat.users.sections*`, while spaces
+and messages tools work fine. Stdio checks scopes per tool, so it
+degrades this way where HTTPS fails wholesale.
+
+**Cause:** the sections scopes were added in v1.6.0 and are not implied
+by any scope granted before it. `chat.spaces` does not cover them —
+sections are per-user client state, not space data, so Google treats
+them as a separate grant.
+
+**Fix:** re-consent. Stdio: `google-chat-mcp login` again. HTTPS: the MCP
+client re-runs the OAuth flow. Check the consent screen actually offers
+the two scopes first — if the deployer added them to `src/config.py` but
+not to the Google Cloud consent screen, the grant silently comes back
+without them and the 403 repeats. `docs/gcp-setup.md` §4 has the list.
+
 ## sender_email / display_name are null on non-self users
 
 Symptom: `get_messages` / `get_thread` / `get_message` / `list_members`

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from src.models import SearchPeopleInput
 from src.tools import search_people_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
+from .conftest import scope_403
 
 
 def _person(resource_name: str, email: str | None, display_name: str | None) -> dict:
@@ -26,11 +28,11 @@ async def test_directory_hit_populates_result_and_cache(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "people": [
@@ -66,11 +68,11 @@ async def test_contact_id_results_do_not_poison_cache(
 ) -> None:
     """Contact IDs (`people/c{hex}`) surface in the result but DO NOT write to cache."""
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchContacts.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "results": [
@@ -98,11 +100,11 @@ async def test_contact_id_results_do_not_poison_cache(
 async def test_hybrid_fan_out_merges_and_dedupes(tool_ctx: ToolContext, mock_access_token) -> None:
     """When both sources return the same person, DIRECTORY wins on the dedupe."""
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "people": [_person("people/111", "a@x.com", "Alice")],
@@ -110,7 +112,7 @@ async def test_hybrid_fan_out_merges_and_dedupes(tool_ctx: ToolContext, mock_acc
             )
         )
         mock.get(url__regex=r".*people:searchContacts.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "results": [
@@ -140,29 +142,12 @@ async def test_one_source_missing_scope_continues_with_the_other(
 ) -> None:
     """directory.readonly denied → fall back to contacts, still return hits."""
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx.Response(
-                403,
-                json={
-                    "error": {
-                        "code": 403,
-                        "message": "Request had insufficient authentication scopes.",
-                        "status": "PERMISSION_DENIED",
-                        "details": [
-                            {
-                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                            }
-                        ],
-                    }
-                },
-            )
-        )
+        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(return_value=scope_403())
         mock.get(url__regex=r".*people:searchContacts.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"results": [{"person": _person("people/c1", "b@x.com", "Bob")}]},
             )
@@ -185,11 +170,11 @@ async def test_directory_sharing_disabled_degrades_to_contacts(
     missing-scope reason. The hybrid must still return CONTACTS hits rather
     than failing the whole call."""
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -201,7 +186,7 @@ async def test_directory_sharing_disabled_degrades_to_contacts(
             )
         )
         mock.get(url__regex=r".*people:searchContacts.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "results": [{"person": _person("people/c1", "janedoe@example.com", "Jane Doe")}]
@@ -224,7 +209,7 @@ async def test_all_sources_non_scope_error_raises_with_reasons(
     """When every source fails with a non-scope error (network, admin
     config, etc), raise with the upstream messages — the admin needs
     to see what actually broke, not a misleading re-consent prompt."""
-    directory_error = httpx.Response(
+    directory_error = httpx2.Response(
         403,
         json={
             "error": {
@@ -234,9 +219,11 @@ async def test_all_sources_non_scope_error_raises_with_reasons(
             }
         },
     )
-    contacts_error = httpx.Response(500, json={"error": {"code": 500, "message": "internal error"}})
+    contacts_error = httpx2.Response(
+        500, json={"error": {"code": 500, "message": "internal error"}}
+    )
     with (
-        respx.mock(base_url="https://people.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://people.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(return_value=directory_error)
@@ -253,24 +240,9 @@ async def test_all_sources_non_scope_error_raises_with_reasons(
 @pytest.mark.asyncio
 async def test_all_sources_missing_scope_raises(tool_ctx: ToolContext, mock_access_token) -> None:
     """If every requested source is missing-scope, raise (don't silently empty)."""
-    missing_scope = httpx.Response(
-        403,
-        json={
-            "error": {
-                "code": 403,
-                "message": "Request had insufficient authentication scopes.",
-                "status": "PERMISSION_DENIED",
-                "details": [
-                    {
-                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                        "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                    }
-                ],
-            }
-        },
-    )
+    missing_scope = scope_403()
     with (
-        respx.mock(base_url="https://people.test/v1") as mock,
+        mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(return_value=missing_scope)
@@ -324,12 +296,12 @@ async def test_user_entered_contact_address_still_returns_a_hit(
     hiding every other hit in the result. These fields are `str` now: the value
     reaches the caller exactly as Google returned it.
     """
-    with respx.mock(base_url="https://people.test/v1") as mock, mock_access_token():
+    with mock_api(base_url="https://people.test/v1") as mock, mock_access_token():
         mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx.Response(200, json={"people": []})
+            return_value=httpx2.Response(200, json={"people": []})
         )
         mock.get(url__regex=r".*people:searchContacts.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "results": [

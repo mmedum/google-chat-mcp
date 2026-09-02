@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import ValidationError
 from src.chat_client import _build_update_message_body
 from src.models import UpdateMessageInput
 from src.tools import update_message_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 _MESSAGE_NAME = "spaces/AAA/messages/M.1"
 
@@ -19,11 +20,11 @@ _MESSAGE_NAME = "spaces/AAA/messages/M.1"
 @pytest.mark.asyncio
 async def test_happy_path_returns_updated_text(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": _MESSAGE_NAME,
@@ -52,7 +53,7 @@ async def test_dry_run_renders_body_and_does_not_patch(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_MESSAGE_NAME}")
@@ -72,11 +73,11 @@ async def test_dry_run_parity_with_real_patch_body(
     """rendered_payload on dry-run equals the body the real PATCH would send."""
     payload = UpdateMessageInput(message_name=_MESSAGE_NAME, text="parity")
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": _MESSAGE_NAME,

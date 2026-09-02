@@ -34,6 +34,13 @@ async def test_build_app_registers_all_tools(settings: Settings) -> None:
         "update_message",
         "delete_message",
         "update_space",
+        "list_sections",
+        "list_section_items",
+        "create_section",
+        "rename_section",
+        "delete_section",
+        "position_section",
+        "move_space_to_section",
     }
     assert expected_so_far.issubset(names)
 
@@ -66,54 +73,93 @@ async def test_tool_annotations_match_mcp_alignment(settings: Settings) -> None:
     for name in ("list_spaces", "get_messages", "get_space", "list_members"):
         ann = by_name[name].annotations
         assert ann is not None, f"{name} missing annotations"
-        assert ann.readOnlyHint is True, f"{name} should be readOnlyHint=True"
-        assert ann.openWorldHint is True, f"{name} should be openWorldHint=True"
+        assert ann.read_only_hint is True, f"{name} should be read_only_hint=True"
+        assert ann.open_world_hint is True, f"{name} should be open_world_hint=True"
 
     # find_direct_message — NOT read-only (create-on-miss side effect).
     fdm = by_name["find_direct_message"].annotations
     assert fdm is not None
-    assert fdm.readOnlyHint is False, "find_direct_message creates DMs, not read-only"
-    assert fdm.idempotentHint is True
+    assert fdm.read_only_hint is False, "find_direct_message creates DMs, not read-only"
+    assert fdm.idempotent_hint is True
 
     # send_message — writes, not destructive, not idempotent.
     sm = by_name["send_message"].annotations
     assert sm is not None
-    assert sm.readOnlyHint is False
-    assert sm.destructiveHint is False
-    assert sm.idempotentHint is False
+    assert sm.read_only_hint is False
+    assert sm.destructive_hint is False
+    assert sm.idempotent_hint is False
 
     # create_group_chat + create_space + add_member — writes, not destructive,
     # not idempotent.
     for name in ("create_group_chat", "create_space", "add_member"):
         ann = by_name[name].annotations
         assert ann is not None, f"{name} missing annotations"
-        assert ann.readOnlyHint is False, f"{name} should be readOnlyHint=False"
-        assert ann.destructiveHint is False
-        assert ann.idempotentHint is False
-        assert ann.openWorldHint is True
+        assert ann.read_only_hint is False, f"{name} should be read_only_hint=False"
+        assert ann.destructive_hint is False
+        assert ann.idempotent_hint is False
+        assert ann.open_world_hint is True
 
     # remove_member + delete_message — destructive + idempotent (double-delete
     # returns removed=false / deleted=false rather than erroring).
     for name in ("remove_member", "delete_message"):
         ann = by_name[name].annotations
         assert ann is not None, f"{name} missing annotations"
-        assert ann.readOnlyHint is False, f"{name} should be readOnlyHint=False"
-        assert ann.destructiveHint is True
-        assert ann.idempotentHint is True
+        assert ann.read_only_hint is False, f"{name} should be read_only_hint=False"
+        assert ann.destructive_hint is True
+        assert ann.idempotent_hint is True
 
     # update_message — writes, not destructive (text edit is reversible by
     # re-edit), not idempotent (new text replaces previous).
     um = by_name["update_message"].annotations
     assert um is not None
-    assert um.readOnlyHint is False
-    assert um.destructiveHint is False
-    assert um.idempotentHint is False
+    assert um.read_only_hint is False
+    assert um.destructive_hint is False
+    assert um.idempotent_hint is False
 
     # search_people — read-only.
     sp = by_name["search_people"].annotations
     assert sp is not None
-    assert sp.readOnlyHint is True
-    assert sp.openWorldHint is True
+    assert sp.read_only_hint is True
+    assert sp.open_world_hint is True
+
+
+@pytest.mark.asyncio
+async def test_section_tool_annotations(settings: Settings) -> None:
+    """Sections change only the caller's own sidebar — nothing here touches a space."""
+    mcp = build_app(settings)
+    tools = await mcp.list_tools()
+    by_name = {t.name: t for t in tools}
+
+    # Section reads.
+    for name in ("list_sections", "list_section_items"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.read_only_hint is True, f"{name} should be read_only_hint=True"
+        assert ann.open_world_hint is True
+
+    # create_section — writes, not destructive, NOT idempotent: Google does not
+    # deduplicate by name, so a repeat call leaves two sections.
+    cs = by_name["create_section"].annotations
+    assert cs is not None
+    assert cs.read_only_hint is False
+    assert cs.destructive_hint is False
+    assert cs.idempotent_hint is False
+
+    # rename / position / move — writes that land on the same state when
+    # repeated with the same arguments, and none of them destroys anything.
+    for name in ("rename_section", "position_section", "move_space_to_section"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.read_only_hint is False, f"{name} should be read_only_hint=False"
+        assert ann.destructive_hint is False
+        assert ann.idempotent_hint is True
+
+    # delete_section — destructive + idempotent, same shape as delete_message.
+    ds = by_name["delete_section"].annotations
+    assert ds is not None
+    assert ds.read_only_hint is False
+    assert ds.destructive_hint is True
+    assert ds.idempotent_hint is True
 
 
 @pytest.mark.asyncio

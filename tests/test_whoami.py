@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from src.tools import whoami_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 @pytest.mark.asyncio
@@ -14,14 +15,14 @@ async def test_whoami_returns_identity_from_userinfo(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://openidconnect.test/v1") as mock,
+        mock_api(base_url="https://openidconnect.test/v1") as mock,
         mock_access_token(),
     ):
         # conftest's chat_client is built with defaults — override the OIDC base
         # by patching _base_oidc directly for this test.
         tool_ctx.client._base_oidc = "https://openidconnect.test/v1"
         mock.get("/userinfo").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "sub": "109876543210",
@@ -45,12 +46,12 @@ async def test_whoami_tolerates_missing_optional_fields(
 ) -> None:
     """Google may omit email / name for some identities (e.g. service accounts)."""
     with (
-        respx.mock(base_url="https://openidconnect.test/v1") as mock,
+        mock_api(base_url="https://openidconnect.test/v1") as mock,
         mock_access_token(),
     ):
         tool_ctx.client._base_oidc = "https://openidconnect.test/v1"
         mock.get("/userinfo").mock(
-            return_value=httpx.Response(200, json={"sub": "42"}),
+            return_value=httpx2.Response(200, json={"sub": "42"}),
         )
         out = await whoami_handler(tool_ctx)
     assert out.user_sub == "42"
