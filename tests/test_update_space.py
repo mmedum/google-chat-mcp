@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import ValidationError
 from src.chat_client import _build_update_space_body
 from src.models import UpdateSpaceInput
 from src.tools import update_space_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 _SPACE_ID = "spaces/AAA"
 
@@ -28,11 +29,11 @@ def _space_response(display_name: str = "renamed") -> dict:
 @pytest.mark.asyncio
 async def test_display_name_only_uses_narrow_mask(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_SPACE_ID}").mock(
-            return_value=httpx.Response(200, json=_space_response("renamed"))
+            return_value=httpx2.Response(200, json=_space_response("renamed"))
         )
         result = await update_space_handler(
             tool_ctx,
@@ -51,11 +52,11 @@ async def test_display_name_only_uses_narrow_mask(tool_ctx: ToolContext, mock_ac
 @pytest.mark.asyncio
 async def test_description_only_uses_narrow_mask(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_SPACE_ID}").mock(
-            return_value=httpx.Response(200, json=_space_response())
+            return_value=httpx2.Response(200, json=_space_response())
         )
         result = await update_space_handler(
             tool_ctx,
@@ -74,11 +75,11 @@ async def test_description_only_uses_narrow_mask(tool_ctx: ToolContext, mock_acc
 @pytest.mark.asyncio
 async def test_both_fields_joined_in_mask(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_SPACE_ID}").mock(
-            return_value=httpx.Response(200, json=_space_response("new-name"))
+            return_value=httpx2.Response(200, json=_space_response("new-name"))
         )
         result = await update_space_handler(
             tool_ctx,
@@ -106,7 +107,7 @@ async def test_dry_run_renders_body_and_does_not_patch(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_SPACE_ID}")
@@ -135,11 +136,11 @@ async def test_dry_run_parity_with_real_patch_body(
         description="matching body",
     )
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.patch(f"/{_SPACE_ID}").mock(
-            return_value=httpx.Response(200, json=_space_response("parity"))
+            return_value=httpx2.Response(200, json=_space_response("parity"))
         )
         await update_space_handler(tool_ctx, payload)
     real_body = json.loads(route.calls[0].request.content.decode())

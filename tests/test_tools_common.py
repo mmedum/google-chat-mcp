@@ -8,9 +8,8 @@ import io
 from pathlib import Path
 from unittest.mock import patch
 
-import httpx
+import httpx2
 import pytest
-import respx
 import structlog
 from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
@@ -28,6 +27,8 @@ from src.tools._common import (
     is_missing_scope_error,
 )
 from structlog.testing import capture_logs
+
+from ._httpx2_mock import mock_api
 
 
 def test_is_missing_scope_detects_aip193_reason() -> None:
@@ -93,12 +94,12 @@ async def test_invoke_tool_wraps_missing_scope_into_scope_named_toolerror(
     from src.tools import list_spaces_handler
 
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         # Google's AIP-193 error envelope on a missing-scope 403.
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -132,11 +133,11 @@ async def test_invoke_tool_generic_403_stays_generic(
     from src.tools import list_spaces_handler
 
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -216,8 +217,8 @@ async def test_resolver_override_path_preferred_over_fastmcp(
             audit_hash_user_sub=True,
             resolver=fake_resolver,
         )
-        with respx.mock(base_url="https://chat.test/v1") as mock:
-            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        with mock_api(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             # No mock_access_token patch — if invoke_tool called FastMCP's get_access_token
             # here, the real impl would hit a FastMCP request-context guard and raise.
             await list_spaces_handler(ctx, ListSpacesInput())
@@ -270,8 +271,8 @@ async def test_preflight_accepts_the_umbrella_scope(
     """
     async with lifespan_database(tmp_path / "test.sqlite") as db:
         ctx = _ctx_with_scopes(db, chat_client, granted=(CHAT_SPACES,))
-        with respx.mock(base_url="https://chat.test/v1") as mock:
-            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        with mock_api(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             out = await list_spaces_handler(ctx, ListSpacesInput())
 
     assert out == []
@@ -295,8 +296,8 @@ async def test_preflight_rejects_missing_scope_and_audits_it(
 
         # assert_all_called=False: the route is registered precisely so the test
         # can prove it stays untouched.
-        with respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock:
-            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        with mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock:
+            route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             with pytest.raises(ToolError) as exc_info:
                 await list_spaces_handler(ctx, ListSpacesInput())
 
@@ -330,8 +331,8 @@ async def test_preflight_allows_a_granted_scope(
             chat_client,
             granted=("openid", "https://www.googleapis.com/auth/chat.spaces.readonly"),
         )
-        with respx.mock(base_url="https://chat.test/v1") as mock:
-            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        with mock_api(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             await list_spaces_handler(ctx, ListSpacesInput())
         assert route.call_count == 1
 
@@ -348,8 +349,8 @@ async def test_preflight_skipped_when_granted_scopes_unknown(
     """
     async with lifespan_database(tmp_path / "test.sqlite") as db:
         ctx = _ctx_with_scopes(db, chat_client, granted=None)
-        with respx.mock(base_url="https://chat.test/v1") as mock:
-            route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        with mock_api(base_url="https://chat.test/v1") as mock:
+            route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             await list_spaces_handler(ctx, ListSpacesInput())
         assert route.call_count == 1
 
@@ -369,10 +370,10 @@ async def test_audit_row_stores_hashed_sub(
     ).hexdigest()
 
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(sub=raw_sub),
     ):
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
         await list_spaces_handler(tool_ctx, ListSpacesInput())
 
     # Inspect the audit_log directly.
@@ -404,10 +405,10 @@ async def test_audit_row_stores_raw_sub_when_hashing_disabled(
         )
         raw_sub = "google-oauth-sub-77"
         with (
-            respx.mock(base_url="https://chat.test/v1") as mock,
+            mock_api(base_url="https://chat.test/v1") as mock,
             mock_access_token(sub=raw_sub),
         ):
-            mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+            mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
             await list_spaces_handler(ctx, ListSpacesInput())
 
         async with db.cursor() as conn:
@@ -458,12 +459,12 @@ async def test_invoke_tool_logs_drifted_field_on_schema_drift(
     markupSyntax outage present as an unexplained failure on every read tool.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
         capture_logs() as logs,
     ):
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"spaces": [{"name": "spaces/AAA"}]},  # `type` removed
             )
@@ -499,11 +500,11 @@ async def test_drift_log_renders_without_the_drifted_value(
     secret = "CONFIDENTIAL-salary-review"
     monkeypatch.setattr("src.models.logger", structlog.get_logger("drift_render"))
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"spaces": [{"name": "spaces/AAA", "type": "SPACE", "leakyNewField": secret}]},
             )
@@ -531,7 +532,7 @@ async def test_audit_write_failure_does_not_mask_the_tool_result(
     computed, and for a write tool would reasonably retry it.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
         patch(
             "src.tools._common.write_audit_row",
@@ -539,7 +540,7 @@ async def test_audit_write_failure_does_not_mask_the_tool_result(
         ),
     ):
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "spaces": [
@@ -560,14 +561,14 @@ async def test_audit_write_failure_does_not_mask_the_tool_error(
 ) -> None:
     """The same, for the failure path: the caller must still see the real error."""
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
         patch(
             "src.tools._common.write_audit_row",
             side_effect=RuntimeError("database is locked"),
         ),
     ):
-        mock.get("/spaces").mock(return_value=httpx.Response(404, json={"error": {"code": 404}}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(404, json={"error": {"code": 404}}))
         with pytest.raises(ToolError) as exc:
             await list_spaces_handler(tool_ctx, ListSpacesInput())
 

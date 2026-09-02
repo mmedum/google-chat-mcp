@@ -16,7 +16,27 @@ particular ships seven new tools and three new OAuth scopes. And there is no
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: runs on FastMCP 4.x.** Brings the MCP SDK v2 and its
+  `2026-07-28` protocol era. The tool surface, schemas and result shapes are
+  unchanged. **HTTPS deployers: re-deploy in a quiet window and expect clients
+  may re-authorize** — 4.0 adds an RFC 9207 `iss` parameter and an `iss` claim
+  on minted tokens. Stdio is unaffected; it never builds the OAuth proxy.
+- **Now runs on `httpx2`, and only `httpx2`.** Pydantic's maintained
+  continuation of httpx, which FastMCP 4 already uses — `httpx` is no longer a
+  dependency at runtime or in tests. Chat/People calls now trust the OS store
+  via `truststore` rather than certifi. The stdio OAuth path still goes through
+  `google-auth`, which keeps using certifi.
+- **Dependencies refreshed.** pydantic 2.13.5, cryptography 50.0.1,
+  google-auth 2.57.0, authlib 1.8.0; ruff 0.16.5 and `ty` 0.0.77 on the dev
+  side. Every direct dependency is now at its latest release.
+
 ### Fixed
+- **CI's dependency audit had started failing on an advisory it already
+  accepts.** The diskcache pickle issue is carried under two IDs and only the
+  matching one suppresses, so `PYSEC-2026-2447` failed the job while
+  `CVE-2025-69872` alone was ignored. Both are listed now. No dependency
+  changed; `docs/security.md` already assessed it.
 - **Running the test suite could destroy a developer's own login.** The stdio
   config directory was isolated by an opt-in fixture, so a login test that
   did not request it wrote through to `~/.config/google-chat-mcp/tokens.json`

@@ -39,7 +39,7 @@ MCP client ──(HTTPS OR stdio)──► src/app.py::build_app
                                   ├── @mcp.resource handlers in src/resources/
                                   │      └── same chat_client backends as the get_* tools
                                   │
-                                  ├── src/chat_client.py — single shared httpx.AsyncClient
+                                  ├── src/chat_client.py — single shared httpx2.AsyncClient
                                   │      └── 10s timeout, exp-backoff retry on 5xx/429, Pydantic-validated JSON
                                   │
                                   ├── src/storage.py — SQLite (WAL): audit_log (user_sub HMAC-hashed by default) + user_directory (email cache)

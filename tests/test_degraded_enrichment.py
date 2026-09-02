@@ -16,9 +16,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import httpx
+import httpx2
 import pytest
-import respx
 from src.models import GetMessagesInput, GetThreadInput, ListMembersInput
 from src.observability import REGISTRY
 from src.tools._common import ToolContext
@@ -26,12 +25,13 @@ from src.tools.get_messages import get_messages_handler
 from src.tools.get_thread import get_thread_handler
 from src.tools.list_members import list_members_handler
 
+from ._httpx2_mock import MockRouter, mock_api
 from .conftest import person_payload
 
 # The 403 Google returns when `directory.readonly` was never granted. Not a
 # hypothetical: the scope is separately consentable, so any deployer who
 # declined it hits this on every read.
-_SCOPE_403 = httpx.Response(
+_SCOPE_403 = httpx2.Response(
     403,
     json={
         "error": {
@@ -98,10 +98,10 @@ def _degraded_count(tool: str) -> float:
     return REGISTRY.get_sample_value("mcp_people_lookup_failures_total", {"tool": tool}) or 0.0
 
 
-def _mock_people(mock: respx.MockRouter, failure: httpx.Response | Exception) -> None:
+def _mock_people(mock: MockRouter, failure: httpx2.Response | Exception) -> None:
     """Point every People-API lookup at one failure, response or transport-level."""
     route = mock.get(url__startswith="https://people.test/v1/people/")
-    if isinstance(failure, httpx.Response):
+    if isinstance(failure, httpx2.Response):
         route.mock(return_value=failure)
     else:
         route.mock(side_effect=failure)
@@ -114,11 +114,11 @@ def _mock_people(mock: respx.MockRouter, failure: httpx.Response | Exception) ->
 # the row again, and a status-only test suite would never notice.
 _PEOPLE_FAILURES = [
     pytest.param(_SCOPE_403, id="missing_directory_scope_403"),
-    pytest.param(httpx.Response(429), id="rate_limited_429"),
-    pytest.param(httpx.Response(500), id="upstream_500"),
-    pytest.param(httpx.ConnectTimeout("timed out"), id="connect_timeout"),
-    pytest.param(httpx.ReadTimeout("timed out"), id="read_timeout"),
-    pytest.param(httpx.ConnectError("refused"), id="connect_error"),
+    pytest.param(httpx2.Response(429), id="rate_limited_429"),
+    pytest.param(httpx2.Response(500), id="upstream_500"),
+    pytest.param(httpx2.ConnectTimeout("timed out"), id="connect_timeout"),
+    pytest.param(httpx2.ReadTimeout("timed out"), id="read_timeout"),
+    pytest.param(httpx2.ConnectError("refused"), id="connect_error"),
 ]
 
 # `get_thread` filters `spaces.messages.list`, the same endpoint `get_messages`
@@ -143,9 +143,9 @@ _MESSAGE_READERS = [
 async def test_message_readers_keep_rows_when_people_api_fails(
     tool_ctx: ToolContext, mock_access_token, handler, payload, people_failure
 ) -> None:
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         _mock_people(mock, people_failure)
         out = await handler(tool_ctx, payload)
@@ -164,9 +164,9 @@ async def test_message_readers_keep_rows_when_people_api_fails(
 async def test_list_members_keeps_rows_when_people_api_fails(
     tool_ctx: ToolContext, mock_access_token, people_failure
 ) -> None:
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json=_MEMBERSHIPS)
+            return_value=httpx2.Response(200, json=_MEMBERSHIPS)
         )
         _mock_people(mock, people_failure)
         out = await list_members_handler(
@@ -185,9 +185,9 @@ async def test_list_members_keeps_rows_when_people_api_fails(
 async def test_degraded_lookup_increments_counter(tool_ctx: ToolContext, mock_access_token) -> None:
     """The degradation is silent to the caller, so it must not be silent to the operator."""
     before = _degraded_count("get_messages")
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         _mock_people(mock, _SCOPE_403)
         await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
@@ -201,12 +201,12 @@ async def test_successful_lookup_still_resolves_email(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     """Degradation must not have become the happy path."""
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json=person_payload("alice@example.com", "Alice Smith")
             )
         )
@@ -235,9 +235,9 @@ async def test_cached_sender_skips_the_people_call(
 
     # `assert_all_called=False`: the People route going uncalled is the result
     # under test, not a mis-specified mock.
-    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+    with mock_api(assert_all_called=False) as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         people = mock.get(url__startswith="https://people.test/v1/people/").mock(
             return_value=_SCOPE_403
@@ -259,12 +259,12 @@ async def test_one_lookup_per_unique_sender_not_per_message(
             dict(_MESSAGES["messages"][0], name=f"spaces/AAA/messages/M.{i}") for i in range(6)
         ]
     }
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=same_sender)
+            return_value=httpx2.Response(200, json=same_sender)
         )
         people = mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(200, json=person_payload("alice@example.com", "Alice"))
+            return_value=httpx2.Response(200, json=person_payload("alice@example.com", "Alice"))
         )
         out = await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
 
@@ -283,7 +283,7 @@ async def test_directory_cache_failure_does_not_drop_rows(
     are told to trust.
     """
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
         # `get_many` / `put_many_users` are what production calls — patching
         # the per-row `get`/`put` left the real guards with zero coverage.
@@ -297,10 +297,10 @@ async def test_directory_cache_failure_does_not_drop_rows(
         ),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         mock.get(url__startswith="https://people.test/v1/people/").mock(
-            return_value=httpx.Response(200, json=person_payload("alice@example.com", "Alice"))
+            return_value=httpx2.Response(200, json=person_payload("alice@example.com", "Alice"))
         )
         out = await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
 
@@ -329,12 +329,12 @@ async def test_addresses_google_returns_pass_through_and_keep_the_row(
     These fields are `str`, so whatever Google says reaches the caller and the
     row survives — no sanitising step to forget on some path.
     """
-    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+    with mock_api(assert_all_called=False) as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         mock.get(url__startswith="https://people.test/v1/people/").mock(
-            return_value=httpx.Response(200, json=person_payload(odd_address, "Alice"))
+            return_value=httpx2.Response(200, json=person_payload(odd_address, "Alice"))
         )
         out = await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
 
@@ -348,9 +348,9 @@ async def test_cached_odd_address_keeps_the_row(tool_ctx: ToolContext, mock_acce
     await tool_ctx.directory_cache.put("users/111", "not an email", "Alice Cached")
     await tool_ctx.directory_cache.put("users/222", "bob@example.com", "Bob Cached")
 
-    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+    with mock_api(assert_all_called=False) as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_MESSAGES)
+            return_value=httpx2.Response(200, json=_MESSAGES)
         )
         _mock_people(mock, _SCOPE_403)
         out = await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
@@ -373,9 +373,9 @@ async def test_cached_members_cost_no_people_requests(
     await tool_ctx.directory_cache.put("users/111", "alice@example.com", "Alice")
     await tool_ctx.directory_cache.put("users/222", "bob@example.com", "Bob")
 
-    with respx.mock(assert_all_called=False) as mock, mock_access_token():
+    with mock_api(assert_all_called=False) as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json=_MEMBERSHIPS)
+            return_value=httpx2.Response(200, json=_MEMBERSHIPS)
         )
         people = mock.get(url__startswith="https://people.test/v1/people/").mock(
             return_value=_SCOPE_403
@@ -395,12 +395,12 @@ async def test_only_uncached_members_are_looked_up(
     """A partial cache costs exactly one request per genuine miss."""
     await tool_ctx.directory_cache.put("users/111", "alice@example.com", "Alice")
 
-    with respx.mock() as mock, mock_access_token():
+    with mock_api() as mock, mock_access_token():
         mock.get("https://chat.test/v1/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json=_MEMBERSHIPS)
+            return_value=httpx2.Response(200, json=_MEMBERSHIPS)
         )
         people = mock.get("https://people.test/v1/people/222").mock(
-            return_value=httpx.Response(200, json=person_payload("bob@example.com", "Bob"))
+            return_value=httpx2.Response(200, json=person_payload("bob@example.com", "Bob"))
         )
         out = await list_members_handler(
             tool_ctx, ListMembersInput(space_id="spaces/AAA", limit=50)

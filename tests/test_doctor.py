@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import ValidationError
 from src.config import Settings
 from src.stdio import _run_doctor
 from src.tools._common import AuthInfo
+
+from ._httpx2_mock import MockRouter, mock_api
 
 
 def _settings() -> Settings:
@@ -52,10 +53,10 @@ def _message(extra: dict[str, object] | None = None) -> dict[str, object]:
 _USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 
-def _mock_userinfo(mock: respx.MockRouter) -> None:
+def _mock_userinfo(mock: MockRouter) -> None:
     """`doctor` now samples the OIDC payload too — `whoami` parses it."""
     mock.get(_USERINFO_URL).mock(
-        return_value=httpx.Response(
+        return_value=httpx2.Response(
             200, json={"sub": "u", "email": "alice@example.com", "name": "Alice"}
         )
     )
@@ -64,14 +65,14 @@ def _mock_userinfo(mock: respx.MockRouter) -> None:
 @pytest.mark.asyncio
 async def test_doctor_passes_when_live_shapes_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GCM_CHAT_API_BASE", "https://chat.googleapis.com/v1")
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"messages": [_message()]})
+            return_value=httpx2.Response(200, json={"messages": [_message()]})
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
     assert rc == 0
@@ -82,17 +83,17 @@ async def test_doctor_reports_drift_and_exits_nonzero(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The whole point: catch a new field before a user hits Internal error."""
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"messages": [_message({"fieldGoogleAddsIn2027": "x"})]},
             )
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
     assert rc == 1
@@ -110,16 +111,16 @@ async def test_doctor_reports_a_field_that_changed_shape() -> None:
     Unknown keys are absorbed now, so this branch is the only thing covering
     drift that actually breaks a tool.
     """
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"messages": [_message({"createTime": "not-a-timestamp"})]}
             )
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
     assert rc == 1
@@ -135,11 +136,11 @@ async def test_doctor_sees_drift_on_nested_models(
     logging drift on `sender` — a false clean bill of health from the one tool
     whose job is catching drift before a user does.
     """
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [_message({"sender": {"name": "users/1", "newSenderField": "x"}})]
@@ -147,7 +148,7 @@ async def test_doctor_sees_drift_on_nested_models(
             )
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
     assert rc == 1
@@ -159,11 +160,11 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
     """Reactions are parsed by `list_reactions` / `add_reaction`, so drift there
     breaks tools too. `doctor` sampled only spaces, messages and memberships,
     which let it report a clean bill of health for a shape it never looked at."""
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -173,7 +174,7 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
             )
         )
         mock.get("/spaces/AAA/messages/M.1/reactions").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "reactions": [
@@ -188,7 +189,7 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
             )
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
 
@@ -200,13 +201,13 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
 @pytest.mark.asyncio
 async def test_doctor_checks_userinfo_shape(capsys: pytest.CaptureFixture[str]) -> None:
     """`whoami` parses the OIDC payload; drift there was previously unsampled."""
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         mock.get(_USERINFO_URL).mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"sub": "u", "email": "alice@example.com", "hostedDomainAddedLater": "x"}
             )
         )
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
         rc = await _run_doctor(_resolver, _settings(), limit=5)
 
     assert rc == 1
@@ -217,14 +218,14 @@ async def test_doctor_checks_userinfo_shape(capsys: pytest.CaptureFixture[str]) 
 @pytest.mark.asyncio
 async def test_doctor_skips_reactions_for_messages_without_any() -> None:
     """No reaction summaries on the message means no reactions.list call."""
-    with respx.mock(base_url="https://chat.googleapis.com/v1", assert_all_called=False) as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1", assert_all_called=False) as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"messages": [_message()]})
+            return_value=httpx2.Response(200, json={"messages": [_message()]})
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         reactions = mock.get("/spaces/AAA/messages/M.1/reactions")
         rc = await _run_doctor(_resolver, _settings(), limit=5)
@@ -242,9 +243,9 @@ async def test_doctor_is_clean_on_a_realistic_userinfo_payload() -> None:
     `doctor` reported SCHEMA DRIFT on every run for every user, telling them to
     add fields to `models.py` that nothing reads.
     """
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         mock.get(_USERINFO_URL).mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "sub": "1234567890",
@@ -259,7 +260,7 @@ async def test_doctor_is_clean_on_a_realistic_userinfo_payload() -> None:
                 },
             )
         )
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
         rc = await _run_doctor(_resolver, _settings(), limit=5)
 
     assert rc == 0
@@ -276,20 +277,20 @@ async def test_doctor_reports_a_failed_fetch_instead_of_crashing(
     memberships were looked at — same exit code as real drift, with the other
     findings discarded.
     """
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         mock.get(_USERINFO_URL).mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403, json={"error": {"code": 403, "status": "PERMISSION_DENIED"}}
             )
         )
         mock.get("/spaces").mock(
-            return_value=httpx.Response(200, json={"spaces": [dict(_space(), brandNewField="x")]})
+            return_value=httpx2.Response(200, json={"spaces": [dict(_space(), brandNewField="x")]})
         )
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"messages": []})
+            return_value=httpx2.Response(200, json={"messages": []})
         )
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(200, json={"memberships": []})
+            return_value=httpx2.Response(200, json={"memberships": []})
         )
         rc = await _run_doctor(_resolver, _settings(), limit=5)
 
@@ -307,11 +308,11 @@ async def test_doctor_survives_a_message_deleted_mid_run(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """reactions.list can 404 on a message deleted between calls — a plausible race."""
-    with respx.mock(base_url="https://chat.googleapis.com/v1") as mock:
+    with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": [_space()]}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -320,9 +321,9 @@ async def test_doctor_survives_a_message_deleted_mid_run(
                 },
             )
         )
-        mock.get("/spaces/AAA/messages/M.1/reactions").mock(return_value=httpx.Response(404))
+        mock.get("/spaces/AAA/messages/M.1/reactions").mock(return_value=httpx2.Response(404))
         mock.get("/spaces/AAA/members").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"memberships": [{"name": "spaces/AAA/members/1", "state": "JOINED"}]}
             )
         )

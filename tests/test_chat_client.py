@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import math
 
-import httpx
+import httpx2
 import pytest
-import respx
 from src.chat_client import (
     _MAX_BACKOFF_SECONDS,
     ChatApiError,
@@ -14,16 +13,18 @@ from src.chat_client import (
     _backoff_seconds,
 )
 
+from ._httpx2_mock import mock_api
+
 
 @pytest.mark.asyncio
 async def test_list_spaces_follows_pagination(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces").mock(
             side_effect=[
-                httpx.Response(
+                httpx2.Response(
                     200, json={"spaces": [{"name": "spaces/a"}], "nextPageToken": "tok"}
                 ),
-                httpx.Response(200, json={"spaces": [{"name": "spaces/b"}]}),
+                httpx2.Response(200, json={"spaces": [{"name": "spaces/b"}]}),
             ]
         )
         spaces = await chat_client.list_spaces(access_token="tok", limit=50)
@@ -32,11 +33,11 @@ async def test_list_spaces_follows_pagination(chat_client: ChatClient) -> None:
 
 @pytest.mark.asyncio
 async def test_retries_on_5xx_then_succeeds(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces").mock(
             side_effect=[
-                httpx.Response(503),
-                httpx.Response(200, json={"spaces": []}),
+                httpx2.Response(503),
+                httpx2.Response(200, json={"spaces": []}),
             ]
         )
         spaces = await chat_client.list_spaces(access_token="tok", limit=50)
@@ -45,11 +46,11 @@ async def test_retries_on_5xx_then_succeeds(chat_client: ChatClient) -> None:
 
 @pytest.mark.asyncio
 async def test_retries_on_429_with_retry_after(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces").mock(
             side_effect=[
-                httpx.Response(429, headers={"Retry-After": "0"}),
-                httpx.Response(200, json={"spaces": []}),
+                httpx2.Response(429, headers={"Retry-After": "0"}),
+                httpx2.Response(200, json={"spaces": []}),
             ]
         )
         await chat_client.list_spaces(access_token="tok", limit=50)
@@ -68,7 +69,7 @@ async def test_retries_on_429_with_retry_after(chat_client: ChatClient) -> None:
     ],
 )
 def test_retry_after_honoured_up_to_the_ceiling(header: str, expected: float) -> None:
-    resp = httpx.Response(429, headers={"Retry-After": header})
+    resp = httpx2.Response(429, headers={"Retry-After": header})
     assert _backoff_seconds(1, resp) == expected
 
 
@@ -82,7 +83,7 @@ def test_retry_after_below_the_floor_is_raised_to_it(header: str) -> None:
     concurrent retry at the identical instant, which is the herd the jitter on
     the computed path exists to break up.
     """
-    delay = _backoff_seconds(1, httpx.Response(429, headers={"Retry-After": header}))
+    delay = _backoff_seconds(1, httpx2.Response(429, headers={"Retry-After": header}))
     base = 0.5
     assert base <= delay <= base * 1.25
 
@@ -109,22 +110,22 @@ def test_unusable_retry_after_falls_back_to_exponential(header: str) -> None:
     which rejects it outright on 3.13+ and poisons the timer heap before that.
     """
     headers = {} if header == _NO_HEADER else {"Retry-After": header}
-    delay = _backoff_seconds(1, httpx.Response(429, headers=headers))
+    delay = _backoff_seconds(1, httpx2.Response(429, headers=headers))
     assert math.isfinite(delay)
     assert 0 < delay <= _MAX_BACKOFF_SECONDS
 
 
 def test_exponential_backoff_respects_ceiling() -> None:
     for attempt in range(1, 12):
-        assert 0 < _backoff_seconds(attempt, httpx.Response(503)) <= _MAX_BACKOFF_SECONDS
+        assert 0 < _backoff_seconds(attempt, httpx2.Response(503)) <= _MAX_BACKOFF_SECONDS
 
 
 @pytest.mark.asyncio
 async def test_gives_up_after_max_retries(chat_client: ChatClient) -> None:
     # Force the retry cap to 1 so the test is fast.
     chat_client._max_retries = 1
-    with respx.mock(base_url="https://chat.test/v1") as mock:
-        mock.get("/spaces").mock(return_value=httpx.Response(503))
+    with mock_api(base_url="https://chat.test/v1") as mock:
+        mock.get("/spaces").mock(return_value=httpx2.Response(503))
         with pytest.raises(ChatApiError) as exc:
             await chat_client.list_spaces(access_token="tok", limit=50)
     assert exc.value.status_code == 503
@@ -132,8 +133,8 @@ async def test_gives_up_after_max_retries(chat_client: ChatClient) -> None:
 
 @pytest.mark.asyncio
 async def test_find_direct_message_404_returns_none(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
-        mock.get("/spaces:findDirectMessage").mock(return_value=httpx.Response(404))
+    with mock_api(base_url="https://chat.test/v1") as mock:
+        mock.get("/spaces:findDirectMessage").mock(return_value=httpx2.Response(404))
         result = await chat_client.find_direct_message(
             access_token="tok", user_email="alice@example.com"
         )
@@ -142,9 +143,9 @@ async def test_find_direct_message_404_returns_none(chat_client: ChatClient) -> 
 
 @pytest.mark.asyncio
 async def test_send_message_includes_thread_reply_option(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         route = mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",
@@ -167,9 +168,9 @@ async def test_send_message_includes_thread_reply_option(chat_client: ChatClient
 
 @pytest.mark.asyncio
 async def test_get_space_hits_spaces_resource(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         route = mock.get("/spaces/AAA").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"name": "spaces/AAA", "type": "SPACE", "displayName": "#eng"}
             )
         )
@@ -185,10 +186,10 @@ async def test_list_members_respects_limit_across_pages(
     # Two-page response; limit=2 stops after the first page even though a
     # second is offered, and pageSize on the second call would shrink to
     # remaining budget.
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces/AAA/members").mock(
             side_effect=[
-                httpx.Response(
+                httpx2.Response(
                     200,
                     json={
                         "memberships": [
@@ -201,7 +202,7 @@ async def test_list_members_respects_limit_across_pages(
                         "nextPageToken": "p2",
                     },
                 ),
-                httpx.Response(
+                httpx2.Response(
                     200,
                     json={
                         "memberships": [
@@ -224,9 +225,9 @@ async def test_list_members_respects_limit_across_pages(
 
 @pytest.mark.asyncio
 async def test_non_retryable_4xx_raises_immediately(chat_client: ChatClient) -> None:
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces").mock(
-            return_value=httpx.Response(403, json={"error": {"message": "forbidden"}})
+            return_value=httpx2.Response(403, json={"error": {"message": "forbidden"}})
         )
         with pytest.raises(ChatApiError) as exc:
             await chat_client.list_spaces(access_token="tok", limit=50)
@@ -239,9 +240,9 @@ async def test_3xx_response_raises_chat_api_error(chat_client: ChatClient) -> No
     """Regression: pre-fix `< 400` swallowed 3xx as success and returned an
     empty dict, masking the redirect. Now any 3xx surfaces as a
     ChatApiError so the caller can decide what to do."""
-    with respx.mock(base_url="https://chat.test/v1") as mock:
+    with mock_api(base_url="https://chat.test/v1") as mock:
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 302,
                 headers={"Location": "https://attacker.example.com/v1/spaces"},
             )

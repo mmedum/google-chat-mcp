@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**google-chat-mcp** is a FastMCP 3.x server that exposes Google Chat as MCP tools and resources. Two transports ship:
+**google-chat-mcp** is a FastMCP 4.x server that exposes Google Chat as MCP tools and resources. Two transports ship:
 
 - **HTTPS** (`src/server.py`) — self-hosted in Docker; FastMCP's `GoogleProvider` handles the MCP-layer JWT + upstream OAuth proxy; compose file + mounted secrets.
 - **stdio** (`src/stdio.py`) — per-user CLI (`google-chat-mcp login / logout / serve`; `mcp-server-google-chat` primary alias per Anthropic convention); loopback OAuth on `127.0.0.1:<random>` + Fernet-encrypted local token store at `~/.config/google-chat-mcp/`.
@@ -61,10 +61,40 @@ restate them here, where they go stale silently. What those files don't say:
   `unused-ignore-comment` is a warning that still exits 1, so CI names the
   stale ones for you — `rg "ty: ignore" src tests` to see what's live. Strict
   mode is off.
-- **`fastmcp` is a shim over `fastmcp-slim`** as of 3.4.0, which also moved auth
-  JWTs to `joserfc`. Both transports run on it, so a minor bump is a larger
-  change than it looks, and CI can't cover the HTTPS auth path — the integration
-  test stubs the token verifier. Verify against a live deployment.
+- **`fastmcp` is a shim over `fastmcp-slim`** — still true on 4.x, where the
+  wrapper pins `fastmcp-slim[client,server]` at the same version. Both
+  transports run on it, so even a minor bump is a larger change than it looks,
+  and CI can't cover the HTTPS auth path — the integration test stubs the token
+  verifier. Verify against a live deployment.
+- **4.0 carried three changes worth remembering.** It runs on the MCP SDK v2,
+  which renamed tool-annotation fields to snake_case. Reading `.readOnlyHint`
+  raises a deprecation warning, and `filterwarnings = ["error"]` makes that
+  fatal; passing a camelCase *key* to `@mcp.tool(annotations=...)` is silently
+  accepted, and a typo'd one is silently dropped — so the registration side
+  gives you no signal at all. It moved fastmcp's HTTP stack to `httpx2`, and
+  ours followed. And `OAuthProxy` now advertises `issuer_url` rather than
+  `base_url` as the OAuth issuer — we pass no `issuer_url`, so it falls back to
+  `base_url` and nothing is mismatched. Setting them differently is what forces
+  every client to re-authorize.
+- **`httpx2` everywhere; plain `httpx` is not installed at all.** Runtime and
+  tests both. That cost us respx, which type-checks responses with
+  `isinstance(return_value, httpx.Response)` and so cannot mock `httpx2`
+  without dragging `httpx` back in. `tests/_httpx2_mock.py` replaces it: a
+  respx-shaped router over `httpx2.MockTransport`, mirroring the API the suite
+  already used so the call sites read unchanged.
+  **The part worth knowing before you touch it:** interception is two-layered.
+  `conftest.chat_client` injects the transport directly, *and* an autouse
+  fixture patches both client classes' `__init__` so clients the code builds
+  itself — inside the HTTPS app's lifespan, or `_doctor_client` — are caught
+  too. Only the first layer existed at first, and the doctor and integration
+  tests quietly made real calls to Google. A client naming its own transport is
+  left alone, which is what keeps the ASGI harness working.
+- **TLS trust moved with it, but only half the tree.** `httpx2` validates
+  against the OS trust store via `truststore`, where `httpx` 0.x used certifi.
+  That covers Chat and People calls. The stdio OAuth path — login, refresh,
+  revoke, `/userinfo` — runs on `google-auth`'s `requests`, which still uses
+  certifi, so behind a TLS-inspecting proxy tool calls can succeed while
+  `login` fails. `docs/security.md` records both.
 - **Python's lower bound is deliberate.** The image is built on 3.14 and
   `.python-version` pins dev and CI there, but the floor exists so
   `uv tool install` works on mainstream distros. CI runs the full matrix.
@@ -105,7 +135,7 @@ Set `GCM_AUDIT_HASH_USER_SUB=false` to disable hashing and store raw Google subs
 
 ## Tests
 
-Pytest + pytest-asyncio + respx. `tests/conftest.py` provides:
+Pytest + pytest-asyncio, with HTTP mocked by `tests/_httpx2_mock.py` (respx cannot mock `httpx2`). `tests/conftest.py` provides:
 - autouse `_env` fixture that seeds the `GCM_*` vars per-test (Settings always validates)
 - `db`, `chat_client`, `tool_ctx` — fresh instances per test
 - `mock_access_token` — patches `src.tools._common.get_access_token` to return a fake upstream token; use this in every test that touches a tool handler

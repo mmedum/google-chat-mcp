@@ -21,14 +21,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp import Client, FastMCP
 from fastmcp.server.auth.auth import AccessToken, TokenVerifier
 from pydantic import AnyHttpUrl
 from src.app import build_app
 from src.config import Settings
+
+from ._httpx2_mock import mock_api
 
 
 class _StubAuthProvider(TokenVerifier):
@@ -65,17 +66,17 @@ def mcp_https() -> FastMCP:
 
 
 @asynccontextmanager
-async def _http_client(app: FastMCP) -> AsyncIterator[httpx.AsyncClient]:
+async def _http_client(app: FastMCP) -> AsyncIterator[httpx2.AsyncClient]:
     """ASGI-in-process HTTP client with lifespan driven manually.
 
-    `httpx.ASGITransport` doesn't run ASGI lifespan events, so the
+    `httpx2.ASGITransport` doesn't run ASGI lifespan events, so the
     build_app lifespan (which populates `ToolContext` — `readyz` reads it)
     has to be entered explicitly via Starlette's `lifespan_context`.
     """
     http_app = app.http_app()
     async with http_app.router.lifespan_context(http_app):
-        transport = httpx.ASGITransport(app=http_app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        transport = httpx2.ASGITransport(app=http_app)
+        async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
             yield client
 
 
@@ -126,11 +127,11 @@ async def test_tool_call_via_in_process_client(mcp_https: FastMCP, mock_access_t
     OIDC /userinfo.
     """
     with (
-        respx.mock(assert_all_called=False) as route_mock,
+        mock_api(assert_all_called=False) as route_mock,
         mock_access_token(),
     ):
         route_mock.get(url__regex=r"https://openidconnect\.googleapis\.com/v1/userinfo").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "sub": "test-user-sub",
