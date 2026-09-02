@@ -5,14 +5,15 @@ from __future__ import annotations
 import json
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp import FastMCP
 from src.models import GetThreadInput
 from src.resources.thread import register_thread_resource
 from src.tools import get_thread_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 def _upstream_thread_page(thread_name: str) -> dict[str, object]:
@@ -42,16 +43,16 @@ async def test_get_thread_returns_ordered_messages(
 ) -> None:
     thread_name = "spaces/AAA/threads/T.42"
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_upstream_thread_page(thread_name)),
+            return_value=httpx2.Response(200, json=_upstream_thread_page(thread_name)),
         )
         # People-API resolve: return the same shape for both senders so enrichment
         # doesn't drop them. Use a regex so both /people/111 and /people/222 hit.
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [{"value": "u@example.com", "metadata": {"primary": True}}],
@@ -94,12 +95,12 @@ async def test_thread_resource_uri_parsing_and_read(chat_client, db, mock_access
     register_thread_resource(mcp, resolve_ctx=lambda: ctx)
 
     thread_name = "spaces/AAA/threads/T.42"
-    with respx.mock(assert_all_called=False) as mock:
+    with mock_api(assert_all_called=False) as mock:
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json=_upstream_thread_page(thread_name)),
+            return_value=httpx2.Response(200, json=_upstream_thread_page(thread_name)),
         )
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [{"value": "u@example.com", "metadata": {"primary": True}}],

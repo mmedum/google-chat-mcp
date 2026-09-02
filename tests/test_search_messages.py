@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from src.models import SearchMessagesInput
 from src.tools import search_messages_handler
 from src.tools._common import ToolContext
 from structlog.testing import capture_logs
+
+from ._httpx2_mock import mock_api
 
 
 def _msg(m_id: str, text: str, ts: str = "2026-04-19T10:00:00Z") -> dict[str, object]:
@@ -26,11 +27,11 @@ async def test_exact_substring_match_case_insensitive(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -57,11 +58,11 @@ async def test_exact_substring_match_case_insensitive(
 @pytest.mark.asyncio
 async def test_regex_match(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -85,11 +86,11 @@ async def test_regex_match(tool_ctx: ToolContext, mock_access_token) -> None:
 @pytest.mark.asyncio
 async def test_no_match_empty_result(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(200, json={"messages": [_msg("M.1", "unrelated")]})
+            return_value=httpx2.Response(200, json={"messages": [_msg("M.1", "unrelated")]})
         )
         out = await search_messages_handler(
             tool_ctx,
@@ -107,11 +108,11 @@ async def test_cap_reached_signals_partial_result(
     """Stop at max_pages even when nextPageToken is still present."""
     monkeypatch.setenv("GCM_SEARCH_MAX_PAGES", "1")
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [_msg("M.1", "hello")],
@@ -156,12 +157,12 @@ async def test_unparsable_messages_are_counted_not_silently_dropped(
     # is what an unparsable row actually looks like.
     drifted = _msg("M.2", "hello again") | {"createTime": "not-a-timestamp"}
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
         capture_logs() as logs,
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={"messages": [_msg("M.1", "hello world"), drifted]},
             )

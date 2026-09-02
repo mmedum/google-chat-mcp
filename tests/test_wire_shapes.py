@@ -20,14 +20,15 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp import Client, FastMCP
 from src.app import build_app
 from src.config import Settings
 from src.resources.space import register_space_resource
 from src.tools._common import AuthInfo, ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 @pytest.fixture
@@ -48,11 +49,11 @@ async def test_whoami_emits_both_content_and_structured_content(
     call_tool returns the wire-level CallToolResult as the MCP client sees it.
     """
     with (
-        respx.mock(assert_all_called=False) as route_mock,
+        mock_api(assert_all_called=False) as route_mock,
         mock_access_token(),
     ):
         route_mock.get(url__regex=r"https://openidconnect\.googleapis\.com/v1/userinfo").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "sub": "109876543210",
@@ -83,11 +84,11 @@ async def test_missing_scope_surfaces_as_tool_error_result_with_scope_url(
 ) -> None:
     """Forcing Google's insufficient-scope 403 → isError:true CallToolResult with scope in text."""
     with (
-        respx.mock(assert_all_called=False) as route_mock,
+        mock_api(assert_all_called=False) as route_mock,
         mock_access_token(),
     ):
         route_mock.get("https://chat.googleapis.com/v1/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -128,7 +129,7 @@ async def test_find_direct_message_rejects_invalid_email_at_tool_boundary(
     Google's API as a 400 and the caller gets a Pydantic-shaped error instead.
     """
     with (
-        respx.mock(assert_all_called=False) as _route_mock,
+        mock_api(assert_all_called=False) as _route_mock,
         mock_access_token(),
     ):
         async with Client(mcp) as client:
@@ -165,9 +166,9 @@ async def test_resource_read_emits_application_json(chat_client, db) -> None:
     )
     mini = FastMCP(name="test")
     register_space_resource(mini, resolve_ctx=lambda: ctx)
-    with respx.mock(base_url="https://chat.test/v1") as m:
+    with mock_api(base_url="https://chat.test/v1") as m:
         m.get("/spaces/AAA").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json={"name": "spaces/AAA", "type": "SPACE", "displayName": "#eng"}
             )
         )

@@ -221,13 +221,13 @@ bearer token for subsequent tool calls.
 
 ### Transport-security notes (HTTPS)
 
-FastMCP 3.x enforces these per the MCP spec (2025-06-18). You shouldn't
+FastMCP enforces these per the MCP spec. You shouldn't
 need to touch them, but don't disable them:
 
 - **`Origin` header validation** on every request (DNS-rebinding defense).
 - **Localhost-only bind for dev** (`127.0.0.1`). Use `0.0.0.0` only behind
   a real reverse proxy.
-- **`MCP-Protocol-Version: 2025-06-18`** header required; server returns
+- **`MCP-Protocol-Version`** header required; server returns
   400 on invalid/missing version.
 - Authentication (the FastMCP-issued JWT via `GoogleProvider`) is
   mandatory — never expose the HTTP endpoint unauthenticated.
@@ -270,7 +270,7 @@ you own for a stable hostname.
 ```
 MCP client ──(stdio OR HTTP)──► FastMCP
                                  ├── Tools + Resources (see table above)
-                                 ├── chat_client — shared httpx.AsyncClient with retry/backoff
+                                 ├── chat_client — shared httpx2.AsyncClient with retry/backoff
                                  ├── SQLite (audit_log, user_directory cache)
                                  ├── Rate limiter (60/min per user)
                                  └── Auth resolver (transport-specific)

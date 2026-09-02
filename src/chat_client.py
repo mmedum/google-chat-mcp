@@ -1,6 +1,6 @@
 """Google Chat / People API HTTP client.
 
-Shared `httpx.AsyncClient` with connection pooling, 10s timeout, exponential
+Shared `httpx2.AsyncClient` with connection pooling, 10s timeout, exponential
 backoff on 5xx and 429. Expects a per-request access token (the caller resolves
 it via FastMCP's `get_access_token()` dependency).
 """
@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal, Self
 from urllib.parse import urlencode
 
-import httpx
+import httpx2
 
 from .models import SpaceType
 from .observability import (
@@ -25,7 +25,7 @@ from .observability import (
     mcp_google_api_latency_seconds,
 )
 
-# Query-param shapes httpx accepts. A mapping covers the common case; a
+# Query-param shapes httpx2 accepts. A mapping covers the common case; a
 # sequence of tuples is needed when a single key repeats (Google's
 # searchDirectoryPeople uses `sources` twice for profile + domain-contact).
 _QueryParams = Mapping[str, str] | Sequence[tuple[str, str]]
@@ -67,15 +67,15 @@ class ChatClient:
         base_chat: str = "https://chat.googleapis.com/v1",
         base_people: str = "https://people.googleapis.com/v1",
         base_oidc: str = "https://openidconnect.googleapis.com/v1",
-        client: httpx.AsyncClient | None = None,
+        client: httpx2.AsyncClient | None = None,
     ) -> None:
         self._base_chat = base_chat
         self._base_people = base_people
         self._base_oidc = base_oidc
         self._max_retries = max_retries
-        self._client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_seconds),
-            limits=httpx.Limits(
+        self._client = client or httpx2.AsyncClient(
+            timeout=httpx2.Timeout(timeout_seconds),
+            limits=httpx2.Limits(
                 max_connections=50,
                 max_keepalive_connections=20,
                 keepalive_expiry=30.0,
@@ -811,7 +811,7 @@ def _is_retryable(status: int) -> bool:
 _MAX_BACKOFF_SECONDS = 30.0
 
 
-def _backoff_seconds(attempt: int, resp: httpx.Response) -> float:
+def _backoff_seconds(attempt: int, resp: httpx2.Response) -> float:
     """Seconds to sleep before the next attempt, never above `_MAX_BACKOFF_SECONDS`.
 
     `Retry-After` is honoured, but bounded on both sides by the exponential
@@ -841,7 +841,7 @@ def _backoff_seconds(attempt: int, resp: httpx.Response) -> float:
     return min(floor, _MAX_BACKOFF_SECONDS)
 
 
-def _parse_error_payload(resp: httpx.Response) -> tuple[str, str | None, str | None]:
+def _parse_error_payload(resp: httpx2.Response) -> tuple[str, str | None, str | None]:
     """Pull (message, status, reason) from a Google error body (AIP-193 shape).
 
     Returns:

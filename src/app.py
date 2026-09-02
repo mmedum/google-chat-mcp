@@ -198,7 +198,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "`limit` (1-200) to widen and `space_type` "
             "('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def list_spaces(
         space_type: SpaceType | None = None,
@@ -218,10 +218,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
         ),
         # Not read-only: creates a DM space on miss (via spaces.setup).
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": True,
         },
     )
     async def find_direct_message(user_email: EmailStr) -> DirectMessageResult:
@@ -238,10 +238,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "preview the request body without posting."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def create_group_chat(payload: CreateGroupChatInput) -> CreateGroupChatResult:
@@ -257,10 +257,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "to preview the request body without posting."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def create_space(payload: CreateSpaceInput) -> CreateSpaceResult:
@@ -277,10 +277,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "the request body."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def add_member(payload: AddMemberInput) -> AddMemberResult:
@@ -298,10 +298,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "unreliable and would silently miss the target."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": True,
+            "idempotent_hint": True,
+            "open_world_hint": True,
         },
     )
     async def remove_member(payload: RemoveMemberInput) -> RemoveMemberResult:
@@ -320,7 +320,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "Use this to turn a name fragment into an email before calling "
             "`create_group_chat`, `add_member`, or `send_message`."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def search_people(payload: SearchPeopleInput) -> SearchPeopleResult:
         return await search_people_handler(_require_ctx(state), payload)
@@ -333,10 +333,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "replies to an existing thread."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def send_message(payload: SendMessageInput) -> SendMessageResult:
@@ -353,10 +353,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "restricted-tier `chat.messages` scope; deployer re-consent on upgrade."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def update_message(payload: UpdateMessageInput) -> UpdateMessageResult:
@@ -377,10 +377,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "space — edit guideline-bearing rooms via the Chat web UI instead."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
         },
     )
     async def update_space(payload: UpdateSpaceInput) -> UpdateSpaceResult:
@@ -396,10 +396,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "Requires the restricted-tier `chat.messages` scope."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": True,
+            "idempotent_hint": True,
+            "open_world_hint": True,
         },
     )
     async def delete_message(payload: DeleteMessageInput) -> DeleteMessageResult:
@@ -412,7 +412,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "Read recent messages from a space. Returns up to `limit` messages "
             "(default 20, max 100), newest first. Sender email resolved via People API."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def get_messages(payload: GetMessagesInput) -> list[ChatMessage]:
         return await get_messages_handler(_require_ctx(state), payload)
@@ -424,7 +424,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "Fetch details for a single Google Chat space by its ID. Use this "
             "to identify unnamed DMs/group chats or confirm space metadata."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def get_space(space_id: str) -> SpaceDetails:
         return await get_space_handler(_require_ctx(state), space_id)
@@ -437,7 +437,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "resolved via People API) and Google Groups, each tagged by `kind`. "
             "Defaults to 50 entries; pass `limit` (1-200) to widen."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def list_members(space_id: str, limit: int = 50) -> list[Member]:
         return await list_members_handler(
@@ -453,7 +453,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "display name). Useful as a first-call smoke test and for "
             "self-identity queries. Reads from OIDC /userinfo."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def whoami() -> WhoamiResult:
         return await whoami_handler(_require_ctx(state))
@@ -466,7 +466,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "parent `space_id` and the `thread_name` "
             "(`spaces/{space}/threads/{thread}`). Default limit 50 (max 100)."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def get_thread(payload: GetThreadInput) -> list[ChatMessage]:
         return await get_thread_handler(_require_ctx(state), payload)
@@ -480,7 +480,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "hydrated inline; `reactions_paged: true` signals the caller "
             "should follow up with `list_reactions` for full detail."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def get_message(message_name: MessageId) -> MessageDetails:
         return await get_message_handler(_require_ctx(state), message_name)
@@ -493,10 +493,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "the same (emoji, user) combination is a no-op on the Chat API."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": True,
         },
     )
     async def add_reaction(payload: AddReactionInput) -> AddReactionResult:
@@ -513,10 +513,10 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "the lookup matched zero reactions (already gone)."
         ),
         annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": True,
+            "read_only_hint": False,
+            "destructive_hint": True,
+            "idempotent_hint": True,
+            "open_world_hint": True,
         },
     )
     async def remove_reaction(payload: RemoveReactionInput) -> RemoveReactionResult:
@@ -529,7 +529,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "List reactions on a single message. Default limit 50 (max 200); "
             "paginate via `page_token` / `next_page_token`."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def list_reactions(payload: ListReactionsInput) -> ListReactionsResult:
         return await list_reactions_handler(_require_ctx(state), payload)
@@ -547,7 +547,7 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
             "If `unparsed` is non-zero the result is incomplete — say so "
             "instead of reporting the space as empty."
         ),
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
     )
     async def search_messages(payload: SearchMessagesInput) -> SearchMessagesResult:
         return await search_messages_handler(_require_ctx(state), payload)

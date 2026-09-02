@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from src.models import GetMessagesInput, ListMembersInput, ListSpacesInput, SendMessageInput
 from src.tools import (
@@ -17,15 +16,17 @@ from src.tools import (
 )
 from src.tools._common import ToolContext
 
+from ._httpx2_mock import mock_api
+
 
 @pytest.mark.asyncio
 async def test_list_spaces_handler_happy_path(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "spaces": [
@@ -48,11 +49,11 @@ async def test_list_spaces_respects_limit(tool_ctx: ToolContext, mock_access_tok
     # Upstream returns 3 on page 1 and would return more, but limit=2 must stop
     # pagination and slice the result.
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.get("/spaces").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "spaces": [
@@ -77,10 +78,10 @@ async def test_list_spaces_forwards_space_type_filter(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        route = mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        route = mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
         await list_spaces_handler(tool_ctx, ListSpacesInput(space_type="DIRECT_MESSAGE"))
     assert route.calls[0].request.url.params["filter"] == 'spaceType = "DIRECT_MESSAGE"'
 
@@ -88,12 +89,12 @@ async def test_list_spaces_forwards_space_type_filter(
 @pytest.mark.asyncio
 async def test_find_direct_message_creates_on_404(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.get("/spaces:findDirectMessage").mock(return_value=httpx.Response(404))
+        mock.get("/spaces:findDirectMessage").mock(return_value=httpx2.Response(404))
         mock.post("/spaces:setup").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/NEWDM",
@@ -114,12 +115,12 @@ async def test_find_direct_message_missing_scope_surfaces_reauth_prompt(
     Workspace directory?" rewrite that the handler emits for other 4xx.
     """
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.get("/spaces:findDirectMessage").mock(return_value=httpx.Response(404))
+        mock.get("/spaces:findDirectMessage").mock(return_value=httpx2.Response(404))
         mock.post("/spaces:setup").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -154,11 +155,11 @@ async def test_find_direct_message_missing_scope_surfaces_reauth_prompt(
 @pytest.mark.asyncio
 async def test_send_message_posts_body_verbatim(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/messages/M.1",
@@ -185,11 +186,11 @@ async def test_get_messages_resolves_sender_via_people_api(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -205,7 +206,7 @@ async def test_get_messages_resolves_sender_via_people_api(
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [
@@ -227,11 +228,11 @@ async def test_get_messages_missing_people_entry_returns_display_only(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "messages": [
@@ -246,7 +247,7 @@ async def test_get_messages_missing_people_entry_returns_display_only(
                 },
             )
         )
-        mock.get("https://people.test/v1/people/999").mock(return_value=httpx.Response(404))
+        mock.get("https://people.test/v1/people/999").mock(return_value=httpx2.Response(404))
         out = await get_messages_handler(tool_ctx, GetMessagesInput(space_id="spaces/AAA"))
     assert out[0].sender_email is None
     assert out[0].sender_display_name == "External"
@@ -255,11 +256,11 @@ async def test_get_messages_missing_people_entry_returns_display_only(
 @pytest.mark.asyncio
 async def test_get_space_returns_details(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.get("/spaces/AAA").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA",
@@ -282,11 +283,11 @@ async def test_list_members_resolves_humans_and_passes_through_groups(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/members").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "memberships": [
@@ -313,7 +314,7 @@ async def test_list_members_resolves_humans_and_passes_through_groups(
             )
         )
         mock.get("https://people.test/v1/people/111").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [
@@ -342,11 +343,11 @@ async def test_list_members_handles_missing_people_entry(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock() as mock,
+        mock_api() as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/members").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "memberships": [
@@ -359,7 +360,7 @@ async def test_list_members_handles_missing_people_entry(
                 },
             )
         )
-        mock.get("https://people.test/v1/people/999").mock(return_value=httpx.Response(404))
+        mock.get("https://people.test/v1/people/999").mock(return_value=httpx2.Response(404))
         out = await list_members_handler(tool_ctx, ListMembersInput(space_id="spaces/AAA"))
     assert out[0].email is None
     assert out[0].display_name == "External"
@@ -373,10 +374,10 @@ async def test_rate_limit_blocks_after_capacity(tool_ctx: ToolContext, mock_acce
 
     tool_ctx.limiter = TokenBucketLimiter(capacity=1)
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.get("/spaces").mock(return_value=httpx.Response(200, json={"spaces": []}))
+        mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": []}))
         await list_spaces_handler(tool_ctx, ListSpacesInput())
         with pytest.raises(ToolError, match="Rate limit"):
             await list_spaces_handler(tool_ctx, ListSpacesInput())

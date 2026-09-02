@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp import FastMCP
 from src.resources.message import register_message_resource
 from src.tools import get_message_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 
 def _upstream_message(
@@ -39,11 +40,11 @@ async def test_get_message_inlines_reaction_summaries(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json=_upstream_message(
                     emoji_reaction_summaries=[
@@ -54,7 +55,7 @@ async def test_get_message_inlines_reaction_summaries(
             )
         )
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [
@@ -81,16 +82,16 @@ async def test_get_message_flags_paged_when_many_reactions(
         {"emoji": {"unicode": chr(0x1F600 + i)}, "reactionCount": 1} for i in range(30)
     ]
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200, json=_upstream_message(emoji_reaction_summaries=many_emoji)
             )
         )
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [
@@ -110,14 +111,14 @@ async def test_get_message_tolerates_missing_reactions(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(assert_all_called=False) as mock,
+        mock_api(assert_all_called=False) as mock,
         mock_access_token(),
     ):
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1").mock(
-            return_value=httpx.Response(200, json=_upstream_message())
+            return_value=httpx2.Response(200, json=_upstream_message())
         )
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [
@@ -153,12 +154,12 @@ async def test_message_resource_reads_via_tool_path(chat_client, db) -> None:
     mcp = FastMCP(name="test")
     register_message_resource(mcp, resolve_ctx=lambda: ctx)
 
-    with respx.mock(assert_all_called=False) as mock:
+    with mock_api(assert_all_called=False) as mock:
         mock.get("https://chat.test/v1/spaces/AAA/messages/M.1").mock(
-            return_value=httpx.Response(200, json=_upstream_message())
+            return_value=httpx2.Response(200, json=_upstream_message())
         )
         mock.get(url__regex=r"https://people\.test/v1/people/.*").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "emailAddresses": [

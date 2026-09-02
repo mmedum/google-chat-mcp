@@ -42,7 +42,7 @@ class _Strict(BaseModel):
 # alphanumerics. The middle `[A-Za-z0-9]` is mandatory — at least one
 # alphanumeric character must appear somewhere in the segment. This closes
 # a path-traversal vector where bare `.` or `..` segments would pass the
-# regex and let httpx normalize them via RFC 3986 §5.2.4 dot-segment
+# regex and let httpx2 normalize them via RFC 3986 §5.2.4 dot-segment
 # resolution, rewriting the upstream URL to target a different resource
 # (e.g. `spaces/T/messages/..` → `DELETE /v1/spaces/T`). Pydantic v2's
 # Rust regex engine doesn't support lookarounds, so the constraint is

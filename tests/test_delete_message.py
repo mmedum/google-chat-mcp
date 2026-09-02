@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 from src.models import DeleteMessageInput
 from src.tools import delete_message_handler
 from src.tools._common import ToolContext
+
+from ._httpx2_mock import mock_api
 
 _MESSAGE_NAME = "spaces/AAA/messages/M.1"
 
@@ -17,10 +18,10 @@ _MESSAGE_NAME = "spaces/AAA/messages/M.1"
 @pytest.mark.asyncio
 async def test_happy_path_returns_deleted_true(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        route = mock.delete(f"/{_MESSAGE_NAME}").mock(return_value=httpx.Response(200, json={}))
+        route = mock.delete(f"/{_MESSAGE_NAME}").mock(return_value=httpx2.Response(200, json={}))
         result = await delete_message_handler(
             tool_ctx, DeleteMessageInput(message_name=_MESSAGE_NAME)
         )
@@ -33,7 +34,7 @@ async def test_happy_path_returns_deleted_true(tool_ctx: ToolContext, mock_acces
 @pytest.mark.asyncio
 async def test_dry_run_does_not_delete(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.delete(f"/{_MESSAGE_NAME}")
@@ -50,11 +51,11 @@ async def test_double_delete_returns_deleted_false_on_404(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.delete(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 404,
                 json={"error": {"code": 404, "message": "gone", "status": "NOT_FOUND"}},
             )
@@ -71,11 +72,11 @@ async def test_permission_denied_returns_deleted_false(
 ) -> None:
     """Non-scope 403 → idempotent deleted=false (mirrors remove_member)."""
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.delete(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {
@@ -96,11 +97,11 @@ async def test_permission_denied_returns_deleted_false(
 async def test_missing_scope_403_still_raises(tool_ctx: ToolContext, mock_access_token) -> None:
     """Missing-scope 403 must NOT be swallowed as idempotent success."""
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.delete(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 403,
                 json={
                     "error": {

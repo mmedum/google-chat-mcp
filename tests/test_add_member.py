@@ -2,24 +2,25 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastmcp.exceptions import ToolError
 from src.chat_client import _build_add_member_body
 from src.models import AddMemberInput
 from src.tools import add_member_handler
 from src.tools._common import ToolContext
 
+from ._httpx2_mock import mock_api
+
 
 @pytest.mark.asyncio
 async def test_happy_path_returns_membership_name(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/members").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 200,
                 json={
                     "name": "spaces/AAA/members/111",
@@ -45,7 +46,7 @@ async def test_dry_run_does_not_post_and_renders_body(
     tool_ctx: ToolContext, mock_access_token
 ) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         route = mock.post("/spaces/AAA/members")
@@ -69,11 +70,11 @@ def test_dry_run_builder_matches_real_post() -> None:
 @pytest.mark.asyncio
 async def test_already_a_member_raises_tool_error(tool_ctx: ToolContext, mock_access_token) -> None:
     with (
-        respx.mock(base_url="https://chat.test/v1") as mock,
+        mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
         mock.post("/spaces/AAA/members").mock(
-            return_value=httpx.Response(
+            return_value=httpx2.Response(
                 409,
                 json={
                     "error": {
@@ -97,13 +98,13 @@ async def test_unrelated_500_propagates_as_tool_error(
 ) -> None:
     """Non-409 errors still go through invoke_tool's ChatApiError → ToolError wrap."""
     with (
-        respx.mock(base_url="https://chat.test/v1", assert_all_called=False) as mock,
+        mock_api(base_url="https://chat.test/v1", assert_all_called=False) as mock,
         mock_access_token(),
     ):
         # respx retries handled by chat_client retry loop — return 500 four times
         # to exceed max_retries (3) + initial attempt.
         mock.post("/spaces/AAA/members").mock(
-            return_value=httpx.Response(500, json={"error": {"message": "boom"}})
+            return_value=httpx2.Response(500, json={"error": {"message": "boom"}})
         )
         with pytest.raises(ToolError):
             await add_member_handler(
