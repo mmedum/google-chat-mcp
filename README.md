@@ -61,6 +61,13 @@ Pick one path and jump straight to its setup.
 | `remove_reaction` | Delete by resource name, or by `(message, emoji, user)` via server-side filter | `chat.messages.reactions` |
 | `list_reactions` | Paginated reactions on a message | `chat.messages.reactions` |
 | `search_messages` | Client-side exact / regex scan of one space; always pass `space_id` and `created_after` | `chat.messages.readonly` |
+| `list_sections` | Sections in your own Chat sidebar, system and custom | `chat.users.sections.readonly` |
+| `list_section_items` | Spaces filed under a section, or which section one space sits in | `chat.users.sections.readonly` |
+| `create_section` | Create a custom section (1-80 chars); no dedupe by name; `dry_run` previews | `chat.users.sections` |
+| `rename_section` | Rename a custom section; `dry_run` previews | `chat.users.sections` |
+| `delete_section` | Delete a custom section; its spaces fall back to the defaults; idempotent | `chat.users.sections` |
+| `position_section` | Reorder a section by absolute `sort_order` or `relative_position`; `dry_run` previews | `chat.users.sections` |
+| `move_space_to_section` | File a space under a section; no-ops when already there; pass `item_name` from `list_section_items` to skip the per-space lookup; `dry_run` previews | `chat.users.sections` |
 
 Three MCP **Resources** are dual-exposed for host-UI inclusion:
 

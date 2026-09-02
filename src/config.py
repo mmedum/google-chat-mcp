@@ -296,6 +296,12 @@ CHAT_MESSAGES = "https://www.googleapis.com/auth/chat.messages"
 # cover spaces.patch; Google lists only the umbrella for the user-OAuth path.
 # Same CASA trade-off as chat.messages applies; runbook covers it.
 CHAT_SPACES = "https://www.googleapis.com/auth/chat.spaces"
+# Sidebar sections (v1.6.0) — Google *sensitive* tier, so 3-5 day self-service
+# verification for a published app and nothing at all for an Internal one.
+# Sections are per-user client state, not space data: no scope already in the
+# set covers them, and holding `chat.spaces` grants nothing here.
+CHAT_USERS_SECTIONS = "https://www.googleapis.com/auth/chat.users.sections"
+CHAT_USERS_SECTIONS_READONLY = "https://www.googleapis.com/auth/chat.users.sections.readonly"
 DIRECTORY_READONLY = "https://www.googleapis.com/auth/directory.readonly"
 # Consumer Gmail fallback for search_people (v0.3.1). Covers caller's own
 # contacts + "other contacts" auto-populated from interactions. Sensitive tier.
@@ -320,6 +326,7 @@ SCOPE_IMPLIES: dict[str, frozenset[str]] = {
     ),
     CHAT_SPACES: frozenset({CHAT_SPACES_READONLY, CHAT_SPACES_CREATE}),
     CHAT_MEMBERSHIPS: frozenset({CHAT_MEMBERSHIPS_READONLY}),
+    CHAT_USERS_SECTIONS: frozenset({CHAT_USERS_SECTIONS_READONLY}),
 }
 
 
@@ -349,6 +356,8 @@ GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
     CHAT_SPACES,
     CHAT_MEMBERSHIPS_READONLY,
     CHAT_MEMBERSHIPS,
+    CHAT_USERS_SECTIONS_READONLY,
+    CHAT_USERS_SECTIONS,
     DIRECTORY_READONLY,
     CONTACTS_READONLY,
 )

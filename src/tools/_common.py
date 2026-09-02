@@ -33,12 +33,21 @@ from ..config import (
     CHAT_SPACES,
     CHAT_SPACES_CREATE,
     CHAT_SPACES_READONLY,
+    CHAT_USERS_SECTIONS,
+    CHAT_USERS_SECTIONS_READONLY,
     CONTACTS_READONLY,
     DIRECTORY_READONLY,
     OPENID_SCOPE,
     scope_satisfied,
 )
-from ..models import MemberRole, MemberState, SpaceTypeOut, _ChatSpaceResponse
+from ..models import (
+    MemberRole,
+    MemberState,
+    SectionTypeOut,
+    SpaceTypeOut,
+    _ChatSectionResponse,
+    _ChatSpaceResponse,
+)
 from ..observability import (
     current_tool,
     logger,
@@ -100,6 +109,13 @@ ToolName = Literal[
     "update_message",
     "delete_message",
     "update_space",
+    "list_sections",
+    "create_section",
+    "rename_section",
+    "delete_section",
+    "position_section",
+    "list_section_items",
+    "move_space_to_section",
 ]
 
 # Scope constants re-exported from `src/config.py` so tool handlers + tests
@@ -115,6 +131,8 @@ __all__ = [
     "CHAT_SPACES",
     "CHAT_SPACES_CREATE",
     "CHAT_SPACES_READONLY",
+    "CHAT_USERS_SECTIONS",
+    "CHAT_USERS_SECTIONS_READONLY",
     "CONTACTS_READONLY",
     "DIRECTORY_READONLY",
     "OPENID_SCOPE",
@@ -126,10 +144,15 @@ __all__ = [
     "drift_fields",
     "format_missing_scope_message",
     "invoke_tool",
+    "is_already_gone",
     "is_missing_scope_error",
     "member_role_out",
     "member_state_out",
     "narrow_enum",
+    "same_section",
+    "section_display_name",
+    "section_name_from_item_name",
+    "section_type_out",
     "space_display_name",
     "space_id_from_message_name",
     "space_type_out",
@@ -183,6 +206,39 @@ def space_id_from_message_name(message_name: str) -> str:
     return message_name.rsplit("/messages/", 1)[0]
 
 
+def section_name_from_item_name(item_name: str) -> str:
+    """Extract `users/{U}/sections/{S}` from a `.../items/{I}` resource name.
+
+    Trusts that the value came from Google or passed `SectionItemName` — the
+    tool input layer rejects malformed values upstream.
+    """
+    return item_name.rsplit("/items/", 1)[0]
+
+
+def same_section(a: str, b: str) -> bool:
+    """Whether two section resource names denote the same section.
+
+    Compares the `{section}` segment, not the whole string, because the user
+    segment has more than one spelling for the same principal: Google accepts
+    `users/me` on the way in and canonicalises to `users/{id}` on the way out.
+    A raw `!=` therefore reports "different" for `users/me/sections/X` versus
+    the `users/123/sections/X` it just returned — which would turn every
+    already-filed space in a bulk sort into a redundant write, breaking
+    exactly the no-op guarantee `move_space_to_section` advertises.
+
+    Safe because only the calling user's own sections are addressable at all,
+    so the section id cannot collide across principals.
+    """
+    a_user, _, a_id = a.partition("/sections/")
+    b_user, _, b_id = b.partition("/sections/")
+    if a_id != b_id:
+        return False
+    # Same id is not enough: `users/999/sections/X` would otherwise compare
+    # equal to the caller's own `users/123/sections/X` and be silently skipped
+    # as already-filed. `me` is the caller by definition, so it matches either.
+    return a_user == b_user or "users/me" in (a_user, b_user)
+
+
 def audit_user_sub(user_sub: str, *, pepper: bytes | None, hash_enabled: bool) -> str:
     """Return the sub as stored in audit_log — HMAC-SHA256 hex when hashing is on."""
     if not hash_enabled:
@@ -209,13 +265,40 @@ def is_missing_scope_error(exc: ChatApiError) -> bool:
     )
 
 
+def is_already_gone(exc: ChatApiError, *, forbidden_means_gone: bool) -> bool:
+    """True when a delete's target is already absent, making the call a no-op.
+
+    The load-bearing half is the first branch: a missing-scope 403 must never
+    read as "already gone", or the caller gets a silent `deleted=False` where
+    they needed a re-consent prompt. `delete_message` and `remove_member` each
+    carried their own copy of that rule before it was hoisted here, and
+    `delete_section` would have been a third.
+
+    `forbidden_means_gone` is the one axis they actually differed on. Messages
+    and memberships can report an already-deleted resource as 403
+    PERMISSION_DENIED rather than 404, depending on the space's history state,
+    so they pass True. Sections pass False: the 403 there is Google refusing to
+    delete a *system* section, which is a real error the caller has to see.
+    """
+    if is_missing_scope_error(exc):
+        return False
+    if exc.status_code == 404 or exc.google_status == "NOT_FOUND":
+        return True
+    return (
+        forbidden_means_gone and exc.status_code == 403 and exc.google_status == "PERMISSION_DENIED"
+    )
+
+
 def format_missing_scope_message(scope: str) -> str:
     """Human-readable text for a missing-scope ToolError.
 
     Format is stable: the scope URL appears between "scope: " and ". Re-run".
-    Clients that want machine-readable re-auth info can parse it out. FastMCP
-    3.2's ToolError doesn't carry structuredContent on isError results; when
-    upstream support arrives, this moves to a proper structured envelope.
+    Clients that want machine-readable re-auth info can parse it out. Still no
+    structured alternative on FastMCP 4.0 — `ToolError` takes only message args
+    plus a `log_level` that just fastmcp's optional logging middleware reads,
+    so there is nowhere to hang a structuredContent payload on an isError
+    result. Re-check on a future release; this moves to a proper structured
+    envelope the moment one exists.
     """
     return (
         f"Missing required OAuth scope: {scope}. "
@@ -501,6 +584,34 @@ def space_type_out(s: _ChatSpaceResponse) -> SpaceTypeOut:
         "SPACE_TYPE_UNSPECIFIED",
         location="_ChatSpaceResponse.type",
     )
+
+
+def section_type_out(s: _ChatSectionResponse) -> SectionTypeOut:
+    """Narrow a wire section type to the tool-facing enum."""
+    return narrow_enum(
+        s.type_,
+        get_args(SectionTypeOut),
+        "SECTION_TYPE_UNSPECIFIED",
+        location="_ChatSectionResponse.type",
+    )
+
+
+def section_display_name(s: _ChatSectionResponse) -> str:
+    """Human-friendly label for a section.
+
+    Google populates `displayName` only on custom sections, so the three
+    system sections get a synthetic parenthesised tag — same convention as
+    `space_display_name` uses for an unnamed space, and the parentheses are
+    what keep a custom section named "Spaces" distinguishable from the
+    system one.
+    """
+    if s.display_name:
+        return s.display_name
+    return {
+        "DEFAULT_DIRECT_MESSAGES": "(direct messages)",
+        "DEFAULT_SPACES": "(spaces)",
+        "DEFAULT_APPS": "(apps)",
+    }.get(s.type_ or "", "(unnamed section)")
 
 
 def member_role_out(value: object) -> MemberRole:

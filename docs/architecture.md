@@ -13,7 +13,7 @@ resource registration is transport-agnostic; each entry point supplies
 the transport-specific auth wiring and then hands off.
 
 - [`src/app.py`](../src/app.py) — `build_app(settings, *, resolver=None, auth=None) -> FastMCP`.
-  Registers all 21 tools and 3 resources, wires the `ToolContext`
+  Registers all 28 tools and 3 resources, wires the `ToolContext`
   lifespan. Unit-tested in `tests/test_app.py`.
 - [`src/server.py`](../src/server.py) — HTTPS entry. Builds
   `GoogleProvider`, calls `build_app(settings, auth=provider)`, mounts

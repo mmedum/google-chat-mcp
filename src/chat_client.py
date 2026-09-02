@@ -108,7 +108,10 @@ class ChatClient:
         already narrows before any page lands.
         """
         extra = {"filter": f'spaceType = "{space_type}"'} if space_type else None
-        return await self._paginate(
+        # Token discarded: `list_spaces` returns a bare list, so there is
+        # nowhere to report truncation without changing an output shape that
+        # CLAUDE.md marks semver-stable. Same for `list_members` below.
+        items, _ = await self._paginate_with_token(
             url=f"{self._base_chat}/spaces",
             access_token=access_token,
             items_key="spaces",
@@ -116,6 +119,7 @@ class ChatClient:
             endpoint_label="spaces.list",
             extra_params=extra,
         )
+        return items
 
     async def get_space(self, access_token: str, space_id: str) -> dict[str, Any]:
         """Fetch a single Space resource."""
@@ -132,13 +136,14 @@ class ChatClient:
         limit: int,
     ) -> list[dict[str, Any]]:
         """List memberships of a space, stopping once ``limit`` collected."""
-        return await self._paginate(
+        items, _ = await self._paginate_with_token(
             url=f"{self._base_chat}/{space_id}/members",
             access_token=access_token,
             items_key="memberships",
             limit=limit,
             endpoint_label="spaces.members.list",
         )
+        return items
 
     async def find_direct_message(
         self, access_token: str, user_email: str
@@ -361,6 +366,118 @@ class ChatClient:
             endpoint_label="spaces.messages.delete",
         )
 
+    # ---------- sidebar sections ----------
+    # Every one of these addresses the caller as `users/me`, which Google
+    # accepts alongside an email or numeric id and canonicalises in the
+    # response. Resource names that come back are used verbatim from then on,
+    # so nothing here has to know the caller's id.
+
+    async def list_sections(
+        self, access_token: str, limit: int, page_token: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """List the caller's sidebar sections, system and custom alike."""
+        return await self._paginate_with_token(
+            url=f"{self._base_chat}/users/me/sections",
+            access_token=access_token,
+            items_key="sections",
+            limit=limit,
+            endpoint_label="users.sections.list",
+            page_token=page_token,
+        )
+
+    async def create_section(self, access_token: str, display_name: str) -> dict[str, Any]:
+        """Create a `CUSTOM_SECTION` via `users.sections.create`."""
+        return await self._post(
+            f"{self._base_chat}/users/me/sections",
+            access_token=access_token,
+            json=_build_create_section_body(display_name=display_name),
+            endpoint_label="users.sections.create",
+        )
+
+    async def update_section(
+        self, access_token: str, section_name: str, display_name: str
+    ) -> dict[str, Any]:
+        """Rename a custom section. `displayName` is the only maskable field."""
+        return await self._patch(
+            f"{self._base_chat}/{section_name}",
+            access_token=access_token,
+            json=_build_update_section_body(display_name=display_name),
+            params={"updateMask": "displayName"},
+            endpoint_label="users.sections.patch",
+        )
+
+    async def delete_section(self, access_token: str, section_name: str) -> dict[str, Any]:
+        """Delete a custom section. Its spaces fall back to the default sections."""
+        return await self._delete(
+            f"{self._base_chat}/{section_name}",
+            access_token=access_token,
+            endpoint_label="users.sections.delete",
+        )
+
+    async def position_section(
+        self,
+        access_token: str,
+        section_name: str,
+        *,
+        sort_order: int | None = None,
+        relative_position: str | None = None,
+    ) -> dict[str, Any]:
+        """Reorder a section. Caller guarantees exactly one positioning field."""
+        return await self._post(
+            f"{self._base_chat}/{section_name}:position",
+            access_token=access_token,
+            json=_build_position_section_body(
+                sort_order=sort_order, relative_position=relative_position
+            ),
+            endpoint_label="users.sections.position",
+        )
+
+    async def list_section_items(
+        self,
+        access_token: str,
+        *,
+        limit: int,
+        section_name: str | None = None,
+        space_id: str | None = None,
+        page_token: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """List section items under one section, or under `-` across all of them.
+
+        The `-` wildcard parent is Google's documented way to find which
+        section a given space sits in, and it is only documented alongside a
+        space filter — `ListSectionItemsInput` is what guarantees one of the
+        two is always present.
+        """
+        parent = section_name or "users/me/sections/-"
+        # Unquoted, unlike the reaction and thread filters above. This looks
+        # like an oversight and is not: quoting BREAKS the endpoint. Probed
+        # live against three real space ids — one with hyphens, one with an
+        # underscore, one plain alphanumeric — the unquoted form returns 200
+        # for all three and the quoted form returns 400 "Invalid filter" for
+        # all three. Google's own example is unquoted too. Do not "fix" this
+        # for consistency with the filters above without re-running that probe.
+        extra = {"filter": f"space = {space_id}"} if space_id else None
+        return await self._paginate_with_token(
+            url=f"{self._base_chat}/{parent}/items",
+            access_token=access_token,
+            items_key="sectionItems",
+            limit=limit,
+            endpoint_label="users.sections.items.list",
+            extra_params=extra,
+            page_token=page_token,
+        )
+
+    async def move_section_item(
+        self, access_token: str, item_name: str, target_section: str
+    ) -> dict[str, Any]:
+        """Move one section item into `target_section`."""
+        return await self._post(
+            f"{self._base_chat}/{item_name}:move",
+            access_token=access_token,
+            json=_build_move_section_item_body(target_section=target_section),
+            endpoint_label="users.sections.items.move",
+        )
+
     async def add_reaction(
         self, access_token: str, message_name: str, unicode_emoji: str
     ) -> dict[str, Any]:
@@ -538,7 +655,7 @@ class ChatClient:
 
     # ---------- internals ----------
 
-    async def _paginate(
+    async def _paginate_with_token(
         self,
         *,
         url: str,
@@ -547,10 +664,19 @@ class ChatClient:
         limit: int,
         endpoint_label: str,
         extra_params: Mapping[str, str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Follow a Google list endpoint's pagination until `limit` items are collected."""
+        page_token: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Paginate up to `limit` items, returning the token for what's left.
+
+        A non-None token means Google has more rows than `limit` allowed — the
+        result is a page, not the whole set. Pass a previous call's token back
+        as `page_token` to resume from it.
+
+        Assumes Google honours `pageSize`, which is what bounds a page to the
+        remaining budget. That assumption already underpins the `[:limit]`
+        slice; the token is read from the same page the slice keeps.
+        """
         items: list[dict[str, Any]] = []
-        page_token: str | None = None
         while True:
             remaining = limit - len(items)
             params: dict[str, str] = {"pageSize": str(min(remaining, 100))}
@@ -562,10 +688,14 @@ class ChatClient:
                 url, access_token=access_token, params=params, endpoint_label=endpoint_label
             )
             items.extend(data.get(items_key, []))
-            page_token = data.get("nextPageToken")
+            # `or None`: Google can send an empty string, which the tool
+            # descriptions would report as 'more pages exist'. Fed back, it
+            # is dropped by the `if page_token` below and the identical
+            # first page returns — an unbounded loop.
+            page_token = data.get("nextPageToken") or None
             if not page_token or len(items) >= limit:
                 break
-        return items[:limit]
+        return items[:limit], page_token
 
     async def _get_optional(
         self,
@@ -770,6 +900,51 @@ def _build_update_space_body(
         body["spaceDetails"] = {"description": description}
         mask_parts.append("spaceDetails")
     return body, ",".join(mask_parts)
+
+
+def _build_create_section_body(*, display_name: str) -> dict[str, Any]:
+    """Pure builder for the `users.sections.create` request body.
+
+    `type` is required and `CUSTOM_SECTION` is the only value the endpoint
+    accepts — the system sections already exist and cannot be created.
+    Shared by real-POST and `create_section`'s dry_run branch.
+    """
+    return {"displayName": display_name, "type": "CUSTOM_SECTION"}
+
+
+def _build_update_section_body(*, display_name: str) -> dict[str, Any]:
+    """Pure builder for the `users.sections.patch` request body.
+
+    `updateMask=displayName` goes on the URL, not in the body — the mask is
+    fixed because Google lists no other patchable field.
+    """
+    return {"displayName": display_name}
+
+
+def _build_position_section_body(
+    *, sort_order: int | None, relative_position: str | None
+) -> dict[str, Any]:
+    """Pure builder for the `users.sections.position` request body.
+
+    Google models the two positioning fields as a union, so exactly one is
+    emitted — `sort_order` wins if both arrive. `PositionSectionInput` is what
+    guarantees the tool path never sends both.
+
+    Neither being set raises rather than emitting `{"relativePosition": null}`,
+    which is what a caller reaching `ChatClient.position_section` directly
+    would otherwise build: both its arguments default to None, so the mistake
+    is easy to make and Google's 400 is a long way from the cause.
+    """
+    if sort_order is not None:
+        return {"sortOrder": sort_order}
+    if relative_position is None:
+        raise ValueError("position_section needs one of sort_order / relative_position")
+    return {"relativePosition": relative_position}
+
+
+def _build_move_section_item_body(*, target_section: str) -> dict[str, Any]:
+    """Pure builder for the `users.sections.items.move` request body."""
+    return {"targetSection": target_section}
 
 
 def _new_client_message_id() -> str:

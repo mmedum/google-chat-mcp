@@ -11,6 +11,7 @@ from src.tools import delete_message_handler
 from src.tools._common import ToolContext
 
 from ._httpx2_mock import mock_api
+from .conftest import scope_403
 
 _MESSAGE_NAME = "spaces/AAA/messages/M.1"
 
@@ -100,24 +101,7 @@ async def test_missing_scope_403_still_raises(tool_ctx: ToolContext, mock_access
         mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.delete(f"/{_MESSAGE_NAME}").mock(
-            return_value=httpx2.Response(
-                403,
-                json={
-                    "error": {
-                        "code": 403,
-                        "message": "Request had insufficient authentication scopes.",
-                        "status": "PERMISSION_DENIED",
-                        "details": [
-                            {
-                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                            }
-                        ],
-                    }
-                },
-            )
-        )
+        mock.delete(f"/{_MESSAGE_NAME}").mock(return_value=scope_403())
         with pytest.raises(ToolError, match="scope"):
             await delete_message_handler(tool_ctx, DeleteMessageInput(message_name=_MESSAGE_NAME))
 
