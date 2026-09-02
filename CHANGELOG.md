@@ -14,7 +14,19 @@ policy, so 0.x minors and patches carry breaking scope changes freely; 0.3.3 in
 particular ships seven new tools and three new OAuth scopes. And there is no
 1.1.0 — 1.0.1 is followed by 1.2.0.
 
-## [Unreleased]
+## [1.6.0] - 2026-09-02
+
+Take this one if you want Chat's sidebar sections under tool control, and
+read the scope note first either way.
+
+Seven new tools group spaces into custom sections — the thing you could
+previously only do by hand in the Chat UI. They need two new OAuth scopes,
+and on the HTTPS transport the scope gate is all-or-nothing, so authorize
+before you upgrade rather than after.
+
+The server also moves to FastMCP 4 and to `httpx2`, which together leave one
+HTTP stack in the image instead of two. Both were verified against a live
+Google deployment, including the OAuth flow end to end.
 
 ### Added
 - **Seven tools for Chat's sidebar sections.** `list_sections`,
@@ -615,7 +627,8 @@ per-user OAuth end-to-end. First public release with a published Docker image.
 - Migrations now ship inside the wheel (`src/migrations/`); fresh installs
   no longer crash on first `serve`.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/mmedum/google-chat-mcp/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.3.0...v1.4.0
