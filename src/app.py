@@ -31,24 +31,38 @@ from .models import (
     ChatMessage,
     CreateGroupChatInput,
     CreateGroupChatResult,
+    CreateSectionInput,
+    CreateSectionResult,
     CreateSpaceInput,
     CreateSpaceResult,
     DeleteMessageInput,
     DeleteMessageResult,
+    DeleteSectionInput,
+    DeleteSectionResult,
     DirectMessageResult,
     GetMessagesInput,
     GetThreadInput,
     ListMembersInput,
     ListReactionsInput,
     ListReactionsResult,
+    ListSectionItemsInput,
+    ListSectionItemsResult,
+    ListSectionsInput,
+    ListSectionsResult,
     ListSpacesInput,
     Member,
     MessageDetails,
     MessageId,
+    MoveSpaceToSectionInput,
+    MoveSpaceToSectionResult,
+    PositionSectionInput,
+    PositionSectionResult,
     RemoveMemberInput,
     RemoveMemberResult,
     RemoveReactionInput,
     RemoveReactionResult,
+    RenameSectionInput,
+    RenameSectionResult,
     SearchMessagesInput,
     SearchMessagesResult,
     SearchPeopleInput,
@@ -80,8 +94,10 @@ from .tools import (
     add_member_handler,
     add_reaction_handler,
     create_group_chat_handler,
+    create_section_handler,
     create_space_handler,
     delete_message_handler,
+    delete_section_handler,
     find_direct_message_handler,
     get_message_handler,
     get_messages_handler,
@@ -89,9 +105,14 @@ from .tools import (
     get_thread_handler,
     list_members_handler,
     list_reactions_handler,
+    list_section_items_handler,
+    list_sections_handler,
     list_spaces_handler,
+    move_space_to_section_handler,
+    position_section_handler,
     remove_member_handler,
     remove_reaction_handler,
+    rename_section_handler,
     search_messages_handler,
     search_people_handler,
     send_message_handler,
@@ -551,6 +572,162 @@ def build_app(  # noqa: PLR0915 — composition root; each tool/resource adds st
     )
     async def search_messages(payload: SearchMessagesInput) -> SearchMessagesResult:
         return await search_messages_handler(_require_ctx(state), payload)
+
+    # ---- sections ----
+    # Sections are the caller's own sidebar layout. Nothing here is visible to
+    # anyone else, and none of it changes a space.
+
+    @mcp.tool(
+        name="list_sections",
+        title="List sidebar sections",
+        description=(
+            "List the sections in the caller's own Google Chat sidebar: the "
+            "system ones ('(direct messages)', '(spaces)', '(apps)') plus any "
+            "custom sections they created. Sections are per-user — they change "
+            "nobody else's view. System sections have no display name of their "
+            "own, so they get a parenthesised label here. A non-null "
+            "`next_page_token` means more sections exist beyond `limit`. "
+            "Requires the sensitive-tier `chat.users.sections.readonly` scope."
+        ),
+        annotations={"read_only_hint": True, "open_world_hint": True},
+    )
+    async def list_sections(limit: int = 50, page_token: str | None = None) -> ListSectionsResult:
+        # Flat args, like `list_spaces`, rather than a `payload` wrapper. Every
+        # field here is optional, so the wrapper made the *only* required
+        # argument a container with nothing required inside it: `{}` was
+        # rejected for a missing `payload`, and `{"limit": 10}` for an
+        # unexpected keyword. On a read tool a model reaches for first, that is
+        # pure friction. Tools whose wrapper carries a genuinely required field
+        # keep it.
+        return await list_sections_handler(
+            _require_ctx(state), ListSectionsInput(limit=limit, page_token=page_token)
+        )
+
+    @mcp.tool(
+        name="list_section_items",
+        title="List spaces in a section",
+        description=(
+            "List the spaces filed under a section. Pass `section_name` to read "
+            "one section, `space_id` to find which section a single space sits "
+            "in, or both to check one against the other; at least one is "
+            "required. A non-null `next_page_token` in the result means `limit` "
+            "cut the listing short — pass it back as `page_token` rather than "
+            "treating the page as the whole section. Requires the "
+            "sensitive-tier `chat.users.sections.readonly` scope."
+        ),
+        annotations={"read_only_hint": True, "open_world_hint": True},
+    )
+    async def list_section_items(payload: ListSectionItemsInput) -> ListSectionItemsResult:
+        return await list_section_items_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="create_section",
+        title="Create a custom section",
+        description=(
+            "Create a custom section in the caller's sidebar. `display_name` is "
+            "required (1-80 chars). Google does not deduplicate by name, so "
+            "`list_sections` first if you mean to reuse an existing one. Set "
+            "`dry_run=true` to preview the body without posting. Requires the "
+            "sensitive-tier `chat.users.sections` scope."
+        ),
+        annotations={
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": True,
+        },
+    )
+    async def create_section(payload: CreateSectionInput) -> CreateSectionResult:
+        return await create_section_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="rename_section",
+        title="Rename a custom section",
+        description=(
+            "Change a custom section's display name (1-80 chars). Only custom "
+            "sections can be renamed — Google rejects a patch against a system "
+            "section. Set `dry_run=true` to preview. Requires the "
+            "sensitive-tier `chat.users.sections` scope."
+        ),
+        annotations={
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": True,
+        },
+    )
+    async def rename_section(payload: RenameSectionInput) -> RenameSectionResult:
+        return await rename_section_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="delete_section",
+        title="Delete a custom section",
+        description=(
+            "Delete a custom section. The spaces in it are NOT deleted — Google "
+            "moves them back to the default sections. Idempotent: a repeat "
+            "delete returns `deleted=false` rather than erroring. Requires the "
+            "sensitive-tier `chat.users.sections` scope."
+        ),
+        annotations={
+            "read_only_hint": False,
+            "destructive_hint": True,
+            "idempotent_hint": True,
+            "open_world_hint": True,
+        },
+    )
+    async def delete_section(payload: DeleteSectionInput) -> DeleteSectionResult:
+        return await delete_section_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="position_section",
+        title="Reorder a section",
+        description=(
+            "Move a section within the sidebar. Pass exactly one of `sort_order` "
+            "(absolute, 1-based) or `relative_position` ('START' | 'END'). "
+            "Prefer `relative_position` when arranging several sections: "
+            "Google documents `sort_order` as inserting at that rank and "
+            "shifting the rest down, but a sequence of absolute inserts does "
+            "not settle where that implies, so build an order by repeatedly "
+            "moving to 'START' in reverse instead. Set `dry_run=true` to "
+            "preview. Requires the sensitive-tier `chat.users.sections` scope."
+        ),
+        annotations={
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": True,
+        },
+    )
+    async def position_section(payload: PositionSectionInput) -> PositionSectionResult:
+        return await position_section_handler(_require_ctx(state), payload)
+
+    @mcp.tool(
+        name="move_space_to_section",
+        title="Move a space into a section",
+        description=(
+            "File a space under a section in the caller's sidebar. Every space "
+            "already sits in some section (a default one until you move it), so "
+            "this both files and re-files. Returns `moved=false` when the space "
+            "is already in the target section. For a bulk sort, read each "
+            "section once with `list_section_items` and pass the `item_name` it "
+            "gives you: that skips the per-space lookup, so N spaces cost one "
+            "listing per section plus one write per space that actually moves, "
+            "instead of a request each. Without `item_name` the lookup runs "
+            "every call, including for spaces already in place. Set "
+            "`dry_run=true` to see which section the space would leave without "
+            "writing. Requires the sensitive-tier `chat.users.sections` scope."
+        ),
+        annotations={
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": True,
+        },
+    )
+    async def move_space_to_section(
+        payload: MoveSpaceToSectionInput,
+    ) -> MoveSpaceToSectionResult:
+        return await move_space_to_section_handler(_require_ctx(state), payload)
 
     # ---- resources ----
 

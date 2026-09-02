@@ -109,7 +109,7 @@ def _mock_people(mock: MockRouter, failure: httpx2.Response | Exception) -> None
 
 # Every way the People API can refuse. The transport entries matter as much as
 # the status ones: `ChatClient._request` does not wrap transport errors, so a
-# timeout arrives as a raw httpx exception rather than a `ChatApiError` — an
+# timeout arrives as a raw `httpx2` exception rather than a `ChatApiError` — an
 # `except ChatApiError` in the enrichment path would let it through and drop
 # the row again, and a status-only test suite would never notice.
 _PEOPLE_FAILURES = [

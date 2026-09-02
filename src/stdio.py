@@ -46,6 +46,8 @@ from .models import (
     _ChatMembershipResponse,
     _ChatMessageResponse,
     _ChatReactionResponse,
+    _ChatSectionItemResponse,
+    _ChatSectionResponse,
     _ChatSpaceResponse,
     _UserInfoResponse,
 )
@@ -818,6 +820,24 @@ async def _run_doctor(resolver: AuthResolver, settings: Settings, *, limit: int)
         userinfo = await fetch("userinfo", client.get_userinfo(token), {})
         if userinfo:
             check(_UserInfoResponse, userinfo, "userinfo")
+        # Sections matter more here than their size suggests: the item id's
+        # encoding is an inference from live traffic rather than a documented
+        # format, so this is the check that catches Google spelling it a third
+        # way before a user meets it as an empty sidebar.
+        sections, _ = await fetch("sections", client.list_sections(token, limit=100), ([], None))
+        print(f"Checking {len(sections)} section(s)...")
+        for raw_section in sections:
+            check(_ChatSectionResponse, raw_section, "section")
+            section_name = raw_section.get("name")
+            if not isinstance(section_name, str):
+                continue
+            items, _ = await fetch(
+                f"items in {section_name}",
+                client.list_section_items(token, limit=10, section_name=section_name),
+                ([], None),
+            )
+            for raw_item in items:
+                check(_ChatSectionItemResponse, raw_item, f"section item in {section_name}")
         spaces = await fetch("spaces", client.list_spaces(token, limit=limit), [])
         print(f"Checking {len(spaces)} space(s)...")
         for raw_space in spaces:

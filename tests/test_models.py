@@ -145,7 +145,7 @@ _TRAVERSAL_SEGMENTS = ("..", ".", "...", "....", ".-_")
 @pytest.mark.parametrize("seg", _TRAVERSAL_SEGMENTS)
 def test_resource_name_regex_rejects_dot_only_segments(seg: str) -> None:
     """Regression for the path-traversal vector: bare dot/dash/underscore
-    segments would pass the old `[A-Za-z0-9._-]+` regex and let httpx
+    segments would pass the old `[A-Za-z0-9._-]+` regex and let httpx2
     normalize the URL via RFC 3986 §5.2.4, rewriting the upstream target.
 
     The tightened regex requires at least one alphanumeric character per
@@ -178,7 +178,7 @@ def test_resource_name_regex_still_accepts_real_ids() -> None:
     from src.models import DeleteMessageInput, RemoveMemberInput
 
     DeleteMessageInput(message_name="spaces/AAA/messages/MfFwlJ6Q-v8.MfFwlJ6Q-v8")
-    RemoveMemberInput(membership_name="spaces/AAQAcRvOo10/members/103509578229692690681")
+    RemoveMemberInput(membership_name="spaces/AAA/members/109876543210")
 
 
 def test_message_response_accepts_embedded_space_dict() -> None:

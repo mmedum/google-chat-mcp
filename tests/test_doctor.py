@@ -37,6 +37,9 @@ def _space() -> dict[str, object]:
     return {"name": "spaces/AAA", "type": "SPACE", "displayName": "Team"}
 
 
+_SECTION = "users/109876543210/sections/clients-1"
+
+
 def _message(extra: dict[str, object] | None = None) -> dict[str, object]:
     body: dict[str, object] = {
         "name": "spaces/AAA/messages/M.1",
@@ -62,11 +65,32 @@ def _mock_userinfo(mock: MockRouter) -> None:
     )
 
 
+def _mock_sections(mock: MockRouter) -> None:
+    """`doctor` samples the section models too — one custom section, one item."""
+    mock.get("/users/me/sections").mock(
+        return_value=httpx2.Response(
+            200,
+            json={"sections": [{"name": _SECTION, "type": "CUSTOM_SECTION", "displayName": "C"}]},
+        )
+    )
+    mock.get(f"/{_SECTION}/items").mock(
+        return_value=httpx2.Response(
+            200,
+            json={
+                "sectionItems": [
+                    {"name": f"{_SECTION}/items/c3BhY2VzL0FBQQ==", "space": "spaces/AAA"}
+                ]
+            },
+        )
+    )
+
+
 @pytest.mark.asyncio
 async def test_doctor_passes_when_live_shapes_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GCM_CHAT_API_BASE", "https://chat.googleapis.com/v1")
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(200, json={"messages": [_message()]})
@@ -85,6 +109,7 @@ async def test_doctor_reports_drift_and_exits_nonzero(
     """The whole point: catch a new field before a user hits Internal error."""
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(
@@ -113,6 +138,7 @@ async def test_doctor_reports_a_field_that_changed_shape() -> None:
     """
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(
@@ -138,6 +164,7 @@ async def test_doctor_sees_drift_on_nested_models(
     """
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(
@@ -162,6 +189,7 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
     which let it report a clean bill of health for a shape it never looked at."""
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(
@@ -202,6 +230,7 @@ async def test_doctor_checks_reaction_shapes(capsys: pytest.CaptureFixture[str])
 async def test_doctor_checks_userinfo_shape(capsys: pytest.CaptureFixture[str]) -> None:
     """`whoami` parses the OIDC payload; drift there was previously unsampled."""
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
+        _mock_sections(mock)
         mock.get(_USERINFO_URL).mock(
             return_value=httpx2.Response(
                 200, json={"sub": "u", "email": "alice@example.com", "hostedDomainAddedLater": "x"}
@@ -220,6 +249,7 @@ async def test_doctor_skips_reactions_for_messages_without_any() -> None:
     """No reaction summaries on the message means no reactions.list call."""
     with mock_api(base_url="https://chat.googleapis.com/v1", assert_all_called=False) as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(200, json={"messages": [_message()]})
@@ -244,6 +274,7 @@ async def test_doctor_is_clean_on_a_realistic_userinfo_payload() -> None:
     add fields to `models.py` that nothing reads.
     """
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
+        _mock_sections(mock)
         mock.get(_USERINFO_URL).mock(
             return_value=httpx2.Response(
                 200,
@@ -278,6 +309,7 @@ async def test_doctor_reports_a_failed_fetch_instead_of_crashing(
     findings discarded.
     """
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
+        _mock_sections(mock)
         mock.get(_USERINFO_URL).mock(
             return_value=httpx2.Response(
                 403, json={"error": {"code": 403, "status": "PERMISSION_DENIED"}}
@@ -310,6 +342,7 @@ async def test_doctor_survives_a_message_deleted_mid_run(
     """reactions.list can 404 on a message deleted between calls — a plausible race."""
     with mock_api(base_url="https://chat.googleapis.com/v1") as mock:
         _mock_userinfo(mock)
+        _mock_sections(mock)
         mock.get("/spaces").mock(return_value=httpx2.Response(200, json={"spaces": [_space()]}))
         mock.get("/spaces/AAA/messages").mock(
             return_value=httpx2.Response(

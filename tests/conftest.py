@@ -112,6 +112,36 @@ def mock_access_token():
     return _patch_access_token
 
 
+def scope_403() -> httpx2.Response:
+    """Google's insufficient-scope 403, in the exact shape `is_missing_scope_error` parses.
+
+    Shared because it guards a security invariant: every idempotent-delete path
+    must keep raising on this rather than reporting a quiet `deleted=False`.
+    The envelope was hand-rebuilt across the suite with no copy authoritative;
+    the identical ones now import this. Three files still build their own
+    because their payloads genuinely differ: `test_tools.py` adds a `domain`
+    key, `test_tools_common.py` varies the envelope to exercise the parser,
+    and `test_degraded_enrichment.py` omits `@type` and reuses one response
+    object across calls. New tests should import this one.
+    """
+    return httpx2.Response(
+        403,
+        json={
+            "error": {
+                "code": 403,
+                "message": "Request had insufficient authentication scopes.",
+                "status": "PERMISSION_DENIED",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                    }
+                ],
+            }
+        },
+    )
+
+
 def person_payload(email: str, display_name: str | None = None) -> dict[str, object]:
     """Build a People-API `people.get` response body with primary email + name.
 

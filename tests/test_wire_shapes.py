@@ -29,6 +29,7 @@ from src.resources.space import register_space_resource
 from src.tools._common import AuthInfo, ToolContext
 
 from ._httpx2_mock import mock_api
+from .conftest import scope_403
 
 
 @pytest.fixture
@@ -87,31 +88,15 @@ async def test_missing_scope_surfaces_as_tool_error_result_with_scope_url(
         mock_api(assert_all_called=False) as route_mock,
         mock_access_token(),
     ):
-        route_mock.get("https://chat.googleapis.com/v1/spaces").mock(
-            return_value=httpx2.Response(
-                403,
-                json={
-                    "error": {
-                        "code": 403,
-                        "message": "Request had insufficient authentication scopes.",
-                        "status": "PERMISSION_DENIED",
-                        "details": [
-                            {
-                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                            }
-                        ],
-                    }
-                },
-            )
-        )
+        route_mock.get("https://chat.googleapis.com/v1/spaces").mock(return_value=scope_403())
         async with Client(mcp) as client:
             result = await client.call_tool("list_spaces", {}, raise_on_error=False)
 
     # MCP clients see isError: true + a TextContent block naming the scope.
     # structuredContent for error results is a follow-up once FastMCP supports
-    # it; today the scope URL in the text block is the only machine-readable
-    # handle for clients that want to drive re-auth prompts.
+    # it — re-checked on 4.0 and it still does not; today the scope URL in the
+    # text block is the only machine-readable handle for clients that want to
+    # drive re-auth prompts.
     assert result.is_error is True
     assert result.content
     text = result.content[0].text
@@ -218,6 +203,13 @@ async def test_server_identity_and_capabilities(mcp: FastMCP) -> None:
         "update_message",
         "delete_message",
         "update_space",
+        "list_sections",
+        "list_section_items",
+        "create_section",
+        "rename_section",
+        "delete_section",
+        "position_section",
+        "move_space_to_section",
     }
 
     templates = await mcp.list_resource_templates()

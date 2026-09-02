@@ -34,6 +34,13 @@ async def test_build_app_registers_all_tools(settings: Settings) -> None:
         "update_message",
         "delete_message",
         "update_space",
+        "list_sections",
+        "list_section_items",
+        "create_section",
+        "rename_section",
+        "delete_section",
+        "position_section",
+        "move_space_to_section",
     }
     assert expected_so_far.issubset(names)
 
@@ -114,6 +121,45 @@ async def test_tool_annotations_match_mcp_alignment(settings: Settings) -> None:
     assert sp is not None
     assert sp.read_only_hint is True
     assert sp.open_world_hint is True
+
+
+@pytest.mark.asyncio
+async def test_section_tool_annotations(settings: Settings) -> None:
+    """Sections change only the caller's own sidebar — nothing here touches a space."""
+    mcp = build_app(settings)
+    tools = await mcp.list_tools()
+    by_name = {t.name: t for t in tools}
+
+    # Section reads.
+    for name in ("list_sections", "list_section_items"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.read_only_hint is True, f"{name} should be read_only_hint=True"
+        assert ann.open_world_hint is True
+
+    # create_section — writes, not destructive, NOT idempotent: Google does not
+    # deduplicate by name, so a repeat call leaves two sections.
+    cs = by_name["create_section"].annotations
+    assert cs is not None
+    assert cs.read_only_hint is False
+    assert cs.destructive_hint is False
+    assert cs.idempotent_hint is False
+
+    # rename / position / move — writes that land on the same state when
+    # repeated with the same arguments, and none of them destroys anything.
+    for name in ("rename_section", "position_section", "move_space_to_section"):
+        ann = by_name[name].annotations
+        assert ann is not None, f"{name} missing annotations"
+        assert ann.read_only_hint is False, f"{name} should be read_only_hint=False"
+        assert ann.destructive_hint is False
+        assert ann.idempotent_hint is True
+
+    # delete_section — destructive + idempotent, same shape as delete_message.
+    ds = by_name["delete_section"].annotations
+    assert ds is not None
+    assert ds.read_only_hint is False
+    assert ds.destructive_hint is True
+    assert ds.idempotent_hint is True
 
 
 @pytest.mark.asyncio

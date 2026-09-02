@@ -10,6 +10,7 @@ from src.tools import remove_member_handler
 from src.tools._common import ToolContext
 
 from ._httpx2_mock import mock_api
+from .conftest import scope_403
 
 
 @pytest.mark.asyncio
@@ -102,24 +103,7 @@ async def test_missing_scope_403_still_raises_tool_error(
         mock_api(base_url="https://chat.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.delete("/spaces/AAA/members/111").mock(
-            return_value=httpx2.Response(
-                403,
-                json={
-                    "error": {
-                        "code": 403,
-                        "message": "Request had insufficient authentication scopes.",
-                        "status": "PERMISSION_DENIED",
-                        "details": [
-                            {
-                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                            }
-                        ],
-                    }
-                },
-            )
-        )
+        mock.delete("/spaces/AAA/members/111").mock(return_value=scope_403())
         with pytest.raises(ToolError, match="scope"):
             await remove_member_handler(
                 tool_ctx, RemoveMemberInput(membership_name="spaces/AAA/members/111")

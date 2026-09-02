@@ -10,6 +10,7 @@ from src.tools import search_people_handler
 from src.tools._common import ToolContext
 
 from ._httpx2_mock import mock_api
+from .conftest import scope_403
 
 
 def _person(resource_name: str, email: str | None, display_name: str | None) -> dict:
@@ -144,24 +145,7 @@ async def test_one_source_missing_scope_continues_with_the_other(
         mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
     ):
-        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(
-            return_value=httpx2.Response(
-                403,
-                json={
-                    "error": {
-                        "code": 403,
-                        "message": "Request had insufficient authentication scopes.",
-                        "status": "PERMISSION_DENIED",
-                        "details": [
-                            {
-                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                                "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                            }
-                        ],
-                    }
-                },
-            )
-        )
+        mock.get(url__regex=r".*people:searchDirectoryPeople.*").mock(return_value=scope_403())
         mock.get(url__regex=r".*people:searchContacts.*").mock(
             return_value=httpx2.Response(
                 200,
@@ -256,22 +240,7 @@ async def test_all_sources_non_scope_error_raises_with_reasons(
 @pytest.mark.asyncio
 async def test_all_sources_missing_scope_raises(tool_ctx: ToolContext, mock_access_token) -> None:
     """If every requested source is missing-scope, raise (don't silently empty)."""
-    missing_scope = httpx2.Response(
-        403,
-        json={
-            "error": {
-                "code": 403,
-                "message": "Request had insufficient authentication scopes.",
-                "status": "PERMISSION_DENIED",
-                "details": [
-                    {
-                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-                        "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-                    }
-                ],
-            }
-        },
-    )
+    missing_scope = scope_403()
     with (
         mock_api(base_url="https://people.test/v1") as mock,
         mock_access_token(),
