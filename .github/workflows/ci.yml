@@ -44,7 +44,11 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build ./...
-      - run: go test -race -coverpkg=./internal/... -coverprofile=cov.out -covermode=atomic ./...
+      # The same -coverpkg the Makefile uses. It is written twice because
+      # this job runs on three platforms and only one of them needs the
+      # floor, and a test holds the two copies equal — they drifted once,
+      # and the symptom was cmd/ reporting 0% here and 58% locally.
+      - run: go test -race -coverpkg=./cmd/...,./internal/... -coverprofile=cov.out -covermode=atomic ./...
       - name: coverage floor
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/coverage-check.sh cov.out 80
