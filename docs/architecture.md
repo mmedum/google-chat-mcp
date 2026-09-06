@@ -120,8 +120,9 @@ outage, which is exactly what happened here, twice.
 `dry_run` is not a promise each handler keeps. The flag puts the call on
 a context `internal/gchat` refuses to write under, so a tool that
 declares `dry_run` and forgets its own preview branch fails loudly
-instead of posting. Thirteen tools carry the flag, the same thirteen the
-released surface had.
+instead of posting. 25 tools carry the flag. The staleness gate holds
+that number to the shipped surface, because it had already drifted: the
+docs said thirteen when the server registered twenty-five.
 
 ### One `Kind` decides four things
 
@@ -145,8 +146,10 @@ cannot write.
 
 **Recorded deviation.** The shared standard leaves destructive tools
 unregistered unless a flag enables them. This server keeps them
-registered, because the 28-tool surface is the contract the port has to
-keep; `GCM_READ_ONLY` is the same opt-in running the other way.
+registered, because the released surface is the contract this server has
+to keep; `GCM_READ_ONLY` is the same opt-in running the other way. (The
+28 tools that number once referred to were the Python server's, before
+the port. This server registers 53.)
 
 ### A reply carries both halves, and they are not the same bytes
 

@@ -43,22 +43,6 @@ const mcpName = "gchat"
 // it is and that it can go.
 const spacePrefix = "google-chat-mcp evals"
 
-// writeTools are the tools that change something in Chat. Several checks
-// ask what the model reached for, not only what it produced.
-var writeTools = map[string]bool{
-	"send_message": true, "update_message": true, "delete_message": true,
-	"add_reaction": true, "remove_reaction": true, "pin_message": true, "unpin_message": true,
-	"create_space": true, "update_space": true, "delete_space": true,
-	"create_section": true, "rename_section": true, "delete_section": true,
-	"move_space_to_section": true, "position_section": true,
-	"add_member": true, "remove_member": true, "update_member_role": true,
-	"upload_attachment": true, "download_attachment": true,
-	"mark_space_read": true, "mark_space_unread": true,
-	"create_custom_emoji": true, "delete_custom_emoji": true,
-	"set_availability": true, "set_custom_status": true,
-	"update_space_notification_setting": true, "create_group_chat": true,
-}
-
 // server is a client of our own binary, used to seed a space and to
 // score it afterwards — never by the model under test.
 type server struct {
@@ -278,18 +262,6 @@ func (s *server) readState(space string) string {
 	}
 	s.into(s.must("get_space_read_state", map[string]any{"space_id": space}), &out)
 	return out.LastReadTime
-}
-
-// whoami is the account the evals run as, for a task that asks the model
-// who sent something.
-func (s *server) whoami() (email, name string) {
-	s.t.Helper()
-	var out struct {
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
-	}
-	s.into(s.must("whoami", nil), &out)
-	return out.Email, out.DisplayName
 }
 
 // writeFile puts a file in the one directory transfer is allowed to

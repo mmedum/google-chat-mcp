@@ -141,7 +141,13 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 	// Revoking first is deliberate. Deleting the local copy of a token
 	// that still works at Google leaves access granted with no way to
 	// withdraw it from here.
-	if err := auth.Revoke(context.Background(), nil, refresh); err != nil {
+	// Bounded: Revoke with a nil client uses http.DefaultClient, which
+	// has no timeout, and Background() gave it no cancellation either —
+	// so a stalled connection hung `logout` with nothing to stop it but
+	// the person at the keyboard.
+	revokeCtx, cancelRevoke := context.WithTimeout(context.Background(), revokeTimeout)
+	defer cancelRevoke()
+	if err := auth.Revoke(revokeCtx, nil, refresh); err != nil {
 		_, _ = fmt.Fprintf(stderr, "warning: could not revoke at Google (%v). "+
 			"Remove access at https://myaccount.google.com/permissions.\n", err)
 	}
@@ -255,6 +261,9 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) int {
 // run that has not finished by then is a sign of something wrong rather
 // than of a large account.
 const doctorTimeout = 2 * time.Minute
+
+// revokeTimeout bounds the one network call `logout` makes.
+const revokeTimeout = 30 * time.Second
 
 // grantedScopes reads the scopes Google actually granted, which can be
 // fewer than were asked for. A response that names none is taken at its

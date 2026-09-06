@@ -39,7 +39,9 @@ The refresh token is looked up in this order, the same one `gh` uses.
    `google-chat-mcp` and the profile name as the account.
 3. A `0600` file in the profile directory, written at login only when
    the keyring was unavailable. `login` says so when it happens, and
-   `doctor` reports which of the three answered.
+   `doctor` reports which of the three answered. On Windows that mode
+   sets the read-only attribute and nothing else — the file is protected
+   by the ACL it inherits, so the keyring is the meaningful answer there.
 
 A missing keyring entry falls through to the next source. So does a
 keyring that cannot be reached at all, which is what makes a headless

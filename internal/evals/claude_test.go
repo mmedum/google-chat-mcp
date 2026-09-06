@@ -4,6 +4,7 @@ package evals
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,8 +132,9 @@ func runClaude(t *testing.T, prompt string, extraEnv map[string]string) *trace {
 	started := time.Now()
 	runErr := cmd.Run()
 	tr := &trace{Seconds: time.Since(started).Seconds()}
-	if ee, ok := runErr.(*exec.ExitError); ok {
-		tr.Exit = ee.ExitCode()
+	var exit *exec.ExitError
+	if errors.As(runErr, &exit) {
+		tr.Exit = exit.ExitCode()
 	} else if runErr != nil {
 		t.Fatalf("claude: %v (is the CLI on PATH?)", runErr)
 	}
