@@ -40,7 +40,7 @@ test: ## Unit tests with race detector and coverage
 # scan cannot see: an identifier committed and edited out later is still
 # published. "all" widens it to every commit, for deciding whether the
 # published past needs rewriting.
-	LEAKCHECK_HISTORY=1 $(GO) test -race -coverpkg=./internal/... -coverprofile=cov.out -covermode=atomic ./...
+	LEAKCHECK_HISTORY=1 $(GO) test -race -coverpkg=./cmd/...,./internal/... -coverprofile=cov.out -covermode=atomic ./...
 
 .PHONY: cover
 cover: test ## Enforce the coverage floor on core packages
