@@ -585,6 +585,8 @@ var ciRunsForTarget = map[string]string{
 	"cover":        "gates coverage",
 	"vuln":         "govulncheck",
 	"licenses":     "go-licenses",
+	"pins":         "gates pins",
+	"classes":      "gates classes",
 	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",
 	"live-surface": "TestEveryToolIsExercisedOrExcused",

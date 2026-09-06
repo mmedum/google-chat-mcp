@@ -10,6 +10,8 @@
 //
 // goreleaser builds only ./cmd/..., so none of this ships.
 //
+//	go run ./scripts/gates classes
+//	go run ./scripts/gates pins
 //	go run ./scripts/gates schema-diff [BINARY]
 //	go run ./scripts/gates smoke [BINARY]
 //	go run ./scripts/gates staleness [BINARY]
@@ -114,6 +116,11 @@ func init() {
 			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
 			doc: "the released tool surface, which a change may add to and never drop from",
 		},
+		"classes": {
+			run:   classes,
+			arity: 1, runsIn: inCheck,
+			doc: "the tool error vocabulary, closed from both sides",
+		},
 		"coverage": {
 			run:   coverage,
 			arity: 1, maxArity: 2, args: "[PROFILE]", runsIn: inCheck,
@@ -141,6 +148,11 @@ func init() {
 			},
 			arity: 1, runsIn: manual,
 			doc: "every GCM_ variable the server reads",
+		},
+		"pins": {
+			run:   pins,
+			arity: 1, runsIn: inCheck,
+			doc: "every third-party tool held to an exact version",
 		},
 		"release-notes": {
 			run:   releaseNotes,
