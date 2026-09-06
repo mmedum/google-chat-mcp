@@ -152,7 +152,7 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: |
-          go run ./internal/devcheck server-json "${REF_NAME}" dist/checksums.txt > dist/server.json
+          go run ./scripts/gates server-json "${REF_NAME}" dist/checksums.txt > dist/server.json
           cat dist/server.json
 
       # Same rule as cosign and syft above: pinned, and verified before

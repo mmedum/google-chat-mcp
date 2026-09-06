@@ -472,7 +472,7 @@ var ciRunsForTarget = map[string]string{
 	"vuln":         "govulncheck",
 	"licenses":     "go-licenses",
 	"smoke":        "stdio-smoke.sh",
-	"schema-diff":  "schema-diff.sh",
+	"schema-diff":  "gates schema-diff",
 	"live-surface": "TestEveryToolIsExercisedOrExcused",
 	"staleness":    "staleness-check.sh",
 }
@@ -541,6 +541,20 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 	for target := range ciRunsForTarget {
 		if !inCheck[target] {
 			t.Errorf("ciRunsForTarget names %q, which `make check` no longer runs; drop it", target)
+		}
+	}
+
+	// Every command the registry marks as a gate has to reach both
+	// places too. That flag is the single list google-drive-mcp arrived
+	// at after adding a gate to the dispatch, the Makefile and the
+	// workflow but not the usage text — so it is only worth having if
+	// something reads it.
+	for _, name := range gateNames() {
+		if !strings.Contains(string(mk), "gates "+name) {
+			t.Errorf("the registry marks %q a gate and the Makefile never runs it", name)
+		}
+		if !strings.Contains(workflow, "gates "+name) {
+			t.Errorf("the registry marks %q a gate and ci.yml never runs it", name)
 		}
 	}
 

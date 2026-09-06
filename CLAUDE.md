@@ -63,7 +63,12 @@ was checked, against which source, and which live call contradicted it.
   search, section moves; `internal/tools/` the MCP tools, their schemas
   and their renderings; `internal/server/` SDK wiring and the schema dump.
 - `internal/doctor/` the live check; `internal/leakcheck/` and
-  `internal/devcheck/` the gates; `internal/version/` the build stamp.
+  `internal/version/` the build stamp.
+- `scripts/gates/` is every check this repository runs on itself, as Go:
+  the schema diff, the coverage floor, the smoke test, the staleness
+  gate. It is under `scripts/` and not `internal/` because it never
+  ships, and it is Go and not shell so that the code holding the gates
+  shut is held to them too.
 - `internal/livecheck/` drives the shipped binary against a real account,
   behind a `live` build tag; `internal/evals/` scores a model driving the
   tools, behind an `evals` one. Neither runs in CI. `livecheck`'s surface

@@ -62,10 +62,10 @@ install -m 0755 "$ROOT/packaging/mcpb/linux-launch.sh" "$stage/server/linux-laun
 install -m 0644 "$ROOT/LICENSE" "$ROOT/README.md" "$stage/"
 
 # The manifest is JSON, so the version goes in through a decode and an
-# encode rather than a text substitution: internal/devcheck owns anything
+# encode rather than a text substitution: scripts/gates owns anything
 # that parses what this repository defines, and it refuses a manifest
 # that is not carrying the placeholder.
-(cd "$ROOT" && go run ./internal/devcheck mcpb-manifest "$version" packaging/mcpb/manifest.json) \
+(cd "$ROOT" && go run ./scripts/gates mcpb-manifest "$version" packaging/mcpb/manifest.json) \
   > "$stage/manifest.json"
 
 # pack validates the manifest against the schema before it writes.
