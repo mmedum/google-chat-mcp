@@ -195,3 +195,61 @@ func TestWorkflowsPinTheShell(t *testing.T) {
 		t.Fatalf("read %d workflow files, expected at least the three this repository has", read)
 	}
 }
+
+// goreleaser refuses to release from a dirty tree, and an untracked file
+// in the checkout is dirty. `release --clean` says nothing about that —
+// it clears dist/ and leaves everything else alone. So a step that
+// redirects into the working directory before goreleaser runs breaks the
+// release and nothing earlier can see it: `--snapshot`, which is the only
+// way to rehearse, skips the dirty check entirely. v1.0.0's first tag
+// died on exactly this, with `?? release-notes.md`, after a green
+// rehearsal.
+//
+// The rule this holds is narrow on purpose: anything goreleaser is handed
+// as `--release-notes` has to live outside the checkout. Writing it to
+// the runner's temp directory is how.
+func TestReleaseNotesAreWrittenOutsideTheCheckout(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+
+	var found int
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.Contains(line, "--release-notes") {
+			continue
+		}
+		found++
+		_, path, ok := strings.Cut(line, "--release-notes=")
+		if !ok {
+			t.Errorf("--release-notes without a path: %s", strings.TrimSpace(line))
+			continue
+		}
+		// Not Fields()[0]: the path is often "${{ runner.temp }}/...",
+		// which has spaces inside the expression. The rest of the line
+		// is the path, and it is the whole of it that has to be outside
+		// the checkout.
+		path = strings.TrimSpace(path)
+		// runner.temp in the action's args, RUNNER_TEMP in a run step.
+		if !strings.Contains(path, "runner.temp") && !strings.Contains(path, "RUNNER_TEMP") {
+			t.Errorf("--release-notes=%s is inside the checkout, which leaves the tree dirty "+
+				"and fails the release; write it under the runner's temp directory", path)
+		}
+	}
+	if found == 0 {
+		t.Fatal("no --release-notes in release.yml: this test is looking at nothing")
+	}
+
+	// The other half: the step that produces the file must not redirect
+	// into the checkout either, or the tree is dirty however goreleaser
+	// is then pointed at it.
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.Contains(line, "extract-release-notes.sh") || !strings.Contains(line, ">") {
+			continue
+		}
+		if !strings.Contains(line, "RUNNER_TEMP") && !strings.Contains(line, "runner.temp") {
+			t.Errorf("release notes are written into the checkout: %s", strings.TrimSpace(line))
+		}
+	}
+}
