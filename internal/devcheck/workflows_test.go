@@ -298,3 +298,49 @@ func TestTheReleaseStageIsEnabled(t *testing.T) {
 		t.Fatal("no release: block in .goreleaser.yaml: this test is looking at nothing")
 	}
 }
+
+// goreleaser's `before` hooks run before the dirty-tree check, so a hook
+// that writes into the checkout fails the release — and `--snapshot`
+// runs the hooks while skipping that check, so no rehearsal can show it.
+// `go mod tidy` is the one that bites: it is a no-op right up until a
+// dependency or a Go version resolves differently on the runner, and
+// then it rewrites go.mod at tag time. Tidiness is CI's job anyway — it
+// runs `go mod tidy` and fails on any diff, on the same commit the
+// release is cut from, which `verify-ci` requires to be green.
+//
+// google-sheets-mcp flagged this one; it was latent here rather than
+// broken, which is the only reason it is a test and not a bug report.
+func TestReleaseHooksDoNotWriteIntoTheCheckout(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Commands that rewrite files in the working tree. Named rather than
+	// guessed at: a general rule would either miss things or fail on
+	// every hook that happens to contain a verb.
+	mutating := []string{"go mod tidy", "gofmt -w", "go generate", "go fmt"}
+
+	var inBefore, seen bool
+	for _, line := range strings.Split(string(raw), "\n") {
+		switch {
+		case strings.HasPrefix(line, "before:"):
+			inBefore, seen = true, true
+			continue
+		case len(line) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
+			inBefore = false
+		}
+		if !inBefore || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, cmd := range mutating {
+			if strings.Contains(line, cmd) {
+				t.Errorf("before hook %q rewrites the checkout, which fails the release on a dirty "+
+					"tree while every --snapshot rehearsal stays green: %s",
+					cmd, strings.TrimSpace(line))
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("no before: block in .goreleaser.yaml: this test is looking at nothing")
+	}
+}

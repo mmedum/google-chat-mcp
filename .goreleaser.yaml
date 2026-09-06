@@ -4,7 +4,14 @@ project_name: google-chat-mcp
 
 before:
   hooks:
-    - go mod tidy
+    # Download, never tidy. A hook that can rewrite go.mod or go.sum
+    # dirties the tree, and goreleaser refuses to release from a dirty
+    # tree — while `--snapshot` runs the hook and skips that check, so a
+    # rehearsal stays green and the tag fails. That shape has already
+    # cost this repository two tags by another route. Tidiness is CI's
+    # job: it runs `go mod tidy` and fails on any diff, on the same
+    # commit the release is cut from.
+    - go mod download
 
 builds:
   - id: binaries
