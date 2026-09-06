@@ -48,7 +48,16 @@ for pkg in $($GO_LIST list -f '{{.ImportPath}}' ./cmd/... ./internal/... | sed "
   # flattened. Absent means the ordinary floor.
   override_var="FLOOR_$(printf '%s' "$pkg" | tr -c 'A-Za-z0-9' '_')"
   floor=${!override_var:-$MIN}
-  pct=$(awk -v p="$MODULE/$pkg/" 'NR>1 && index($1, p)==1 {
+  # The directory exactly, not a prefix. Matching on "$pkg/" scores a
+  # package on its subpackages too, so a parent's printed number
+  # describes neither package — google-sheets-mcp had a package reported
+  # at 68.7% whose own coverage was 90.1%, once a subpackage grew. No
+  # package here has a child today, which is exactly why this would have
+  # gone unnoticed until one did.
+  pct=$(awk -v want="$MODULE/$pkg" 'NR>1 {
+      file = $1; sub(/:.*/, "", file);
+      dir = file; sub(/\/[^\/]*$/, "", dir);
+      if (dir != want) next;
       if (!($1 in stmts)) stmts[$1]=$2;
       if ($3>0) hit[$1]=1 }
     END { for (k in stmts) { total+=stmts[k]; if (k in hit) cov+=stmts[k] }
