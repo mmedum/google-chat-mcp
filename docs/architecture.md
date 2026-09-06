@@ -35,7 +35,7 @@ internal/tools/          MCP tools, their schemas, and their renderings
 internal/server/         SDK wiring and the schema dump
 internal/doctor/         the live check behind `google-chat-mcp doctor`
 internal/leakcheck/      fails the build on anything identifying a real account
-internal/devcheck/       the JSON half of the gates
+scripts/gates/           every check the repository runs on itself
 ```
 
 ## Request flow
@@ -214,7 +214,7 @@ Desktop, packed from goreleaser's universal-binary post hook — the one
 point in the pipeline where every binary exists and the checksum file
 has not been written, so the bundle ships inside the signature rather
 than beside it. And an entry in the MCP registry, written by
-`internal/devcheck server-json` from that same checksum file and
+`scripts/gates server-json` from that same checksum file and
 published with `mcp-publisher`.
 
 The bundle carries all three platforms Claude Desktop runs on. A

@@ -162,7 +162,7 @@ jobs:
       - name: stdio smoke
         run: bash scripts/stdio-smoke.sh ./google-chat-mcp
       - name: schema diff against the released baseline
-        run: bash scripts/schema-diff.sh ./google-chat-mcp
+        run: go run ./scripts/gates schema-diff ./google-chat-mcp
       # The live driver cannot run here — it needs a login and writes to
       # a real account — but its surface gate can: it reads what the
       # built binary registers, which needs no credentials.

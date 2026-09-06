@@ -61,7 +61,7 @@ schemas: build ## Dump tool schemas
 
 .PHONY: schema-diff
 schema-diff: build ## Diff tool schemas against the last tag
-	@bash scripts/schema-diff.sh $(BIN)
+	@$(GO) run ./scripts/gates schema-diff $(BIN)
 
 .PHONY: smoke
 smoke: build ## Drive the binary over stdio

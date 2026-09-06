@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails when the documentation drifts from the code.
 #
-# This script is the plumbing; internal/devcheck answers anything that
+# This script is the plumbing; scripts/gates answers anything that
 # needs to read a tool schema or know what the code defines.
 set -euo pipefail
 BIN=${1:-./google-chat-mcp}
@@ -12,7 +12,7 @@ fail=0
 "$BIN" --dump-schemas > "$TMP/schemas.json"
 
 # The README's tool table must list exactly the tools that ship.
-shipped=$(go run ./internal/devcheck tool-names "$TMP/schemas.json")
+shipped=$(go run ./scripts/gates tool-names "$TMP/schemas.json")
 readme_tools=$(grep -oE '^\| `[a-z_]+` \|' README.md | tr -d '`| ' | sort || true)
 if [ "$shipped" != "$readme_tools" ]; then
   echo "README tool table differs from the registered tools:"
@@ -21,7 +21,7 @@ if [ "$shipped" != "$readme_tools" ]; then
 fi
 
 # docs/configuration.md must name every GCM_ variable the server reads.
-for var in $(go run ./internal/devcheck config-vars); do
+for var in $(go run ./scripts/gates config-vars); do
   if ! grep -q "$var" docs/configuration.md; then
     echo "docs/configuration.md does not mention $var"
     fail=1
@@ -31,7 +31,7 @@ done
 # docs/gcp-setup.md must list every scope login asks for. A scope missing
 # from the consent screen is not granted, and the tool that needs it
 # fails with a 403 that names it.
-for scope in $(go run ./internal/devcheck scopes); do
+for scope in $(go run ./scripts/gates scopes); do
   if ! grep -q "$scope\$" docs/gcp-setup.md; then
     echo "docs/gcp-setup.md does not list the scope $scope"
     fail=1

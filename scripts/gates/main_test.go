@@ -35,7 +35,7 @@ func TestSchemaDiffClean(t *testing.T) {
        "outputSchema":{"properties":{"message_id":{}}}}
     ]}`
 	var out, errOut bytes.Buffer
-	code := run([]string{"schema-diff", write(t, "old.json", baseline), write(t, "new.json", current)}, &out, &errOut)
+	code := schemaDiff(write(t, "old.json", baseline), write(t, "new.json", current), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit %d, want 0: %s", code, out.String())
 	}
@@ -85,7 +85,7 @@ func TestSchemaDiffFailures(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := run([]string{"schema-diff", write(t, "old.json", baseline), write(t, "new.json", tc.current)}, &out, &errOut)
+			code := schemaDiff(write(t, "old.json", baseline), write(t, "new.json", tc.current), &out, &errOut)
 			if code != 1 {
 				t.Fatalf("exit %d, want 1: %s", code, out.String())
 			}
@@ -106,7 +106,7 @@ func TestSchemaDiffIgnoresKeyOrder(t *testing.T) {
        "outputSchema":{"properties":{"message_id":{}}}}
     ]}`
 	var out, errOut bytes.Buffer
-	if code := run([]string{"schema-diff", write(t, "old.json", baseline), write(t, "new.json", current)}, &out, &errOut); code != 0 {
+	if code := schemaDiff(write(t, "old.json", baseline), write(t, "new.json", current), &out, &errOut); code != 0 {
 		t.Fatalf("exit %d, want 0: %s", code, out.String())
 	}
 	if strings.Contains(out.String(), "reshaped") {
@@ -165,8 +165,16 @@ func TestUsageErrors(t *testing.T) {
 		if code := run(args, &out, &errOut); code != 2 {
 			t.Errorf("run(%v) = %d, want 2", args, code)
 		}
-		if !strings.Contains(errOut.String(), "usage:") {
-			t.Errorf("run(%v) printed no usage", args)
+		// The usage text is generated from the command list, so this
+		// asserts the heading and that at least one command reached it —
+		// a usage block listing nothing would otherwise pass.
+		if !strings.Contains(errOut.String(), "Usage:") {
+			t.Errorf("run(%v) printed no usage:\n%s", args, errOut.String())
+		}
+		for name := range commands {
+			if !strings.Contains(errOut.String(), name) {
+				t.Errorf("run(%v) printed a usage block missing %q", args, name)
+			}
 		}
 	}
 }
@@ -174,14 +182,25 @@ func TestUsageErrors(t *testing.T) {
 func TestUnreadableFiles(t *testing.T) {
 	good := write(t, "good.json", baseline)
 	bad := write(t, "bad.json", "{not json")
-	for _, args := range [][]string{
-		{"schema-diff", filepath.Join(t.TempDir(), "absent.json"), good},
-		{"schema-diff", good, bad},
-		{"tool-names", bad},
+
+	// The comparison is called directly. Routing these through run()
+	// would spend three arguments on a subcommand that takes one, so
+	// they would return 2 for a usage error and pass while testing
+	// nothing about unreadable files.
+	for _, tc := range []struct{ name, a, b string }{
+		{"baseline absent", filepath.Join(t.TempDir(), "absent.json"), good},
+		{"current unparseable", good, bad},
 	} {
-		var out, errOut bytes.Buffer
-		if code := run(args, &out, &errOut); code != 2 {
-			t.Errorf("run(%v) = %d, want 2", args, code)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if code := schemaDiff(tc.a, tc.b, &out, &errOut); code != 2 {
+				t.Errorf("schemaDiff(%s, %s) = %d, want 2", tc.a, tc.b, code)
+			}
+		})
+	}
+
+	var out, errOut bytes.Buffer
+	if code := run([]string{"tool-names", bad}, &out, &errOut); code != 2 {
+		t.Errorf("tool-names on unparseable input = %d, want 2", code)
 	}
 }
