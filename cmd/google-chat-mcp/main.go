@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mmedum/google-chat-mcp/internal/config"
@@ -149,10 +150,29 @@ func isShutdown(err error) bool {
 		errors.Is(err, os.ErrClosed):
 		return true
 	}
-	// The SDK wraps the EOF in its own message without %w, so the text
-	// is the only signal left.
-	return strings.Contains(err.Error(), "server is closing")
+	// The SDK answers a closed connection with a JSON-RPC error and
+	// folds the EOF into its message rather than wrapping it, so
+	// errors.Is finds nothing above. The code is the half that does not
+	// move: -32004 "server is closing" and -32003 "client is closing".
+	// They live in the SDK's internal jsonrpc2 and are still reachable,
+	// because the public jsonrpc package aliases that type rather than
+	// redefining it. Matching the message text instead reads the same
+	// and breaks silently on a wording change, and the cost of getting
+	// this wrong is every host recording an ordinary disconnect as a
+	// crash.
+	var wire *jsonrpc.Error
+	if errors.As(err, &wire) {
+		return wire.Code == codeServerClosing || wire.Code == codeClientClosing
+	}
+	return false
 }
+
+// The SDK exports neither value. Read off jsonrpc2.ErrServerClosing and
+// ErrClientClosing at go-sdk v1.7.0.
+const (
+	codeServerClosing = -32004
+	codeClientClosing = -32003
+)
 
 // cmdDumpSchemas prints the tool and resource schemas as JSON. It needs
 // no credentials: registration does not call Google.
