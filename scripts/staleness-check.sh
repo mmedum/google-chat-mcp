@@ -58,7 +58,7 @@ if [ -n "$last_tag" ] &&
   # Unreleased is just another section name, so the release-notes
   # extractor answers this too rather than a second awk that has to
   # agree with it about where a section ends.
-  unreleased=$(bash scripts/extract-release-notes.sh Unreleased 2>/dev/null || true)
+  unreleased=$(go run ./scripts/gates release-notes Unreleased 2>/dev/null || true)
   # `|| true` because a CHANGELOG with no released version in it yet is a
   # real state — the first release is exactly that — and without it the
   # empty grep takes pipefail and set -e with it, killing this script

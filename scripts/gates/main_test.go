@@ -157,9 +157,11 @@ func TestUsageErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{},
 		{"nonsense"},
-		{"schema-diff"},
-		{"tool-names"},
-		{"config-vars", "extra"},
+		{"tool-names"},                       // a required argument missing
+		{"release-notes"},                    // the same, for a command with an optional second
+		{"config-vars", "extra"},             // a command that takes none
+		{"schema-diff", "one", "two"},        // past the optional argument
+		{"release-notes", "1.0.0", "a", "b"}, // the same
 	} {
 		var out, errOut bytes.Buffer
 		if code := run(args, &out, &errOut); code != 2 {
