@@ -73,6 +73,11 @@ func init() {
 			arity: 2, args: "[BINARY]", gate: true,
 			doc: "the released tool surface, which a change may add to and never drop from",
 		},
+		"coverage": {
+			run:   coverage,
+			arity: 2, args: "[PROFILE]", gate: true,
+			doc: "statement coverage floor per package",
+		},
 		"tool-names": {
 			run:   func(a []string, o, e io.Writer) int { return toolNames(a[1], o, e) },
 			arity: 2, args: "FILE",
