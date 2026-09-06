@@ -71,11 +71,39 @@ func BaseDir() (string, error) {
 		// With no home to compare against there is nothing to protect.
 		return v, nil //nolint:nilerr // the override still stands
 	}
-	if !withinDir(home, abs) {
+	if !withinDir(realPath(home), realPath(abs)) {
 		return "", fmt.Errorf("%w: %s=%q. Set %s=1 to use it anyway",
 			ErrOutsideHome, EnvDir, v, EnvAllowOutsideHome)
 	}
 	return v, nil
+}
+
+// realPath resolves the links in path as far as the file system can,
+// so that two names for one directory compare equal.
+//
+// Comparing the names alone refuses directories that are plainly inside
+// the home directory. macOS hands out temporary paths under /var, which
+// is a link to /private/var, and Windows hands out 8.3 short names like
+// C:\Users\RUNNER~1 for C:\Users\runneradmin. Either one reads as
+// "outside home" against an unresolved home, and the person who set
+// GCM_CONFIG_DIR is told to opt past a guard that had nothing to guard.
+//
+// The directory usually does not exist yet — creating it is the point —
+// and EvalSymlinks fails on a path that is not there. So the deepest
+// ancestor that does exist is resolved and the rest is appended.
+func realPath(path string) string {
+	rest := ""
+	for cur := path; ; {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
 }
 
 // withinDir reports whether path is dir or sits under it.

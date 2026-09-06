@@ -96,7 +96,11 @@ Each of these is enforced, not documented — the tests named in
    unless the opt-in is set.
 7. **The token file is `0600` in a `0700` directory**, and is written
    only when the keyring was unavailable. `login` says so when that
-   happens, and `doctor` reports which source answered.
+   happens, and `doctor` reports which source answered. On Windows those
+   bits are not a permission: the file inherits the access control list
+   of your user profile instead, which keeps other standard users out but
+   is not the same guarantee. Windows Credential Manager is the keyring
+   there, so the file is the fallback on that platform too.
 8. **`logout` revokes at Google before deleting locally.** A deleted
    local copy of a token that still works is not a logout.
 9. **An umbrella scope satisfies the scopes split out of it**, matching
