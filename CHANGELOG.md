@@ -9,6 +9,15 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
+## [Unreleased]
+
+### Changed
+- **The Claude Desktop bundle now covers Linux.** It shipped macOS and
+  Windows only, on the belief that Linux would need two bundles or a
+  broken one. Claude Desktop for Linux exists and supports both x64 and
+  arm64, so the bundle carries both Linux binaries and picks between them
+  at start. macOS and Windows are unchanged.
+
 ## [1.0.0] - 2026-09-06
 
 First release. A single Go binary that speaks MCP over stdio, runs as a

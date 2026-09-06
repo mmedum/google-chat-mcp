@@ -63,19 +63,31 @@ was checked, against which source, and which live call contradicted it.
   search, section moves; `internal/tools/` the MCP tools, their schemas
   and their renderings; `internal/server/` SDK wiring and the schema dump.
 - `internal/doctor/` the live check; `internal/leakcheck/` and
-  `internal/devcheck/` the gates.
+  `internal/devcheck/` the gates; `internal/version/` the build stamp.
+- `internal/livecheck/` drives the shipped binary against a real account,
+  behind a `live` build tag; `internal/evals/` scores a model driving the
+  tools, behind an `evals` one. Neither runs in CI. `livecheck`'s surface
+  gate does, because it needs no credentials.
 - `testdata/schemas-baseline.json` — the released tool surface, which a
   change may add to but never drop from.
 
 ## Definition of done
 
-`make check`, which is what CI runs: gofmt, `go vet` including the
-tagged tests, golangci-lint, race tests with an 80% floor per core
-package, `govulncheck`, the licence allow-list, a stdio smoke test, the
-schema diff, and the staleness gate over README, `docs/` and CHANGELOG.
-Plus tests for new behaviour, `/simplify` and `/code-review high` with
-findings resolved or written down, and a look at the schema diff for
-anything breaking.
+`make check`, which is what CI runs: gofmt, `go vet` including every
+tagged suite, golangci-lint, race tests with an 80% floor per package —
+`cmd/` has its own lower floor, printed on every run, because the OAuth
+flow and the serve loop have no seam a unit test can reach — plus
+`govulncheck`, the licence allow-list, a stdio smoke test, the schema
+diff, the live driver's surface gate, and the staleness gate over README,
+`docs/` and CHANGELOG. Plus tests for new behaviour, `/simplify` and
+`/code-review high` with findings resolved or written down, and a look at
+the schema diff for anything breaking.
+
+Before a release, `make live` as well. It drives the shipped binary
+against a real account and is the only thing here that can catch a wrong
+belief about the API, because every fake in the unit suite is written
+from that belief. `make check` cannot replace it and green does not imply
+it.
 
 Green gates are not done. A repeat-delete bug once went through every
 one of them, because a unit test asserts the behaviour the code was

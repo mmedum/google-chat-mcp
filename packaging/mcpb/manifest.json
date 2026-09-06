@@ -5,7 +5,7 @@
   "display_name": "Google Chat",
   "version": "0.0.0-dev",
   "description": "Google Chat as MCP tools: read, search and write to your spaces, direct messages and sidebar.",
-  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nEvery other setting keeps its default. Attachment transfer stays off until `GCM_LOCAL_DIR` names a directory, which takes the manual client configuration in the README.",
+  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. macOS, Windows and Linux, on both architectures each. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nEvery other setting keeps its default. Attachment transfer stays off until `GCM_LOCAL_DIR` names a directory, which takes the manual client configuration in the README.",
   "author": {
     "name": "mmedum",
     "url": "https://github.com/mmedum"
@@ -18,7 +18,12 @@
     "url": "https://github.com/mmedum/google-chat-mcp"
   },
   "license": "Apache-2.0",
-  "keywords": ["google-chat", "chat", "google-workspace", "stdio"],
+  "keywords": [
+    "google-chat",
+    "chat",
+    "google-workspace",
+    "stdio"
+  ],
   "server": {
     "type": "binary",
     "entry_point": "server/google-chat-mcp",
@@ -29,6 +34,9 @@
         "GCM_CLIENT_SECRET": "${user_config.client_secret}"
       },
       "platform_overrides": {
+        "linux": {
+          "command": "${__dirname}/server/linux-launch.sh"
+        },
         "win32": {
           "command": "${__dirname}/server/google-chat-mcp.exe"
         }
@@ -44,6 +52,10 @@
     }
   },
   "compatibility": {
-    "platforms": ["darwin", "win32"]
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
   }
 }

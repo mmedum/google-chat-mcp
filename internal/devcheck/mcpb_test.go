@@ -222,14 +222,29 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 			strings.Join(loose, ", "))
 	}
 
-	// The bundle carries macOS and Windows. Linux is left to `go install`
-	// and the archives, because a manifest cannot pick a binary by
-	// architecture and there is no Linux build that covers both.
-	if got := m.Compatibility.Platforms; !slices.Equal(got, []string{"darwin", "win32"}) {
-		t.Errorf("compatibility platforms %v, expected darwin and win32", got)
+	// All three platforms Claude Desktop runs on. A manifest cannot pick
+	// a binary by architecture, so each platform it claims has to work on
+	// both: macOS through the universal binary, Windows through amd64
+	// under emulation, and Linux through a launcher that reads `uname -m`
+	// and execs the right one of two binaries — Claude Desktop for Linux
+	// ships x64 and arm64, so one Linux binary would be wrong for real
+	// people rather than hypothetical ones.
+	if got := m.Compatibility.Platforms; !slices.Equal(got, []string{"darwin", "linux", "win32"}) {
+		t.Errorf("compatibility platforms %v, expected darwin, linux and win32", got)
 	}
 	if _, ok := m.Server.MCPConfig.PlatformOverrides["win32"]; !ok {
 		t.Error("no win32 override: Windows needs the .exe named")
+	}
+	// Linux must not fall through to the default command, which is the
+	// macOS universal binary.
+	linux, ok := m.Server.MCPConfig.PlatformOverrides["linux"]
+	if !ok {
+		t.Fatal("no linux override: Linux would run the macOS binary")
+	}
+	if !strings.HasSuffix(linux.Command, "linux-launch.sh") {
+		t.Errorf("linux command %q, expected the launcher — a single named binary "+
+			"is wrong for one of the two architectures Claude Desktop for Linux supports",
+			linux.Command)
 	}
 }
 
@@ -288,9 +303,10 @@ cp -a "$stage/." %[1]q/stage/
 	return bin
 }
 
-// fakeDist is dist/ as goreleaser leaves it: the universal macOS binary
-// and the Windows one, in the directories their ids give them.
-func fakeDist(t *testing.T, withDarwin, withWindows bool) string {
+// fakeDist is dist/ as goreleaser leaves it: the universal macOS binary,
+// the Windows one and both Linux ones, in the directories their ids give
+// them.
+func fakeDist(t *testing.T, withDarwin, withWindows, withLinux bool) string {
 	t.Helper()
 	dist := t.TempDir()
 	put := func(dir, name string) {
@@ -308,6 +324,10 @@ func fakeDist(t *testing.T, withDarwin, withWindows bool) string {
 	}
 	if withWindows {
 		put("binaries_windows_amd64_v1", "google-chat-mcp.exe")
+	}
+	if withLinux {
+		put("binaries_linux_amd64_v1", "google-chat-mcp")
+		put("binaries_linux_arm64_v8.0", "google-chat-mcp")
 	}
 	return dist
 }
@@ -327,7 +347,7 @@ func TestPackScriptStagesWhatTheManifestNames(t *testing.T) {
 		t.Skip("the pack script is bash, and it only ever runs on the release runner")
 	}
 	record := t.TempDir()
-	dist := fakeDist(t, true, true)
+	dist := fakeDist(t, true, true, true)
 	out, err := runPack(t, dist, record)
 	if err != nil {
 		t.Fatalf("pack failed: %v\n%s", err, out)
@@ -381,6 +401,23 @@ func TestPackScriptStagesWhatTheManifestNames(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(stage, m.Server.EntryPoint)); err != nil {
 		t.Errorf("entry point %s is missing from the bundle: %v", m.Server.EntryPoint, err)
 	}
+	// Linux is served by a launcher and two binaries, because a manifest
+	// has no key for the architecture and Claude Desktop for Linux ships
+	// both. All three have to be in the bundle or the override names a
+	// file that is not there.
+	for _, name := range []string{
+		"server/linux-launch.sh", "server/google-chat-mcp-amd64", "server/google-chat-mcp-arm64",
+	} {
+		info, err := os.Stat(filepath.Join(stage, name))
+		if err != nil {
+			t.Errorf("%s is missing from the bundle: %v", name, err)
+			continue
+		}
+		if info.Mode().Perm()&0o111 == 0 {
+			t.Errorf("%s is not executable in the bundle (%v); mcpb forces the mode on the "+
+				"entry point alone", name, info.Mode().Perm())
+		}
+	}
 	for _, name := range []string{"LICENSE", "README.md"} {
 		if _, err := os.Stat(filepath.Join(stage, name)); err != nil {
 			t.Errorf("%s is missing from the bundle: %v", name, err)
@@ -396,16 +433,17 @@ func TestPackScriptRefusesAnIncompleteDist(t *testing.T) {
 		t.Skip("the pack script is bash, and it only ever runs on the release runner")
 	}
 	tests := []struct {
-		name                  string
-		darwin, windows, want bool
+		name                         string
+		darwin, windows, linux, want bool
 	}{
-		{name: "no darwin binary", windows: true},
-		{name: "no windows binary", darwin: true},
-		{name: "both present", darwin: true, windows: true, want: true},
+		{name: "no darwin binary", windows: true, linux: true},
+		{name: "no windows binary", darwin: true, linux: true},
+		{name: "no linux binaries", darwin: true, windows: true},
+		{name: "all present", darwin: true, windows: true, linux: true, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := runPack(t, fakeDist(t, tt.darwin, tt.windows), t.TempDir())
+			out, err := runPack(t, fakeDist(t, tt.darwin, tt.windows, tt.linux), t.TempDir())
 			if tt.want {
 				if err != nil {
 					t.Fatalf("pack failed: %v\n%s", err, out)

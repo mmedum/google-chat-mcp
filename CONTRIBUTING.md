@@ -34,14 +34,15 @@ cannot run.
 make check
 ```
 
-That is gofmt, `go vet` including the tagged tests, golangci-lint, race
-tests with an 80% coverage floor per core package, `govulncheck`, a
-licence allow-list, a stdio smoke test, a schema diff against the
-released tool surface, and a staleness gate that fails when the README,
-`docs/` or the CHANGELOG drift from the code. CI runs the same set on
-Linux, macOS and Windows.
+That is gofmt, `go vet` including every tagged suite, golangci-lint, race
+tests with a coverage floor per package — 80% for everything except
+`cmd/`, which has a lower one of its own printed on every run —
+`govulncheck`, a licence allow-list, a stdio smoke test, a schema diff
+against the released tool surface, the live driver's surface gate, and a
+staleness gate that fails when the README, `docs/` or the CHANGELOG drift
+from the code. CI runs the same set on Linux, macOS and Windows.
 
-Two of those are worth knowing about before they fail on you:
+Three of those are worth knowing about before they fail on you:
 
 - **The schema diff** compares the built binary with
   `testdata/schemas-baseline.json`. A renamed tool or a dropped output
@@ -63,6 +64,14 @@ Two of those are worth knowing about before they fail on you:
   fixture pasted out of a live response is itself the leak — and a live
   run reads back only what it wrote. When a smoke record is written up,
   every id, address and name in it is a placeholder.
+- **The live driver's surface gate** fails when a tool is neither
+  exercised by `internal/livecheck` nor excused there with a reason. Add
+  a tool and this is what stops it going quietly unexercised. It needs no
+  credentials — it reads what the built binary registers — which is why
+  it runs in `make check` while the driver itself only runs under
+  `make live`. If a tool genuinely must not be called against a real
+  account, say so in `excused` and say why; an exemption with no reason
+  is a gap nobody has decided about.
 
 For workflow edits, run
 `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.

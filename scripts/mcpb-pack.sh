@@ -6,11 +6,12 @@
 # been written yet. That is what puts the bundle in checksums.txt with
 # the archives, under the same signature.
 #
-# The bundle carries macOS and Windows only. A manifest picks a binary by
-# platform, and there is no key for the architecture, so every supported
-# platform has to work on both: macOS does through the universal binary,
-# Windows through amd64, which its arm64 build runs under emulation.
-# Linux stays on `go install` and the archives.
+# A manifest picks a binary by platform and has no key for the
+# architecture, so every platform it claims has to work on both. macOS
+# does through the universal binary and Windows through amd64, which its
+# arm64 build runs under emulation. Linux has neither, and Claude Desktop
+# for Linux ships x64 and arm64 both, so the bundle carries both Linux
+# binaries and a launcher that picks between them at start.
 #
 # usage: mcpb-pack.sh VERSION [DIST_DIR]
 set -euo pipefail
@@ -43,6 +44,8 @@ only() {
 shopt -s nullglob
 darwin=$(only "darwin universal binary" "$DIST"/*darwin_all*/google-chat-mcp)
 windows=$(only "windows amd64 binary" "$DIST"/*windows_amd64*/google-chat-mcp.exe)
+linux_amd64=$(only "linux amd64 binary" "$DIST"/*linux_amd64*/google-chat-mcp)
+linux_arm64=$(only "linux arm64 binary" "$DIST"/*linux_arm64*/google-chat-mcp)
 
 stage=$(mktemp -d)
 trap 'rm -r -f "$stage"' EXIT
@@ -53,6 +56,9 @@ mkdir -p "$stage/server"
 # its mode set here.
 install -m 0755 "$darwin" "$stage/server/google-chat-mcp"
 install -m 0755 "$windows" "$stage/server/google-chat-mcp.exe"
+install -m 0755 "$linux_amd64" "$stage/server/google-chat-mcp-amd64"
+install -m 0755 "$linux_arm64" "$stage/server/google-chat-mcp-arm64"
+install -m 0755 "$ROOT/packaging/mcpb/linux-launch.sh" "$stage/server/linux-launch.sh"
 install -m 0644 "$ROOT/LICENSE" "$ROOT/README.md" "$stage/"
 
 # The manifest is JSON, so the version goes in through a decode and an

@@ -217,11 +217,21 @@ than beside it. And an entry in the MCP registry, written by
 `internal/devcheck server-json` from that same checksum file and
 published with `mcp-publisher`.
 
-The bundle carries macOS and Windows only. A bundle manifest picks a
-binary by platform and has no key for the architecture, so every
-platform it claims has to work on both: macOS does through a universal
-binary, Windows through amd64 under emulation, and Linux would need two
-bundles or a broken one. Linux stays on `go install` and the archives.
+The bundle carries all three platforms Claude Desktop runs on. A
+manifest picks a binary by platform and has no key for the architecture,
+so every platform it claims has to work on both. macOS does through a
+universal binary and Windows through amd64 under emulation. Linux has
+neither, so the bundle carries both Linux binaries and a launcher that
+reads `uname -m` and execs the right one.
+
+Linux was left out at first, on the belief that it would mean two
+bundles or a broken one. That was wrong in one direction and right in
+another: Claude Desktop for Linux exists and ships x64 and arm64 both —
+so excluding Linux served nobody, and a single Linux binary really would
+have been wrong for real people rather than hypothetical ones. The
+launcher is the third option neither of those considered. Checked
+against the client's own manifest schema, whose platform enum is
+`darwin`, `win32`, `linux`.
 
 ## Evidence log
 
