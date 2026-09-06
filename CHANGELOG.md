@@ -9,7 +9,7 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
-## [Unreleased]
+## [1.0.0] - 2026-09-06
 
 First release. A single Go binary that speaks MCP over stdio, runs as a
 subprocess of your client, and talks to Google Chat as you.
