@@ -253,3 +253,48 @@ func TestReleaseNotesAreWrittenOutsideTheCheckout(t *testing.T) {
 		}
 	}
 }
+
+// The release stage has to be on. It shipped disabled on purpose, so
+// that an early tag could not publish anything before the gates were
+// green, and turning it back on was a step of the first release rather
+// than a line to delete early.
+//
+// That step was missed, and the way it failed is the reason this test
+// exists rather than a comment. goreleaser does not complain: it builds,
+// signs and attests exactly as it would otherwise, and simply creates no
+// GitHub release. The first thing to notice was the MCP registry, three
+// steps later, refusing the entry because a HEAD on the bundle URL came
+// back 404 — a message about the registry, pointing at a URL, for a
+// setting in a different file. `goreleaser check` does say "release is
+// disabled", in the middle of an otherwise clean run.
+func TestTheReleaseStageIsEnabled(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inRelease, seen bool
+	for _, line := range strings.Split(string(raw), "\n") {
+		switch {
+		case strings.HasPrefix(line, "release:"):
+			inRelease, seen = true, true
+			continue
+		// Any other key at column zero ends the block. `changelog:`
+		// carries a disable of its own, and that one is correct: the
+		// notes come from CHANGELOG.md rather than commit subjects.
+		case len(line) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
+			inRelease = false
+		}
+		if !inRelease {
+			continue
+		}
+		if field, value, ok := strings.Cut(strings.TrimSpace(line), ":"); ok &&
+			field == "disable" && strings.TrimSpace(value) == "true" {
+			t.Error(".goreleaser.yaml disables the release stage: goreleaser will build, sign and " +
+				"attest, publish no GitHub release, and the failure will surface as a 404 from the " +
+				"MCP registry")
+		}
+	}
+	if !seen {
+		t.Fatal("no release: block in .goreleaser.yaml: this test is looking at nothing")
+	}
+}
