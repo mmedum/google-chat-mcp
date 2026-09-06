@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -448,6 +449,115 @@ func TestTheCoverageGateScoresAPackageOnItsOwnFiles(t *testing.T) {
 			if fields[1] != "0.0%" {
 				t.Errorf("child scored %s, want 0.0%%", fields[1])
 			}
+		}
+	}
+}
+
+// What CI must run for each target `make check` depends on.
+//
+// A map rather than a name comparison, because the two sides say the
+// same thing differently: `make cover` runs a script called
+// coverage-check.sh, `make live-surface` runs a Go test by name. That
+// mismatch is what google-sheets-mcp warned about — a gate comparing the
+// names alone reports phantom gaps and misses real ones.
+//
+// The map is hand-kept, which is the thing this document keeps warning
+// about, so its completeness is asserted rather than assumed: a target
+// with no entry fails, which forces a decision instead of a silent pass.
+var ciRunsForTarget = map[string]string{
+	"fmt":          "gofmt -l",
+	"vet":          "go vet ./...",
+	"lint":         "golangci-lint",
+	"cover":        "coverage-check.sh",
+	"vuln":         "govulncheck",
+	"licenses":     "go-licenses",
+	"smoke":        "stdio-smoke.sh",
+	"schema-diff":  "schema-diff.sh",
+	"live-surface": "TestEveryToolIsExercisedOrExcused",
+	"staleness":    "staleness-check.sh",
+}
+
+// `make check` and CI are two lists in two files, and whoever adds a gate
+// is only ever editing one of them. Three of the four sibling servers had
+// them diverged, the local one usually ahead — so the build-tagged files
+// compiled on a maintainer's laptop and nowhere else. This repository had
+// it twice in one day: CI skipped `go vet -tags=evals`, and later built
+// the coverage profile over a narrower set than the Makefile did.
+//
+// §7b of the shared standard requires asserting the two run the same set.
+func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
+	root := repoRoot(t)
+	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(ci)
+
+	var targets []string
+	for _, line := range strings.Split(string(mk), "\n") {
+		rest, ok := strings.CutPrefix(line, "check:")
+		if !ok {
+			continue
+		}
+		if i := strings.Index(rest, "##"); i >= 0 {
+			rest = rest[:i]
+		}
+		targets = strings.Fields(rest)
+		break
+	}
+	// Two empty lists compare equal, and a gate that passes because it
+	// read the wrong file is worse than no gate. google-drive-mcp's
+	// parity gate refuses the same way.
+	if len(targets) == 0 {
+		t.Fatal("no check: prerequisites found in the Makefile: this gate is looking at nothing")
+	}
+	if len(workflow) == 0 {
+		t.Fatal("ci.yml is empty: this gate is looking at nothing")
+	}
+
+	for _, target := range targets {
+		want, ok := ciRunsForTarget[target]
+		if !ok {
+			t.Errorf("`make check` runs %q and this gate does not know what CI runs for it. "+
+				"Add it to ciRunsForTarget, then make sure ci.yml actually runs it.", target)
+			continue
+		}
+		if !strings.Contains(workflow, want) {
+			t.Errorf("`make check` runs %q but ci.yml contains no %q, so the two disagree "+
+				"and a local green does not mean a green build", target, want)
+		}
+	}
+
+	// The other direction: an entry for a target that check no longer
+	// runs is a rule about nothing, and reads exactly like a rule that works.
+	inCheck := map[string]bool{}
+	for _, target := range targets {
+		inCheck[target] = true
+	}
+	for target := range ciRunsForTarget {
+		if !inCheck[target] {
+			t.Errorf("ciRunsForTarget names %q, which `make check` no longer runs; drop it", target)
+		}
+	}
+
+	// Build tags are the half that actually bit: a suite behind a tag
+	// compiles only where somebody vets it, and the Makefile is usually
+	// the side that remembers.
+	tags := map[string]bool{}
+	for _, m := range regexp.MustCompile(`vet -tags=([a-z]+)`).FindAllStringSubmatch(string(mk), -1) {
+		tags[m[1]] = true
+	}
+	if len(tags) == 0 {
+		t.Fatal("no tagged vet passes found in the Makefile: this half is looking at nothing")
+	}
+	for tag := range tags {
+		if !strings.Contains(workflow, "go vet -tags="+tag) {
+			t.Errorf("the Makefile vets -tags=%s and ci.yml does not, so those files compile "+
+				"only where someone runs make", tag)
 		}
 	}
 }
