@@ -3,6 +3,7 @@ package leakcheck
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,5 +302,122 @@ func TestTheHistoryIsClean(t *testing.T) {
 	if len(findings) > 0 {
 		t.Log("these commits have not been pushed, so rewriting the branch still fixes them; " +
 			"editing the file in a later commit does not")
+	}
+}
+
+// executableMagic is the first few bytes of a compiled binary, by
+// format. Matched on the magic rather than on "is this file text",
+// because a PNG fixture is binary and belongs here — internal/tools
+// tracks one — while an ELF never does.
+var executableMagic = map[string][]byte{
+	"ELF":               {0x7f, 'E', 'L', 'F'},
+	"Mach-O 32-bit":     {0xfe, 0xed, 0xfa, 0xce},
+	"Mach-O 64-bit":     {0xfe, 0xed, 0xfa, 0xcf},
+	"Mach-O 32-bit, LE": {0xce, 0xfa, 0xed, 0xfe},
+	"Mach-O 64-bit, LE": {0xcf, 0xfa, 0xed, 0xfe},
+	"Mach-O universal":  {0xca, 0xfe, 0xba, 0xbe},
+	"static library":    {'!', '<', 'a', 'r'},
+}
+
+// A compiled binary is the one thing here that no content scanner can
+// see, because it is defined by being content none of them will read.
+// The tree scan above counts a binary file and moves on; gitleaks looks
+// for credentials, not size; and CI stayed green on all of it.
+//
+// It is not hypothetical. `go build ./scripts/gates` leaves a 10 MB
+// `gates` at the repository root, and it was committed three times into
+// public main before anything noticed — 18.4 MiB packed, against 447 KiB
+// for the whole rest of the repository. What would have caught it is not
+// a better reader. It is this: a rule that knows an executable by its
+// first four bytes.
+//
+// Untracked files are checked too, and that half is the point. A file
+// that is untracked and not ignored is one `git add -A` from the
+// history, so refusing it here fails before it can be swept in rather
+// than after — which is the difference between an ignore rule and a
+// rewrite of published history.
+//
+// It lives beside the identifier scan because that is where the tree
+// enumeration already is, and because both answer one question: what
+// must never be in this repository.
+func TestNoCompiledBinariesInTheTree(t *testing.T) {
+	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Skipf("not a git checkout: %v", err)
+	}
+	dir := strings.TrimSpace(string(root))
+
+	list := func(args ...string) []string {
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+		if err != nil {
+			t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+		}
+		var paths []string
+		for _, p := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if p != "" {
+				paths = append(paths, p)
+			}
+		}
+		return paths
+	}
+	// Tracked, and untracked-but-not-ignored. The second is the half
+	// that fires before a mistake can be committed.
+	paths := append(list("ls-files"), list("ls-files", "--others", "--exclude-standard")...)
+
+	examined := 0
+	for _, path := range paths {
+		f, err := os.Open(filepath.Join(dir, path)) //nolint:gosec // paths git listed
+		if err != nil {
+			// A listed path that is gone is a race with the working
+			// tree, not a finding.
+			continue
+		}
+		head := make([]byte, 4)
+		n, _ := io.ReadFull(f, head)
+		_ = f.Close()
+		examined++
+		for format, magic := range executableMagic {
+			if n >= len(magic) && bytes.Equal(head[:len(magic)], magic) {
+				t.Errorf("%s is a compiled %s binary. Nothing else in this repository will "+
+					"look inside it, so add it to .gitignore beside the target that builds it, "+
+					"or delete it. Committing one costs a rewrite of published history to undo.",
+					path, format)
+			}
+		}
+	}
+	// Zero findings and zero inputs look the same from here.
+	if examined == 0 {
+		t.Fatal("no files examined: this gate is looking at nothing")
+	}
+	t.Logf("examined %d tracked and untracked files", examined)
+}
+
+// The rule has to fire on a real build artefact, not just on a fixture
+// shaped like one, and it has to leave the PNG that legitimately ships.
+func TestCompiledBinariesAreRecognisedByTheirMagic(t *testing.T) {
+	tests := []struct {
+		name string
+		head []byte
+		want bool
+	}{
+		{name: "a Linux binary", head: []byte{0x7f, 'E', 'L', 'F', 2, 1, 1}, want: true},
+		{name: "a macOS binary", head: []byte{0xcf, 0xfa, 0xed, 0xfe, 12, 0}, want: true},
+		{name: "a universal binary", head: []byte{0xca, 0xfe, 0xba, 0xbe, 0, 0}, want: true},
+		{name: "a PNG fixture", head: []byte{0x89, 'P', 'N', 'G', 13, 10}},
+		{name: "Go source", head: []byte("package main\n")},
+		{name: "a short file", head: []byte("hi")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := false
+			for _, magic := range executableMagic {
+				if len(tt.head) >= len(magic) && bytes.Equal(tt.head[:len(magic)], magic) {
+					got = true
+				}
+			}
+			if got != tt.want {
+				t.Errorf("recognised as a binary = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

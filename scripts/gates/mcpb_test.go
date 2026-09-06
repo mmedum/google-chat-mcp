@@ -1,16 +1,18 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 
@@ -27,79 +29,6 @@ import (
 // testdata/mcpb-manifest-v0.3.schema.json is
 // anthropics/mcpb schemas/mcpb-manifest-v0.3.schema.json, fetched
 // 2026-09-06, byte-identical to that repository's "latest" schema.
-
-// bundleManifest is the part of the manifest these gates read.
-type bundleManifest struct {
-	ManifestVersion string `json:"manifest_version"`
-	Name            string `json:"name"`
-	Version         string `json:"version"`
-	Description     string `json:"description"`
-	Server          struct {
-		Type       string `json:"type"`
-		EntryPoint string `json:"entry_point"`
-		MCPConfig  struct {
-			Command           string            `json:"command"`
-			Args              []string          `json:"args"`
-			Env               map[string]string `json:"env"`
-			PlatformOverrides map[string]struct {
-				Command string            `json:"command"`
-				Args    []string          `json:"args"`
-				Env     map[string]string `json:"env"`
-			} `json:"platform_overrides"`
-		} `json:"mcp_config"`
-	} `json:"server"`
-	UserConfig map[string]struct {
-		Type     string `json:"type"`
-		Required bool   `json:"required"`
-		Default  any    `json:"default"`
-	} `json:"user_config"`
-	Compatibility struct {
-		Platforms []string `json:"platforms"`
-	} `json:"compatibility"`
-}
-
-// commands is every place the manifest names a file to run: the default
-// and each platform override.
-func (m bundleManifest) commands() []string {
-	out := []string{m.Server.MCPConfig.Command}
-	for _, o := range m.Server.MCPConfig.PlatformOverrides {
-		if o.Command != "" {
-			out = append(out, o.Command)
-		}
-	}
-	return out
-}
-
-// userConfigRef matches a ${user_config.KEY} substitution.
-var userConfigRef = regexp.MustCompile(`\$\{user_config\.([^}]+)\}`)
-
-// references is every ${user_config.KEY} the manifest substitutes into a
-// command, an argument or an environment variable.
-func (m bundleManifest) references() []string {
-	var refs []string
-	collect := func(vals ...string) {
-		for _, v := range vals {
-			for _, match := range userConfigRef.FindAllStringSubmatch(v, -1) {
-				refs = append(refs, match[1])
-			}
-		}
-	}
-	c := m.Server.MCPConfig
-	collect(c.Command)
-	collect(c.Args...)
-	for _, v := range c.Env {
-		collect(v)
-	}
-	for _, o := range c.PlatformOverrides {
-		collect(o.Command)
-		collect(o.Args...)
-		for _, v := range o.Env {
-			collect(v)
-		}
-	}
-	slices.Sort(refs)
-	return slices.Compact(refs)
-}
 
 // alwaysSubstituted names the references the installing client may leave
 // standing. A setting that is neither required nor defaulted is one the
@@ -122,13 +51,19 @@ func alwaysSubstituted(m bundleManifest) []string {
 	return loose
 }
 
+// repoRootPath is resolved while the package's variables are
+// initialised, which is before any test body can change the working
+// directory. Resolving it on demand instead would answer relative to
+// wherever the last test left the process, and the pack tests run from
+// the repository root.
+var repoRootPath, repoRootErr = filepath.Abs(filepath.Join("..", ".."))
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
+	if repoRootErr != nil {
+		t.Fatal(repoRootErr)
 	}
-	return root
+	return repoRootPath
 }
 
 // resolveSchema loads a vendored JSON Schema ready to validate against.
@@ -151,7 +86,7 @@ func resolveSchema(t *testing.T, name string) (*jsonschema.Resolved, *jsonschema
 
 func readManifest(t *testing.T) (bundleManifest, map[string]any) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "packaging", "mcpb", "manifest.json"))
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), manifestSource))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,29 +215,6 @@ func TestAlwaysSubstitutedCatchesALooseReference(t *testing.T) {
 	}
 }
 
-// fakeNPX puts an npx on PATH that records how it was called and keeps
-// the directory it was asked to pack, so the test can look inside a
-// bundle without installing Node.
-func fakeNPX(t *testing.T, record string) string {
-	t.Helper()
-	bin := t.TempDir()
-	const template = `#!/usr/bin/env bash
-set -euo pipefail
-stage=${@: -2:1}
-out=${@: -1}
-mkdir -p %[1]q/stage
-printf '%%s\n' "$@" > %[1]q/args
-cp -a "$stage/." %[1]q/stage/
-: > "$out"
-`
-	script := fmt.Sprintf(template, record)
-	path := filepath.Join(bin, "npx")
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	return bin
-}
-
 // fakeDist is dist/ as goreleaser leaves it: the universal macOS binary,
 // the Windows one and both Linux ones, in the directories their ids give
 // them.
@@ -313,8 +225,9 @@ func fakeDist(t *testing.T, withDarwin, withWindows, withLinux bool) string {
 		if err := os.MkdirAll(filepath.Join(dist, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		// 0644 on purpose: the pack script is what has to make it
-		// executable, and mcpb only forces the mode on the entry point.
+		// 0644 on purpose: the packer is what has to make the entry
+		// executable, and it decides that from the name it gives the
+		// entry rather than from the mode it found.
 		if err := os.WriteFile(filepath.Join(dist, dir, name), []byte("binary"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -332,74 +245,116 @@ func fakeDist(t *testing.T, withDarwin, withWindows, withLinux bool) string {
 	return dist
 }
 
-func runPack(t *testing.T, dist, record string) (string, error) {
+// runPack packs a bundle from the repository root, which is where
+// goreleaser runs the hook.
+//
+// The working directory belongs to the process rather than to the test,
+// so it is put back before this returns and nothing here runs in
+// parallel.
+func runPack(t *testing.T, dist string) (string, int) {
 	t.Helper()
-	root := repoRoot(t)
-	cmd := exec.Command("bash", filepath.Join(root, "scripts", "mcpb-pack.sh"), "v2.0.0", dist)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "PATH="+fakeNPX(t, record)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repoRoot(t)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	var out bytes.Buffer
+	code := mcpbPack([]string{"mcpb-pack", "v2.0.0", dist}, &out, &out)
+	return out.String(), code
 }
 
-func TestPackScriptStagesWhatTheManifestNames(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the pack script is bash, and it only ever runs on the release runner")
+// bundleEntry is one file read back out of a bundle.
+type bundleEntry struct {
+	mode fs.FileMode
+	body []byte
+	time time.Time
+}
+
+// entries is a bundle read back, by the name each file takes inside it.
+type entries map[string]bundleEntry
+
+func readBundle(t *testing.T, path string) entries {
+	t.Helper()
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	record := t.TempDir()
+	defer func() { _ = r.Close() }()
+
+	out := entries{}
+	for _, f := range r.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Method != zip.Deflate {
+			t.Errorf("%s is stored with method %d, not deflate", f.Name, f.Method)
+		}
+		out[f.Name] = bundleEntry{f.Mode(), body, f.Modified}
+	}
+	return out
+}
+
+func TestPackWritesWhatTheManifestNames(t *testing.T) {
 	dist := fakeDist(t, true, true, true)
-	out, err := runPack(t, dist, record)
-	if err != nil {
-		t.Fatalf("pack failed: %v\n%s", err, out)
+	out, code := runPack(t, dist)
+	if code != 0 {
+		t.Fatalf("pack failed (%d):\n%s", code, out)
 	}
 
-	args, err := os.ReadFile(filepath.Join(record, "args"))
-	if err != nil {
-		t.Fatal(err)
+	bundle := filepath.Join(dist, "google-chat-mcp_2.0.0.mcpb")
+	if _, err := os.Stat(bundle); err != nil {
+		t.Fatalf("the bundle was not written where checksums.txt will look for it: %v", err)
 	}
-	// The pinned CLI, not whatever is current that morning.
-	if !strings.Contains(string(args), "@anthropic-ai/mcpb@2.1.2") {
-		t.Errorf("npx called without the pinned mcpb version:\n%s", args)
-	}
-	if !strings.Contains(string(args), "pack") {
-		t.Errorf("npx called without pack:\n%s", args)
-	}
+	packed := readBundle(t, bundle)
 
-	stage := filepath.Join(record, "stage")
-	staged, err := os.ReadFile(filepath.Join(stage, "manifest.json"))
-	if err != nil {
-		t.Fatal(err)
+	staged, ok := packed[manifestName]
+	if !ok {
+		t.Fatalf("no %s at the root of the bundle; the installer looks nowhere else", manifestName)
 	}
 	var m bundleManifest
-	if err := json.Unmarshal(staged, &m); err != nil {
+	if err := json.Unmarshal(staged.body, &m); err != nil {
 		t.Fatal(err)
 	}
 	if m.Version != "2.0.0" {
-		t.Errorf("staged manifest version %q, want 2.0.0 from the tag", m.Version)
+		t.Errorf("packed manifest version %q, want 2.0.0 from the tag", m.Version)
 	}
 
 	// The point of the whole test: whatever the manifest says it runs
 	// has to be in the bundle, and executable.
-	for _, command := range m.commands() {
-		rel := strings.TrimPrefix(command, "${__dirname}/")
-		if rel == command {
-			t.Errorf("command %q is not under ${__dirname}", command)
+	for platform, command := range m.commands() {
+		rel, ok := strings.CutPrefix(command, dirnameRef)
+		if !ok {
+			t.Errorf("the %s command %q is not under %s", platform, command, dirnameRef)
 			continue
 		}
-		info, err := os.Stat(filepath.Join(stage, rel))
-		if err != nil {
-			t.Errorf("manifest runs %s, which the bundle does not carry: %v", rel, err)
+		entry, ok := packed[rel]
+		if !ok {
+			t.Errorf("the %s command runs %s, which the bundle does not carry", platform, rel)
 			continue
 		}
-		if info.Mode().Perm()&0o111 == 0 {
-			t.Errorf("%s is not executable in the bundle (%v)", rel, info.Mode().Perm())
+		if entry.mode.Perm()&0o111 == 0 {
+			t.Errorf("%s is not executable in the bundle (%v)", rel, entry.mode.Perm())
 		}
 	}
 	if m.Server.EntryPoint == "" {
-		t.Fatal("the staged manifest declares no entry point")
+		t.Fatal("the packed manifest declares no entry point")
 	}
-	if _, err := os.Stat(filepath.Join(stage, m.Server.EntryPoint)); err != nil {
-		t.Errorf("entry point %s is missing from the bundle: %v", m.Server.EntryPoint, err)
+	if _, ok := packed[m.Server.EntryPoint]; !ok {
+		t.Errorf("entry point %s is missing from the bundle", m.Server.EntryPoint)
 	}
 	// Linux is served by a launcher and two binaries, because a manifest
 	// has no key for the architecture and Claude Desktop for Linux ships
@@ -408,30 +363,64 @@ func TestPackScriptStagesWhatTheManifestNames(t *testing.T) {
 	for _, name := range []string{
 		"server/linux-launch.sh", "server/google-chat-mcp-amd64", "server/google-chat-mcp-arm64",
 	} {
-		info, err := os.Stat(filepath.Join(stage, name))
-		if err != nil {
-			t.Errorf("%s is missing from the bundle: %v", name, err)
+		entry, ok := packed[name]
+		if !ok {
+			t.Errorf("%s is missing from the bundle", name)
 			continue
 		}
-		if info.Mode().Perm()&0o111 == 0 {
-			t.Errorf("%s is not executable in the bundle (%v); mcpb forces the mode on the "+
-				"entry point alone", name, info.Mode().Perm())
+		if entry.mode.Perm()&0o111 == 0 {
+			t.Errorf("%s is not executable in the bundle (%v); the source file's own mode is "+
+				"not the answer, because the Windows build has no such bit to carry",
+				name, entry.mode.Perm())
 		}
 	}
 	for _, name := range []string{"LICENSE", "README.md"} {
-		if _, err := os.Stat(filepath.Join(stage, name)); err != nil {
-			t.Errorf("%s is missing from the bundle: %v", name, err)
+		entry, ok := packed[name]
+		if !ok {
+			t.Errorf("%s is missing from the bundle", name)
+			continue
+		}
+		if entry.mode.Perm()&0o111 != 0 {
+			t.Errorf("%s is executable in the bundle (%v), and it is not something to run",
+				name, entry.mode.Perm())
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dist, "google-chat-mcp_2.0.0.mcpb")); err != nil {
-		t.Errorf("the bundle was not written where checksums.txt will look for it: %v", err)
+	// An unset time writes zeroes that display as the impossible
+	// 1980-00-00, which is what a reader sees before they see anything
+	// else about the bundle.
+	for name, entry := range packed {
+		if entry.time.IsZero() || entry.time.Year() < 1980 {
+			t.Errorf("%s carries no usable modification time (%v)", name, entry.time)
+		}
 	}
 }
 
-func TestPackScriptRefusesAnIncompleteDist(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the pack script is bash, and it only ever runs on the release runner")
+// The same inputs have to make the same archive, or a checksum says
+// nothing about whether two builds produced the same bundle.
+func TestPackIsReproducible(t *testing.T) {
+	dist := fakeDist(t, true, true, true)
+	bundle := filepath.Join(dist, "google-chat-mcp_2.0.0.mcpb")
+
+	if out, code := runPack(t, dist); code != 0 {
+		t.Fatalf("pack failed (%d):\n%s", code, out)
 	}
+	first, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, code := runPack(t, dist); code != 0 {
+		t.Fatalf("second pack failed (%d):\n%s", code, out)
+	}
+	second, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Errorf("two packs of the same tree differ (%d bytes then %d)", len(first), len(second))
+	}
+}
+
+func TestPackRefusesAnIncompleteDist(t *testing.T) {
 	tests := []struct {
 		name                         string
 		darwin, windows, linux, want bool
@@ -443,18 +432,142 @@ func TestPackScriptRefusesAnIncompleteDist(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := runPack(t, fakeDist(t, tt.darwin, tt.windows, tt.linux), t.TempDir())
+			out, code := runPack(t, fakeDist(t, tt.darwin, tt.windows, tt.linux))
 			if tt.want {
-				if err != nil {
-					t.Fatalf("pack failed: %v\n%s", err, out)
+				if code != 0 {
+					t.Fatalf("pack failed (%d):\n%s", code, out)
 				}
 				return
 			}
-			if err == nil {
+			if code == 0 {
 				t.Fatalf("packed a dist with a binary missing:\n%s", out)
 			}
 			if !strings.Contains(out, "expected exactly one") {
 				t.Errorf("unhelpful failure:\n%s", out)
+			}
+		})
+	}
+}
+
+// A glob that matched two would pack whichever sorted first, and the
+// layout under dist/ carries a build id and an amd64 variant, so two is
+// what a renamed build id looks like.
+func TestPackRefusesTwoCandidates(t *testing.T) {
+	dist := fakeDist(t, true, true, true)
+	second := filepath.Join(dist, "other_linux_amd64_v3")
+	if err := os.MkdirAll(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(second, "google-chat-mcp"), []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runPack(t, dist)
+	if code == 0 {
+		t.Fatalf("packed with two linux amd64 candidates:\n%s", out)
+	}
+	if !strings.Contains(out, "found 2") {
+		t.Errorf("the failure does not say what it found:\n%s", out)
+	}
+}
+
+// The three things the published schema cannot check, each of which
+// packs, installs cleanly, and then does nothing.
+func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
+	packed := []bundleFile{
+		{name: "server/google-chat-mcp"},
+		{name: "server/google-chat-mcp.exe"},
+		{name: "server/linux-launch.sh"},
+	}
+	// good is the shape that has to keep passing, as JSON, so each case
+	// below is one edit away from it.
+	const good = `{
+	  "server": {
+	    "entry_point": "server/google-chat-mcp",
+	    "mcp_config": {
+	      "command": "${__dirname}/server/google-chat-mcp",
+	      "env": {"GCM_CLIENT_SECRET": "${user_config.client_secret}"},
+	      "platform_overrides": {
+	        "linux": {"command": "${__dirname}/server/linux-launch.sh"},
+	        "win32": {"command": "${__dirname}/server/google-chat-mcp.exe"}
+	      }
+	    }
+	  },
+	  "user_config": {"client_secret": {"type": "file", "required": true}}
+	}`
+
+	tests := []struct {
+		name string
+		edit func(string) string
+		want string
+	}{
+		{name: "the shape that ships", edit: func(s string) string { return s }},
+		{
+			name: "an entry point nothing packs",
+			edit: func(s string) string {
+				return strings.Replace(s, `"entry_point": "server/google-chat-mcp"`,
+					`"entry_point": "server/google-chat-mcp-x64"`, 1)
+			},
+			want: "entry_point names server/google-chat-mcp-x64",
+		},
+		{
+			name: "no entry point at all",
+			edit: func(s string) string {
+				return strings.Replace(s, `"entry_point": "server/google-chat-mcp",`, "", 1)
+			},
+			want: "declares no entry_point",
+		},
+		{
+			// The one a schema cannot see and a reader skims past: the
+			// override is present, well formed, and names a file that is
+			// not there. Windows installs the bundle and starts nothing.
+			name: "a win32 override naming a file nothing packs",
+			edit: func(s string) string {
+				return strings.Replace(s, "server/google-chat-mcp.exe", "server/google-chat-mcp-amd64.exe", 1)
+			},
+			want: "the win32 command names server/google-chat-mcp-amd64.exe",
+		},
+		{
+			name: "a linux override naming a file nothing packs",
+			edit: func(s string) string {
+				return strings.Replace(s, "server/linux-launch.sh", "server/launch.sh", 1)
+			},
+			want: "the linux command names server/launch.sh",
+		},
+		{
+			name: "a command outside the bundle",
+			edit: func(s string) string {
+				return strings.Replace(s, "${__dirname}/server/google-chat-mcp\"",
+					"/usr/local/bin/google-chat-mcp\"", 1)
+			},
+			want: "not under ${__dirname}",
+		},
+		{
+			name: "a substitution user_config does not declare",
+			edit: func(s string) string {
+				return strings.Replace(s, "user_config.client_secret", "user_config.oauth_client", 1)
+			},
+			want: "${user_config.oauth_client} is substituted",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var m bundleManifest
+			body := tt.edit(good)
+			if err := json.Unmarshal([]byte(body), &m); err != nil {
+				t.Fatalf("the edited manifest is not JSON: %v\n%s", err, body)
+			}
+			problems := checkManifest(m, packed)
+			if tt.want == "" {
+				if len(problems) > 0 {
+					t.Fatalf("the shape that ships was reported: %s", strings.Join(problems, "; "))
+				}
+				return
+			}
+			if len(problems) != 1 {
+				t.Fatalf("got %d problem(s), want 1: %s", len(problems), strings.Join(problems, "; "))
+			}
+			if !strings.Contains(problems[0], tt.want) {
+				t.Errorf("problem\n got %q\nwant something containing %q", problems[0], tt.want)
 			}
 		})
 	}

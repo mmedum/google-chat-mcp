@@ -65,11 +65,11 @@ schema-diff: build ## Diff tool schemas against the last tag
 
 .PHONY: smoke
 smoke: build ## Drive the binary over stdio
-	@bash scripts/stdio-smoke.sh $(BIN)
+	@$(GO) run ./scripts/gates smoke $(BIN)
 
 .PHONY: staleness
 staleness: build ## Docs must match the code
-	@bash scripts/staleness-check.sh $(BIN)
+	@$(GO) run ./scripts/gates staleness $(BIN)
 
 # Not part of check, and never part of CI: the evals need a login, the
 # `claude` CLI, and real API spend, and they write to a real Workspace.

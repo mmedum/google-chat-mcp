@@ -42,10 +42,9 @@ universal_binaries:
       # The hook runs here, between the builds and the checksums, because
       # that is the only point where every binary exists and
       # checksums.txt has not been written: the bundle lands in it with
-      # the archives, under the same signature. It needs npx, which the
-      # release workflow installs; a local rehearsal with --snapshot
-      # needs it too.
-      post: bash scripts/mcpb-pack.sh {{ .Version }} dist
+      # the archives, under the same signature. It needs nothing but the
+      # Go toolchain, so a local rehearsal with --snapshot works as is.
+      post: go run ./scripts/gates mcpb-pack {{ .Version }} dist
 
 archives:
   - ids: [binaries]

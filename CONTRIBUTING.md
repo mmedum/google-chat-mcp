@@ -162,7 +162,7 @@ Release cutting is maintainer-only:
 
 To rehearse the build without publishing anything:
 `goreleaser release --snapshot --clean --skip=sign,sbom,publish`. It
-needs Node, because packing the bundle shells out to `npx`.
+needs nothing but the Go toolchain: `scripts/gates` packs the bundle.
 
 The staleness gate accepts a release commit: it wants the changes since
 the last tag written down either under `[Unreleased]` or under the

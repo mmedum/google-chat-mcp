@@ -104,15 +104,6 @@ jobs:
         with:
           syft-version: v1.51.1
 
-      # goreleaser packs the Claude Desktop bundle in a build hook, which
-      # shells out to npx. The runner image ships a Node that changes
-      # without notice, so the version is pinned here like everything
-      # else — exactly, not to a major line; the mcpb CLI version is
-      # pinned in the pack script.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: 24.20.0
-
       # Same rule as the two steps above: the action is pinned, so the
       # goreleaser it runs is pinned too. "~> v2" would float within the
       # major version.

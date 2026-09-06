@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -204,5 +206,32 @@ func TestUnreadableFiles(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := run([]string{"tool-names", bad}, &out, &errOut); code != 2 {
 		t.Errorf("tool-names on unparseable input = %d, want 2", code)
+	}
+}
+
+// A command added without a runsIn declares no pipeline, and the parity
+// gate has nothing to say about it — so a new gate wired into the
+// Makefile and CI but not into the registry would leave everything
+// green. That is exactly the drift the field was introduced to catch,
+// which makes "forgot to set it" the failure worth refusing.
+func TestEveryCommandDeclaresWhereItRuns(t *testing.T) {
+	for _, name := range slices.Sorted(maps.Keys(commands)) {
+		switch commands[name].runsIn {
+		case manual, inCheck, inRelease:
+		default:
+			t.Errorf("%q declares no runsIn. Say which pipeline has to run it: inCheck for "+
+				"`make check` and CI, inRelease for the release, manual for a query typed "+
+				"by hand.", name)
+		}
+	}
+	// Both pipelines have to hold something, or the parity gate that
+	// reads them is asserting nothing.
+	for _, w := range []struct {
+		name string
+		in   where
+	}{{"inCheck", inCheck}, {"inRelease", inRelease}} {
+		if len(commandsRunningIn(w.in)) == 0 {
+			t.Errorf("no command runs in %s: the parity gate for it is looking at nothing", w.name)
+		}
 	}
 }
