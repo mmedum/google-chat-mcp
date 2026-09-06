@@ -55,6 +55,14 @@ vuln:
 licenses:
 	go run github.com/google/go-licenses/v2@v2.0.1 check ./... --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
 
+.PHONY: pins
+pins: ## Every third-party tool held to an exact version
+	@$(GO) run ./scripts/gates pins
+
+.PHONY: classes
+classes: ## The tool error vocabulary, closed from both sides
+	@$(GO) run ./scripts/gates classes
+
 .PHONY: schemas
 schemas: build ## Dump tool schemas
 	$(BIN) --dump-schemas > schemas.json
@@ -93,7 +101,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

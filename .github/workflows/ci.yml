@@ -159,6 +159,10 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o google-chat-mcp ./cmd/google-chat-mcp
+      - name: every third-party tool is pinned
+        run: go run ./scripts/gates pins
+      - name: the error vocabulary is closed
+        run: go run ./scripts/gates classes
       - name: stdio smoke
         run: go run ./scripts/gates smoke ./google-chat-mcp
       - name: schema diff against the released baseline
