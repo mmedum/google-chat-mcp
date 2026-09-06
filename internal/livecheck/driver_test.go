@@ -58,6 +58,9 @@ type driver struct {
 	posted string
 	thread string
 	member string
+	// email is this account's own address, which remove_reaction needs:
+	// a reaction belongs to a person, so removing one says whose.
+	email string
 }
 
 func binPath(t *testing.T) string {
