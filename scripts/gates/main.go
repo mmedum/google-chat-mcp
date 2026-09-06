@@ -10,12 +10,15 @@
 //
 // goreleaser builds only ./cmd/..., so none of this ships.
 //
-//	go run ./scripts/gates schema-diff BASELINE CURRENT
+//	go run ./scripts/gates schema-diff [BINARY]
+//	go run ./scripts/gates smoke [BINARY]
+//	go run ./scripts/gates staleness [BINARY]
 //	go run ./scripts/gates tool-names FILE
 //	go run ./scripts/gates config-vars
 //	go run ./scripts/gates scopes
 //	go run ./scripts/gates server-json VERSION CHECKSUMS
 //	go run ./scripts/gates mcpb-manifest VERSION MANIFEST
+//	go run ./scripts/gates mcpb-pack VERSION [DIST]
 package main
 
 import (
@@ -51,10 +54,36 @@ type command struct {
 	// args is how those words are spelled in the usage text.
 	args string
 	doc  string
-	// gate marks a command that has to run in BOTH `make check` and the
-	// CI workflow. Anything else is a developer convenience.
-	gate bool
+	// runsIn says which pipeline has to run this command, and is what
+	// the parity gate reads.
+	runsIn where
 }
+
+// where is the pipeline a command belongs to.
+//
+// Three states rather than a bool, because there are three. A bool said
+// "runs in `make check` and CI" or "does not", which put the release's
+// own steps in the same bucket as a query a maintainer types by hand —
+// so a release step could be dropped from the pipeline with nothing to
+// notice. That is the failure the registry exists to prevent, one
+// category over.
+type where int
+
+const (
+	// manual is a developer convenience. Nothing has to run it.
+	//
+	// It starts at one so that the zero value is no pipeline at all: an
+	// entry added without a runsIn would otherwise read as manual, and a
+	// new gate wired into the Makefile and CI but not into the registry
+	// would leave the parity gate green — which is the drift this field
+	// exists to catch. TestEveryCommandDeclaresWhereItRuns refuses it.
+	manual where = iota + 1
+	// inCheck has to run in BOTH `make check` and the CI workflow.
+	inCheck
+	// inRelease has to run in the release pipeline: the goreleaser
+	// config, or the release workflow.
+	inRelease
+)
 
 // commands is the one list of what this program does.
 //
@@ -64,6 +93,14 @@ type command struct {
 // gates drifting — so the only way to add a command here is to add it
 // here.
 //
+// Four of these are asked by hand and by nothing else: tool-names,
+// config-vars, scopes and mcpb-manifest. They were how the shell scripts
+// asked Go a question, and the ports now call the same functions
+// in-process, so no file in this repository invokes them. They are kept
+// on purpose — each answers "what does the code actually say?" for a
+// maintainer reading a doc or a manifest, which is the question this
+// whole package exists to answer — and `runsIn: manual` is what says so.
+//
 // Filled in init rather than as a literal, because a command may read
 // this map and Go sees that as an initialisation cycle.
 var commands map[string]command
@@ -72,19 +109,29 @@ func init() {
 	commands = map[string]command{
 		"schema-diff": {
 			run: func(a []string, o, e io.Writer) int {
-				return schemaDiffBinary(cmp.Or(argAt(a, 1), "./google-chat-mcp"), o, e)
+				return schemaDiffBinary(binaryArg(a), o, e)
 			},
-			arity: 1, maxArity: 2, args: "[BINARY]", gate: true,
+			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
 			doc: "the released tool surface, which a change may add to and never drop from",
 		},
 		"coverage": {
 			run:   coverage,
-			arity: 1, maxArity: 2, args: "[PROFILE]", gate: true,
+			arity: 1, maxArity: 2, args: "[PROFILE]", runsIn: inCheck,
 			doc: "statement coverage floor per package",
+		},
+		"smoke": {
+			run:   smoke,
+			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
+			doc: "the built server, driven over stdio with no credentials",
+		},
+		"staleness": {
+			run:   staleness,
+			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
+			doc: "the docs, held to what the code actually defines",
 		},
 		"tool-names": {
 			run:   func(a []string, o, e io.Writer) int { return toolNames(a[1], o, e) },
-			arity: 2, args: "FILE",
+			arity: 2, args: "FILE", runsIn: manual,
 			doc: "the tool names in a schema dump, one per line",
 		},
 		"config-vars": {
@@ -92,12 +139,12 @@ func init() {
 				_, _ = fmt.Fprintln(o, strings.Join(configVars(), "\n"))
 				return 0
 			},
-			arity: 1,
-			doc:   "every GCM_ variable the server reads",
+			arity: 1, runsIn: manual,
+			doc: "every GCM_ variable the server reads",
 		},
 		"release-notes": {
 			run:   releaseNotes,
-			arity: 2, maxArity: 3, args: "VERSION [CHANGELOG]",
+			arity: 2, maxArity: 3, args: "VERSION [CHANGELOG]", runsIn: inRelease,
 			doc: "one version's CHANGELOG section, which is the release note",
 		},
 		"scopes": {
@@ -105,27 +152,32 @@ func init() {
 				_, _ = fmt.Fprintln(o, strings.Join(scopes.All, "\n"))
 				return 0
 			},
-			arity: 1,
-			doc:   "every OAuth scope this server asks for",
+			arity: 1, runsIn: manual,
+			doc: "every OAuth scope this server asks for",
 		},
 		"server-json": {
 			run:   func(a []string, o, e io.Writer) int { return serverJSON(a[1], a[2], o, e) },
-			arity: 3, args: "VERSION CHECKSUMS",
+			arity: 3, args: "VERSION CHECKSUMS", runsIn: inRelease,
 			doc: "the MCP registry entry, from a release's own checksum file",
 		},
 		"mcpb-manifest": {
 			run:   func(a []string, o, e io.Writer) int { return mcpbManifest(a[1], a[2], o, e) },
-			arity: 3, args: "VERSION MANIFEST",
+			arity: 3, args: "VERSION MANIFEST", runsIn: manual,
 			doc: "the bundle manifest with a real version in it",
+		},
+		"mcpb-pack": {
+			run:   mcpbPack,
+			arity: 2, maxArity: 3, args: "VERSION [DIST]", runsIn: inRelease,
+			doc: "the Claude Desktop bundle, from the binaries goreleaser built",
 		},
 	}
 }
 
-// gateNames are the commands that must run in both places, sorted.
-func gateNames() []string {
+// commandsRunningIn are the commands one pipeline has to run, sorted.
+func commandsRunningIn(w where) []string {
 	out := make([]string, 0, len(commands))
 	for name, c := range commands {
-		if c.gate {
+		if c.runsIn == w {
 			out = append(out, name)
 		}
 	}
@@ -193,11 +245,34 @@ func read(path string) (*dump, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseDump(b, path)
+}
+
+// parseDump decodes a schema dump. source names where it came from, so a
+// malformed one says which file or which binary produced it.
+func parseDump(b []byte, source string) (*dump, error) {
 	var d dump
 	if err := json.Unmarshal(b, &d); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", source, err)
+	}
+	if len(d.Tools) == 0 {
+		return nil, fmt.Errorf("%s registers no tools: a gate reading this would be looking at nothing", source)
 	}
 	return &d, nil
+}
+
+// runDumpSchemas asks the binary what it registers.
+//
+// Both gates that need the tool surface go through this, so neither can
+// end up reading a file the other one wrote at a different time. That
+// seam is what the shell wrappers had: one dumped the schemas and
+// another compared them, and nothing said they were the same dump.
+func runDumpSchemas(bin string) ([]byte, error) {
+	out, err := exec.Command(bin, "--dump-schemas").Output()
+	if err != nil {
+		return nil, fmt.Errorf("%s --dump-schemas: %w", bin, err)
+	}
+	return out, nil
 }
 
 // schemaDiff compares the built binary's tool surface with a baseline.
@@ -308,12 +383,7 @@ func toolNames(path string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 2
 	}
-	names := make([]string, 0, len(d.Tools))
-	for _, t := range d.Tools {
-		names = append(names, t.Name)
-	}
-	slices.Sort(names)
-	_, _ = fmt.Fprintln(stdout, strings.Join(names, "\n"))
+	_, _ = fmt.Fprintln(stdout, strings.Join(toolNamesIn(d), "\n"))
 	return 0
 }
 
@@ -328,6 +398,15 @@ func configVars() []string {
 		credentials.EnvVar, userconfig.EnvDir, userconfig.EnvAllowOutsideHome)
 	slices.Sort(vars)
 	return slices.Compact(vars)
+}
+
+// defaultBinary is where `make build` leaves the server, and what a
+// command that takes an optional binary falls back to.
+const defaultBinary = "./google-chat-mcp"
+
+// binaryArg is the binary a command was pointed at, or the built one.
+func binaryArg(args []string) string {
+	return cmp.Or(argAt(args, 1), defaultBinary)
 }
 
 // baselinePath is the released surface a change may add to and never
@@ -346,9 +425,9 @@ const dumpPath = "schemas.json"
 // is a seam with nothing holding it: the wrapper could point at a
 // different file than the gate compared and nothing would say so.
 func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
-	out, err := exec.Command(bin, "--dump-schemas").Output()
+	out, err := runDumpSchemas(bin)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "gates: %s --dump-schemas: %v\n", bin, err)
+		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
 	if err := os.WriteFile(dumpPath, out, 0o600); err != nil {

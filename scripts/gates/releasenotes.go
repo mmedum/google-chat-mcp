@@ -15,7 +15,7 @@ import (
 // that sentence was written for.
 func releaseNotes(args []string, stdout, stderr io.Writer) int {
 	version := strings.TrimPrefix(args[1], "v")
-	file := "CHANGELOG.md"
+	file := changelogPath
 	if len(args) > 2 && args[2] != "" {
 		file = args[2]
 	}

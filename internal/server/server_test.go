@@ -175,7 +175,7 @@ func inputFields(t *testing.T, tool *mcp.Tool) []string {
 // Every tool in the released surface must still exist, under the same
 // name. testdata/schemas-baseline.json is the contract, and a caller
 // written against it must keep working.
-// This overlaps scripts/schema-diff.sh on purpose. That gate is the
+// This overlaps `gates schema-diff` on purpose. That gate is the
 // authority — it also compares output fields — but it only runs under
 // `make check`, on one platform. This runs under plain `go test`, on all
 // three, so a rename is caught by whoever notices first.

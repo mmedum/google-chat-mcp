@@ -401,6 +401,172 @@ func TestTheCoverageProfileIsBuiltTheSameWayInBothPlaces(t *testing.T) {
 	}
 }
 
+// uncommented is a file with its comment lines removed.
+//
+// The parity gate reads two files as text, and a comment is text that
+// does not run. Commenting a step out to unblock a red build used to
+// leave the gate green — the exact divergence it exists to catch,
+// reached by typing one `#`. google-docs-mcp found this in their own
+// port; it reproduced here, on the stdio smoke step.
+func uncommented(file string) string {
+	var kept []string
+	for _, line := range strings.Split(file, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+// executes is the part of a workflow that actually runs: the value of
+// every `run:` step, the lines of a block form included, and every
+// `uses:` reference.
+//
+// Both, not just `run:`. A gate here can be satisfied by an action —
+// `lint` is `uses: golangci/golangci-lint-action` and never appears on a
+// run line — so a rule that read `run:` alone would report a gate CI
+// runs as missing. google-docs-mcp can use the narrower rule because
+// their map is keyed on `go run ./scripts/gates NAME`, which only ever
+// appears on a run line; ours is keyed on tool names.
+//
+// Residual gap, written down rather than fixed: a step disabled by an
+// `if:` that is never true still reads as running. Seeing that needs a
+// YAML parser, and this file has no dependency worth adding for it.
+func executes(workflow string) string {
+	var out []string
+	blockIndent := -1
+	for _, raw := range strings.Split(workflow, "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		indent := len(raw) - len(strings.TrimLeft(raw, " "))
+		// Inside a `run: |` block every deeper line is shell.
+		if blockIndent >= 0 {
+			if indent > blockIndent {
+				// A `#` here is a shell comment, which runs no more
+				// than a YAML one does.
+				if !strings.HasPrefix(trimmed, "#") {
+					out = append(out, trimmed)
+				}
+				continue
+			}
+			blockIndent = -1
+		}
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// A list item puts the key two columns right of the dash.
+		key := strings.TrimPrefix(trimmed, "- ")
+		keyIndent := indent + len(trimmed) - len(key)
+		name, value, ok := strings.Cut(key, ":")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch name {
+		case "run":
+			// `|`, `>`, and their chomping variants open a block. A
+			// `run:` with nothing after it does not: it is a mapping,
+			// which is what `defaults.run.shell` is. Treating that as a
+			// block emitted `shell: bash` — and every nested `name:` —
+			// into the text that says what runs, which is the same
+			// false-pass class this helper exists to remove.
+			if strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") {
+				blockIndent = keyIndent
+				continue
+			}
+			if value != "" {
+				out = append(out, value)
+			}
+		case "uses":
+			out = append(out, value)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func TestExecutesReadsOnlyWhatRuns(t *testing.T) {
+	const workflow = `name: ci
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v7
+      - name: smoke
+        run: go run ./scripts/gates smoke ./google-chat-mcp
+      # - name: staleness
+      #   run: go run ./scripts/gates staleness ./google-chat-mcp
+      - name: licenses
+        run: >
+          go run github.com/google/go-licenses/v2 check ./...
+          --allowed_licenses=MIT
+      - name: several
+        run: |
+          go vet -tags=evals ./...
+          # go vet -tags=live ./...
+      - name: after the block
+        run: echo done
+defaults:
+  run:
+    shell: bash
+`
+	got := executes(workflow)
+	for _, want := range []string{
+		"actions/checkout@v7",
+		"go run ./scripts/gates smoke ./google-chat-mcp",
+		"go run github.com/google/go-licenses/v2 check ./...",
+		"--allowed_licenses=MIT",
+		"go vet -tags=evals ./...",
+		"echo done",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("executes dropped something that runs: %q\n%s", want, got)
+		}
+	}
+	// The two comments are the point of the whole helper.
+	for _, unwanted := range []string{"gates staleness", "go vet -tags=live"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("executes kept a commented-out step: %q\n%s", unwanted, got)
+		}
+	}
+	// A block ends where the indentation says it does.
+	if strings.Contains(got, "name: after the block") {
+		t.Errorf("the block form swallowed the step after it:\n%s", got)
+	}
+	// `defaults.run` is a mapping, not a command. Reading it as a block
+	// puts `shell: bash` into the list of things that run.
+	if strings.Contains(got, "shell: bash") {
+		t.Errorf("a bare `run:` mapping was read as a block scalar:\n%s", got)
+	}
+}
+
+func TestUncommentedDropsCommentLines(t *testing.T) {
+	const makefile = "check: fmt smoke\n" +
+		"smoke: build\n" +
+		"\t@$(GO) run ./scripts/gates smoke $(BIN)\n" +
+		"# @$(GO) run ./scripts/gates staleness $(BIN)\n" +
+		"\t# a recipe comment reaches the shell and still runs nothing\n"
+	got := uncommented(makefile)
+	if !strings.Contains(got, "gates smoke") {
+		t.Errorf("uncommented dropped a live recipe line:\n%s", got)
+	}
+	for _, unwanted := range []string{"gates staleness", "a recipe comment"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("uncommented kept %q:\n%s", unwanted, got)
+		}
+	}
+}
+
+// readRepoFile is one file from the repository root.
+func readRepoFile(t *testing.T, rel string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 // What CI must run for each target `make check` depends on.
 //
 // A map rather than a name comparison, because the two sides say the
@@ -419,10 +585,10 @@ var ciRunsForTarget = map[string]string{
 	"cover":        "gates coverage",
 	"vuln":         "govulncheck",
 	"licenses":     "go-licenses",
-	"smoke":        "stdio-smoke.sh",
+	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",
 	"live-surface": "TestEveryToolIsExercisedOrExcused",
-	"staleness":    "staleness-check.sh",
+	"staleness":    "gates staleness",
 }
 
 // `make check` and CI are two lists in two files, and whoever adds a gate
@@ -443,10 +609,12 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow := string(ci)
+	// Only what runs: a commented-out step is not a step.
+	makefile := uncommented(string(mk))
+	workflow := executes(uncommented(string(ci)))
 
 	var targets []string
-	for _, line := range strings.Split(string(mk), "\n") {
+	for _, line := range strings.Split(makefile, "\n") {
 		rest, ok := strings.CutPrefix(line, "check:")
 		if !ok {
 			continue
@@ -464,7 +632,7 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 		t.Fatal("no check: prerequisites found in the Makefile: this gate is looking at nothing")
 	}
 	if len(workflow) == 0 {
-		t.Fatal("ci.yml is empty: this gate is looking at nothing")
+		t.Fatal("ci.yml runs nothing: this gate is looking at nothing")
 	}
 
 	for _, target := range targets {
@@ -482,27 +650,45 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 
 	// The other direction: an entry for a target that check no longer
 	// runs is a rule about nothing, and reads exactly like a rule that works.
-	inCheck := map[string]bool{}
+	checkRuns := map[string]bool{}
 	for _, target := range targets {
-		inCheck[target] = true
+		checkRuns[target] = true
 	}
 	for target := range ciRunsForTarget {
-		if !inCheck[target] {
+		if !checkRuns[target] {
 			t.Errorf("ciRunsForTarget names %q, which `make check` no longer runs; drop it", target)
 		}
 	}
 
-	// Every command the registry marks as a gate has to reach both
-	// places too. That flag is the single list google-drive-mcp arrived
-	// at after adding a gate to the dispatch, the Makefile and the
-	// workflow but not the usage text — so it is only worth having if
-	// something reads it.
-	for _, name := range gateNames() {
-		if !strings.Contains(string(mk), "gates "+name) {
-			t.Errorf("the registry marks %q a gate and the Makefile never runs it", name)
+	// Every command the registry says runs under `make check` has to
+	// reach both places too. That field is the single list
+	// google-drive-mcp arrived at after adding a gate to the dispatch,
+	// the Makefile and the workflow but not the usage text — so it is
+	// only worth having if something reads it.
+	for _, name := range commandsRunningIn(inCheck) {
+		if !strings.Contains(makefile, "gates "+name) {
+			t.Errorf("the registry marks %q a check gate and the Makefile never runs it", name)
 		}
 		if !strings.Contains(workflow, "gates "+name) {
-			t.Errorf("the registry marks %q a gate and ci.yml never runs it", name)
+			t.Errorf("the registry marks %q a check gate and ci.yml never runs it", name)
+		}
+	}
+
+	// The release's own steps, which a bool could not describe. Each has
+	// to appear in the goreleaser config or the release workflow: those
+	// two files are the release, and a step dropped from them fails at a
+	// tag, in public, with the mistake already published.
+	// The workflow through executes, and the goreleaser config through
+	// uncommented alone: goreleaser is not workflow-shaped, and its
+	// hooks are `post:` and `before:` rather than `run:`. Dropping the
+	// comments is the half that carries here — a hook commented out is
+	// the same hazard as a step commented out.
+	release := executes(uncommented(readRepoFile(t, filepath.Join(".github", "workflows", "release.yml")))) +
+		"\n" + uncommented(readRepoFile(t, ".goreleaser.yaml"))
+	for _, name := range commandsRunningIn(inRelease) {
+		if !strings.Contains(release, "gates "+name) {
+			t.Errorf("the registry marks %q a release step and neither release.yml nor "+
+				".goreleaser.yaml runs it", name)
 		}
 	}
 

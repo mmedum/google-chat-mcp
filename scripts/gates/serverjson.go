@@ -174,38 +174,3 @@ func serverJSON(version, checksums string, stdout, stderr io.Writer) int {
 // carries. A release replaces it; a bundle still carrying it was built
 // without this step.
 const placeholderVersion = "0.0.0-dev"
-
-// mcpbManifest writes the bundle manifest with the release's version in
-// it. The manifest is JSON, so the substitution is a decode and an
-// encode rather than a sed over the file: a reformat that moved the
-// version line would slip past a text match, and the bundle would name a
-// version nobody released.
-func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
-	fail := func(err error) int {
-		_, _ = fmt.Fprintln(stderr, "mcpb-manifest:", err)
-		return 1
-	}
-	semver := strings.TrimPrefix(version, "v")
-	if semver == "" {
-		return fail(fmt.Errorf("empty version"))
-	}
-	raw, err := os.ReadFile(manifestPath) //nolint:gosec // a path the release passes in
-	if err != nil {
-		return fail(err)
-	}
-	var manifest map[string]any
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return fail(fmt.Errorf("%s: %w", manifestPath, err))
-	}
-	if got, _ := manifest["version"].(string); got != placeholderVersion {
-		return fail(fmt.Errorf("%s carries version %q, expected the placeholder %q",
-			manifestPath, got, placeholderVersion))
-	}
-	manifest["version"] = semver
-	out, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fail(err)
-	}
-	_, _ = fmt.Fprintln(stdout, string(out))
-	return 0
-}

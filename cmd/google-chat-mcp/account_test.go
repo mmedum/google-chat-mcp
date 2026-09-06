@@ -24,10 +24,10 @@ import (
 // the only stable signal.
 //
 // This test builds the error it matches, so on its own it proves the
-// predicate and nothing about what the SDK actually sends. The run in
-// scripts/stdio-smoke.sh is what holds that half: it closes stdin the
-// instant the last request is written and asserts the exit code, and it
-// was checked against a build with this branch removed.
+// predicate and nothing about what the SDK actually sends. The smoke
+// gate is what holds that half: its second run closes stdin the instant
+// the last request is written and asserts the exit code, and it was
+// checked against a build with this branch removed.
 func TestIsShutdownMatchesTheDisconnectCodes(t *testing.T) {
 	for _, tc := range []struct {
 		name string
