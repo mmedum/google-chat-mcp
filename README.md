@@ -47,9 +47,11 @@ you did not build.
 
 Every release also carries a `.mcpb` bundle. Open it and Claude Desktop
 installs the server and asks for your OAuth client JSON — no config file
-to edit. It holds a macOS binary that runs on both architectures and a
-Windows one; its SHA-256 is in the same signed `checksums.txt`. The
-release is listed in the MCP registry as
+to edit. It covers macOS, Windows and Linux on both architectures each:
+macOS through a universal binary, Windows through amd64, and Linux
+through a small launcher that picks the right binary at start, because a
+bundle manifest has no key for the architecture. Its SHA-256 is in the
+same signed `checksums.txt`. The release is listed in the MCP registry as
 `io.github.mmedum/google-chat-mcp`.
 
 The bundle does not log you in. Install the binary as well, run
