@@ -51,7 +51,7 @@ jobs:
       - run: go test -race -coverpkg=./cmd/...,./internal/... -coverprofile=cov.out -covermode=atomic ./...
       - name: coverage floor
         if: matrix.os == 'ubuntu-latest'
-        run: bash scripts/coverage-check.sh cov.out 80
+        run: go run ./scripts/gates coverage cov.out
 
   # The tree scan cannot see an identifier that was committed and edited
   # out in a later commit, and gitleaks looks for credentials, which an

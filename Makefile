@@ -45,7 +45,7 @@ test: ## Unit tests with race detector and coverage
 
 .PHONY: cover
 cover: test ## Enforce the coverage floor on core packages
-	@bash scripts/coverage-check.sh cov.out $(COVER_MIN)
+	@$(GO) run ./scripts/gates coverage cov.out
 
 .PHONY: vuln
 vuln:
