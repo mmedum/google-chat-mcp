@@ -245,13 +245,23 @@ func TestReleaseNotesAreWrittenOutsideTheCheckout(t *testing.T) {
 	// The other half: the step that produces the file must not redirect
 	// into the checkout either, or the tree is dirty however goreleaser
 	// is then pointed at it.
+	//
+	// The producer is matched by what it is, not by the name of the file
+	// it used to live in. When that name changed this loop matched
+	// nothing and the check passed while examining no lines at all,
+	// which is why it now asserts it found the step.
+	producers := 0
 	for _, line := range strings.Split(body, "\n") {
-		if !strings.Contains(line, "extract-release-notes.sh") || !strings.Contains(line, ">") {
+		if !strings.Contains(line, "gates release-notes") || !strings.Contains(line, ">") {
 			continue
 		}
+		producers++
 		if !strings.Contains(line, "RUNNER_TEMP") && !strings.Contains(line, "runner.temp") {
 			t.Errorf("release notes are written into the checkout: %s", strings.TrimSpace(line))
 		}
+	}
+	if producers == 0 {
+		t.Error("no step writes the release notes: this half of the check is looking at nothing")
 	}
 }
 

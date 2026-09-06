@@ -44,8 +44,10 @@ type command struct {
 	// so an implementation reads its arguments at the offsets its arity
 	// promises.
 	run func(args []string, stdout, stderr io.Writer) int
-	// arity is how many words the command takes, itself included.
-	arity int
+	// arity is the fewest words the command takes, itself included, and
+	// maxArity the most. A zero maxArity means exactly arity.
+	arity    int
+	maxArity int
 	// args is how those words are spelled in the usage text.
 	args string
 	doc  string
@@ -69,13 +71,15 @@ var commands map[string]command
 func init() {
 	commands = map[string]command{
 		"schema-diff": {
-			run:   func(a []string, o, e io.Writer) int { return schemaDiffBinary(a[1], o, e) },
-			arity: 2, args: "[BINARY]", gate: true,
+			run: func(a []string, o, e io.Writer) int {
+				return schemaDiffBinary(cmp.Or(argAt(a, 1), "./google-chat-mcp"), o, e)
+			},
+			arity: 1, maxArity: 2, args: "[BINARY]", gate: true,
 			doc: "the released tool surface, which a change may add to and never drop from",
 		},
 		"coverage": {
 			run:   coverage,
-			arity: 2, args: "[PROFILE]", gate: true,
+			arity: 1, maxArity: 2, args: "[PROFILE]", gate: true,
 			doc: "statement coverage floor per package",
 		},
 		"tool-names": {
@@ -90,6 +94,11 @@ func init() {
 			},
 			arity: 1,
 			doc:   "every GCM_ variable the server reads",
+		},
+		"release-notes": {
+			run:   releaseNotes,
+			arity: 2, maxArity: 3, args: "VERSION [CHANGELOG]",
+			doc: "one version's CHANGELOG section, which is the release note",
 		},
 		"scopes": {
 			run: func(_ []string, o, _ io.Writer) int {
@@ -139,7 +148,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		usage(stderr)
 		return 2
 	}
-	if len(args) != c.arity {
+	if len(args) < c.arity || len(args) > cmp.Or(c.maxArity, c.arity) {
 		_, _ = fmt.Fprintf(stderr, "gates: %s takes %s\n", args[0], cmp.Or(c.args, "no arguments"))
 		usage(stderr)
 		return 2
@@ -353,4 +362,13 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	return schemaDiff(baselinePath, dumpPath, stdout, stderr)
+}
+
+// argAt is args[i] when there is one, so a command with an optional
+// argument reads it without bounds-checking at every call site.
+func argAt(args []string, i int) string {
+	if i < len(args) {
+		return args[i]
+	}
+	return ""
 }

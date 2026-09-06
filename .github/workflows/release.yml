@@ -90,7 +90,7 @@ jobs:
       - name: Release notes from the CHANGELOG
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: bash scripts/extract-release-notes.sh "${REF_NAME}" > "${RUNNER_TEMP}/release-notes.md"
+        run: go run ./scripts/gates release-notes "${REF_NAME}" > "${RUNNER_TEMP}/release-notes.md"
 
       # Pinning an action does not pin what the action installs. Both of
       # these fetch a tool, and without a version they fetch whatever is
