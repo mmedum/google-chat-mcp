@@ -48,7 +48,13 @@ done
 # is how the sibling google-docs-mcp repository discovered this — its
 # gate blocked its own release pull request.
 last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
-if [ -n "$last_tag" ] && ! git diff --quiet "$last_tag" -- cmd internal 2>/dev/null; then
+# Tests are excluded because a change confined to _test.go files cannot
+# change what the binary does, and CONTRIBUTING says an internal change
+# with no user-visible effect gets no entry. Without the exclusion the
+# gate demands a release note for a test, and the only way to satisfy it
+# is to write one that lies about what shipped.
+if [ -n "$last_tag" ] &&
+  ! git diff --quiet "$last_tag" -- cmd internal ':(exclude)*_test.go' 2>/dev/null; then
   # Unreleased is just another section name, so the release-notes
   # extractor answers this too rather than a second awk that has to
   # agree with it about where a section ends.

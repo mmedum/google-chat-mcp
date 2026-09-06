@@ -79,6 +79,18 @@ func TestWhatIsAllowed(t *testing.T) {
 
 // The check that keeps the check honest: every tracked file, every
 // rule. This is the one that fails a build.
+// A warning for anyone checking this gate rather than reading it: the
+// fixture convention this repository documents, `spaces/AAAAspace1`, is
+// itself one of the shapes the gate counts as invented. Probing it with
+// that value returns a clean result by design, which reads exactly like
+// a gate that cannot see the file it was pointed at. Use a
+// realistic-shaped id, and nothing real.
+//
+// It is a property of the convention rather than of this
+// implementation: google-sheets-mcp reached the same false clean
+// against its own gate, the same way, on the same day. A gate that
+// recognises made-up ids by a run of one letter is most permissive
+// toward exactly the fixture someone types when testing it in a hurry.
 func TestTheRepositoryIsClean(t *testing.T) {
 	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
