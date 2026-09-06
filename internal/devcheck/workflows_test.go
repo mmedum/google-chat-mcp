@@ -344,3 +344,48 @@ func TestReleaseHooksDoNotWriteIntoTheCheckout(t *testing.T) {
 		t.Fatal("no before: block in .goreleaser.yaml: this test is looking at nothing")
 	}
 }
+
+// The coverage profile is built in two places — the Makefile for a local
+// `make check`, and ci.yml because that job runs on three platforms while
+// only one needs the floor. Two copies of one command is exactly the
+// shape that drifts, and it did: the Makefile was widened to include
+// cmd/ and ci.yml was not, so the floor read 58% locally and 0% in CI,
+// and the gate that had just been fixed reported the package as
+// completely uncovered.
+//
+// Nothing here checks the whole gate list against CI — that is the parity
+// gate google-sheets-mcp built and this repository has not. This holds
+// the one pair that has already broken.
+func TestTheCoverageProfileIsBuiltTheSameWayInBothPlaces(t *testing.T) {
+	root := repoRoot(t)
+	find := func(rel string) string {
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if !strings.Contains(line, "-coverpkg=") {
+				continue
+			}
+			// The flag, up to the next space.
+			_, rest, _ := strings.Cut(line, "-coverpkg=")
+			return strings.Fields(rest)[0]
+		}
+		t.Fatalf("no -coverpkg in %s: this test is looking at nothing", rel)
+		return ""
+	}
+
+	mk, ci := find("Makefile"), find(filepath.Join(".github", "workflows", "ci.yml"))
+	if mk != ci {
+		t.Errorf("-coverpkg differs: Makefile has %q, ci.yml has %q. The floor then measures "+
+			"a different set of packages in each place, and the narrower one reports 0%% for "+
+			"whatever it cannot see", mk, ci)
+	}
+	// Both must cover the two trees that ship. cmd/ was outside for the
+	// whole of v1.0.0 and nothing could report it.
+	for _, want := range []string{"./cmd/...", "./internal/..."} {
+		if !strings.Contains(mk, want) {
+			t.Errorf("-coverpkg %q does not include %s", mk, want)
+		}
+	}
+}
