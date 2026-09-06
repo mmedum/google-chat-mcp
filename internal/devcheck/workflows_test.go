@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -386,6 +387,67 @@ func TestTheCoverageProfileIsBuiltTheSameWayInBothPlaces(t *testing.T) {
 	for _, want := range []string{"./cmd/...", "./internal/..."} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("-coverpkg %q does not include %s", mk, want)
+		}
+	}
+}
+
+// The coverage gate scores a package on its own files and not on its
+// subpackages'. It matched by prefix once, which means a parent is
+// scored on everything beneath it and the number printed describes
+// neither package — google-sheets-mcp had one reported at 68.7% whose
+// own coverage was 90.1%, the moment a subpackage grew.
+//
+// No package in this repository has a child today, so nothing here would
+// have noticed. The fixture supplies the parent and child the tree does
+// not have: parent fully covered, child not covered at all, and each has
+// to get its own number rather than a blend.
+func TestTheCoverageGateScoresAPackageOnItsOwnFiles(t *testing.T) {
+	root := repoRoot(t)
+	dir := t.TempDir()
+	const module = "github.com/mmedum/google-chat-mcp"
+
+	// A stub `go`, so the gate enumerates the fixture's packages rather
+	// than this repository's.
+	stub := filepath.Join(dir, "go")
+	script := "#!/bin/sh\necho " + module + "/internal/parent\necho " + module + "/internal/parent/child\n"
+	if err := os.WriteFile(stub, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Parent: one statement block, covered. Child: one block, not.
+	profile := filepath.Join(dir, "cov.out")
+	body := "mode: atomic\n" +
+		module + "/internal/parent/a.go:1.1,2.2 1 1\n" +
+		module + "/internal/parent/child/b.go:1.1,2.2 1 0\n"
+	if err := os.WriteFile(profile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "coverage-check.sh"), profile, "80")
+	cmd.Env = append(os.Environ(), "GO="+stub)
+	// The child is under the floor, so the gate exits non-zero. The
+	// numbers it printed are what this test is about.
+	out, _ := cmd.CombinedOutput()
+	got := string(out)
+
+	if !strings.Contains(got, "internal/parent") || !strings.Contains(got, "internal/parent/child") {
+		t.Fatalf("the gate did not report both packages:\n%s", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "internal/parent":
+			if fields[1] != "100.0%" {
+				t.Errorf("parent scored %s, want 100.0%% — its own file is covered, and the "+
+					"uncovered child must not drag it down", fields[1])
+			}
+		case "internal/parent/child":
+			if fields[1] != "0.0%" {
+				t.Errorf("child scored %s, want 0.0%%", fields[1])
+			}
 		}
 	}
 }
