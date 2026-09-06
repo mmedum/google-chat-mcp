@@ -61,6 +61,12 @@ type driver struct {
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string
+	// event is one event name from the space's own feed, for get_space_event.
+	event string
+	// attached is the message carrying the uploaded file.
+	attached string
+	// uploadToken is spent by the post that carries it.
+	uploadToken string
 }
 
 func binPath(t *testing.T) string {
@@ -243,6 +249,18 @@ func keepsPrefixOf(keep map[string]bool, name string) bool {
 		}
 	}
 	return false
+}
+
+// writeLocal puts a file in the one directory file transfer may touch,
+// and hands back its path. The bytes are ordinary words: an upload
+// leaves a file on a real account until the space goes.
+func (d *driver) writeLocal(name, body string) string {
+	d.t.Helper()
+	path := filepath.Join(d.dir, name)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		d.t.Fatal(err)
+	}
+	return path
 }
 
 func isNameRune(r rune) bool {

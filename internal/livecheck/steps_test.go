@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 var emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
@@ -31,6 +32,18 @@ var steps = []step{
 			d.t.Error("whoami named no account")
 		}
 		d.email = out.Email
+	}},
+
+	// Reads the directory and writes nothing. The account's own address
+	// is a query guaranteed to resolve, and the answer is redacted.
+	{"a name resolves to an address", "search_people", func(d *driver) {
+		var out struct {
+			TotalReturned int `json:"total_returned"`
+		}
+		d.into(d.must("search_people", map[string]any{"query": d.email, "limit": 5}), &out)
+		if out.TotalReturned == 0 {
+			d.t.Error("search_people found nobody for this account's own address")
+		}
 	}},
 
 	{"the scratch space reads back", "get_space", func(d *driver) {
@@ -140,6 +153,15 @@ var steps = []step{
 		d.must("get_thread", map[string]any{"space_id": d.space, "thread_name": d.thread})
 	}},
 
+	{"the thread's read state reads back", "get_thread_read_state", func(d *driver) {
+		if d.thread == "" {
+			d.t.Skip("no thread id was returned")
+		}
+		d.must("get_thread_read_state", map[string]any{
+			"space_id": d.space, "thread_name": d.thread,
+		})
+	}},
+
 	{"an edit replaces the body", "update_message", func(d *driver) {
 		d.must("update_message", map[string]any{
 			"message_name": d.posted, "text": liveEditBody,
@@ -192,6 +214,52 @@ var steps = []step{
 		d.must("unpin_message", map[string]any{"message_name": d.posted})
 	}},
 
+	// Upload, post, then read back — three exchanges, because the token
+	// is spent by the post and the file only exists on the message
+	// afterwards.
+	{"a file uploads", "upload_attachment", func(d *driver) {
+		path := d.writeLocal("livecheck.txt", "livecheck wrote this file and will delete it\n")
+		var out struct {
+			UploadToken string `json:"upload_token"`
+		}
+		d.into(d.must("upload_attachment", map[string]any{
+			"space_id": d.space, "local_path": path,
+		}), &out)
+		if out.UploadToken == "" {
+			d.t.Fatal("upload_attachment returned no token, so nothing can be posted with it")
+		}
+		d.uploadToken = out.UploadToken
+	}},
+
+	{"the upload posts as a message", "send_message", func(d *driver) {
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": "livecheck attached a file",
+			"attachment_upload_token": d.uploadToken,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("the message carrying the attachment has no id")
+		}
+		d.record(out.MessageID)
+		d.attached = out.MessageID
+	}},
+
+	{"the attachment downloads into the allowed directory", "download_attachment", func(d *driver) {
+		var out struct {
+			Path  string `json:"path"`
+			Bytes int64  `json:"bytes"`
+		}
+		d.into(d.must("download_attachment", map[string]any{"message_name": d.attached}), &out)
+		if out.Bytes == 0 {
+			d.t.Error("the downloaded file is empty")
+		}
+		if !strings.HasPrefix(out.Path, d.dir) {
+			d.t.Errorf("the file was written outside the one directory this server may touch")
+		}
+	}},
+
 	{"the space has members", "list_members", func(d *driver) {
 		var out struct {
 			Result []struct {
@@ -223,12 +291,33 @@ var steps = []step{
 		d.must("mark_space_read", map[string]any{"space_id": d.space})
 	}},
 
+	// from_time is required: unread from when, not unread absolutely.
+	{"the space is marked unread again", "mark_space_unread", func(d *driver) {
+		d.must("mark_space_unread", map[string]any{
+			"space_id":  d.space,
+			"from_time": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+		})
+	}},
+
 	{"the read state reads back", "get_space_read_state", func(d *driver) {
 		d.must("get_space_read_state", map[string]any{"space_id": d.space})
 	}},
 
 	{"the notification setting reads back", "get_space_notification_setting", func(d *driver) {
 		d.must("get_space_notification_setting", map[string]any{"space_id": d.space})
+	}},
+
+	{"the notification setting changes", "update_space_notification_setting", func(d *driver) {
+		var out struct {
+			NotificationSetting string `json:"notification_setting"`
+		}
+		d.into(d.must("update_space_notification_setting", map[string]any{
+			"space_id": d.space, "notification_setting": "ALL",
+		}), &out)
+		if out.NotificationSetting != "ALL" {
+			d.t.Errorf("the setting came back as %q, want the value that was asked for — "+
+				"and read off the answer, not echoed from the request", out.NotificationSetting)
+		}
 	}},
 
 	{"the space renames", "update_space", func(d *driver) {
@@ -248,6 +337,9 @@ var steps = []step{
 	{"space events are listed", "list_space_events", func(d *driver) {
 		var out struct {
 			Unparsed int `json:"unparsed"`
+			Events   []struct {
+				EventName string `json:"event_name"`
+			} `json:"events"`
 		}
 		d.into(d.must("list_space_events", map[string]any{
 			"space_id": d.space, "event_types": []string{"message_created"},
@@ -255,6 +347,26 @@ var steps = []step{
 		if out.Unparsed > 0 {
 			d.t.Errorf("%d event(s) could not be parsed, so the listing is incomplete "+
 				"rather than short", out.Unparsed)
+		}
+		for _, e := range out.Events {
+			if e.EventName != "" {
+				d.event = e.EventName
+				d.record(e.EventName)
+				break
+			}
+		}
+	}},
+
+	{"one event reads back on its own", "get_space_event", func(d *driver) {
+		if d.event == "" {
+			d.t.Skip("the feed named no event yet; it lags its own writes")
+		}
+		var out struct {
+			EventType string `json:"event_type"`
+		}
+		d.into(d.must("get_space_event", map[string]any{"event_name": d.event}), &out)
+		if out.EventType == "" {
+			d.t.Error("the event came back without a type")
 		}
 	}},
 
@@ -326,6 +438,7 @@ func TestLive(t *testing.T) {
 			inner.t = t
 			s.run(&inner)
 			d.posted, d.thread, d.member, d.email = inner.posted, inner.thread, inner.member, inner.email
+			d.event, d.attached, d.uploadToken = inner.event, inner.attached, inner.uploadToken
 		}) {
 			t.Fatalf("stopping: later steps read what %q wrote", s.name)
 		}
