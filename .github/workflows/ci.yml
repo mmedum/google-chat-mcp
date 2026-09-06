@@ -70,6 +70,10 @@ jobs:
           go-version-file: go.mod
       - run: git fetch --no-tags origin main:refs/remotes/origin/main
       - run: LEAKCHECK_HISTORY=1 go test ./internal/leakcheck/ -run TestTheHistoryIsClean -v
+      # The tree scan and the compiled-artefact rule, named so they show
+      # up here rather than only inside `go test ./...`.
+      - name: leaks
+        run: go test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoCompiledBinariesInTheTree' -count=1
 
   lint:
     runs-on: ubuntu-latest
@@ -99,6 +103,8 @@ jobs:
           # go.mod, so the linter and the code it lints agree on the
           # language version. The prebuilt binary lags a new Go release.
           install-mode: goinstall
+      - name: parity
+        run: go test ./scripts/gates -run TestMakeCheckAndCIRunTheSameGates -count=1
       - name: go mod tidy is up to date
         run: |
           go mod tidy
