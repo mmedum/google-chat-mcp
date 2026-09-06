@@ -120,6 +120,17 @@ README for what counts as breaking.
 
 Release cutting is maintainer-only:
 
+0. Run `make live` and read the result. It drives the shipped binary
+   against a real account inside one scratch space it creates and
+   deletes, and it is the only thing here that can catch a wrong belief
+   about the API — every fake in the unit suite is written from what we
+   think Google does, and seven rows of the evidence log were settled by
+   a live call contradicting the reference. `make check` cannot replace
+   it and a green `make check` does not imply it. `make check` does run
+   `live-surface`, which fails if a tool is neither exercised by the
+   driver nor excused with a reason, so the gap is visible on every
+   build rather than at a release.
+
 1. Land a `release: cut vX.Y.Z …` commit on `main` that moves the
    `[Unreleased]` section under a `## [X.Y.Z] - YYYY-MM-DD` heading.
    `release.yml` lifts that section verbatim into the GitHub release

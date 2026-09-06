@@ -91,6 +91,7 @@ jobs:
       # maintainer's machine. `make check` is what CI runs, and `make
       # vet` runs both, so this job has to as well.
       - run: go vet -tags=evals ./...
+      - run: go vet -tags=live ./...
       - uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893  # v9.3.0
         with:
           version: v2.13.2
@@ -162,6 +163,11 @@ jobs:
         run: bash scripts/stdio-smoke.sh ./google-chat-mcp
       - name: schema diff against the released baseline
         run: bash scripts/schema-diff.sh ./google-chat-mcp
+      # The live driver cannot run here — it needs a login and writes to
+      # a real account — but its surface gate can: it reads what the
+      # built binary registers, which needs no credentials.
+      - name: every tool is exercised by the live driver or excused
+        run: go test -tags=live ./internal/livecheck -run TestEveryToolIsExercisedOrExcused -count=1
       - name: docs match the code
         run: bash scripts/staleness-check.sh ./google-chat-mcp
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

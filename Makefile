@@ -26,9 +26,10 @@ fmt: ## Fail if gofmt would change anything
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt issues:"; echo "$$out"; exit 1; fi
 
 .PHONY: vet
-vet: ## go vet, including the eval suite so it keeps compiling
+vet: ## go vet, including the tagged suites so they keep compiling
 	$(GO) vet ./...
 	$(GO) vet -tags=evals ./...
+	$(GO) vet -tags=live ./...
 
 .PHONY: lint
 lint:
@@ -77,8 +78,22 @@ staleness: build ## Docs must match the code
 evals: build ## Score a model driving these tools against a real account
 	$(GO) test -tags=evals ./internal/evals -v -timeout 40m
 
+# The live driver itself needs a login and writes to a real account, so
+# it is never in check. Its surface gate is: it asks the built binary
+# what it registers, which needs no credentials, and fails on a tool that
+# no step exercises and no reason excuses. That is what keeps a tool
+# added tomorrow from being silently unexercised, and it is worth nothing
+# if it only runs when someone remembers to run the live suite.
+.PHONY: live-surface
+live-surface: build ## Every tool is exercised by the live driver or excused with a reason
+	@$(GO) test -tags=live ./internal/livecheck -run TestEveryToolIsExercisedOrExcused -count=1
+
+.PHONY: live
+live: build ## Drive the shipped binary against a real account
+	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
+
 .PHONY: check
-check: fmt vet lint cover vuln licenses smoke schema-diff staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:
