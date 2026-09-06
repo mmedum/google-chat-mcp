@@ -50,16 +50,6 @@ var excused = map[string]string{
 	// Only a Workspace administrator can call it, and turning its
 	// toolset on widens what login asks for.
 	"search_spaces": "administrator-only, and its toolset is off by default",
-
-	// Work, not a decision. These are safe inside the scratch space and
-	// are simply not written yet.
-	"upload_attachment":                 "not written yet: safe inside the scratch space",
-	"download_attachment":               "not written yet: safe inside the scratch space",
-	"search_people":                     "not written yet: reads the directory and writes nothing",
-	"mark_space_unread":                 "not written yet: safe inside the scratch space",
-	"get_thread_read_state":             "not written yet: safe inside the scratch space",
-	"get_space_event":                   "not written yet: needs an event name from list_space_events",
-	"update_space_notification_setting": "not written yet: safe inside the scratch space",
 }
 
 // registeredTools asks the built binary what it registers. It needs no
