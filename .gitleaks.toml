@@ -1,0 +1,33 @@
+# gitleaks config — extends the default ruleset with project-specific
+# allowlist entries for non-secret literals that look secret-shaped.
+#
+# `extend.useDefault = true` keeps the upstream rule set (~120 rules)
+# intact; this file only ADDS allowlist exceptions, never relaxes
+# detection.
+
+title = "google-chat-mcp gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-specific non-secret literals"
+# Test fixture from the v0.3.3 security release: `tests/test_config.py:205`
+# introduced `"explicit-jwt-key-at-least-32-bytes-long"` as a fixture
+# for the new `jwt_signing_key.min_length=32` validator. HEAD already
+# generates this at runtime with `secrets.token_urlsafe`, but the
+# historical commit shows up in diff scans. The literal contains the
+# word `explicit` to make the test-fixture intent obvious in source.
+#
+# `_STDIO_FERNET_PLACEHOLDER` (`src/stdio.py`) is a 44-char URL-safe
+# base64 literal that satisfies Settings's `fernet_key` length check
+# without consuming entropy at every CLI invocation. Decodes to
+# "stdio-placeholder-not-used-never=". stdio mode bypasses
+# GoogleProvider so the value never encrypts anything.
+#
+# (`_STDIO_JWT_PLACEHOLDER` is covered by the default "placeholder"
+# stopword — no entry needed.)
+regexes = [
+    '''explicit-jwt-key-at-least-32-bytes-long''',
+    '''c3RkaW8tcGxhY2Vob2xkZXItbm90LXVzZWQtbmV2ZXI9''',
+]

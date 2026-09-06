@@ -1,0 +1,109 @@
+version: 2
+
+project_name: google-chat-mcp
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: binaries
+    main: ./cmd/google-chat-mcp
+    binary: google-chat-mcp
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # Stamp the commit's time rather than the build's, so rebuilding the
+    # same tag produces byte-identical binaries.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w -X github.com/mmedum/google-chat-mcp/internal/version.Version={{.Version}}
+
+# The universal macOS binary exists for the Claude Desktop bundle alone,
+# so the archives stay the six the README describes: one per platform and
+# architecture. `ids` is what keeps the universal one out of them.
+universal_binaries:
+  - id: universal
+    ids: [binaries]
+    replace: false
+    hooks:
+      # A bundle manifest picks a binary by platform and has no key for
+      # the architecture, so macOS needs one binary that runs on both.
+      #
+      # The hook runs here, between the builds and the checksums, because
+      # that is the only point where every binary exists and
+      # checksums.txt has not been written: the bundle lands in it with
+      # the archives, under the same signature. It needs npx, which the
+      # release workflow installs; a local rehearsal with --snapshot
+      # needs it too.
+      post: bash scripts/mcpb-pack.sh {{ .Version }} dist
+
+archives:
+  - ids: [binaries]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+  # The bundle is not a goreleaser artifact, so it is named here to be
+  # checksummed with everything else. checksums.txt is the file cosign
+  # signs, which is what makes the bundle verifiable at all.
+  extra_files:
+    - glob: ./dist/*.mcpb
+
+# One SBOM per archive, so a deployer can see what is inside a binary
+# they did not build.
+sboms:
+  - artifacts: archive
+
+# Sign the checksum file with a keyless Sigstore certificate tied to the
+# workflow's OIDC identity: no private key to hold or leak.
+#
+# One bundle, not a separate signature and certificate: cosign 3 made
+# --bundle required, and with it the old --output-signature and
+# --output-certificate are ignored. Getting this wrong fails the release
+# with "create bundle file: open : no such file or directory" — cosign
+# writing a bundle to the empty path it was never given. Reported by the
+# google-drive-mcp session, which hit it on its first tag, and confirmed
+# against the cosign v3.0.1 release notes.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.bundle"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "--yes"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
+# The release notes come from CHANGELOG.md, passed with --release-notes
+# by release.yml. Generating them from commit subjects would publish our
+# commit hygiene to people deciding whether to upgrade.
+changelog:
+  disable: true
+
+release:
+  # Nothing is published until the first release is ready and every gate is
+  # green. Removing this line is a step in the release, not something to
+  # do early.
+  disable: true
+  # A tag is the decision; a draft nobody publishes is how releases go
+  # missing. Pre-1.0 tags are still marked as pre-releases automatically
+  # for anything carrying a suffix like -rc1.
+  draft: false
+  prerelease: auto
+  # Uploaded beside the archives: the bundle Claude Desktop installs, and
+  # the file the MCP registry entry points at.
+  extra_files:
+    - glob: ./dist/*.mcpb
+  footer: |
+    Built by GoReleaser from the tag. Verify a download against
+    `checksums.txt`; every archive carries the binary, LICENSE and README.
+    `.mcpb` is the Claude Desktop bundle: macOS and Windows, installed by
+    opening it.

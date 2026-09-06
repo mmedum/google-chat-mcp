@@ -1,0 +1,166 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Every `run` step in this file, on every platform. Without it a step on
+# the Windows runner gets PowerShell, where the shell it was written for
+# is bash — and the mangling shows up on the line that runs, not on the
+# gate that reads it. Explicit `bash` also turns on `pipefail`, so a
+# failure in the left half of a pipe stops the step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The unit suite runs on every platform the release builds for. The
+  # keyring and the config-directory paths differ per OS, and those are
+  # exactly the parts a Linux-only run would not exercise.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # A build never pushes, so the token has no business staying
+          # in .git/config where a later step could read it.
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go test -race -coverpkg=./internal/... -coverprofile=cov.out -covermode=atomic ./...
+      - name: coverage floor
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/coverage-check.sh cov.out 80
+
+  # The tree scan cannot see an identifier that was committed and edited
+  # out in a later commit, and gitleaks looks for credentials, which an
+  # id is not. This walks the blobs the branch would add. It needs real
+  # history, so it is its own job: the test matrix checks out shallow.
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: git fetch --no-tags origin main:refs/remotes/origin/main
+      - run: LEAKCHECK_HISTORY=1 go test ./internal/leakcheck/ -run TestTheHistoryIsClean -v
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # A build never pushes, so the token has no business staying
+          # in .git/config where a later step could read it.
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: out=$(gofmt -l .); [ -z "$out" ] || { echo "$out"; exit 1; }
+      - run: go vet ./...
+      # The eval suite is behind a build tag, so plain vet does not see
+      # it — about 1,300 lines that would otherwise compile only on a
+      # maintainer's machine. `make check` is what CI runs, and `make
+      # vet` runs both, so this job has to as well.
+      - run: go vet -tags=evals ./...
+      - uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893  # v9.3.0
+        with:
+          version: v2.13.2
+          # goinstall builds the pinned version with the Go from
+          # go.mod, so the linter and the code it lints agree on the
+          # language version. The prebuilt binary lags a new Go release.
+          install-mode: goinstall
+      - name: go mod tidy is up to date
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      # The release config is only ever exercised by a tag, and by then
+      # the mistake is public. `check` catches a config-level one — an
+      # unknown key, a build id nothing refers to — for the cost of a
+      # pinned binary.
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
+        with:
+          version: v2.18.1
+          args: check
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # A build never pushes, so the token has no business staying
+          # in .git/config where a later step could read it.
+          persist-credentials: false
+          # gitleaks scans history, so a shallow clone hides whatever a
+          # branch introduced and later removed.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - name: licenses
+        run: >
+          go run github.com/google/go-licenses/v2@v2.0.1 check ./...
+          --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo \
+            zricethezav/gitleaks:v8.30.1 detect --source=/repo --redact --no-banner
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo \
+            rhysd/actionlint:1.7.12 -color
+
+  # The gates that need a built binary: it has to speak MCP over stdio
+  # without credentials, keep its tool surface, and match the docs.
+  binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # A build never pushes, so the token has no business staying
+          # in .git/config where a later step could read it.
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -o google-chat-mcp ./cmd/google-chat-mcp
+      - name: stdio smoke
+        run: bash scripts/stdio-smoke.sh ./google-chat-mcp
+      - name: schema diff against the released baseline
+        run: bash scripts/schema-diff.sh ./google-chat-mcp
+      - name: docs match the code
+        run: bash scripts/staleness-check.sh ./google-chat-mcp
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: schemas
+          path: schemas.json

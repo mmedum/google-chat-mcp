@@ -1,0 +1,3948 @@
+{
+  "server": "google-chat-mcp",
+  "version": "1.0.0",
+  "sdk": "v1.7.0",
+  "tools": [
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterwards to make someone a manager. Set dry_run to see the request body without inviting anyone.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without inviting anyone",
+            "type": "boolean"
+          },
+          "group_name": {
+            "description": "a Google Group to add, groups/{id}. The id comes from the Cloud Identity API, which this server cannot query, so bring it with you. Google allows a group only in a named space, never a group chat or a direct message",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to invite them into, spaces/{id}",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "their email address; search_people turns a name into one. Pass this or group_name, not both",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "add_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nobody was invited",
+            "type": "boolean"
+          },
+          "group_name": {
+            "description": "the group that was added, when it was a group",
+            "type": "string"
+          },
+          "membership_name": {
+            "description": "the new membership's resource name; remove_member takes it. Null after a dry run",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real invite",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; empty when Google said nothing, which means an ordinary member",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space they were invited into",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "who was invited; empty when a group was added",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "space_id",
+          "user_email",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "React to a message with a single unicode emoji. Reacting the same way twice is not an error: the reaction that is already there is returned instead.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "emoji": {
+            "description": "a single unicode emoji, such as 👍; custom emoji are not supported here",
+            "type": "string"
+          },
+          "message_name": {
+            "description": "the message to react to, spaces/{space}/messages/{message}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "emoji"
+        ],
+        "type": "object"
+      },
+      "name": "add_reaction",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "emoji": {
+            "description": "the emoji character",
+            "type": "string"
+          },
+          "reaction_name": {
+            "description": "the reaction's resource name; remove_reaction takes it",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "who reacted, users/{id}; the signed-in account",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reaction_name",
+          "emoji",
+          "user_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Add a custom emoji to your organisation from an image on this machine. Everyone in the organisation can then use it, so the name is worth agreeing first. The image must be a square PNG, JPEG or GIF, 64 to 500 pixels, under 256 KB.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the name and the image without creating anything",
+            "type": "boolean"
+          },
+          "emoji_name": {
+            "description": "the :shortcode: to type it by, colons included: lowercase letters, digits, hyphens and underscores, as in :party-parrot:",
+            "type": "string"
+          },
+          "image_path": {
+            "description": "a .png, .jpg or .gif on this machine. Google wants it square, between 64 and 500 pixels, and under 256 KB — the file is read and sent inside the request, so the size limit is checked here first",
+            "type": "string"
+          }
+        },
+        "required": [
+          "emoji_name",
+          "image_path"
+        ],
+        "type": "object"
+      },
+      "name": "create_custom_emoji",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "the image's size, reported so a dry run tells you whether it fits",
+            "type": "integer"
+          },
+          "dry_run": {
+            "description": "true when nothing was created",
+            "type": "boolean"
+          },
+          "emoji_name": {
+            "description": "the :shortcode: form, which is what you type in a message",
+            "type": "string"
+          },
+          "name": {
+            "description": "the resource name, customEmojis/{emoji}; get_custom_emoji and delete_custom_emoji take this",
+            "type": "string"
+          },
+          "temporary_uri": {
+            "description": "a link to the image that Google says is good for at least ten minutes. Not stored anywhere and not worth keeping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "emoji_name",
+          "bytes",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Start an unnamed group conversation with 2 to 20 people. Leave yourself out of member_emails: Google adds the signed-in account. A group chat cannot have a name; use create_space when you need one. Set dry_run to see the request body without creating anything.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without creating anything",
+            "type": "boolean"
+          },
+          "member_emails": {
+            "description": "2 to 20 email addresses, not counting you; Google adds the signed-in account itself",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "member_emails"
+        ],
+        "type": "object"
+      },
+      "name": "create_group_chat",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was created",
+            "type": "boolean"
+          },
+          "member_count": {
+            "description": "how many people were asked for, not counting you",
+            "type": "integer"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real create",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the new group chat's resource name; null after a dry run, because Google assigns it",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "space_id",
+          "member_count",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Add a custom section to your own Chat sidebar. Google does not merge sections by name, so two calls leave two sections with the same label: list_sections first if you mean to reuse one. Sections are per-user and change nobody else's view. Set dry_run to see the request body first. Needs the chat.users.sections scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "what to call it, 1 to 80 characters",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the request body without creating anything",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "create_section",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "what it is called",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null otherwise",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "section_name": {
+            "description": "the section's resource name; null after a dry-run create, because Google assigns the id",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "section_name",
+          "display_name",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Create a named space, with up to 20 initial members or none at all. Leave yourself out of member_emails: Google adds the signed-in account. A space of your own is fine — invite people later with add_member. Set dry_run to see the request body without creating anything.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "what to call the space, 1 to 128 characters",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the request body without creating anything",
+            "type": "boolean"
+          },
+          "member_emails": {
+            "description": "up to 20 email addresses, not counting you; Google adds the signed-in account itself. Omit it for a space of your own, which you can invite people to later with add_member",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "create_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "what it is called",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "true when nothing was created",
+            "type": "boolean"
+          },
+          "member_count": {
+            "description": "how many people were asked for, not counting you",
+            "type": "integer"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real create",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the new space's resource name; null after a dry run, because Google assigns it",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "space_id",
+          "display_name",
+          "member_count",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Remove a custom emoji from your organisation. It goes for everyone, and messages that already use it lose the image.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without deleting anything",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "the emoji's resource name, customEmojis/{emoji}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "delete_custom_emoji",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "true only when this call deleted it. False can mean it was already gone",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "the emoji that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete a message by its resource name. A message that is already gone reports deleted false rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as a deletion that already happened. Needs the restricted-tier chat.messages scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without deleting anything",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "also delete the threaded replies to this message, which are other people's. Without it Google refuses to delete a message that has replies, and refusing is the safe answer: ask the person before setting this",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message to delete, spaces/{space}/messages/{message}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "delete_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "true only when this call deleted the message. False means nothing was deleted: a dry run, a message that was already gone, or Google refusing — those last two are not told apart, so do not report the message as deleted on false",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "forced": {
+            "description": "true when the call also deleted the message's threaded replies",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "deleted",
+          "forced",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete a custom section from your own sidebar. The spaces in it are not deleted: Google files them back under the default sections. A section that is already gone reports deleted false rather than failing. A refusal is reported, because that is Google declining to delete a system section. Needs the chat.users.sections scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without deleting anything",
+            "type": "boolean"
+          },
+          "section_name": {
+            "description": "the section to delete, users/{user}/sections/{section}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_name"
+        ],
+        "type": "object"
+      },
+      "name": "delete_section",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "false when the section was already gone, and after a dry run; neither is an error. A refusal is reported as an error rather than as false",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "section_name": {
+            "description": "the section that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_name",
+          "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete a space, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. This is the most destructive call in this server: read the space first, and ask the person before using it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_space_id": {
+            "description": "the same value as space_id. Deleting a space destroys every message and membership in it for everyone, and cannot be undone, so this call asks twice",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "check the arguments without deleting anything",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space to delete, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "confirm_space_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "true only when this call deleted it. False can mean it was already gone",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Save a message's attachment to the server's local directory. Name the message; if it carries more than one file, pass attachment_name from get_message. The result says where the file landed. A Google Drive attachment is refused with its file id: those bytes belong to Drive, not Chat. This needs the server to have been started with GCM_LOCAL_DIR.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_name": {
+            "description": "which attachment, when the message carries more than one. get_message lists them as attachment_name",
+            "type": "string"
+          },
+          "message_name": {
+            "description": "the message the file is on, spaces/{space}/messages/{message}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "download_attachment",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "how many bytes were written",
+            "type": "integer"
+          },
+          "content_type": {
+            "description": "the MIME type Google served it as",
+            "type": "string"
+          },
+          "file_name": {
+            "description": "the attachment's original name in Chat, which may differ from the name on disk",
+            "type": "string"
+          },
+          "path": {
+            "description": "where the file was written, inside the server's local directory",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "the SHA-256 of the bytes written, hex encoded. Chat publishes no checksum of its own, so there is nothing here to verify against: this is for comparing the file with a copy elsewhere",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "file_name",
+          "bytes",
+          "content_type",
+          "sha256"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Find the direct message with one person, and start one when there is none yet. Returns the space to pass to send_message. A newly started direct message is empty, so the other person sees nothing until a message is posted in it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_email": {
+            "description": "the other person's email address; search_people turns a name into one",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_email"
+        ],
+        "type": "object"
+      },
+      "name": "find_direct_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the direct message's resource name; pass it to send_message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Find the group chats whose members are exactly you and the people you name. Use it before create_group_chat to reuse an existing chat rather than starting a second one with the same people. A chat with one extra member does not match. For a one-to-one conversation use find_direct_message.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 30; default 10",
+            "type": "integer"
+          },
+          "member_emails": {
+            "description": "the other people's email addresses, 1 to 49. You are always included, so pass only the others",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "page_token": {
+            "description": "continue a previous call",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_emails"
+        ],
+        "type": "object"
+      },
+      "name": "find_group_chats",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass back as page_token for the next page",
+            "type": "string"
+          },
+          "result": {
+            "description": "the group chats holding exactly you and the people named",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "display_name": {
+                  "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
+                  "type": "string"
+                },
+                "space_id": {
+                  "description": "the space's resource name, spaces/{id}; pass this to other tools",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "space_id",
+                "type",
+                "display_name"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read your own Chat presence: active, idle, away or do not disturb, with any custom status. Yours only — Google's endpoint answers for the signed-in account and there is no way to ask about anyone else.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "name": "get_availability",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "do_not_disturb_until": {
+            "description": "when do-not-disturb ends, RFC 3339 in UTC; null when you are not in it",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "type": "string"
+          },
+          "status_emoji": {
+            "description": "the emoji beside that status",
+            "type": "string"
+          },
+          "status_expires": {
+            "description": "when the custom status lapses, RFC 3339 in UTC; null when it does not",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status_text": {
+            "description": "the custom status beside your name, if you have one",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "status_expires",
+          "do_not_disturb_until"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read one custom emoji by its resource name, which list_custom_emojis reports.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "the emoji's resource name, customEmojis/{emoji}, from list_custom_emojis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "get_custom_emoji",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "emoji_name": {
+            "description": "the :shortcode: form, which is what you type in a message",
+            "type": "string"
+          },
+          "name": {
+            "description": "the resource name, customEmojis/{emoji}; get_custom_emoji and delete_custom_emoji take this",
+            "type": "string"
+          },
+          "temporary_uri": {
+            "description": "a link to the image that Google says is good for at least ten minutes. Not stored anywhere and not worth keeping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "emoji_name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read one membership: who or what it is, their role, and whether they have joined. list_members answers who is in a space; this answers what a membership is, which is what to check before changing a role or removing someone — a membership can name a Google Group, and removing that one removes everyone in the group from the space.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "membership_name": {
+            "description": "the membership to read, spaces/{space}/members/{member}, from list_members",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name"
+        ],
+        "type": "object"
+      },
+      "name": "get_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "affiliation": {
+            "description": "INTERNAL for someone in your organisation, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organisation manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "what to call them, or null when Google gave no name",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "description": "the person's email address; null for a group and for anyone the People API could not resolve",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "kind": {
+            "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
+            "type": "string"
+          },
+          "member_id": {
+            "description": "who the membership is for: users/{id} for a person, groups/{id} for a group",
+            "type": "string"
+          },
+          "membership_name": {
+            "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id",
+            "type": "string"
+          },
+          "role": {
+            "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognise",
+            "type": "string"
+          },
+          "state": {
+            "description": "JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "membership_name",
+          "member_id",
+          "display_name",
+          "email",
+          "role",
+          "state"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Fetch a single message by its resource name (spaces/{space}/messages/{message}). Reaction summaries are inline; reactions_paged true means there were too many to inline and list_reactions has the detail. Attachments are listed with the name download_attachment takes.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "message_name": {
+            "description": "the message, spaces/{space}/messages/{message}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "get_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "description": "the files on the message; empty when it carries none",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "attachment_name": {
+                  "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                  "type": "string"
+                },
+                "content_type": {
+                  "description": "the MIME type Google reported",
+                  "type": "string"
+                },
+                "downloadable": {
+                  "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                  "type": "boolean"
+                },
+                "drive_file_id": {
+                  "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "file_name": {
+                  "description": "the original file name",
+                  "type": "string"
+                },
+                "source": {
+                  "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "attachment_name",
+                "file_name",
+                "content_type",
+                "source",
+                "drive_file_id",
+                "downloadable"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "last_update_time": {
+            "description": "when it was last edited, or null when it never was",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "message_id": {
+            "description": "the message's resource name",
+            "type": "string"
+          },
+          "reactions": {
+            "description": "one entry per distinct emoji on the message",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "description": "how many people reacted with it",
+                  "type": "integer"
+                },
+                "emoji": {
+                  "description": "the emoji character",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "emoji",
+                "count"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "reactions_paged": {
+            "description": "true when the summaries were left out because there were too many; call list_reactions for the detail",
+            "type": "boolean"
+          },
+          "sender_display_name": {
+            "description": "the sender's name, or null when Google gave none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sender_email": {
+            "description": "the sender's email address, or null when it could not be resolved",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sender_user_id": {
+            "description": "who sent it, users/{id}",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space it was posted in",
+            "type": "string"
+          },
+          "text": {
+            "description": "the message body as plain text",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "the thread it belongs to",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "when the message was created, RFC 3339 in UTC",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "space_id",
+          "thread_id",
+          "sender_user_id",
+          "sender_email",
+          "sender_display_name",
+          "text",
+          "timestamp",
+          "last_update_time",
+          "reactions",
+          "reactions_paged",
+          "attachments"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first. Sender email is resolved through the People API and is null when that fails.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 20",
+            "type": "integer"
+          },
+          "since": {
+            "description": "only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to read, spaces/{id}, from list_spaces",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_messages",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "the messages that were read",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "message_id": {
+                  "description": "the message's resource name, spaces/{space}/messages/{message}",
+                  "type": "string"
+                },
+                "sender_display_name": {
+                  "description": "the sender's name, or null when Google gave none",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "sender_email": {
+                  "description": "the sender's email address, or null when it could not be resolved",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "sender_user_id": {
+                  "description": "who sent it, users/{id}",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "the message body as plain text; empty for a message that is only an attachment or a card",
+                  "type": "string"
+                },
+                "thread_id": {
+                  "description": "the thread's resource name; pass it to get_thread to read the rest",
+                  "type": "string"
+                },
+                "timestamp": {
+                  "description": "when the message was created, RFC 3339 in UTC",
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message_id",
+                "sender_user_id",
+                "sender_email",
+                "sender_display_name",
+                "text",
+                "timestamp",
+                "thread_id"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Fetch one Google Chat space by its resource name. Use it to identify an unnamed direct message or group chat, or to confirm a space's metadata before writing to it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the space, spaces/{id}, from list_spaces",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "create_time": {
+            "description": "when the space was created, RFC 3339 in UTC; null when Google did not say",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
+            "type": "string"
+          },
+          "external_user_allowed": {
+            "description": "true when people outside the organisation may join; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "single_user_bot_dm": {
+            "description": "true when the space is a direct message with a Chat app rather than a person; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "space_id": {
+            "description": "the space's resource name, spaces/{id}",
+            "type": "string"
+          },
+          "type": {
+            "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "type",
+          "display_name",
+          "single_user_bot_dm",
+          "external_user_allowed",
+          "create_time"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "One event from a space by its resource name, which list_space_events reports. The payload is the resource as it is now, not as it was: an event about a message that has since been edited names the message, and get_message returns the current text.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "event_name": {
+            "description": "the event, spaces/{space}/spaceEvents/{event}, from list_space_events",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_name"
+        ],
+        "type": "object"
+      },
+      "name": "get_space_event",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "description": "true when Google collapsed several changes of one type into this event. It does that on its own, so a batch arrives even though only the plain type was asked for",
+            "type": "boolean"
+          },
+          "event_name": {
+            "description": "the event's resource name; pass it to get_space_event",
+            "type": "string"
+          },
+          "event_time": {
+            "description": "when it happened, RFC 3339 in UTC",
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Google's own event type, such as google.workspace.chat.message.v1.created",
+            "type": "string"
+          },
+          "kind": {
+            "description": "what changed: message, membership, reaction or space",
+            "type": "string"
+          },
+          "resources": {
+            "description": "the resource names the event covers, one per change. Read a message with get_message; a deleted one is a tombstone and only its name survives",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "event_name",
+          "event_type",
+          "event_time",
+          "kind",
+          "batch",
+          "resources"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read what Chat tells you about a space: which messages notify you, and whether the space is muted. Your own setting, not the space's.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_space_notification_setting",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "mute_setting": {
+            "description": "MUTED silences the space whatever notification_setting says; UNMUTED respects it",
+            "type": "string"
+          },
+          "name": {
+            "description": "the setting's own resource name",
+            "type": "string"
+          },
+          "notification_setting": {
+            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognise",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "notification_setting",
+          "mute_setting"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read how far you have read in a space. This is your own state, not the space's: two people reading the same space get different answers. Only top-level messages count, not thread replies.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_space_read_state",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "last_read_time": {
+            "description": "when you last read here, RFC 3339 in UTC; null when Google has recorded none, which is what a space you have never opened looks like",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "description": "the read state's own resource name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "last_read_time"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read all messages in a single thread, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "space_id": {
+            "description": "the thread's parent space, spaces/{id}",
+            "type": "string"
+          },
+          "thread_name": {
+            "description": "the thread, spaces/{space}/threads/{thread}, from a message's thread_id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "thread_name"
+        ],
+        "type": "object"
+      },
+      "name": "get_thread",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "the messages that were read",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "message_id": {
+                  "description": "the message's resource name, spaces/{space}/messages/{message}",
+                  "type": "string"
+                },
+                "sender_display_name": {
+                  "description": "the sender's name, or null when Google gave none",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "sender_email": {
+                  "description": "the sender's email address, or null when it could not be resolved",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "sender_user_id": {
+                  "description": "who sent it, users/{id}",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "the message body as plain text; empty for a message that is only an attachment or a card",
+                  "type": "string"
+                },
+                "thread_id": {
+                  "description": "the thread's resource name; pass it to get_thread to read the rest",
+                  "type": "string"
+                },
+                "timestamp": {
+                  "description": "when the message was created, RFC 3339 in UTC",
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message_id",
+                "sender_user_id",
+                "sender_email",
+                "sender_display_name",
+                "text",
+                "timestamp",
+                "thread_id"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read how far you have read in one thread. Your own state, as with a space.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the thread's space, spaces/{id}",
+            "type": "string"
+          },
+          "thread_name": {
+            "description": "the thread, spaces/{space}/threads/{thread}, from a message's thread_id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "thread_name"
+        ],
+        "type": "object"
+      },
+      "name": "get_thread_read_state",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "last_read_time": {
+            "description": "when you last read here, RFC 3339 in UTC; null when Google has recorded none, which is what a space you have never opened looks like",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "description": "the read state's own resource name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "last_read_time"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List your organisation's own emoji, the ones people type as :shortcodes:. Custom emoji exist only on Google Workspace accounts and only when an administrator has turned them on.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "mine_only": {
+            "description": "only the emoji this account created",
+            "type": "boolean"
+          },
+          "page_token": {
+            "description": "continue a previous call",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_custom_emojis",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass back as page_token for the next page",
+            "type": "string"
+          },
+          "result": {
+            "description": "the organisation's custom emoji",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "emoji_name": {
+                  "description": "the :shortcode: form, which is what you type in a message",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "the resource name, customEmojis/{emoji}; get_custom_emoji and delete_custom_emoji take this",
+                  "type": "string"
+                },
+                "temporary_uri": {
+                  "description": "a link to the image that Google says is good for at least ten minutes. Not stored anywhere and not worth keeping",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "emoji_name"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with their email resolved through the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "list_members",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "who is in the space",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "affiliation": {
+                  "description": "INTERNAL for someone in your organisation, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organisation manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+                  "type": "string"
+                },
+                "display_name": {
+                  "description": "what to call them, or null when Google gave no name",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "email": {
+                  "description": "the person's email address; null for a group and for anyone the People API could not resolve",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
+                  "type": "string"
+                },
+                "member_id": {
+                  "description": "who the membership is for: users/{id} for a person, groups/{id} for a group",
+                  "type": "string"
+                },
+                "membership_name": {
+                  "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id",
+                  "type": "string"
+                },
+                "role": {
+                  "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognise",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "membership_name",
+                "member_id",
+                "display_name",
+                "email",
+                "role",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the messages pinned in a space. A pin is how a space marks something worth keeping to hand, so this is a good first read for what a space is about.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "continue a previous call",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "list_pinned_messages",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass back as page_token for the next page",
+            "type": "string"
+          },
+          "result": {
+            "description": "the pinned messages, which are the ones the space treats as important",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "message_id": {
+                  "description": "the message it points at; get_message reads it",
+                  "type": "string"
+                },
+                "pin_name": {
+                  "description": "the pin's resource name, spaces/{space}/messagePins/{pin}",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pin_name",
+                "message_id"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the reactions on a single message: who reacted and with what. Default limit 50, max 200; page with page_token and next_page_token. Custom emoji are left out, having no character to show.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "message_name": {
+            "description": "the message, spaces/{space}/messages/{message}",
+            "type": "string"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "list_reactions",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reactions": {
+            "description": "one entry per person per emoji",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "emoji": {
+                  "description": "the emoji character",
+                  "type": "string"
+                },
+                "reaction_name": {
+                  "description": "the reaction's resource name; remove_reaction takes it",
+                  "type": "string"
+                },
+                "user_id": {
+                  "description": "who reacted, users/{id}",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reaction_name",
+                "emoji",
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "reactions",
+          "next_page_token"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the spaces filed under a section. Pass section_name to read one section, space_id to find which section a single space sits in, or both to check one against the other; at least one is required. A non-null next_page_token means limit cut the listing short, so page rather than treat it as the whole section. Needs the chat.users.sections.readonly scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
+          },
+          "section_name": {
+            "description": "read one section, users/{user}/sections/{section}",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "find which section this space sits in, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_section_items",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "the spaces filed under the section",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "item_name": {
+                  "description": "the item's resource name; move_space_to_section takes it",
+                  "type": "string"
+                },
+                "section_name": {
+                  "description": "the section this item currently sits in",
+                  "type": "string"
+                },
+                "space_id": {
+                  "description": "the space filed here. Null means a kind of item this server does not model yet: Google's item field is a union and only spaces are members of it today",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "item_name",
+                "section_name",
+                "space_id"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "next_page_token": {
+            "description": "non-null means limit cut the listing short. A bulk re-sort built on a truncated listing skips the spaces it never saw, so page rather than assume",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unparsed": {
+            "description": "rows this listing could not read and skipped. Non-zero means the result is INCOMPLETE, not that the section is that small",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_page_token",
+          "unparsed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the sections in the caller's own Chat sidebar: the system ones ('(direct messages)', '(spaces)', '(apps)') plus any custom ones they made. Sections are per-user and change nobody else's view. A non-null next_page_token means more sections exist beyond limit. Needs the chat.users.sections.readonly scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_sections",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "non-null means limit cut the listing short and more sections exist; pass it back as page_token",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sections": {
+            "description": "the caller's own sidebar sections",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "display_name": {
+                  "description": "what to call it. Google names only custom sections, so a system one gets a parenthesised label here",
+                  "type": "string"
+                },
+                "section_name": {
+                  "description": "the section's resource name, users/{user}/sections/{section}",
+                  "type": "string"
+                },
+                "sort_order": {
+                  "description": "where it sits in the sidebar; set by position_section and null when Google gave no rank",
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "type": {
+                  "description": "CUSTOM_SECTION, DEFAULT_DIRECT_MESSAGES, DEFAULT_SPACES, DEFAULT_APPS, or SECTION_TYPE_UNSPECIFIED",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "section_name",
+                "display_name",
+                "type",
+                "sort_order"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "unparsed": {
+            "description": "rows this listing could not read and skipped. Non-zero means the result is INCOMPLETE and this server's models are stale, not that the sidebar is that small",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections",
+          "next_page_token",
+          "unparsed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "What changed in a space over the last 28 days: messages posted, edited or deleted, people joining or leaving, reactions, and edits to the space itself. Name at least one event type. Events come oldest first and each names the resources it covers, which you read with get_message, get_member or get_space. Google keeps 28 days and no more, and it answers a busy space with batch events covering several changes at once.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "event_types": {
+            "description": "what to list, at least one: message_created, message_updated, message_deleted, membership_created, membership_updated, membership_deleted, reaction_created, reaction_deleted, space_updated. Google returns its own batch versions of these alongside them and refuses a batch name asked for directly",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "limit": {
+            "description": "how many events to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "continue from a previous next_page_token",
+            "type": "string"
+          },
+          "since": {
+            "description": "only events after this time, exclusive; RFC 3339. Google keeps 28 days and nothing older can be asked for",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to read, spaces/{id}",
+            "type": "string"
+          },
+          "until": {
+            "description": "only events up to this time, inclusive; RFC 3339. Defaults to now",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "event_types"
+        ],
+        "type": "object"
+      },
+      "name": "list_space_events",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "description": "what changed, oldest first",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "batch": {
+                  "description": "true when Google collapsed several changes of one type into this event. It does that on its own, so a batch arrives even though only the plain type was asked for",
+                  "type": "boolean"
+                },
+                "event_name": {
+                  "description": "the event's resource name; pass it to get_space_event",
+                  "type": "string"
+                },
+                "event_time": {
+                  "description": "when it happened, RFC 3339 in UTC",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "event_type": {
+                  "description": "Google's own event type, such as google.workspace.chat.message.v1.created",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "what changed: message, membership, reaction or space",
+                  "type": "string"
+                },
+                "resources": {
+                  "description": "the resource names the event covers, one per change. Read a message with get_message; a deleted one is a tombstone and only its name survives",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                }
+              },
+              "required": [
+                "event_name",
+                "event_type",
+                "event_time",
+                "kind",
+                "batch",
+                "resources"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "next_page_token": {
+            "description": "pass back as page_token for the next page",
+            "type": "string"
+          },
+          "unparsed": {
+            "description": "events Google sent that carried nothing this server could name. Non-zero means this page is INCOMPLETE, which is not the same as nothing having happened",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "events",
+          "unparsed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List Google Chat spaces (direct messages, group chats, named spaces) the authenticated user belongs to. Defaults to 50 entries; pass limit (1-200) to widen and space_type ('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow. Use this to find a space's resource name before reading its messages.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "space_type": {
+            "description": "narrow to SPACE, DIRECT_MESSAGE or GROUP_CHAT; omit for every kind",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_spaces",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "the spaces the account belongs to",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "display_name": {
+                  "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
+                  "type": "string"
+                },
+                "space_id": {
+                  "description": "the space's resource name, spaces/{id}; pass this to other tools",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "space_id",
+                "type",
+                "display_name"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Mark a space as read up to now, clearing its unread badge for you and nobody else. Google pulls the mark back to the newest message's own time, so the answer reports what it recorded.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without changing anything",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "mark_space_read",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "last_read_time": {
+            "description": "the mark Google recorded, which is not always what was asked for: marking read is pulled back to the newest message's own time",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "the read state's resource name; empty after a dry run",
+            "type": "string"
+          },
+          "unread": {
+            "description": "true when this call rewound the mark rather than clearing it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "last_read_time",
+          "unread",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Rewind your read mark in a space, so every top-level message after from_time is unread again. Pass the timestamp of the message you want to come back to; get_messages reports it. Affects you and nobody else.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without changing anything",
+            "type": "boolean"
+          },
+          "from_time": {
+            "description": "rewind your read mark to this time, RFC 3339: every top-level message after it becomes unread. get_messages reports each message's timestamp, so pass the timestamp of the message you want to come back to",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "from_time"
+        ],
+        "type": "object"
+      },
+      "name": "mark_space_unread",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "last_read_time": {
+            "description": "the mark Google recorded, which is not always what was asked for: marking read is pulled back to the newest message's own time",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "the read state's resource name; empty after a dry run",
+            "type": "string"
+          },
+          "unread": {
+            "description": "true when this call rewound the mark rather than clearing it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "last_read_time",
+          "unread",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "File a space under a section in your own sidebar. Every space already sits in some section, a default one until you move it, so this both files and re-files, and reports moved false when the space is already where you want it. For a bulk sort, read each section once with list_section_items and pass the item_name it gives you: that skips the per-space lookup. Set dry_run to see which section the space would leave without writing. Needs the chat.users.sections scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "look up where the space sits without moving it",
+            "type": "boolean"
+          },
+          "item_name": {
+            "description": "the space's current sidebar entry, from list_section_items. Passing it skips a lookup, which is what makes a bulk sort cost one listing per section instead of a request per space. Nothing re-checks that it belongs to space_id, so a mismatched pair files the wrong space",
+            "type": "string"
+          },
+          "section_name": {
+            "description": "where to file it, users/{user}/sections/{section}",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to file, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "section_name"
+        ],
+        "type": "object"
+      },
+      "name": "move_space_to_section",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was moved",
+            "type": "boolean"
+          },
+          "from_section": {
+            "description": "where the space sat before, a default section when it had never been filed. Resolved before anything is written, so a dry run reports it too",
+            "type": "string"
+          },
+          "item_name": {
+            "description": "the sidebar entry after the move; feed it back in for a bulk sort. A move renames it, so the one you passed in no longer exists",
+            "type": "string"
+          },
+          "moved": {
+            "description": "false without an error in two cases: a dry run, and a space already in the target section",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run that would move something, the exact body; null on a real move and on a space already in place",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "section_name": {
+            "description": "the section it was asked to go to",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space that was filed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "section_name",
+          "item_name",
+          "from_section",
+          "moved",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Pin a message in its space, so everyone in the space sees it in the pinned list. The space is taken from the message name. Pinning is visible to everyone.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without changing anything",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message, spaces/{space}/messages/{message}. The space is taken from it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "pin_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "message_id": {
+            "description": "the message that was named",
+            "type": "string"
+          },
+          "pin_name": {
+            "description": "the pin's resource name; empty after a dry run",
+            "type": "string"
+          },
+          "pinned": {
+            "description": "true only when this call pinned the message",
+            "type": "boolean"
+          },
+          "unpinned": {
+            "description": "true only when this call removed a pin. False can mean the message was not pinned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pin_name",
+          "message_id",
+          "pinned",
+          "unpinned",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Move a section within your sidebar. Pass exactly one of sort_order (absolute, 1 and up) or relative_position (START or END). Prefer relative_position when arranging several: Google documents sort_order as inserting at that rank and shifting the rest down, but a run of absolute inserts does not settle where that implies, so build an order by moving each to START in reverse. Set dry_run to see the request body first. Needs the chat.users.sections scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without moving anything",
+            "type": "boolean"
+          },
+          "relative_position": {
+            "description": "START or END; pass this or sort_order, not both",
+            "type": "string"
+          },
+          "section_name": {
+            "description": "the section to move, users/{user}/sections/{section}",
+            "type": "string"
+          },
+          "sort_order": {
+            "description": "an absolute rank, 1 and up; pass this or relative_position, not both",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "section_name"
+        ],
+        "type": "object"
+      },
+      "name": "position_section",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was moved",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real move",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "section_name": {
+            "description": "the section that was moved",
+            "type": "string"
+          },
+          "sort_order": {
+            "description": "the rank Google reports after the move, when it reports one; null after a dry run",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "section_name",
+          "sort_order",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Remove someone from a space by their membership resource name, which list_members gives you. Check what the membership is first: a membership can name a Google Group, and removing that one removes everyone in the group from the space. list_members reports the kind. A membership that is already gone reports removed false rather than failing, so a repeat is safe; a membership you may not remove is reported as an error instead. There is no by-email shape: the People API stays silent about people the caller cannot see, so a miss would read as already gone while the person is still in the space.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without removing anyone",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to remove, spaces/{space}/members/{member}, from list_members",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name"
+        ],
+        "type": "object"
+      },
+      "name": "remove_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nobody was removed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "removed": {
+            "description": "true when this call removed the membership; false when it was already gone, and after a dry run. Neither is an error. A membership you may not remove is reported as an error instead, so false never hides a refusal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "membership_name",
+          "removed",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete a reaction. Pass reaction_name on its own, or message_name with emoji and user_email to look it up first. The lookup matches on the reactor's email address, so it fails rather than reporting nothing to delete when someone who reacted cannot be resolved: a silent no was the one answer it must not give. Removed false means there was no such reaction.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "emoji": {
+            "description": "the emoji to remove; pass it with message_name and user_email",
+            "type": "string"
+          },
+          "message_name": {
+            "description": "the message the reaction is on; pass it with emoji and user_email",
+            "type": "string"
+          },
+          "reaction_name": {
+            "description": "the reaction to delete, from list_reactions or add_reaction. Pass this on its own",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "whose reaction to remove; pass it with message_name and emoji",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "remove_reaction",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "reaction_name": {
+            "description": "the reaction that was deleted; null when the lookup found none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "removed": {
+            "description": "false when there was no such reaction to delete, which is not an error",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reaction_name",
+          "removed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Change a custom section's label. Only custom sections can be renamed; Google refuses a patch against a system one. Set dry_run to see the patch body first. Needs the chat.users.sections scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "the new label, 1 to 80 characters",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the patch body without applying it",
+            "type": "boolean"
+          },
+          "section_name": {
+            "description": "the section to rename, users/{user}/sections/{section}, from list_sections",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_name",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_section",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "what it is called",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null otherwise",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "section_name": {
+            "description": "the section's resource name; null after a dry-run create, because Google assigns the id",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "section_name",
+          "display_name",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Search Google Chat message history. Two searches in one tool. Pass query and Google searches every space you can see, matching whole words; narrow it with space_id, sender_email, mentions_me, has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "by_relevance": {
+            "description": "order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that programme",
+            "type": "boolean"
+          },
+          "created_after": {
+            "description": "only messages created at or after this time; RFC 3339, such as 2026-01-01T00:00:00Z. Strongly recommended for a regex scan: an unbounded scan of a busy space stops at the page cap and returns a partial result",
+            "type": "string"
+          },
+          "created_before": {
+            "description": "only messages created before this time; RFC 3339. Google's search only",
+            "type": "string"
+          },
+          "has_attachment": {
+            "description": "only messages carrying an attachment. Google's search only",
+            "type": "boolean"
+          },
+          "has_link": {
+            "description": "only messages containing a hyperlink. Google's search only",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "how many matches to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "max_pages": {
+            "description": "how many pages of history a regex scan may read, 1 to 50; default 10",
+            "type": "integer"
+          },
+          "mentions_me": {
+            "description": "only messages that @-mention you. Google's search only",
+            "type": "boolean"
+          },
+          "page_token": {
+            "description": "continue Google's search from a previous next_page_token",
+            "type": "string"
+          },
+          "query": {
+            "description": "keywords for Google's own search, matched as a phrase across whole words. Quotes, backslashes and brackets are not allowed; use regex for a literal or partial-word match",
+            "type": "string"
+          },
+          "regex": {
+            "description": "a regular expression in RE2 syntax, scanned by this server over one space rather than by Google. The only way to match a pattern or part of a word, and the slowest: it reads pages of history. Cannot be combined with query or the filters below",
+            "type": "string"
+          },
+          "sender_email": {
+            "description": "only messages from this person. Google's search only",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to search, spaces/{id}. Google's search takes every space you can see when this is omitted; a regex scan needs it",
+            "type": "string"
+          },
+          "unread_only": {
+            "description": "only messages you have not read. Google's search only, and it needs the read-state scope as well as the message one",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "search_messages",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cap_reached": {
+            "description": "true when there is more than was returned: a scan that hit max_pages or filled the limit, or a Google search with a further page. The answer is partial, so say so",
+            "type": "boolean"
+          },
+          "matches": {
+            "description": "the messages that matched, newest first",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "message_id": {
+                  "description": "the message's resource name",
+                  "type": "string"
+                },
+                "sender_user_id": {
+                  "description": "who sent it, users/{id}",
+                  "type": "string"
+                },
+                "snippet": {
+                  "description": "up to about 160 characters of the body around the first match",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "the whole message body",
+                  "type": "string"
+                },
+                "thread_id": {
+                  "description": "the thread it belongs to",
+                  "type": "string"
+                },
+                "timestamp": {
+                  "description": "when the message was created, RFC 3339 in UTC",
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message_id",
+                "thread_id",
+                "sender_user_id",
+                "text",
+                "timestamp",
+                "snippet"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "next_page_token": {
+            "description": "pass back as page_token to continue Google's search; a regex scan has none",
+            "type": "string"
+          },
+          "scanned": {
+            "description": "how many messages were read before filtering. Google filters upstream, so its search reports what it returned",
+            "type": "integer"
+          },
+          "server_side": {
+            "description": "true when Google ran the search, false when this server scanned one space for a pattern",
+            "type": "boolean"
+          },
+          "unparsed": {
+            "description": "messages that were read but could not be searched. Non-zero means this result is INCOMPLETE, which is not the same as no matches; say so rather than reporting the space as empty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "matches",
+          "scanned",
+          "cap_reached",
+          "server_side",
+          "unparsed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Look someone up across the caller's Workspace directory and their own contacts, and get their email address. Each hit says which source produced it. Directory hits are remembered, so a later get_messages or list_members resolves the same person without another lookup. Use it to turn a name or a fragment of one into the email address the other tools take.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "how many to return, 1 to 100; default 10",
+            "type": "integer"
+          },
+          "query": {
+            "description": "a name or email fragment, 1 to 200 characters",
+            "type": "string"
+          },
+          "sources": {
+            "description": "which upstreams to ask: DIRECTORY for the Workspace directory, CONTACTS for the caller's own contacts. Default asks both, which covers a Workspace account and a personal one",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "name": "search_people",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "people": {
+            "description": "the matches, deduplicated across sources",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "display_name": {
+                  "description": "what to call them, or null when the hit carried no name",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "email": {
+                  "description": "their email address, or null when the hit carried none",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "source": {
+                  "description": "DIRECTORY for a Workspace profile, CONTACTS for the caller's own contacts",
+                  "type": "string"
+                },
+                "user_id": {
+                  "description": "the Chat user id, users/{id}, when the hit is a Workspace profile. Null for a personal contact, whose id does not name anyone in Chat",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "user_id",
+                "email",
+                "display_name",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "sources_attempted": {
+            "description": "which upstreams were asked",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "sources_succeeded": {
+            "description": "which upstreams answered. A source that was attempted but did not succeed refused, and the matches come from the rest",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "total_returned": {
+            "description": "how many matches are in people",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "people",
+          "total_returned",
+          "sources_attempted",
+          "sources_succeeded"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Search named Google Chat spaces by display name, including spaces you are not a member of. Use it to find a space to join or read; use list_spaces for the ones you are already in, and find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "match spaces whose name begins with these words; matching is by word prefix, not substring, so 'eng' finds 'Engineering' but 'ing' does not. Omit to list every named space the other filters allow",
+            "type": "string"
+          },
+          "external_user_allowed": {
+            "description": "true for spaces that admit people outside the organisation, false for those that do not; omit for both",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "limit": {
+            "description": "how many to return, 1 to 100; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "continue a previous search; Google returns a token only with admin access",
+            "type": "string"
+          },
+          "use_admin_access": {
+            "description": "search every space in the Workspace rather than the ones you can see. Needs Workspace admin rights and the admin toolset, which is off unless GCM_TOOLSETS names it",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "search_spaces",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass back as page_token for the next page; only ever set under admin access",
+            "type": "string"
+          },
+          "result": {
+            "description": "the named spaces that matched",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "display_name": {
+                  "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
+                  "type": "string"
+                },
+                "space_id": {
+                  "description": "the space's resource name, spaces/{id}; pass this to other tools",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "space_id",
+                "type",
+                "display_name"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "total_size": {
+            "description": "how many spaces matched in total, an estimate above 10000; only ever set under admin access",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Post a text message to a Chat space, a group chat or a direct message. The body is posted exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put \u003cusers/their@address\u003e in the text yourself. Pass thread_name to reply in an existing thread, which every message carries as thread_id. Set dry_run to see the request body without posting. The post carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the tool again after an error can, because that is a new post. Read the space first if you are unsure. To send a file, upload it with upload_attachment first and pass the token it returns.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_upload_token": {
+            "description": "attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the request body without posting; call again without it to post",
+            "type": "boolean"
+          },
+          "reply_fallback": {
+            "description": "if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space to post in, spaces/{id}, from list_spaces or find_direct_message",
+            "type": "string"
+          },
+          "text": {
+            "description": "the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write \u003cusers/their@address\u003e in the text: Google resolves the address itself when the server is signed in as a person, which this one is. \u003cusers/all\u003e mentions and notifies EVERYONE in the space, so use it only when asked to",
+            "type": "string"
+          },
+          "thread_name": {
+            "description": "reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "send_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was posted",
+            "type": "boolean"
+          },
+          "message_id": {
+            "description": "the new message's resource name; null after a dry run, because nothing was posted",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been posted; null on a real post",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the space it went to",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "the thread it landed in; null after a dry run",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "message_id",
+          "space_id",
+          "thread_id",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Set your own Chat presence to ACTIVE, AWAY or DO_NOT_DISTURB. Do not disturb needs an expiry — minutes or until — which Google requires and caps at a year. Other people see this, so it is worth asking before silencing someone's notifications on their behalf.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without changing anything",
+            "type": "boolean"
+          },
+          "minutes": {
+            "description": "how long do-not-disturb should last. Pass this or until, and only with DO_NOT_DISTURB, which Google requires an expiry for and caps at a year",
+            "type": "integer"
+          },
+          "state": {
+            "description": "ACTIVE, AWAY or DO_NOT_DISTURB. IDLE cannot be set: Google decides it",
+            "type": "string"
+          },
+          "until": {
+            "description": "when do-not-disturb should end, RFC 3339. Pass this or minutes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "name": "set_availability",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "do_not_disturb_until": {
+            "description": "when do-not-disturb ends, RFC 3339 in UTC; null when you are not in it",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "type": "string"
+          },
+          "status_emoji": {
+            "description": "the emoji beside that status",
+            "type": "string"
+          },
+          "status_expires": {
+            "description": "when the custom status lapses, RFC 3339 in UTC; null when it does not",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status_text": {
+            "description": "the custom status beside your name, if you have one",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "status_expires",
+          "do_not_disturb_until",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Set the text and emoji beside your name in Chat, or clear it. Google wants both together and refuses one without the other; a custom emoji is not accepted here, only a Unicode one. An expiry is optional, unlike do-not-disturb's. Everyone who sees you in Chat sees this.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "clear": {
+            "description": "remove the status you have instead of setting one. Takes no other argument",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "emoji": {
+            "description": "one Unicode emoji beside the text. Google requires it alongside the text and refuses one of your organisation's custom emoji here. Required unless clear is set",
+            "type": "string"
+          },
+          "minutes": {
+            "description": "how long the status should last. Pass this or until; leave both out and it stays until you change it",
+            "type": "integer"
+          },
+          "text": {
+            "description": "what the status says, up to 64 characters. Required unless clear is set",
+            "type": "string"
+          },
+          "until": {
+            "description": "when the status should lapse, RFC 3339. Pass this or minutes",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "set_custom_status",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cleared": {
+            "description": "true when the status was removed rather than set",
+            "type": "boolean"
+          },
+          "do_not_disturb_until": {
+            "description": "when do-not-disturb ends, RFC 3339 in UTC; null when you are not in it",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null otherwise",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "state": {
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "type": "string"
+          },
+          "status_emoji": {
+            "description": "the emoji beside that status",
+            "type": "string"
+          },
+          "status_expires": {
+            "description": "when the custom status lapses, RFC 3339 in UTC; null when it does not",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status_text": {
+            "description": "the custom status beside your name, if you have one",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "status_expires",
+          "do_not_disturb_until",
+          "cleared",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Remove a message's pin. Takes the message, not the pin: Google gives a pin the message's own id. A message that was not pinned reports unpinned false rather than failing.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "check the arguments without changing anything",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message, spaces/{space}/messages/{message}. The space is taken from it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name"
+        ],
+        "type": "object"
+      },
+      "name": "unpin_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "message_id": {
+            "description": "the message that was named",
+            "type": "string"
+          },
+          "pin_name": {
+            "description": "the pin's resource name; empty after a dry run",
+            "type": "string"
+          },
+          "pinned": {
+            "description": "true only when this call pinned the message",
+            "type": "boolean"
+          },
+          "unpinned": {
+            "description": "true only when this call removed a pin. False can mean the message was not pinned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pin_name",
+          "message_id",
+          "pinned",
+          "unpinned",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Change what someone may do in a space: MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people, so promoting someone gives away control of the space and demoting the last manager may leave nobody able to administer it. Role is the only thing this changes. Set dry_run to see the request body without sending it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to change, spaces/{space}/members/{member}, from list_members",
+            "type": "string"
+          },
+          "role": {
+            "description": "MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can change a space's settings and remove people, so promoting someone gives away control of the space",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role"
+        ],
+        "type": "object"
+      },
+      "name": "update_member_role",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; after a dry run, the role that was asked for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Replace the text of a message you sent. Text only: cards and attachments are left untouched, and editing them needs an identity this server does not have. Set dry_run to see the patch body without applying it. Needs the restricted-tier chat.messages scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the patch body without applying it",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message to edit, spaces/{space}/messages/{message}; you must be its sender",
+            "type": "string"
+          },
+          "text": {
+            "description": "the replacement body, 1 to 4096 characters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "update_message",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message that was edited",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact patch body; null on a real edit",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "text": {
+            "description": "the body it now has",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "text",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Rename a space or change its description. Pass at least one of the two; an empty edit is refused. Editing the description clears the space's guidelines, because Google's mask covers both at once, so edit a space that has guidelines in the Chat interface instead. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "a new name, 1 to 128 characters; omit to leave it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "return the patch body and its mask without applying them",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space to edit, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "the description that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "the name that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact patch body; null on a real edit",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the space that was edited",
+            "type": "string"
+          },
+          "update_mask": {
+            "description": "which top-level fields the patch targeted",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "space_id",
+          "display_name",
+          "description",
+          "update_mask",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Change what Chat tells you about a space, or mute it. Pass either setting or both; whatever you leave out is left alone. Affects you and nobody else.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "mute_setting": {
+            "description": "MUTED or UNMUTED; omit to leave it alone. MUTED silences the space whatever the other setting says",
+            "type": "string"
+          },
+          "notification_setting": {
+            "description": "ALL, MAIN_CONVERSATIONS, FOR_YOU or OFF; omit to leave it alone",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_space_notification_setting",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "mute_setting": {
+            "description": "MUTED silences the space whatever notification_setting says; UNMUTED respects it",
+            "type": "string"
+          },
+          "name": {
+            "description": "the setting's own resource name",
+            "type": "string"
+          },
+          "notification_setting": {
+            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognise",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "notification_setting",
+          "mute_setting",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Upload a local file to a Chat space and get back the token that attaches it. Post it with send_message's attachment_upload_token, in the same space; nobody sees the file until then. The file has to be inside the server's local directory, and Google's limit is 200 MB. Set dry_run to check the file and see what would be sent. This needs the server to have been started with GCM_LOCAL_DIR.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "report the file and the request metadata without uploading; call again without it to upload",
+            "type": "boolean"
+          },
+          "file_name": {
+            "description": "the name the file gets in Chat, with its extension. Omit to keep the name it has on disk",
+            "type": "string"
+          },
+          "local_path": {
+            "description": "the file to send, inside the server's local directory. A bare name is taken as being in that directory; a path outside it is refused",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space the file is for, spaces/{id}. The token only works for this space",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "local_path"
+        ],
+        "type": "object"
+      },
+      "name": "upload_attachment",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "the file's size on disk",
+            "type": "integer"
+          },
+          "content_type": {
+            "description": "the MIME type this server derived from the extension, or empty when it could not",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "true when nothing was uploaded",
+            "type": "boolean"
+          },
+          "file_name": {
+            "description": "the name the file has in Chat",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the metadata that would go with the file; null on a real upload",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "upload_token": {
+            "description": "pass this to send_message as attachment_upload_token. Null after a dry run, because nothing was uploaded",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "upload_token",
+          "file_name",
+          "bytes",
+          "content_type",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Return the authenticated Google user's identity (subject id, email, display name). Useful as a first-call smoke test, and for resolving who \"me\" is before filtering messages by sender. Reads from the OpenID Connect userinfo endpoint.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "name": "whoami",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "the account's display name",
+            "type": "string"
+          },
+          "email": {
+            "description": "the account's email address",
+            "type": "string"
+          },
+          "picture_url": {
+            "description": "URL of the account's profile picture",
+            "type": "string"
+          },
+          "user_sub": {
+            "description": "the account's stable Google subject id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_sub",
+          "email",
+          "display_name"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "resourceTemplates": [
+    {
+      "description": "A single Google Chat space by id. Same content as the get_space tool. space_id is the bare id, with no spaces/ prefix.",
+      "mimeType": "application/json",
+      "name": "space",
+      "title": "Google Chat space",
+      "uriTemplate": "gchat://spaces/{space_id}"
+    },
+    {
+      "description": "A single Google Chat message by id, with its reaction summaries inline. Same content as the get_message tool. Both ids are bare, with no prefix.",
+      "mimeType": "application/json",
+      "name": "message",
+      "title": "Google Chat message",
+      "uriTemplate": "gchat://spaces/{space_id}/messages/{message_id}"
+    },
+    {
+      "description": "One thread's messages, oldest first, up to 100 of them. Same content as the get_thread tool. Both ids are bare, with no prefix. A thread longer than 100 messages needs get_thread, which pages.",
+      "mimeType": "application/json",
+      "name": "thread",
+      "title": "Google Chat thread",
+      "uriTemplate": "gchat://spaces/{space_id}/threads/{thread_id}"
+    }
+  ]
+}

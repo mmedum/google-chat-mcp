@@ -1,0 +1,84 @@
+name: Bug report
+description: Something in google-chat-mcp isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. For **security issues**
+        (token leak, auth bypass, etc.) do not open a public issue — follow
+        `SECURITY.md` instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `google-chat-mcp --version`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - go install
+        - release archive
+        - built from source
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: "Claude Code 2.1.x, Claude Desktop, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor output
+      description: |
+        Output of `google-chat-mcp doctor`. It names the account, where the
+        token came from, and what Google actually answered. Redact the space
+        ids if they identify something you would rather not share.
+      render: text
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw instead.
+      placeholder: |
+        Steps to reproduce:
+        1.
+        2.
+        Expected:
+        Actual:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        The failing tool call's error, and stderr around it — rerun with
+        `GCM_LOG_LEVEL=debug` if you can. The logs carry no message content,
+        addresses or search terms by design, so a debug log is safe to paste;
+        space and message ids are in there, so redact those if they identify
+        something you would rather not share.
+      render: text
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmations
+      options:
+        - label: I've redacted any tokens, secrets, or personal info from logs.
+          required: true
+        - label: I've searched existing issues for duplicates.
+          required: true

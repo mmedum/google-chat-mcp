@@ -1,0 +1,24 @@
+# Go build artefacts
+/google-chat-mcp
+/dist/
+/schemas.json
+cov.out
+coverage.out
+
+# Never commit an OAuth client
+client_secret*.json
+*.client_secret.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local tooling state (Claude Code + Entire)
+.claude/
+.entire/
