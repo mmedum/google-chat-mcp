@@ -12,6 +12,17 @@ import (
 // tempBase points the package at a throwaway directory. A test dir sits
 // outside the home directory, so it opts past the guard BaseDir applies
 // to a real override. No test ever touches the caller's own config.
+// setHome points os.UserHomeDir() at dir. It reads HOME on unix and
+// USERPROFILE on Windows, so setting only one leaves the other platform
+// reading the real account's home — which is where the temporary
+// directory lives, so a test meant to sit outside home sat inside it and
+// passed for the wrong reason.
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 func tempBase(t *testing.T) string {
 	t.Helper()
 	base := t.TempDir()
@@ -90,7 +101,7 @@ func TestBaseDirFallsBackToUserConfigDir(t *testing.T) {
 // value pointed at something sensitive would re-permission it.
 func TestBaseDirRefusesAPathOutsideHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv(EnvDir, t.TempDir()) // a sibling of home, not under it
 	t.Setenv(EnvAllowOutsideHome, "")
 
@@ -101,7 +112,7 @@ func TestBaseDirRefusesAPathOutsideHome(t *testing.T) {
 
 func TestBaseDirAllowsAPathOutsideHomeWithTheOptIn(t *testing.T) {
 	outside := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv(EnvDir, outside)
 	t.Setenv(EnvAllowOutsideHome, "1")
 
@@ -117,7 +128,7 @@ func TestBaseDirAllowsAPathOutsideHomeWithTheOptIn(t *testing.T) {
 func TestBaseDirAllowsAPathUnderHome(t *testing.T) {
 	home := t.TempDir()
 	under := filepath.Join(home, ".config", AppDir)
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv(EnvDir, under)
 	t.Setenv(EnvAllowOutsideHome, "")
 
@@ -127,6 +138,44 @@ func TestBaseDirAllowsAPathUnderHome(t *testing.T) {
 	}
 	if got != under {
 		t.Errorf("BaseDir = %q, want %q", got, under)
+	}
+}
+
+// The bug this holds: home and the override are two names for one
+// place, and comparing the names refused a directory plainly inside it.
+// Windows is where it showed up — an 8.3 short name against the long one
+// — but a linked home does it on any system, which is what this builds.
+func TestBaseDirAllowsAPathUnderALinkedHome(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "home-link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	setHome(t, link)
+	t.Setenv(EnvDir, filepath.Join(real, ".config", AppDir))
+	t.Setenv(EnvAllowOutsideHome, "")
+
+	if _, err := BaseDir(); err != nil {
+		t.Errorf("a directory under home, named through the link, must be allowed: %v", err)
+	}
+}
+
+// A config directory that is not there yet is the ordinary case: the
+// first login creates it. Resolving has to reach past the missing part
+// rather than give up and compare the unresolved name.
+func TestRealPathResolvesPastWhatIsNotThereYet(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+
+	got := realPath(filepath.Join(link, "not", "created", "yet"))
+	if want := filepath.Join(real, "not", "created", "yet"); got != want {
+		t.Errorf("realPath = %q, want %q", got, want)
+	}
+	if got := realPath(filepath.Join(real, "plain")); got != filepath.Join(real, "plain") {
+		t.Errorf("a path with nothing to resolve came back as %q", got)
 	}
 }
 
@@ -181,7 +230,7 @@ func TestSaveRoundTripsAndIsOwnerOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Errorf("config file mode = %o, want 600", perm)
 	}
 }

@@ -21,6 +21,22 @@ import (
 	"github.com/mmedum/google-chat-mcp/internal/gchat"
 )
 
+// localDir is a throwaway directory with its links already resolved,
+// which is the form every path this service reports back comes in:
+// files() resolves GCM_LOCAL_DIR once, so a test comparing against the
+// raw name of t.TempDir() compares two spellings of one directory.
+// Both non-Linux runners hand out such a name — macOS puts temporary
+// directories under /var, a link to /private/var, and Windows uses 8.3
+// short names like C:\Users\RUNNER~1.
+func localDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve the temp dir: %v", err)
+	}
+	return dir
+}
+
 // newTransferService is newService with a local directory, which is
 // what the file-transfer tools need before they will do anything.
 func newTransferService(t *testing.T, dir string, handler http.HandlerFunc) *Service {
@@ -57,7 +73,7 @@ func messageWithAttachment(body, contentName string) http.HandlerFunc {
 }
 
 func TestDownloadAttachmentWritesTheFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	s := newTransferService(t, dir, messageWithAttachment("the standup notes", "notes.txt"))
 
 	got, err := s.DownloadAttachment(context.Background(), DownloadAttachmentInput{
@@ -97,7 +113,7 @@ func TestDownloadAttachmentWritesTheFile(t *testing.T) {
 // the file is. The attachment resource knows better, and that is the
 // answer to report.
 func TestDownloadAttachmentPrefersTheAttachmentsOwnType(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	s := newTransferService(t, dir, func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/media/") {
 			w.Header().Set("Content-Type", "application/octet-stream")
@@ -122,7 +138,7 @@ func TestDownloadAttachmentPrefersTheAttachmentsOwnType(t *testing.T) {
 }
 
 func TestDownloadAttachmentNeverOverwrites(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	s := newTransferService(t, dir, messageWithAttachment("the standup notes", "notes.txt"))
 
 	in := DownloadAttachmentInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1"}
@@ -145,7 +161,7 @@ func TestDownloadAttachmentNeverOverwrites(t *testing.T) {
 // A name that would escape the directory, or name a hidden file beside
 // it, is not a name this server writes to.
 func TestDownloadAttachmentKeepsTheNameInsideTheDirectory(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	s := newTransferService(t, dir, messageWithAttachment("x", "../../etc/passwd"))
 
 	got, err := s.DownloadAttachment(context.Background(), DownloadAttachmentInput{
@@ -163,7 +179,7 @@ func TestDownloadAttachmentKeepsTheNameInsideTheDirectory(t *testing.T) {
 // download, not a short file, and nothing is left behind to look like
 // one that worked.
 func TestADownloadThatStopsShortKeepsNothing(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	s := newTransferService(t, dir, func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/media/") {
 			w.Header().Set("Content-Length", "100")
@@ -256,7 +272,7 @@ func TestDownloadAttachmentRefusals(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := localDir(t)
 			s := newTransferService(t, dir, tc.handler)
 			_, err := s.DownloadAttachment(context.Background(), tc.in)
 			assertClass(t, err, tc.class)
@@ -304,7 +320,7 @@ func TestSafeName(t *testing.T) {
 // The file goes up in a multipart body whose first part is the metadata
 // Google reads and whose second is the file itself.
 func TestUploadAttachmentSendsTheFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("the standup notes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +366,7 @@ func TestUploadAttachmentSendsTheFile(t *testing.T) {
 
 // A dry run reports the file and the metadata, and sends nothing.
 func TestUploadAttachmentDryRunSendsNothing(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -372,8 +388,8 @@ func TestUploadAttachmentDryRunSendsNothing(t *testing.T) {
 }
 
 func TestUploadAttachmentRefusals(t *testing.T) {
-	dir := t.TempDir()
-	outsideDir := t.TempDir()
+	dir := localDir(t)
+	outsideDir := localDir(t)
 	write := func(path string, size int) string {
 		t.Helper()
 		if err := os.WriteFile(path, make([]byte, size), 0o600); err != nil {
@@ -421,7 +437,7 @@ func TestUploadAttachmentRefusals(t *testing.T) {
 // The dry-run guard is structural: an upload that forgot its own
 // preview branch is refused by the client rather than sending the file.
 func TestAnUploadCannotEscapeAPreview(t *testing.T) {
-	dir := t.TempDir()
+	dir := localDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
