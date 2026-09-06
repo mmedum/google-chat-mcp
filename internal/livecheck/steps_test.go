@@ -30,6 +30,7 @@ var steps = []step{
 		if out.Email == "" {
 			d.t.Error("whoami named no account")
 		}
+		d.email = out.Email
 	}},
 
 	{"the scratch space reads back", "get_space", func(d *driver) {
@@ -55,15 +56,15 @@ var steps = []step{
 	// not empty, which is what would break if the wire shape moved.
 	{"spaces list and parse", "list_spaces", func(d *driver) {
 		var out struct {
-			Spaces []struct {
+			Result []struct {
 				SpaceID string `json:"space_id"`
-			}
+			} `json:"result"`
 		}
 		d.into(d.must("list_spaces", map[string]any{"limit": 50}), &out)
-		if len(out.Spaces) == 0 {
+		if len(out.Result) == 0 {
 			d.t.Error("list_spaces returned nothing for an account that has at least the scratch space")
 		}
-		for _, s := range out.Spaces {
+		for _, s := range out.Result {
 			if s.SpaceID == "" {
 				d.t.Error("a listed space has no id, so a caller cannot address it")
 			}
@@ -119,12 +120,12 @@ var steps = []step{
 
 	{"the message is in the space's history", "get_messages", func(d *driver) {
 		var out struct {
-			Messages []struct {
+			Result []struct {
 				MessageID string `json:"message_id"`
-			}
+			} `json:"result"`
 		}
 		d.into(d.must("get_messages", map[string]any{"space_id": d.space, "limit": 50}), &out)
-		for _, m := range out.Messages {
+		for _, m := range out.Result {
 			if m.MessageID == d.posted {
 				return
 			}
@@ -136,7 +137,7 @@ var steps = []step{
 		if d.thread == "" {
 			d.t.Skip("no thread id was returned")
 		}
-		d.must("get_thread", map[string]any{"thread_name": d.thread})
+		d.must("get_thread", map[string]any{"space_id": d.space, "thread_name": d.thread})
 	}},
 
 	{"an edit replaces the body", "update_message", func(d *driver) {
@@ -160,14 +161,23 @@ var steps = []step{
 	}},
 
 	{"the reaction is listed", "list_reactions", func(d *driver) {
-		res := d.must("list_reactions", map[string]any{"message_name": d.posted})
-		if len(res) == 0 {
+		var out struct {
+			Reactions []struct {
+				Emoji string `json:"emoji"`
+			} `json:"reactions"`
+		}
+		d.into(d.must("list_reactions", map[string]any{"message_name": d.posted}), &out)
+		if len(out.Reactions) == 0 {
 			d.t.Error("list_reactions returned nothing after one was added")
 		}
 	}},
 
 	{"the reaction is removed", "remove_reaction", func(d *driver) {
-		d.must("remove_reaction", map[string]any{"message_name": d.posted, "emoji": "👍"})
+		// The address is required: a reaction belongs to a person, and
+		// removing one by emoji alone would not say whose.
+		d.must("remove_reaction", map[string]any{
+			"message_name": d.posted, "emoji": "👍", "user_email": d.email,
+		})
 	}},
 
 	{"the message pins", "pin_message", func(d *driver) {
@@ -184,15 +194,15 @@ var steps = []step{
 
 	{"the space has members", "list_members", func(d *driver) {
 		var out struct {
-			Members []struct {
-				MemberName string `json:"member_name"`
-			}
+			Result []struct {
+				MembershipName string `json:"membership_name"`
+			} `json:"result"`
 		}
 		d.into(d.must("list_members", map[string]any{"space_id": d.space}), &out)
-		if len(out.Members) == 0 {
+		if len(out.Result) == 0 {
 			d.t.Fatal("a space this account created has no members")
 		}
-		d.member = out.Members[0].MemberName
+		d.member = out.Result[0].MembershipName
 		d.record(d.member)
 	}},
 
@@ -200,7 +210,7 @@ var steps = []step{
 		if d.member == "" {
 			d.t.Skip("no member to read")
 		}
-		d.must("get_member", map[string]any{"member_name": d.member})
+		d.must("get_member", map[string]any{"membership_name": d.member})
 	}},
 
 	{"search finds the message in this space", "search_messages", func(d *driver) {
@@ -227,8 +237,25 @@ var steps = []step{
 		})
 	}},
 
+	// event_types is required, and it is the field the reference gets
+	// wrong: its prose says `event_type` and its examples say
+	// `event_types`, and the examples are right. Settled live, and this
+	// step is what would catch it changing back.
+	//
+	// Not asserting that this run's own message appears: the events feed
+	// lags its own writes, so that would fail for a reason that is not a
+	// bug here.
 	{"space events are listed", "list_space_events", func(d *driver) {
-		d.must("list_space_events", map[string]any{"space_id": d.space})
+		var out struct {
+			Unparsed int `json:"unparsed"`
+		}
+		d.into(d.must("list_space_events", map[string]any{
+			"space_id": d.space, "event_types": []string{"message_created"},
+		}), &out)
+		if out.Unparsed > 0 {
+			d.t.Errorf("%d event(s) could not be parsed, so the listing is incomplete "+
+				"rather than short", out.Unparsed)
+		}
 	}},
 
 	// The bug this repository shipped once: Google answers a deleted
@@ -236,14 +263,37 @@ var steps = []step{
 	// delete that reads the status instead of the answer reports success
 	// twice. Every gate passed while it was broken.
 	{"the message deletes", "delete_message", func(d *driver) {
-		d.must("delete_message", map[string]any{"message_name": d.posted})
+		var out struct {
+			Deleted bool `json:"deleted"`
+		}
+		d.into(d.must("delete_message", map[string]any{"message_name": d.posted}), &out)
+		if !out.Deleted {
+			d.t.Error("the first delete reported that it deleted nothing")
+		}
 	}},
 
-	{"a repeat delete is refused, not silently repeated", "delete_message", func(d *driver) {
+	// The bug this repository shipped once, and the reason this whole
+	// file exists. Delete is idempotent on purpose — a repeat is not an
+	// error — so the thing that has to be true is narrower and stronger:
+	// the second call must report that it deleted *nothing*.
+	//
+	// Google answers an already-deleted message with 200 and a tombstone
+	// rather than 404, so a delete that reads the status instead of the
+	// answer reports `deleted: true` twice and every gate stays green.
+	// That is precisely what happened, and only a live call can tell the
+	// two apart.
+	{"a repeat delete reports that it deleted nothing", "delete_message", func(d *driver) {
 		res := d.call("delete_message", map[string]any{"message_name": d.posted})
-		if !res.IsError {
-			d.t.Error("deleting an already-deleted message reported success; " +
-				"Google answers 200 with a tombstone, so the answer has to be read")
+		if res.IsError {
+			d.t.Fatalf("a repeat delete failed rather than being idempotent: %s", d.redact(res.Text))
+		}
+		var out struct {
+			Deleted bool `json:"deleted"`
+		}
+		d.into(res.Structured, &out)
+		if out.Deleted {
+			d.t.Error("deleting an already-deleted message reported deleting it again; " +
+				"Google answers 200 with a tombstone, so the answer has to be read, not the status")
 		}
 	}},
 
@@ -275,7 +325,7 @@ func TestLive(t *testing.T) {
 			inner := *d
 			inner.t = t
 			s.run(&inner)
-			d.posted, d.thread, d.member = inner.posted, inner.thread, inner.member
+			d.posted, d.thread, d.member, d.email = inner.posted, inner.thread, inner.member, inner.email
 		}) {
 			t.Fatalf("stopping: later steps read what %q wrote", s.name)
 		}
