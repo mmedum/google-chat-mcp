@@ -63,6 +63,20 @@ pins: ## Every third-party tool held to an exact version
 classes: ## The tool error vocabulary, closed from both sides
 	@$(GO) run ./scripts/gates classes
 
+# Both of these already run under `cover`, as part of `go test ./...`.
+# Naming them costs a fraction of a second and buys two things: they
+# print in the check output, and they can be run alone while working on
+# what they guard. The shape is `live-surface`'s — a target that runs one
+# test by name — rather than a `gates` subcommand, which would mean a Go
+# program shelling out to `go test`.
+.PHONY: leaks
+leaks: ## Nothing identifying a real account, and nothing compiled, in the tree
+	@$(GO) test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoCompiledBinariesInTheTree' -count=1
+
+.PHONY: parity
+parity: ## `make check` and CI run the same gates
+	@$(GO) test ./scripts/gates -run TestMakeCheckAndCIRunTheSameGates -count=1
+
 .PHONY: schemas
 schemas: build ## Dump tool schemas
 	$(BIN) --dump-schemas > schemas.json
@@ -101,7 +115,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:
