@@ -29,4 +29,18 @@ while read -r line; do
     *) echo "non-JSON-RPC line on stdout: $line"; exit 1 ;;
   esac
 done < "$TMP/out.jsonl"
+# The same exchange again, with stdin closed the instant the last request
+# is written rather than a second later. A client that goes away
+# mid-call is ordinary — every host restart does it — but it reaches the
+# server as the SDK's own "server is closing" error rather than an EOF,
+# which is a different branch from the one above. Getting it wrong exits
+# non-zero and every host records a normal disconnect as a crash. The
+# `sleep` in the first run is enough to hide it, which is the whole
+# reason this second run exists. `pipefail` is what asserts the code.
+{
+  echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}'
+  echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_spaces","arguments":{}}}'
+} | timeout 20 "$BIN" > "$TMP/abrupt.jsonl"
+
 echo "stdio smoke ok"
