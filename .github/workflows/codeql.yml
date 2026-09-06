@@ -1,0 +1,40 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so a rule added after a merge still finds old code.
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+# Every `run` step in this file, on every platform. Without it a step on
+# the Windows runner gets PowerShell, where the shell it was written for
+# is bash — and the mangling shows up on the line that runs, not on the
+# gate that reads it. Explicit `bash` also turns on `pipefail`, so a
+# failure in the left half of a pipe stops the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@486fec2a3ea2626afcd8c7e9208b4f515078dd7e # codeql-bundle-v2.26.4
+        with:
+          languages: go
+          build-mode: autobuild
+      - uses: github/codeql-action/analyze@486fec2a3ea2626afcd8c7e9208b4f515078dd7e # codeql-bundle-v2.26.4

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "google-chat-mcp",
+  "display_name": "Google Chat",
+  "version": "0.0.0-dev",
+  "description": "Google Chat as MCP tools: read, search and write to your spaces, direct messages and sidebar.",
+  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nEvery other setting keeps its default. Attachment transfer stays off until `GCM_LOCAL_DIR` names a directory, which takes the manual client configuration in the README.",
+  "author": {
+    "name": "mmedum",
+    "url": "https://github.com/mmedum"
+  },
+  "homepage": "https://github.com/mmedum/google-chat-mcp",
+  "documentation": "https://github.com/mmedum/google-chat-mcp#readme",
+  "support": "https://github.com/mmedum/google-chat-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mmedum/google-chat-mcp"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["google-chat", "chat", "google-workspace", "stdio"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/google-chat-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/google-chat-mcp",
+      "args": [],
+      "env": {
+        "GCM_CLIENT_SECRET": "${user_config.client_secret}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/google-chat-mcp.exe"
+        }
+      }
+    }
+  },
+  "user_config": {
+    "client_secret": {
+      "type": "file",
+      "title": "OAuth client JSON",
+      "description": "The client_secret JSON you downloaded when you created the Desktop OAuth client. The same file you passed to `google-chat-mcp login`.",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32"]
+  }
+}

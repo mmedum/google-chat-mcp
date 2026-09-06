@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a new tool, resource, or behavior
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that the server doesn't currently let you do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        Shape of the new tool / parameter / resource. Include input/output shape
+        if you have one in mind.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried, other tools that do this, etc.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is within the current project's scope (per-user OAuth, Google Chat API surface, both transports).
+          required: true
