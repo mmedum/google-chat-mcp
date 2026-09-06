@@ -89,10 +89,6 @@ changelog:
   disable: true
 
 release:
-  # Nothing is published until the first release is ready and every gate is
-  # green. Removing this line is a step in the release, not something to
-  # do early.
-  disable: true
   # A tag is the decision; a draft nobody publishes is how releases go
   # missing. Pre-1.0 tags are still marked as pre-releases automatically
   # for anything carrying a suffix like -rc1.
