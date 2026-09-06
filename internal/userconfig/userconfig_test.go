@@ -164,7 +164,15 @@ func TestBaseDirAllowsAPathUnderALinkedHome(t *testing.T) {
 // first login creates it. Resolving has to reach past the missing part
 // rather than give up and compare the unresolved name.
 func TestRealPathResolvesPastWhatIsNotThereYet(t *testing.T) {
-	real := t.TempDir()
+	// Resolved with the standard library rather than with realPath, so
+	// the expectation does not come from the code under test. The
+	// temporary directory needs it: it is handed out under a link on
+	// macOS and under a short name on Windows, so its own path is
+	// already one of the two spellings this is about.
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve the temp dir: %v", err)
+	}
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("no symlinks here: %v", err)
