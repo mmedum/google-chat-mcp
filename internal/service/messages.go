@@ -40,10 +40,29 @@ type GetMessagesInput struct {
 	// Empty means no bound.
 	Since string
 	Limit int
+	// PageToken continues a previous call.
+	PageToken string
+}
+
+// MessagesResult is one page of messages.
+//
+// A result rather than a bare slice, because the page token was being
+// built on the wire and dropped here: a caller got the first 50 of 300
+// messages with nothing in the reply to say so, and a model reading it
+// reported a prefix as the whole conversation.
+type MessagesResult struct {
+	Messages      []MessageRow
+	NextPageToken string
+	// Unparsed is how many rows Google sent that this server could not
+	// model, and so dropped. The count reached the log and stopped
+	// there, which told the operator and not the model — and the
+	// server's own instructions tell the model that a listing reporting
+	// unparsed rows is incomplete rather than short.
+	Unparsed int
 }
 
 // GetMessages reads a space's most recent messages, newest first.
-func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) ([]MessageRow, error) {
+func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) (*MessagesResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
 		return nil, err
@@ -58,15 +77,21 @@ func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) ([]Messa
 	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
-		Space:    space,
-		OrderBy:  "createTime desc",
-		PageSize: limit,
-		Filter:   createdAfterFilter(since),
+		Space:     space,
+		OrderBy:   "createTime desc",
+		PageSize:  limit,
+		Filter:    createdAfterFilter(since),
+		PageToken: in.PageToken,
 	})
 	if err != nil {
 		return nil, Classify(err)
 	}
-	return s.enrich(ctx, resp.Messages), nil
+	rows, unparsed := s.enrich(ctx, resp.Messages)
+	return &MessagesResult{
+		Messages:      rows,
+		NextPageToken: resp.NextPageToken,
+		Unparsed:      unparsed,
+	}, nil
 }
 
 // GetThreadInput selects one thread's messages.
@@ -75,8 +100,10 @@ type GetThreadInput struct {
 	Thread string
 	// Limit caps the read. Zero takes the tool's default; MaxLimit
 	// asks for as much as the tool allows, which is what the thread
-	// resource wants because it cannot page.
+	// resource asks for, having no way to pass a page token.
 	Limit int
+	// PageToken continues a previous call.
+	PageToken string
 }
 
 // MaxLimit asks a listing for as much as it allows, without the caller
@@ -88,7 +115,7 @@ const MaxLimit = -1
 // The space has to be given as well as the thread: Google lists
 // messages under a space, and answers 400 when the thread belongs to a
 // different one.
-func (s *Service) GetThread(ctx context.Context, in GetThreadInput) ([]MessageRow, error) {
+func (s *Service) GetThread(ctx context.Context, in GetThreadInput) (*MessagesResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
 		return nil, err
@@ -107,15 +134,21 @@ func (s *Service) GetThread(ctx context.Context, in GetThreadInput) ([]MessageRo
 	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
-		Space:    space,
-		Filter:   `thread.name = "` + thread + `"`,
-		OrderBy:  "createTime asc",
-		PageSize: limit,
+		Space:     space,
+		Filter:    `thread.name = "` + thread + `"`,
+		OrderBy:   "createTime asc",
+		PageSize:  limit,
+		PageToken: in.PageToken,
 	})
 	if err != nil {
 		return nil, Classify(err)
 	}
-	return s.enrich(ctx, resp.Messages), nil
+	rows, unparsed := s.enrich(ctx, resp.Messages)
+	return &MessagesResult{
+		Messages:      rows,
+		NextPageToken: resp.NextPageToken,
+		Unparsed:      unparsed,
+	}, nil
 }
 
 // ReactionCount is one emoji and how many people used it.
@@ -202,7 +235,7 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 	// message with no resource name is the one thing it drops, and
 	// Google answering a get with one would be strange enough to
 	// report rather than to paper over.
-	rows := s.enrich(ctx, []gchat.Message{*got})
+	rows, _ := s.enrich(ctx, []gchat.Message{*got})
 	if len(rows) == 0 {
 		return nil, Failf(ClassUpstream, "Google returned a message with no resource name")
 	}
@@ -254,7 +287,7 @@ func summarizeReactions(raw []gchat.ReactionSummary) ([]ReactionCount, bool) {
 // and nothing to follow it up with.
 //
 // A failed People lookup is not drift and never costs a row either.
-func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) []MessageRow {
+func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRow, int) {
 	senders := make([]string, 0, len(msgs))
 	for _, m := range msgs {
 		if m.Sender != nil {
@@ -287,7 +320,7 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) []MessageRow
 		rows = append(rows, row)
 	}
 	s.warnUnparsed("messages_without_a_name", unparsed, len(msgs))
-	return rows
+	return rows, unparsed
 }
 
 // maxMessageText is this server's bound, not Google's. The tool schemas
@@ -307,6 +340,10 @@ type SendMessageInput struct {
 	// UploadToken attaches a file uploaded beforehand, from
 	// upload_attachment.
 	UploadToken string
+	// ClientMessageID makes a retry from outside this server safe.
+	// Empty mints one per call, which covers this call's own retries
+	// and nothing further.
+	ClientMessageID string
 	// DryRun renders the request body and posts nothing.
 	DryRun bool
 }
@@ -337,6 +374,12 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	if err != nil {
 		return nil, err
 	}
+	// Refused here rather than by Google, whose answer for a malformed
+	// id is a 400 naming a query parameter the caller never wrote.
+	if in.ClientMessageID != "" && !gchat.ValidMessageID(in.ClientMessageID) {
+		return nil, Invalidf("client_message_id %q must start with \"client-\", be at most 63 characters, "+
+			"and hold only lowercase letters, digits and hyphens", in.ClientMessageID)
+	}
 	var thread string
 	if in.Thread != "" {
 		// Checked on any non-empty value, blank included. Treating "  "
@@ -356,7 +399,7 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		return &SendMessageResult{Space: space, DryRun: true, Rendered: rendered}, nil
 	}
 
-	msg, err := s.client.SendMessage(ctx, space, body, in.ReplyFallback)
+	msg, err := s.client.SendMessage(ctx, space, body, in.ReplyFallback, in.ClientMessageID)
 	if err != nil {
 		return nil, Classify(err)
 	}

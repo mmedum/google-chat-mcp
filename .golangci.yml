@@ -2,6 +2,13 @@ version: "2"
 
 run:
   timeout: 5m
+  # Without these the linter does not see internal/livecheck or
+  # internal/evals at all — every file in both is behind a build tag, so
+  # they are simply absent from the package and all fifteen linters
+  # report nothing about 2,300 lines. `go vet` is already run under both
+  # tags for the same reason (Makefile, ci.yml). Both can be on at once
+  # because no file here uses a negated constraint.
+  build-tags: [live, evals]
 
 linters:
   default: none

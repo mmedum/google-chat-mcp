@@ -101,17 +101,6 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	if d.Config.ReadOnly && sp.Kind != Read && sp.Kind != ReadWritesLocally {
 		return
 	}
-	// The shared standard leaves destructive tools unregistered unless a
-	// flag enables them. This server defaults the other way, on purpose:
-	// delete_message and the other three are part of the released
-	// surface, and a tool that vanishes is a broken client rather than a
-	// safer one. GCM_ALLOW_DESTRUCTIVE=false is the opt-in guard, and
-	// delete_space is why it exists — it destroys other people's
-	// messages and cannot be undone.
-	if d.Config.RefuseDeletes && sp.Kind == Destructive {
-		return
-	}
-
 	tool := &mcp.Tool{
 		Name:         sp.Name,
 		Description:  sp.Description,
@@ -151,7 +140,27 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 		// until something is posted in it, which asks here anyway.
 		tool.Meta = mcp.Meta{"anthropic/requiresUserInteraction": true}
 	}
-	mcp.AddTool(s, tool, wrap(h, dryRunField[In]()))
+	// A destructive tool is REGISTERED whether or not deletes are
+	// allowed, and refuses at call time instead.
+	//
+	// Registered, because a tool that vanishes is a broken client rather
+	// than a safer one: the model cannot tell "not permitted on this
+	// server" from "this server cannot do that", and the released
+	// surface is a contract the schema diff holds. Refused by default,
+	// because a deleted Chat message has nothing behind it. The first
+	// outside person to install all three of these servers in one
+	// sitting said it plainly — Drive and Docs gate deletes behind a
+	// variable that is off by default, and Chat, the one where a delete
+	// cannot be undone, had the loosest default of the three.
+	//
+	// So the guard moved rather than appearing: it used to unregister
+	// four tools and now refuses four calls, and it is on by default
+	// instead of off.
+	refuse := ""
+	if sp.Kind == Destructive && d.Config.RefuseDeletes {
+		refuse = sp.Name
+	}
+	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse))
 }
 
 // wrap is what every handler gets for free.
@@ -161,8 +170,16 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 // reply carries its readable half as well as its structured one. All
 // belong here for the same reason the annotations do — a rule kept by
 // hand at fifty call sites is a rule that will be missed at one.
-func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int) mcp.ToolHandlerFor[In, Out] {
+func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse string) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		if refuse != "" {
+			var zero Out
+			return nil, zero, fail(service.Failf(service.ClassUnsupported,
+				"%s deletes something, and this server was started with deletes refused. "+
+					"Nothing was changed. Set %sALLOW_DESTRUCTIVE=true to allow them; a deleted Chat "+
+					"message cannot be recovered, so decide that deliberately.",
+				refuse, config.EnvPrefix))
+		}
 		if dryRun >= 0 && reflect.ValueOf(in).Field(dryRun).Bool() {
 			ctx = service.Preview(ctx)
 		}

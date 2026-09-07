@@ -66,9 +66,10 @@ was checked, against which source, and which live call contradicted it.
   `internal/version/` the build stamp.
 - `scripts/gates/` is every check this repository runs on itself, as Go:
   the schema diff, the coverage floor, the stdio smoke test, the
-  staleness gate, and the Claude Desktop bundle packer. It is under
-  `scripts/` and not `internal/` because it never ships, and it is Go and
-  not shell so that the code holding the gates shut is held to them too.
+  staleness gate, the API-coverage gate and the Claude Desktop bundle
+  packer. It is under `scripts/` and not `internal/` because it never
+  ships, and it is Go and not shell so that the code holding the gates
+  shut is held to them too.
   There is no shell, no npx and no Python in it, on purpose.
 - `internal/livecheck/` drives the shipped binary against a real account,
   behind a `live` build tag; `internal/evals/` scores a model driving the
@@ -76,6 +77,9 @@ was checked, against which source, and which live call contradicted it.
   gate does, because it needs no credentials.
 - `testdata/schemas-baseline.json` — the released tool surface, which a
   change may add to but never drop from.
+- `testdata/api-coverage.tsv` — every Chat and People API method, plus
+  the one OpenID Connect endpoint, and the verdict on it: the client
+  method that uses it, or the reason it is deliberately left out.
 
 ## Definition of done
 
@@ -84,16 +88,18 @@ tagged suite, golangci-lint, race tests with an 80% floor per package —
 `cmd/` has its own lower floor, printed on every run, because the OAuth
 flow and the serve loop have no seam a unit test can reach — plus
 `govulncheck`, the licence allow-list, a stdio smoke test, the schema
-diff, the live driver's surface gate, and the staleness gate over README,
-`docs/` and CHANGELOG. Plus tests for new behaviour, `/simplify` and
-`/code-review high` with findings resolved or written down, and a look at
-the schema diff for anything breaking.
+diff, the API-coverage gate, the live driver's surface gate, and the
+staleness gate over README, `docs/` and CHANGELOG. Plus tests for new
+behaviour, `/simplify` and `/code-review high` with findings resolved or
+written down, and a look at the schema diff for anything breaking.
 
 Before a release, `make live` as well. It drives the shipped binary
 against a real account and is the only thing here that can catch a wrong
 belief about the API, because every fake in the unit suite is written
 from that belief. `make check` cannot replace it and green does not imply
-it.
+it. `make api-diff` too: it refetches Google's discovery documents into
+`testdata/api-methods.json`, and every method it adds fails
+`api-coverage` until somebody judges it.
 
 Green gates are not done. A repeat-delete bug once went through every
 one of them, because a unit test asserts the behaviour the code was

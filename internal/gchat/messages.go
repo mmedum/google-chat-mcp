@@ -176,20 +176,45 @@ func NewMessageID() string {
 	return "client-" + strings.ToLower(rand.Text())
 }
 
+// ValidMessageID reports whether an id meets Google's rules for a
+// client-assigned message id.
+func ValidMessageID(id string) bool {
+	if !strings.HasPrefix(id, "client-") || len(id) > 63 {
+		return false
+	}
+	for _, r := range id {
+		lower := r >= 'a' && r <= 'z'
+		digit := r >= '0' && r <= '9'
+		if !lower && !digit && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 // SendMessage posts a message to space and returns what Google stored.
 //
-// The id is minted here, once per call, and every attempt inside the
-// call carries it. That is what makes the write idempotent: a 5xx or a
-// dropped connection can arrive after Google created the message, and
-// without the id the retry posts a second copy. With it, Google refuses
-// the retry as ALREADY_EXISTS and the message that landed is read back.
+// clientID is the client-assigned message id. Empty mints a fresh one,
+// which makes this call's own retries idempotent: a 5xx or a dropped
+// connection can arrive after Google created the message, and without
+// the id the retry posts a second copy. With it, Google refuses the
+// retry as ALREADY_EXISTS and the message that landed is read back.
+//
+// A caller that passes its own id extends that guarantee past this
+// call, to a caller who tries the whole send again. That is the only
+// way a retry from outside is safe, and until it existed the tool
+// description had to tell the model that calling again might double
+// post — true, and useless, because nothing was offered to prevent it.
 //
 // A reply carries messageReplyOption. The default is the strict one, so
 // a thread that has since gone fails rather than quietly starting a new
 // one elsewhere in the space; replyFallback asks for the other
 // behaviour, which is Google's REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD.
-func (c *Client) SendMessage(ctx context.Context, space string, body *SendMessageRequest, replyFallback bool) (*Message, error) {
-	id := NewMessageID()
+func (c *Client) SendMessage(ctx context.Context, space string, body *SendMessageRequest, replyFallback bool, clientID string) (*Message, error) {
+	id := clientID
+	if id == "" {
+		id = NewMessageID()
+	}
 	q := url.Values{"messageId": {id}}
 	if body != nil && body.Thread != nil {
 		option := "REPLY_MESSAGE_OR_FAIL"

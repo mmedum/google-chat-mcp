@@ -11,7 +11,31 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-07
+
 ### Changed
+- **Breaking: deletes are refused unless you turn them on.** Set
+  `GCM_ALLOW_DESTRUCTIVE=true` to allow `delete_message`, `delete_space`,
+  `delete_section` and `delete_custom_emoji` to do anything; without it
+  they answer `[unsupported]` and change nothing. The tools stay
+  registered either way, so the tool surface is unchanged and a model is
+  told why rather than left to infer it from a missing tool. Off by
+  default because a deleted Chat message has no trash behind it, and the
+  sibling Drive and Docs servers gate their recoverable deletes the same
+  way. If you rely on deletes, set the variable.
+- **Four read tools now page.** `list_spaces`, `get_messages`,
+  `get_thread` and `list_members` take `page_token` and return
+  `next_page_token`, like the nine listings that already did. They
+  previously returned the first page and said nothing about the rest, so
+  a caller could report 50 of 300 members as the whole membership.
+- **`send_message` takes `client_message_id`.** Set it and repeating the
+  exact call lands on the same message instead of posting a second one.
+- Read-only mode no longer advertises `send_message` and
+  `find_direct_message`, which it does not register.
+- `get_messages`, `get_thread` and `list_members` report `unparsed`, so a
+  listing that dropped rows says so instead of only logging it.
+- Quoted messages carry their content: `quotedMessageSnapshot` is
+  modelled, so a reply can be read together with what it replied to.
 - **The Claude Desktop bundle now covers Linux.** It shipped macOS and
   Windows only, on the belief that Linux would need two bundles or a
   broken one. Claude Desktop for Linux exists and supports both x64 and
@@ -65,3 +89,7 @@ subprocess of your client, and talks to Google Chat as you.
   keeps the command in the README.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
+
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v1.0.0

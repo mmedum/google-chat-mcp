@@ -56,7 +56,7 @@ var steps = []step{
 			d.t.Errorf("get_space returned %s, want the space it was asked for", d.redact(out.SpaceID))
 		}
 		if !strings.Contains(out.DisplayName, spacePrefix) {
-			d.t.Errorf("display name = %q, want the name create_space was given", out.DisplayName)
+			d.t.Errorf("display name = %q, want the name create_space was given", d.redact(out.DisplayName))
 		}
 	}},
 
@@ -127,7 +127,7 @@ var steps = []step{
 		}
 		d.into(d.must("get_message", map[string]any{"message_name": d.posted}), &out)
 		if out.Text != livePostBody {
-			d.t.Errorf("the body came back as %q, want it posted verbatim", out.Text)
+			d.t.Errorf("the body came back as %q, want it posted verbatim", d.redact(out.Text))
 		}
 	}},
 
@@ -174,7 +174,7 @@ var steps = []step{
 		}
 		d.into(d.must("get_message", map[string]any{"message_name": d.posted}), &out)
 		if out.Text != liveEditBody {
-			d.t.Errorf("after the edit the body is %q, want the replacement", out.Text)
+			d.t.Errorf("after the edit the body is %q, want the replacement", d.redact(out.Text))
 		}
 	}},
 
@@ -367,6 +367,86 @@ var steps = []step{
 		d.into(d.must("get_space_event", map[string]any{"event_name": d.event}), &out)
 		if out.EventType == "" {
 			d.t.Error("the event came back without a type")
+		}
+	}},
+
+	// Pagination against the real API rather than against a fake, and
+	// the reason that distinction is not rhetorical.
+	//
+	// The first version of this step asserted that limit 1 returns one
+	// message. It returns NONE. Google applies the page size before it
+	// filters, so a page can come back empty with a token still on it,
+	// and a space holding two messages answers `limit: 1` with `[]`.
+	// Reproduced by hand against a real space before this was written.
+	//
+	// So the rule the surface has to carry is not "a token means there
+	// is more" but "an empty page is not the end". A caller that stops
+	// on an empty result reports a space with messages in it as quiet.
+	{"an empty page is not the end of the messages", "get_messages", func(d *driver) {
+		seen := map[string]bool{}
+		token := ""
+		empties := 0
+		for page := 0; page < 10; page++ {
+			args := map[string]any{"space_id": d.space, "limit": 1}
+			if token != "" {
+				args["page_token"] = token
+			}
+			var out struct {
+				Result []struct {
+					MessageID string `json:"message_id"`
+				} `json:"result"`
+				NextPageToken *string `json:"next_page_token"`
+			}
+			d.into(d.must("get_messages", args), &out)
+			if len(out.Result) == 0 {
+				empties++
+			}
+			for _, m := range out.Result {
+				seen[m.MessageID] = true
+			}
+			if out.NextPageToken == nil || *out.NextPageToken == "" {
+				break
+			}
+			token = *out.NextPageToken
+		}
+		// Two messages exist by now: the one that was posted and edited,
+		// and the one the upload made.
+		if len(seen) < 2 {
+			d.t.Errorf("paging one at a time found %d messages; the space holds at least 2, "+
+				"so the token is not reaching them", len(seen))
+		}
+		if empties == 0 {
+			d.t.Log("no empty page this run; the behaviour is Google's and it is not guaranteed " +
+				"to show every time")
+		}
+	}},
+
+	// The claim the tool description makes, tested where it is made.
+	// Repeating a send with the same client id must land on the message
+	// that already exists rather than posting a second one — and until
+	// this step, that behaviour was asserted only by a fake written from
+	// the same belief as the code.
+	{"a repeated send with the same id posts once", "send_message", func(d *driver) {
+		id := "client-" + strings.ToLower(strings.NewReplacer("spaces/", "", "-", "", "_", "").
+			Replace(d.space))
+		args := map[string]any{
+			"space_id": d.space, "text": "idempotency probe", "client_message_id": id,
+		}
+		var first, second struct {
+			MessageID *string `json:"message_id"`
+		}
+		d.into(d.must("send_message", args), &first)
+		if first.MessageID == nil || *first.MessageID == "" {
+			d.t.Fatal("the first send returned no message id")
+		}
+		d.record(*first.MessageID)
+		d.into(d.must("send_message", args), &second)
+		if second.MessageID == nil {
+			d.t.Fatal("the repeat returned no message id")
+		}
+		if *second.MessageID != *first.MessageID {
+			d.t.Errorf("the repeat posted a second message: %s then %s",
+				d.redact(*first.MessageID), d.redact(*second.MessageID))
 		}
 	}},
 

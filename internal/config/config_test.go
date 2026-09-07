@@ -35,8 +35,9 @@ func TestDefaults(t *testing.T) {
 	if c.ReadOnly {
 		t.Error("read-only must default off")
 	}
-	if c.RefuseDeletes {
-		t.Error("the delete tools must be registered by default")
+	if !c.RefuseDeletes {
+		t.Error("deletes must be refused by default: a deleted Chat message has no trash behind it, " +
+			"and the sibling Drive and Docs servers gate their recoverable deletes the same way")
 	}
 	if !slices.Equal(c.Toolsets, defaultToolsets) {
 		t.Errorf("toolsets = %v, want every toolset but admin", c.Toolsets)

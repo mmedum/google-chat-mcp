@@ -206,6 +206,34 @@ type QuotedMessageMeta struct {
 	Name       string `json:"name,omitempty"`
 	LastUpdate string `json:"lastUpdateTime,omitempty"`
 	QuoteType  string `json:"quoteType,omitempty"`
+	// Snapshot is what the quoted message said at the time it was
+	// quoted. Google added it after this server shipped, and the drift
+	// report on a live account is how it was noticed: a reply was read
+	// without the thing it was replying to, which is most of what a
+	// quote is for.
+	Snapshot *QuotedMessageSnapshot `json:"quotedMessageSnapshot,omitempty"`
+	// Forwarded names the space a forwarded message came from, and is
+	// populated only for the FORWARD quote type.
+	Forwarded *ForwardedMeta `json:"forwardedMetadata,omitempty"`
+}
+
+// QuotedMessageSnapshot is the quoted message's content, frozen at the
+// moment it was quoted.
+//
+// Sender is a resource name rather than a User: Google documents it as
+// the author's name, "users/{user}", not the object the parent message
+// carries.
+type QuotedMessageSnapshot struct {
+	Sender        string       `json:"sender,omitempty"`
+	Text          string       `json:"text,omitempty"`
+	FormattedText string       `json:"formattedText,omitempty"`
+	Annotations   []Annotation `json:"annotations,omitempty"`
+	Attachments   []Attachment `json:"attachment,omitempty"`
+}
+
+// ForwardedMeta is where a forwarded message came from.
+type ForwardedMeta struct {
+	SpaceName string `json:"spaceName,omitempty"`
 }
 
 // AttachedGif is a GIF in a message.

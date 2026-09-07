@@ -1,0 +1,321 @@
+{
+  "fetched": "2026-09-07",
+  "apis": {
+    "chat": {
+      "customEmojis.create": {
+        "verb": "POST",
+        "path": "v1/customEmojis"
+      },
+      "customEmojis.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "customEmojis.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "customEmojis.list": {
+        "verb": "GET",
+        "path": "v1/customEmojis"
+      },
+      "media.download": {
+        "verb": "GET",
+        "path": "v1/media/{+resourceName}"
+      },
+      "media.upload": {
+        "verb": "POST",
+        "path": "v1/{+parent}/attachments:upload"
+      },
+      "spaces.completeImport": {
+        "verb": "POST",
+        "path": "v1/{+name}:completeImport"
+      },
+      "spaces.create": {
+        "verb": "POST",
+        "path": "v1/spaces"
+      },
+      "spaces.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "spaces.findDirectMessage": {
+        "verb": "GET",
+        "path": "v1/spaces:findDirectMessage"
+      },
+      "spaces.findGroupChats": {
+        "verb": "GET",
+        "path": "v1/spaces:findGroupChats"
+      },
+      "spaces.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "spaces.list": {
+        "verb": "GET",
+        "path": "v1/spaces"
+      },
+      "spaces.members.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/members"
+      },
+      "spaces.members.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "spaces.members.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "spaces.members.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/members"
+      },
+      "spaces.members.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "spaces.messagePins.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/messagePins"
+      },
+      "spaces.messagePins.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "spaces.messagePins.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/messagePins"
+      },
+      "spaces.messages.attachments.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "spaces.messages.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/messages"
+      },
+      "spaces.messages.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "spaces.messages.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "spaces.messages.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/messages"
+      },
+      "spaces.messages.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "spaces.messages.reactions.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/reactions"
+      },
+      "spaces.messages.reactions.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "spaces.messages.reactions.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/reactions"
+      },
+      "spaces.messages.search": {
+        "verb": "POST",
+        "path": "v1/{+parent}/messages:search"
+      },
+      "spaces.messages.update": {
+        "verb": "PUT",
+        "path": "v1/{+name}"
+      },
+      "spaces.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "spaces.search": {
+        "verb": "GET",
+        "path": "v1/spaces:search"
+      },
+      "spaces.setup": {
+        "verb": "POST",
+        "path": "v1/spaces:setup"
+      },
+      "spaces.spaceEvents.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "spaces.spaceEvents.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/spaceEvents"
+      },
+      "users.availability.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "users.availability.markAsActive": {
+        "verb": "POST",
+        "path": "v1/{+name}:markAsActive"
+      },
+      "users.availability.markAsAway": {
+        "verb": "POST",
+        "path": "v1/{+name}:markAsAway"
+      },
+      "users.availability.markAsDoNotDisturb": {
+        "verb": "POST",
+        "path": "v1/{+name}:markAsDoNotDisturb"
+      },
+      "users.availability.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "users.sections.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/sections"
+      },
+      "users.sections.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}"
+      },
+      "users.sections.items.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/items"
+      },
+      "users.sections.items.move": {
+        "verb": "POST",
+        "path": "v1/{+name}:move"
+      },
+      "users.sections.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/sections"
+      },
+      "users.sections.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "users.sections.position": {
+        "verb": "POST",
+        "path": "v1/{+name}:position"
+      },
+      "users.spaces.getSpaceReadState": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "users.spaces.spaceNotificationSetting.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "users.spaces.spaceNotificationSetting.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      },
+      "users.spaces.threads.getThreadReadState": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "users.spaces.updateSpaceReadState": {
+        "verb": "PATCH",
+        "path": "v1/{+name}"
+      }
+    },
+    "people": {
+      "contactGroups.batchGet": {
+        "verb": "GET",
+        "path": "v1/contactGroups:batchGet"
+      },
+      "contactGroups.create": {
+        "verb": "POST",
+        "path": "v1/contactGroups"
+      },
+      "contactGroups.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+resourceName}"
+      },
+      "contactGroups.get": {
+        "verb": "GET",
+        "path": "v1/{+resourceName}"
+      },
+      "contactGroups.list": {
+        "verb": "GET",
+        "path": "v1/contactGroups"
+      },
+      "contactGroups.members.modify": {
+        "verb": "POST",
+        "path": "v1/{+resourceName}/members:modify"
+      },
+      "contactGroups.update": {
+        "verb": "PUT",
+        "path": "v1/{+resourceName}"
+      },
+      "otherContacts.copyOtherContactToMyContactsGroup": {
+        "verb": "POST",
+        "path": "v1/{+resourceName}:copyOtherContactToMyContactsGroup"
+      },
+      "otherContacts.list": {
+        "verb": "GET",
+        "path": "v1/otherContacts"
+      },
+      "otherContacts.search": {
+        "verb": "GET",
+        "path": "v1/otherContacts:search"
+      },
+      "people.batchCreateContacts": {
+        "verb": "POST",
+        "path": "v1/people:batchCreateContacts"
+      },
+      "people.batchDeleteContacts": {
+        "verb": "POST",
+        "path": "v1/people:batchDeleteContacts"
+      },
+      "people.batchUpdateContacts": {
+        "verb": "POST",
+        "path": "v1/people:batchUpdateContacts"
+      },
+      "people.connections.list": {
+        "verb": "GET",
+        "path": "v1/{+resourceName}/connections"
+      },
+      "people.createContact": {
+        "verb": "POST",
+        "path": "v1/people:createContact"
+      },
+      "people.deleteContact": {
+        "verb": "DELETE",
+        "path": "v1/{+resourceName}:deleteContact"
+      },
+      "people.deleteContactPhoto": {
+        "verb": "DELETE",
+        "path": "v1/{+resourceName}:deleteContactPhoto"
+      },
+      "people.get": {
+        "verb": "GET",
+        "path": "v1/{+resourceName}"
+      },
+      "people.getBatchGet": {
+        "verb": "GET",
+        "path": "v1/people:batchGet"
+      },
+      "people.listDirectoryPeople": {
+        "verb": "GET",
+        "path": "v1/people:listDirectoryPeople"
+      },
+      "people.searchContacts": {
+        "verb": "GET",
+        "path": "v1/people:searchContacts"
+      },
+      "people.searchDirectoryPeople": {
+        "verb": "GET",
+        "path": "v1/people:searchDirectoryPeople"
+      },
+      "people.updateContact": {
+        "verb": "PATCH",
+        "path": "v1/{+resourceName}:updateContact"
+      },
+      "people.updateContactPhoto": {
+        "verb": "PATCH",
+        "path": "v1/{+resourceName}:updateContactPhoto"
+      }
+    }
+  }
+}

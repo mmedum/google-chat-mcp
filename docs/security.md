@@ -15,7 +15,7 @@ deployment, and nobody else's tokens.
 |---|---|---|
 | MCP client ↔ this server | An OS pipe | The client and the server run as the same OS user. There is no authentication between them, and none would mean anything: a process that can write to the server's stdin can already read its memory. |
 | This server ↔ Google | TLS | One trust store. Go's `crypto/tls` verifies against the system roots for every call — Chat, People, OIDC, and the OAuth token endpoint alike. There is no way to skip verification anywhere in the tree. |
-| This server ↔ disk | The file system | A `0700` directory holding `0600` files under your user config directory. The refresh token is there only when the OS keyring was unavailable. |
+| This server ↔ disk | The file system | A `0700` directory holding `0600` files under your user config directory. The refresh token is there only when the OS keyring was unavailable, and the directory cache holds resolved names and addresses until `logout` removes it. **On Windows the mode is not the mechanism**: Go sets only the read-only bit there, so the protection is the ACL the directory inherits from your profile. Redirecting `GCM_CONFIG_DIR` somewhere world-readable is therefore not caught by anything. |
 | This server ↔ your files | The file system | Nothing, unless you set `GCM_LOCAL_DIR`. That names one directory, and it is the only place the file-transfer tools read from and write to. Unset, which is the default, they refuse. |
 | Browser ↔ the login listener | `127.0.0.1` on a random port | Alive only while `login` waits. PKCE and state are enforced on the callback. A co-resident process cannot take the socket, because the kernel binds it to this process. |
 

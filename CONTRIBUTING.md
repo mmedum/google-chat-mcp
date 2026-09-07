@@ -38,11 +38,12 @@ That is gofmt, `go vet` including every tagged suite, golangci-lint, race
 tests with a coverage floor per package — 80% for everything except
 `cmd/`, which has a lower one of its own printed on every run —
 `govulncheck`, a licence allow-list, a stdio smoke test, a schema diff
-against the released tool surface, the live driver's surface gate, and a
-staleness gate that fails when the README, `docs/` or the CHANGELOG drift
-from the code. CI runs the same set on Linux, macOS and Windows.
+against the released tool surface, an API-coverage gate, the live
+driver's surface gate, and a staleness gate that fails when the README,
+`docs/` or the CHANGELOG drift from the code. CI runs the same set on
+Linux, macOS and Windows.
 
-Three of those are worth knowing about before they fail on you:
+Four of those are worth knowing about before they fail on you:
 
 - **The schema diff** compares the built binary with
   `testdata/schemas-baseline.json`. A renamed tool or a dropped output
@@ -64,6 +65,16 @@ Three of those are worth knowing about before they fail on you:
   fixture pasted out of a live response is itself the leak — and a live
   run reads back only what it wrote. When a smoke record is written up,
   every id, address and name in it is a placeholder.
+- **The API-coverage gate** works over two files. `testdata/api-methods.json`
+  is every method of the Chat and People APIs as Google published them,
+  written by `make api-diff` and never edited by hand.
+  `testdata/api-coverage.tsv` is one verdict per method, written by hand:
+  a `used` row names the `gchat.Client` method that implements it, an
+  `out` row gives the reason it is deliberately not used. The gate holds
+  the two and the client to each other, offline, so a method with no
+  verdict and a call with no row both fail the build. It cannot see a
+  method Google added yesterday — only `make api-diff` refetches, which
+  is why the release checklist runs it.
 - **The live driver's surface gate** fails when a tool is neither
   exercised by `internal/livecheck` nor excused there with a reason. Add
   a tool and this is what stops it going quietly unexercised. It needs no
@@ -139,6 +150,13 @@ Release cutting is maintainer-only:
    `live-surface`, which fails if a tool is neither exercised by the
    driver nor excused with a reason, so the gap is visible on every
    build rather than at a release.
+
+   Run `make api-diff` at the same time. It is the only thing here that
+   reaches Google's own documentation, and a manual target nobody runs is
+   a gate that never fires. It refetches the method list into
+   `testdata/api-methods.json` and reports what changed; every method it
+   adds then fails `api-coverage` until a row in
+   `testdata/api-coverage.tsv` says whether this server should use it.
 
 1. Land a `release: cut vX.Y.Z …` commit on `main` that moves the
    `[Unreleased]` section under a `## [X.Y.Z] - YYYY-MM-DD` heading.
