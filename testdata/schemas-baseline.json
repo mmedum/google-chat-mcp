@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "sdk": "v1.7.0",
   "tools": [
     {
@@ -1167,13 +1167,17 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first. Sender email is resolved through the People API and is null when that fails.",
+      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is resolved through the People API and is null when that fails.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "how many to return, 1 to 100; default 20",
             "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
           },
           "since": {
             "description": "only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z",
@@ -1193,6 +1197,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "result": {
             "description": "the messages that were read",
             "items": {
@@ -1249,10 +1260,15 @@
               "null",
               "array"
             ]
+          },
+          "unparsed": {
+            "description": "messages that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE, which is not the same as the space being quiet",
+            "type": "integer"
           }
         },
         "required": [
-          "result"
+          "result",
+          "unparsed"
         ],
         "type": "object"
       }
@@ -1489,13 +1505,17 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read all messages in a single thread, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100.",
+      "description": "Read one thread's messages, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; page with page_token and next_page_token. A non-null next_page_token means the thread is longer than what came back, so do not read the result as the whole thread.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "how many to return, 1 to 100; default 50",
             "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
           },
           "space_id": {
             "description": "the thread's parent space, spaces/{id}",
@@ -1516,6 +1536,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "result": {
             "description": "the messages that were read",
             "items": {
@@ -1572,10 +1599,15 @@
               "null",
               "array"
             ]
+          },
+          "unparsed": {
+            "description": "messages that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE, which is not the same as the space being quiet",
+            "type": "integer"
           }
         },
         "required": [
-          "result"
+          "result",
+          "unparsed"
         ],
         "type": "object"
       }
@@ -1704,13 +1736,17 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with their email resolved through the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen.",
+      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with their email resolved through the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null next_page_token means the space has more members than came back, so do not report the result as the whole membership.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "how many to return, 1 to 200; default 50",
             "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
           },
           "space_id": {
             "description": "the space, spaces/{id}",
@@ -1726,6 +1762,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "result": {
             "description": "who is in the space",
             "items": {
@@ -1785,10 +1828,15 @@
               "null",
               "array"
             ]
+          },
+          "unparsed": {
+            "description": "memberships that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE: a short list otherwise reads as a small space",
+            "type": "integer"
           }
         },
         "required": [
-          "result"
+          "result",
+          "unparsed"
         ],
         "type": "object"
       }
@@ -2232,13 +2280,17 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List Google Chat spaces (direct messages, group chats, named spaces) the authenticated user belongs to. Defaults to 50 entries; pass limit (1-200) to widen and space_type ('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow. Use this to find a space's resource name before reading its messages.",
+      "description": "List Google Chat spaces (direct messages, group chats, named spaces) the authenticated user belongs to. Defaults to 50 entries; pass limit (1-200) to widen and space_type ('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow, and page with page_token and next_page_token. A non-null next_page_token means the account is in more spaces than came back. Use this to find a space's resource name before reading its messages.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "how many to return, 1 to 200; default 50",
             "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
           },
           "space_type": {
             "description": "narrow to SPACE, DIRECT_MESSAGE or GROUP_CHAT; omit for every kind",
@@ -2251,6 +2303,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "result": {
             "description": "the spaces the account belongs to",
             "items": {
@@ -3173,6 +3232,10 @@
         "properties": {
           "attachment_upload_token": {
             "description": "attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted",
+            "type": "string"
+          },
+          "client_message_id": {
+            "description": "an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry",
             "type": "string"
           },
           "dry_run": {

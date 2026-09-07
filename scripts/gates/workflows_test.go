@@ -587,7 +587,7 @@ var ciRunsForTarget = map[string]string{
 	"licenses":     "go-licenses",
 	"pins":         "gates pins",
 	"classes":      "gates classes",
-	"leaks":        "TestNoCompiledBinariesInTheTree",
+	"leaks":        "TestNoBuildOutputInTheTree",
 	"api-coverage": "gates api-coverage",
 	"parity":       "TestMakeCheckAndCIRunTheSameGates",
 	"smoke":        "gates smoke",

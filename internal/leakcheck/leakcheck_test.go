@@ -305,22 +305,35 @@ func TestTheHistoryIsClean(t *testing.T) {
 	}
 }
 
-// executableMagic is the first few bytes of a compiled binary, by
-// format. Matched on the magic rather than on "is this file text",
-// because a PNG fixture is binary and belongs here — internal/tools
-// tracks one — while an ELF never does.
-var executableMagic = map[string][]byte{
-	"ELF":               {0x7f, 'E', 'L', 'F'},
-	"Mach-O 32-bit":     {0xfe, 0xed, 0xfa, 0xce},
-	"Mach-O 64-bit":     {0xfe, 0xed, 0xfa, 0xcf},
-	"Mach-O 32-bit, LE": {0xce, 0xfa, 0xed, 0xfe},
-	"Mach-O 64-bit, LE": {0xcf, 0xfa, 0xed, 0xfe},
-	"Mach-O universal":  {0xca, 0xfe, 0xba, 0xbe},
-	"static library":    {'!', '<', 'a', 'r'},
+// buildOutputMagic is the first few bytes of something this repository
+// builds and must never commit, spelled as the phrase the failure names.
+// Matched on the magic rather than on "is this file text", because a PNG
+// fixture is binary and belongs here — internal/tools tracks one — while
+// an ELF never does.
+//
+// The archives are here because the executables alone were not enough.
+// `gates mcpb-pack` writes a .mcpb, which is a deflate zip, and
+// goreleaser writes .tar.gz and .zip archives; both take the output
+// directory as an argument, so `dist/` being ignored is the first line
+// and not the whole guard. google-drive-mcp refuses the same class by a
+// NUL byte in the first few kilobytes, the way git decides, which
+// catches strictly more and cannot say what it caught. Naming the format
+// is worth more here than the extra reach: the message is what tells
+// somebody which target to add an ignore rule beside.
+var buildOutputMagic = map[string][]byte{
+	"an ELF executable":                         {0x7f, 'E', 'L', 'F'},
+	"a Mach-O 32-bit executable":                {0xfe, 0xed, 0xfa, 0xce},
+	"a Mach-O 64-bit executable":                {0xfe, 0xed, 0xfa, 0xcf},
+	"a Mach-O 32-bit executable, little-endian": {0xce, 0xfa, 0xed, 0xfe},
+	"a Mach-O 64-bit executable, little-endian": {0xcf, 0xfa, 0xed, 0xfe},
+	"a Mach-O universal binary":                 {0xca, 0xfe, 0xba, 0xbe},
+	"a static library":                          {'!', '<', 'a', 'r'},
+	"a zip archive, which is what a .mcpb is":   {'P', 'K', 0x03, 0x04},
+	"a gzip archive":                            {0x1f, 0x8b},
 }
 
-// A compiled binary is the one thing here that no content scanner can
-// see, because it is defined by being content none of them will read.
+// Build output is the one thing here that no content scanner can see,
+// because it is defined by being content none of them will read.
 // The tree scan above counts a binary file and moves on; gitleaks looks
 // for credentials, not size; and CI stayed green on all of it.
 //
@@ -340,7 +353,7 @@ var executableMagic = map[string][]byte{
 // It lives beside the identifier scan because that is where the tree
 // enumeration already is, and because both answer one question: what
 // must never be in this repository.
-func TestNoCompiledBinariesInTheTree(t *testing.T) {
+func TestNoBuildOutputInTheTree(t *testing.T) {
 	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		t.Skipf("not a git checkout: %v", err)
@@ -376,12 +389,11 @@ func TestNoCompiledBinariesInTheTree(t *testing.T) {
 		n, _ := io.ReadFull(f, head)
 		_ = f.Close()
 		examined++
-		for format, magic := range executableMagic {
+		for format, magic := range buildOutputMagic {
 			if n >= len(magic) && bytes.Equal(head[:len(magic)], magic) {
-				t.Errorf("%s is a compiled %s binary. Nothing else in this repository will "+
-					"look inside it, so add it to .gitignore beside the target that builds it, "+
-					"or delete it. Committing one costs a rewrite of published history to undo.",
-					path, format)
+				t.Errorf("%s is %s. Nothing else in this repository will look inside it, so add "+
+					"it to .gitignore beside the target that builds it, or delete it. Committing "+
+					"one costs a rewrite of published history to undo.", path, format)
 			}
 		}
 	}
@@ -394,7 +406,7 @@ func TestNoCompiledBinariesInTheTree(t *testing.T) {
 
 // The rule has to fire on a real build artefact, not just on a fixture
 // shaped like one, and it has to leave the PNG that legitimately ships.
-func TestCompiledBinariesAreRecognisedByTheirMagic(t *testing.T) {
+func TestBuildOutputIsRecognisedByItsMagic(t *testing.T) {
 	tests := []struct {
 		name string
 		head []byte
@@ -403,6 +415,8 @@ func TestCompiledBinariesAreRecognisedByTheirMagic(t *testing.T) {
 		{name: "a Linux binary", head: []byte{0x7f, 'E', 'L', 'F', 2, 1, 1}, want: true},
 		{name: "a macOS binary", head: []byte{0xcf, 0xfa, 0xed, 0xfe, 12, 0}, want: true},
 		{name: "a universal binary", head: []byte{0xca, 0xfe, 0xba, 0xbe, 0, 0}, want: true},
+		{name: "a .mcpb bundle", head: []byte{'P', 'K', 0x03, 0x04, 20, 0}, want: true},
+		{name: "a release tarball", head: []byte{0x1f, 0x8b, 8, 0}, want: true},
 		{name: "a PNG fixture", head: []byte{0x89, 'P', 'N', 'G', 13, 10}},
 		{name: "Go source", head: []byte("package main\n")},
 		{name: "a short file", head: []byte("hi")},
@@ -410,13 +424,13 @@ func TestCompiledBinariesAreRecognisedByTheirMagic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := false
-			for _, magic := range executableMagic {
+			for _, magic := range buildOutputMagic {
 				if len(tt.head) >= len(magic) && bytes.Equal(tt.head[:len(magic)], magic) {
 					got = true
 				}
 			}
 			if got != tt.want {
-				t.Errorf("recognised as a binary = %v, want %v", got, tt.want)
+				t.Errorf("recognised as build output = %v, want %v", got, tt.want)
 			}
 		})
 	}

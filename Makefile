@@ -82,7 +82,7 @@ api-diff: ## Refetch the API method list and report what changed (needs the netw
 # program shelling out to `go test`.
 .PHONY: leaks
 leaks: ## Nothing identifying a real account, and nothing compiled, in the tree
-	@$(GO) test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoCompiledBinariesInTheTree' -count=1
+	@$(GO) test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoBuildOutputInTheTree' -count=1
 
 .PHONY: parity
 parity: ## `make check` and CI run the same gates
