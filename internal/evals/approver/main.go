@@ -85,7 +85,7 @@ func main() {
 		// client sends, and a typed decode is what would hide it.
 		if path := os.Getenv("EVAL_APPROVER_LOG"); path != "" {
 			if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-				fmt.Fprintf(f, "%s\n", req.Params.Arguments)
+				_, _ = fmt.Fprintf(f, "%s\n", req.Params.Arguments)
 				_ = f.Close()
 			}
 		}

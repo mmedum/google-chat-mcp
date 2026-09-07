@@ -19,7 +19,8 @@ const membershipPage = `{"memberships":[
 
 func TestListMembersSeparatesPeopleFromGroups(t *testing.T) {
 	s := newService(t, route(ok(membershipPage), people("janedoe@example.com", "")))
-	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	got := res.Members
 	if err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
@@ -45,7 +46,8 @@ func TestListMembersSeparatesPeopleFromGroups(t *testing.T) {
 func TestListMembersSurvivesAPeopleFailure(t *testing.T) {
 	s := newService(t, route(ok(membershipPage), status(http.StatusForbidden,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`)))
-	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	got := res.Members
 	if err != nil {
 		t.Fatalf("a People failure must not fail the listing: %v", err)
 	}
@@ -64,7 +66,8 @@ func TestMembershipEnumsDegrade(t *testing.T) {
 	// it is a real role, and it was degrading in production too.
 	page := `{"memberships":[{"name":"spaces/A/members/1","state":"HIBERNATING","role":"ROLE_ARCHDUKE","member":{"name":"users/1"}}]}`
 	s := newService(t, route(ok(page), nobody()))
-	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	got := res.Members
 	if err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
@@ -85,7 +88,8 @@ func TestEveryRealRoleSurvives(t *testing.T) {
 			page := `{"memberships":[{"name":"spaces/A/members/1","state":"JOINED","role":"` + role +
 				`","member":{"name":"users/1"}}]}`
 			s := newService(t, route(ok(page), nobody()))
-			got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+			res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+			got := res.Members
 			if err != nil {
 				t.Fatalf("ListMembers: %v", err)
 			}
@@ -104,7 +108,8 @@ func TestAMemberThatIsNeitherIsDropped(t *testing.T) {
 	  {"name":"spaces/A/members/2","state":"JOINED"}
 	]}`
 	s := newService(t, route(ok(page), nobody()))
-	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	got := res.Members
 	if err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
@@ -142,7 +147,8 @@ func TestAGroupMemberIsReportedAsItArrives(t *testing.T) {
 	  {"name":"spaces/A/members/2","state":"INVITED","role":"ROLE_MEMBER","member":{"name":"users/2","displayName":"John Doe"}}
 	]}`
 	s := newService(t, route(ok(page), nobody()))
-	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
+	got := res.Members
 	if err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}

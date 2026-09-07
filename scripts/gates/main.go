@@ -12,6 +12,8 @@
 //
 //	go run ./scripts/gates classes
 //	go run ./scripts/gates pins
+//	go run ./scripts/gates api-coverage
+//	go run ./scripts/gates api-diff
 //	go run ./scripts/gates schema-diff [BINARY]
 //	go run ./scripts/gates smoke [BINARY]
 //	go run ./scripts/gates staleness [BINARY]
@@ -153,6 +155,16 @@ func init() {
 			run:   pins,
 			arity: 1, runsIn: inCheck,
 			doc: "every third-party tool held to an exact version",
+		},
+		"api-coverage": {
+			run:   apiCoverage,
+			arity: 1, runsIn: inCheck,
+			doc: "every API method used on purpose or left out on purpose",
+		},
+		"api-diff": {
+			run:   apiDiff,
+			arity: 1, runsIn: manual,
+			doc: "refetch the API method list and report what changed (needs the network)",
 		},
 		"release-notes": {
 			run:   releaseNotes,

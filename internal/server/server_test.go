@@ -129,14 +129,44 @@ func TestReadOnlyToolsAreAnnotated(t *testing.T) {
 // The instructions are the first thing a client shows the model, so an
 // empty or placeholder string is a real defect — and so is naming a
 // tool or an argument that is not there.
+// Every configuration, not just the default one. This test read the
+// default surface alone, so it passed while a read-only server told the
+// model to "write with send_message" and registered no such tool: the
+// instructions were a constant and read-only drops every write tool.
 func TestInstructionsNameTheStartingPoints(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  config.Config
+	}{
+		{name: "default", cfg: config.Config{Toolsets: config.AllToolsets}},
+		{name: "read only", cfg: config.Config{Toolsets: config.AllToolsets, ReadOnly: true}},
+		{name: "deletes refused", cfg: config.Config{Toolsets: config.AllToolsets, RefuseDeletes: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkInstructions(t, tc.cfg)
+		})
+	}
+}
+
+func checkInstructions(t *testing.T, cfg config.Config) {
+	t.Helper()
 	known := map[string]bool{}
-	for _, tool := range dump(t, config.Config{Toolsets: config.AllToolsets}).Tools {
+	tools := dump(t, cfg).Tools
+	if len(tools) == 0 {
+		t.Fatal("no tools registered: this test is looking at nothing")
+	}
+	for _, tool := range tools {
 		known[tool.Name] = true
+		// Both halves: the instructions tell the model what to pass and
+		// what to read back, and next_page_token is an output field.
 		for _, field := range inputFields(t, tool) {
 			known[field] = true
 		}
+		for _, field := range outputFields(t, tool) {
+			known[field] = true
+		}
 	}
+	instructions := instructionsFor(cfg)
 	for _, word := range strings.Fields(instructions) {
 		// A trailing underscore is a prefix the text uses to talk
 		// about a family of tools, such as "the matching get_ tools".
@@ -145,7 +175,8 @@ func TestInstructionsNameTheStartingPoints(t *testing.T) {
 			continue
 		}
 		if !known[name] {
-			t.Errorf("the instructions name %q, which is neither a tool nor an argument", name)
+			t.Errorf("the instructions name %q, which this configuration registers as neither "+
+				"a tool nor an argument", name)
 		}
 	}
 
@@ -154,6 +185,25 @@ func TestInstructionsNameTheStartingPoints(t *testing.T) {
 			t.Errorf("instructions do not mention %q", want)
 		}
 	}
+}
+
+// outputFields is the field names one tool answers with.
+func outputFields(t *testing.T, tool *mcp.Tool) []string {
+	t.Helper()
+	if tool.OutputSchema == nil {
+		return nil
+	}
+	raw, err := json.Marshal(tool.OutputSchema)
+	if err != nil {
+		t.Fatalf("marshal output schema for %q: %v", tool.Name, err)
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("parse output schema for %q: %v", tool.Name, err)
+	}
+	return slices.Sorted(maps.Keys(schema.Properties))
 }
 
 // inputFields is the argument names one tool takes.

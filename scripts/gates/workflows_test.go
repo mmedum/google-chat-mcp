@@ -588,6 +588,7 @@ var ciRunsForTarget = map[string]string{
 	"pins":         "gates pins",
 	"classes":      "gates classes",
 	"leaks":        "TestNoCompiledBinariesInTheTree",
+	"api-coverage": "gates api-coverage",
 	"parity":       "TestMakeCheckAndCIRunTheSameGates",
 	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",

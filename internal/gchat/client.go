@@ -35,6 +35,13 @@ import (
 // 2026-09-05: 15 reads and 1 write per second. The defaults below sit
 // under those, and a burst absorbs the fan-out a single tool call makes
 // when it enriches a page of messages with sender names.
+// These are per process, and Google's quota is per user. Two clients
+// against one account — Claude Desktop and Claude Code at once, which is
+// ordinary — each grant themselves the whole allowance. The write
+// limiter is the sharp one, because 1/s is the entire budget. Nothing
+// here can see the other process, so the honest answer is that this
+// bounds one client's fan-out rather than enforcing Google's quota; a
+// 429 from Google is still handled, with backoff, by the retry path.
 const (
 	defaultReadRate   = rate.Limit(10)
 	defaultReadBurst  = 15
@@ -718,15 +725,28 @@ func (c *Client) attempt(ctx context.Context, r request, endpoint, path string, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	// Bounded, because every other read in this package is. An
+	// unbounded ReadAll of a response this process does not control is
+	// how a subprocess gets OOM-killed by something upstream, and the
+	// host cannot tell that apart from a crash. Attachments do not come
+	// through here — the media path streams them — so this is a ceiling
+	// on a JSON envelope that is normally kilobytes.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, 0, fmt.Errorf("chat api: read %s %s: %w", r.method, path, err)
+	}
+	if int64(len(body)) > maxResponseBytes {
+		return nil, 0, fmt.Errorf("chat api: %s %s: response is larger than %d bytes",
+			r.method, path, maxResponseBytes)
 	}
 	if resp.StatusCode >= 300 {
 		return nil, parseRetryAfter(resp.Header.Get("Retry-After")), r.apiError(resp.StatusCode, body, path)
 	}
 	return body, 0, nil
 }
+
+// maxResponseBytes bounds one JSON response body.
+const maxResponseBytes = 32 << 20
 
 // backoff is exponential with full jitter, honouring a Retry-After that
 // Google sent but bounding it on both sides.

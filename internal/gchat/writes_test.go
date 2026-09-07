@@ -39,7 +39,7 @@ func recording(t *testing.T, reply string) (*httptest.Server, *recorder) {
 func TestSendMessageCarriesAClientAssignedID(t *testing.T) {
 	srv, rec := recording(t, `{"name":"spaces/AAA/messages/BBB","thread":{"name":"spaces/AAA/threads/CCC"}}`)
 	got, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hello", "", ""), false)
+		BuildSendMessage("hello", "", ""), false, "")
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestSendMessageCarriesAClientAssignedID(t *testing.T) {
 func TestSendMessageAsksGoogleToFailARemovedThread(t *testing.T) {
 	srv, rec := recording(t, `{"name":"spaces/AAA/messages/BBB"}`)
 	_, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hi", "spaces/AAA/threads/CCC", ""), false)
+		BuildSendMessage("hi", "spaces/AAA/threads/CCC", ""), false, "")
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestSendMessageRetriesWithTheSameID(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hello", "", ""), false); err != nil {
+		BuildSendMessage("hello", "", ""), false, ""); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
 	if len(ids) != 2 {
@@ -124,7 +124,7 @@ func TestSendMessageReadsBackWhatAlreadyLanded(t *testing.T) {
 	defer srv.Close()
 
 	got, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hello", "", ""), false)
+		BuildSendMessage("hello", "", ""), false, "")
 	if err != nil {
 		t.Fatalf("an already-existing message is this call's own work, not a failure: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestAnIdempotentWriteRetriesATransportFailure(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hello", "", ""), false); err != nil {
+		BuildSendMessage("hello", "", ""), false, ""); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
 	if n := calls.Load(); n != 2 {
@@ -185,7 +185,7 @@ func TestAWriteIsRefusedWhenTheContextForbidsOne(t *testing.T) {
 	if err := c.DeleteMessage(ctx, "spaces/AAA/messages/BBB", false); !errors.Is(err, ErrWriteForbidden) {
 		t.Errorf("error = %v, want the write refused", err)
 	}
-	if _, err := c.SendMessage(ctx, "spaces/AAA", BuildSendMessage("hello", "", ""), false); !errors.Is(err, ErrWriteForbidden) {
+	if _, err := c.SendMessage(ctx, "spaces/AAA", BuildSendMessage("hello", "", ""), false, ""); !errors.Is(err, ErrWriteForbidden) {
 		t.Errorf("error = %v, want the write refused", err)
 	}
 	if n := reached.Load(); n != 0 {
@@ -208,7 +208,7 @@ func TestAnEmptyBodyIsNotAFailure(t *testing.T) {
 	defer srv.Close()
 
 	got, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
-		BuildSendMessage("hello", "", ""), false)
+		BuildSendMessage("hello", "", ""), false, "")
 	if err != nil {
 		t.Fatalf("an empty body must not fail a write that landed: %v", err)
 	}
@@ -575,7 +575,7 @@ func TestAnIdempotentWriteStillRetriesOnA500(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv)
-	_, _ = c.SendMessage(context.Background(), "spaces/AAAAspace1", BuildSendMessage("hello", "", ""), false)
+	_, _ = c.SendMessage(context.Background(), "spaces/AAAAspace1", BuildSendMessage("hello", "", ""), false, "")
 	if calls < 2 {
 		t.Errorf("%d attempts; a write carrying a message id should still retry a 500", calls)
 	}
@@ -628,6 +628,43 @@ func TestADryRunCannotWriteWhateverTheMethod(t *testing.T) {
 		}
 		if reached {
 			t.Errorf("%s reached Google during a dry run", method)
+		}
+	}
+}
+
+// A caller's own id is what makes a retry from OUTSIDE this server safe.
+// The minted one only covers retries inside a single call, which is why
+// the tool used to have to tell the model that calling again might post
+// twice.
+func TestSendMessageUsesTheCallersIDWhenGiven(t *testing.T) {
+	srv, rec := recording(t, `{"name":"spaces/AAA/messages/BBB"}`)
+	_, err := newTestClient(t, srv).SendMessage(context.Background(), "spaces/AAA",
+		BuildSendMessage("hello", "", ""), false, "client-abc123")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if !strings.Contains(rec.Query, "messageId=client-abc123") {
+		t.Errorf("query = %q, want the id the caller supplied", rec.Query)
+	}
+}
+
+func TestValidMessageIDFollowsGooglesRules(t *testing.T) {
+	for _, tc := range []struct {
+		id   string
+		want bool
+	}{
+		{id: "client-abc123", want: true},
+		{id: "client-a-b-c", want: true},
+		{id: "abc123"},                                        // no client- prefix
+		{id: "client-ABC"},                                    // upper case
+		{id: "client-a_b"},                                    // underscore
+		{id: "client-a b"},                                    // space
+		{id: "client-" + strings.Repeat("a", 57)},             // 64 characters
+		{id: "client-" + strings.Repeat("a", 56), want: true}, // 63, the limit
+		{id: ""},
+	} {
+		if got := ValidMessageID(tc.id); got != tc.want {
+			t.Errorf("ValidMessageID(%q) = %v, want %v", tc.id, got, tc.want)
 		}
 	}
 }

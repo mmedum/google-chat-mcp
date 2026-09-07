@@ -35,14 +35,20 @@ func (f *fakeChat) ListSpaces(context.Context, service.ListSpacesInput) (*servic
 	return &service.ListSpacesResult{Spaces: f.spaces}, nil
 }
 
-func (f *fakeChat) GetMessages(context.Context, service.GetMessagesInput) ([]service.MessageRow, error) {
+func (f *fakeChat) GetMessages(context.Context, service.GetMessagesInput) (*service.MessagesResult, error) {
 	f.messageCalls++
-	return f.messages, f.messagesErr
+	if f.messagesErr != nil {
+		return nil, f.messagesErr
+	}
+	return &service.MessagesResult{Messages: f.messages}, nil
 }
 
-func (f *fakeChat) ListMembers(context.Context, service.ListMembersInput) ([]service.Member, error) {
+func (f *fakeChat) ListMembers(context.Context, service.ListMembersInput) (*service.MembersResult, error) {
 	f.memberCalls++
-	return f.members, f.membersErr
+	if f.membersErr != nil {
+		return nil, f.membersErr
+	}
+	return &service.MembersResult{Members: f.members}, nil
 }
 
 func (f *fakeChat) ListSections(context.Context, service.ListSectionsInput) (*service.ListSectionsResult, error) {

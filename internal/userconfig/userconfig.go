@@ -209,14 +209,31 @@ func Save(profile string, c Config) error {
 	return nil
 }
 
-// Remove deletes the profile's config file. Missing files are not an error.
+// Remove deletes everything this package stores for a profile. Missing
+// files are not an error.
+//
+// Everything, not just the config, because the directory cache is not a
+// secret and is still somebody's data: it holds the email address and
+// display name of every person this server has resolved. Deleting the
+// token and leaving that behind reports "Signed out" while an extract of
+// the organisation's directory stays on disk, outliving the credential
+// it was fetched with — and a login as a different account inherits it.
+//
+// The refresh token is not here. The credential store owns that, because
+// it may be in the OS keyring rather than in this directory at all.
 func Remove(profile string) error {
-	p, err := Path(profile)
-	if err != nil {
-		return err
+	paths := make([]string, 0, 2)
+	for _, at := range []func(string) (string, error){Path, DirectoryCachePath} {
+		p, err := at(profile)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, p)
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("userconfig: remove %s: %w", p, err)
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("userconfig: remove %s: %w", p, err)
+		}
 	}
 	return nil
 }

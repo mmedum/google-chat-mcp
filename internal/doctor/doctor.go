@@ -25,8 +25,8 @@ import (
 type Chat interface {
 	Whoami(ctx context.Context) (*service.Identity, error)
 	ListSpaces(ctx context.Context, in service.ListSpacesInput) (*service.ListSpacesResult, error)
-	GetMessages(ctx context.Context, in service.GetMessagesInput) ([]service.MessageRow, error)
-	ListMembers(ctx context.Context, in service.ListMembersInput) ([]service.Member, error)
+	GetMessages(ctx context.Context, in service.GetMessagesInput) (*service.MessagesResult, error)
+	ListMembers(ctx context.Context, in service.ListMembersInput) (*service.MembersResult, error)
 	ListSections(ctx context.Context, in service.ListSectionsInput) (*service.ListSectionsResult, error)
 	DriftPaths() []string
 }
@@ -90,14 +90,14 @@ func Run(ctx context.Context, chat Chat, sampleSpaces int) (*Report, error) {
 		if err != nil {
 			r.skip("read messages", err)
 		} else {
-			r.Messages += len(msgs)
+			r.Messages += len(msgs.Messages)
 		}
 
 		members, err := chat.ListMembers(ctx, service.ListMembersInput{Space: sp.Name, Limit: membersPerSpace})
 		if err != nil {
 			r.skip("list members", err)
 		} else {
-			r.Members += len(members)
+			r.Members += len(members.Members)
 		}
 	}
 

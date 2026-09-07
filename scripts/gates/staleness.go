@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mmedum/google-chat-mcp/internal/scopes"
@@ -31,7 +33,9 @@ const (
 	readmePath    = "README.md"
 	configDocPath = "docs/configuration.md"
 	setupDocPath  = "docs/gcp-setup.md"
-	changelogPath = "CHANGELOG.md"
+	// architectureDocPath states counts about the tool surface.
+	architectureDocPath = "docs/architecture.md"
+	changelogPath       = "CHANGELOG.md"
 )
 
 func staleness(args []string, stdout, stderr io.Writer) int {
@@ -72,6 +76,12 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 				}
 			}
 		}
+	}
+
+	// Any doc that states how many tools take dry_run has to state the
+	// number the server actually registers.
+	for _, p := range dryRunCountProblems(bin, load) {
+		fail("%s", p)
 	}
 
 	// The configuration page must name every GCM_ variable the server
@@ -146,6 +156,127 @@ func toolNamesIn(d *dump) []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// dryRunCountProblems holds every stated dry_run tool count to the
+// number the server registers.
+//
+// A count in prose is the kind of claim nothing enforces and everything
+// outlives: the README and the architecture doc both said thirteen while
+// the server registered twenty-five, and both had been wrong since the
+// port. A reader deciding whether a write is previewable is reading that
+// sentence.
+func dryRunCountProblems(bin string, load func(string) (string, bool)) []string {
+	shipped, err := dryRunCount(bin)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var problems []string
+	for _, path := range []string{readmePath, architectureDocPath} {
+		doc, ok := load(path)
+		if !ok {
+			continue
+		}
+		for _, claim := range statedCounts(doc, "dry_run") {
+			if claim != shipped {
+				problems = append(problems, fmt.Sprintf(
+					"%s says %d tools take dry_run and the server registers %d",
+					path, claim, shipped))
+			}
+		}
+	}
+	return problems
+}
+
+// countedTools matches a sentence that states how many tools do
+// something: "25 tools carry the flag", "dry_run on 25 write tools",
+// "thirteen tools carry the flag".
+var countedTools = regexp.MustCompile(`(?i)\b([a-z]+(?:-[a-z]+)?|\d+)\s+(?:\w+\s+)?tools?\b`)
+
+// numberWords is how prose spells a count.
+//
+// Words are read as well as digits, because the drift this gate exists
+// to catch was spelled as one: both documents said "thirteen" while the
+// server registered twenty-five. A gate that only read digits would not
+// have caught the bug it was written for, which is a gate that reads
+// like it works.
+var numberWords = map[string]int{
+	"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+	"sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+	"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+	"sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+
+// asCount reads a digit run or a spelled number, and reports whether the
+// token was a number at all.
+func asCount(token string) (int, bool) {
+	token = strings.ToLower(token)
+	if n, err := strconv.Atoi(token); err == nil {
+		return n, true
+	}
+	if n, ok := numberWords[token]; ok {
+		return n, true
+	}
+	// "twenty-five".
+	if tens, units, ok := strings.Cut(token, "-"); ok {
+		t, tensOK := numberWords[tens]
+		u, unitsOK := numberWords[units]
+		if tensOK && unitsOK && t >= 20 && t%10 == 0 && u < 10 {
+			return t + u, true
+		}
+	}
+	return 0, false
+}
+
+// statedCounts is every tool count asserted on a line that also mentions
+// the subject.
+func statedCounts(doc, subject string) []int {
+	var out []int
+	for _, line := range strings.Split(doc, "\n") {
+		if !strings.Contains(line, subject) {
+			continue
+		}
+		for _, m := range countedTools.FindAllStringSubmatch(line, -1) {
+			if n, ok := asCount(m[1]); ok {
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
+// dryRunCount is how many registered tools take a dry_run argument.
+func dryRunCount(bin string) (int, error) {
+	raw, err := runDumpSchemas(bin)
+	if err != nil {
+		return 0, err
+	}
+	d, err := parseDump(raw, bin)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, t := range d.Tools {
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		encoded, err := json.Marshal(t.InputSchema)
+		if err != nil {
+			return 0, fmt.Errorf("%s: re-encode input schema: %w", t.Name, err)
+		}
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			return 0, fmt.Errorf("%s: input schema: %w", t.Name, err)
+		}
+		if _, ok := schema.Properties["dry_run"]; ok {
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("no registered tool takes dry_run: this check would be looking at nothing")
+	}
+	return n, nil
 }
 
 // shippedTools is every tool the built binary registers, sorted.

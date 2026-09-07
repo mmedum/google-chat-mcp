@@ -78,7 +78,9 @@ Login opens your browser, or prints the URL when there is no browser to
 open (`--no-browser` forces that). The callback lands on `127.0.0.1` on a
 random port, with PKCE and state throughout. The refresh token goes into
 your OS keyring; if there is no keyring, it goes into a `0600` file and
-the command tells you so.
+the command tells you so. On Windows a Go file mode only sets the
+read-only attribute, so what protects that file there is the ACL its
+directory inherits, not the mode.
 
 `google-chat-mcp status` says which account is signed in and where the
 token lives. `google-chat-mcp logout` revokes the token at Google and
@@ -205,7 +207,7 @@ client that includes resources in its context:
 
 ## What keeps you safe
 
-- **`dry_run` on thirteen write tools.** It returns the request body that
+- **`dry_run` on 25 write tools.** It returns the request body that
   would have been sent, and the call cannot reach the network: the flag
   puts the request on a context the HTTP client refuses to write under,
   so a tool that forgot its own preview branch fails loudly instead of
@@ -260,8 +262,10 @@ make check     # everything CI runs
 `make check` is the definition of done: formatting, `go vet`,
 golangci-lint, race tests with a per-package coverage floor,
 `govulncheck`, a licence check, a stdio smoke test, a schema diff against
-the released tool surface, and a staleness gate that fails when this
-README, the docs or the changelog drift from the code. Contributing
+the released tool surface, an API-coverage gate that fails when a Google
+API method has no verdict on it or a call this server makes has no row,
+and a staleness gate that fails when this README, the docs or the
+changelog drift from the code. Contributing
 conventions are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Versioning

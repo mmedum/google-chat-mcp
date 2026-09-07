@@ -63,10 +63,25 @@ type Member struct {
 type ListMembersInput struct {
 	Space string
 	Limit int
+	// PageToken continues a previous call.
+	PageToken string
+}
+
+// MembersResult is one page of a space's membership.
+//
+// A result rather than a bare slice: the page token was on the wire and
+// dropped here, so "who is in this space" answered with the first 50 of
+// 300 and nothing said it was a prefix.
+type MembersResult struct {
+	Members       []Member
+	NextPageToken string
+	// Unparsed is how many memberships were dropped as unmodellable. A
+	// short list reads as a small space, which is what the count is for.
+	Unparsed int
 }
 
 // ListMembers returns who is in a space, with emails resolved.
-func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) ([]Member, error) {
+func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*MembersResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
 		return nil, err
@@ -89,6 +104,7 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) ([]Membe
 		PageSize:    limit,
 		ShowGroups:  true,
 		ShowInvited: true,
+		PageToken:   in.PageToken,
 	})
 	if err != nil {
 		return nil, Classify(err)
@@ -135,7 +151,7 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) ([]Membe
 		out = append(out, row)
 	}
 	s.warnUnparsed("memberships_unparsed", unparsed, len(resp.Memberships))
-	return out, nil
+	return &MembersResult{Members: out, NextPageToken: resp.NextPageToken, Unparsed: unparsed}, nil
 }
 
 // Roles a caller may ask for, in the tool surface's spelling. Google's

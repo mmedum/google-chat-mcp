@@ -399,3 +399,55 @@ func TestDirectoryCachePath(t *testing.T) {
 		t.Errorf("path = %q, want %q", got, want)
 	}
 }
+
+// The directory cache is not a secret and is still somebody's data: it
+// holds the email address and display name of every person the server
+// has resolved. `logout` deletes the token and calls Remove, so if
+// Remove leaves the cache behind, the command reports "Signed out" while
+// an extract of the organisation's directory stays on disk — outliving
+// the credential it was fetched with, and inherited by a login as a
+// different account.
+//
+// This is a real regression: Remove deleted config.json alone, and
+// nothing anywhere else removed the cache.
+func TestRemoveTakesTheDirectoryCacheToo(t *testing.T) {
+	tempBase(t)
+
+	if err := Save("default", Config{ClientSecretPath: "/tmp/client.json"}); err != nil {
+		t.Fatal(err)
+	}
+	cache, err := DirectoryCachePath("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cache, []byte(`{"version":1,"entries":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := Path("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both there, or the test proves nothing about removing them.
+	for _, p := range []string{config, cache} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("setup did not create %s: %v", p, err)
+		}
+	}
+
+	if err := Remove("default"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{config, cache} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s survived Remove (err = %v)", filepath.Base(p), err)
+		}
+	}
+}
+
+// Remove is called on a profile that may never have been written.
+func TestRemoveIsFineWithNothingThere(t *testing.T) {
+	tempBase(t)
+	if err := Remove("default"); err != nil {
+		t.Errorf("Remove on an empty profile: %v", err)
+	}
+}

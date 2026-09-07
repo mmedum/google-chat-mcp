@@ -81,8 +81,15 @@ func requireThread(space, value string) (string, error) {
 //
 // The resource name, not the :shortcode:. list_custom_emojis reports
 // both, and only one of them addresses anything.
-func requireCustomEmoji(value string) (string, error) {
-	return requireShape("emoji_name", value, emojiName, "customEmojis/{emoji}")
+//
+// The field is named by the caller rather than fixed, because the two
+// tools that reach here spell it `name` while this said `emoji_name`.
+// The model read the error, retried with the field the error named, and
+// got an SDK schema rejection with no class tag and no hint — two turns
+// to reach a dead end, from a message that was simply wrong about the
+// argument it was describing.
+func requireCustomEmoji(field, value string) (string, error) {
+	return requireShape(field, value, emojiName, "customEmojis/{emoji}")
 }
 
 // requireGroup checks that an argument names a Google Group.

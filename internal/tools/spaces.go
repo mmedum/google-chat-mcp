@@ -55,6 +55,7 @@ type GetSpaceInput struct {
 type ListSpacesInput struct {
 	SpaceType string `json:"space_type,omitempty" jsonschema:"narrow to SPACE, DIRECT_MESSAGE or GROUP_CHAT; omit for every kind"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 200; default 50"`
+	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
 }
 
 // ListSpacesOutput wraps the rows.
@@ -63,7 +64,8 @@ type ListSpacesInput struct {
 // object for structured content, so a tool returning a list has always
 // been wrapped. Renaming it would break every caller.
 type ListSpacesOutput struct {
-	Result []SpaceSummaryOutput `json:"result" jsonschema:"the spaces the account belongs to"`
+	Result        []SpaceSummaryOutput `json:"result" jsonschema:"the spaces the account belongs to"`
+	NextPageToken *string              `json:"next_page_token,omitempty" jsonschema:"pass this back as page_token to read the next page; null when this is the last one"`
 }
 
 // SearchSpacesInput narrows a space search.
@@ -132,18 +134,23 @@ func registerSpaces(s *mcp.Server, d Deps) {
 		Name: "list_spaces",
 		Description: "List Google Chat spaces (direct messages, group chats, named spaces) the authenticated user " +
 			"belongs to. Defaults to 50 entries; pass limit (1-200) to widen and space_type " +
-			"('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow. Use this to find a space's resource name " +
-			"before reading its messages.",
+			"('SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT') to narrow, and page with page_token and " +
+			"next_page_token. A non-null next_page_token means the account is in more spaces than came back. " +
+			"Use this to find a space's resource name before reading its messages.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ListSpacesInput) (*mcp.CallToolResult, ListSpacesOutput, error) {
 		got, err := d.Service.ListSpaces(ctx, service.ListSpacesInput{
-			Kind:  service.SpaceKind(in.SpaceType),
-			Limit: in.Limit,
+			Kind:      service.SpaceKind(in.SpaceType),
+			Limit:     in.Limit,
+			PageToken: in.PageToken,
 		})
 		if err != nil {
 			return nil, ListSpacesOutput{}, err
 		}
-		return nil, ListSpacesOutput{Result: spaceSummaries(got.Spaces)}, nil
+		return nil, ListSpacesOutput{
+			Result:        spaceSummaries(got.Spaces),
+			NextPageToken: nullable(got.NextPageToken),
+		}, nil
 	})
 
 	register(s, d, spec{

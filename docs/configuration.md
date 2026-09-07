@@ -17,7 +17,7 @@ else.
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
 | `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. |
-| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `true` | Set it to `false` and the tools that delete things are not registered, while every other write still is. For a deployer who wants this server posting but never removing. |
+| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Deletes are refused unless you set this to `true`. The four delete tools stay registered either way, so a model that reaches for one is told it is not permitted here and that nothing was changed, rather than being left to guess from a tool that is missing. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
 | `GCM_INTERACTION_HINT` | `--interaction-hint` | `true` | Marks every write tool as needing a person, which clients that read the mark honour by asking before the call. Turn it off only for a deployment with nobody at the keyboard: in Claude Code the mark is absolute — an allow rule does not suppress it, and headless there is nobody to ask, so every write is refused. Reads are unaffected either way. |
 | `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register, or `all`. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
@@ -39,7 +39,9 @@ The refresh token is looked up in this order, the same one `gh` uses.
    `google-chat-mcp` and the profile name as the account.
 3. A `0600` file in the profile directory, written at login only when
    the keyring was unavailable. `login` says so when it happens, and
-   `doctor` reports which of the three answered.
+   `doctor` reports which of the three answered. On Windows that mode
+   sets the read-only attribute and nothing else — the file is protected
+   by the ACL it inherits, so the keyring is the meaningful answer there.
 
 A missing keyring entry falls through to the next source. So does a
 keyring that cannot be reached at all, which is what makes a headless

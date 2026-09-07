@@ -120,8 +120,9 @@ outage, which is exactly what happened here, twice.
 `dry_run` is not a promise each handler keeps. The flag puts the call on
 a context `internal/gchat` refuses to write under, so a tool that
 declares `dry_run` and forgets its own preview branch fails loudly
-instead of posting. Thirteen tools carry the flag, the same thirteen the
-released surface had.
+instead of posting. 25 tools carry the flag. The staleness gate holds
+that number to the shipped surface, because it had already drifted: the
+docs said thirteen when the server registered twenty-five.
 
 ### One `Kind` decides four things
 
@@ -145,8 +146,20 @@ cannot write.
 
 **Recorded deviation.** The shared standard leaves destructive tools
 unregistered unless a flag enables them. This server keeps them
-registered, because the 28-tool surface is the contract the port has to
-keep; `GCM_READ_ONLY` is the same opt-in running the other way.
+registered and refuses the *call* instead, because the released surface
+is the contract this server has to keep and a tool that vanishes is a
+broken client rather than a safer one: the model cannot tell "not
+permitted here" from "this server cannot do that". `GCM_READ_ONLY` is
+the same opt-in running the other way. (The 28 tools that number once
+referred to were the Python server's, before the port. This server
+registers 53.)
+
+The guard is on by default. It was off until the first outside person
+installed all three of these servers in one sitting and asked why Chat
+was the loose one — Drive and Docs gate deletes behind a variable that
+starts off, and Chat is the one of the three where the delete cannot be
+undone. A Drive file goes to a trash you can restore from; a deleted
+Chat message is gone.
 
 ### A reply carries both halves, and they are not the same bytes
 
@@ -203,6 +216,33 @@ scope, verified against the discovery document — without that table the
 server refuses calls Google would have allowed, and refuses them for the
 people who paid the most for consent.
 
+### The gap to the API is written down
+
+Two files, and the split is which of them a person writes.
+`testdata/api-methods.json` is every method of the Chat and People APIs
+with its verb and path, as Google published them; `make api-diff` writes
+it and nobody edits it. `testdata/api-coverage.tsv` is one verdict per
+method, by hand: `used` names the `gchat.Client` method that implements
+it, `out` gives the reason it is deliberately not called.
+
+`gates api-coverage` holds the two and the client to each other, offline,
+in `make check`. A method with no verdict fails the build, so a
+capability Google adds cannot arrive unnoticed; a call with no row fails
+it too, so a new one cannot be added without saying which API method it
+is; and a verdict on a method that no longer exists fails, so the record
+cannot outlive what it was about.
+
+It exists because nothing else here looks outward. The schema diff
+compares this server with its own last release, and the live driver's
+surface gate compares the driver with this server. `make api-diff`
+refetches the discovery documents into the snapshot and reports what
+changed, verb and path included — a method that keeps its name and moves
+is a break the name alone would not show. It reaches the network, which
+is why it is a target somebody runs rather than a gate CI depends on: a
+gate that fails when Google is slow is one people learn to rerun until it
+passes. What CI gets instead is the file it wrote, and the snapshot's
+fetch date is printed on every run.
+
 ## Distribution
 
 `go install`, or a signed archive from a release: six platforms, a
@@ -248,12 +288,14 @@ contradicted a document, which won.
 | The space-event filter field is `event_types`, plural | The mirror image: the reference's prose says `event_type` and its examples say `event_types`, and the examples are right. Settled live 2026-09-06. The same page has now been wrong in both directions, so it cannot be read once |
 | A space-scoped message search must still pass `spaces/-` as the parent | Google refuses a real parent outright and names the fix: put the space in the filter. Live 2026-09-05 |
 | Every media download is served as `application/octet-stream` | Whatever the attachment resource says its type is. So the attachment's own declared type is the one to report. Live 2026-09-06 |
+| A page can come back EMPTY with a next page token still on it | Google applies `pageSize` before it filters, so a space holding two messages answers `pageSize=1` with no messages and a token. An empty page therefore does not mean the end, and a caller that stops on one reports a space with messages in it as quiet. The tool descriptions and the server instructions say so. Live 2026-09-07, found by a step written to assert the opposite |
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
 | A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
 | An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
 | `markupSyntax` is output only | So a user-authenticated caller cannot ask for Markdown, whatever the release note implies. REST reference, 2026-09-05 |
 | The media upload protocol is only in the discovery document | `media.upload` is a POST to a different base with a JSON metadata part; the guide does not say so. `downloadUri` is documented as not for downloading, and is never fetched |
+| The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. The four left out are import mode, `spaces.create` — `spaces.setup` does the same thing and adds the first members — an attachment lookup for bytes a message already carries, and the PUT form of a message update, which would clear cards and attachments. Each is a row in `testdata/api-coverage.tsv` with that reason |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 
 ### MCP, and the clients that read it

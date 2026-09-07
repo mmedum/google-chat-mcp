@@ -235,7 +235,7 @@ func (o SpaceDetailOutput) Render() string {
 
 // Render lists the spaces the account belongs to.
 func (o ListSpacesOutput) Render() string {
-	return listing(count(len(o.Result), "space", "spaces"), rows(o.Result))
+	return block(listing(count(len(o.Result), "space", "spaces"), rows(o.Result)), more(o.NextPageToken))
 }
 
 // Render is a page of search matches. The two counts Google withholds
@@ -307,7 +307,8 @@ func (o MessageOutput) Render() string {
 
 // Render lists a page of messages.
 func (o MessageListOutput) Render() string {
-	return listing(count(len(o.Result), "message", "messages"), rows(o.Result))
+	return block(listing(count(len(o.Result), "message", "messages"), rows(o.Result)),
+		unparsedNote(o.Unparsed), more(o.NextPageToken))
 }
 
 // Render is one emoji and how many people used it.
@@ -587,7 +588,8 @@ func (o MemberOutput) Render() string {
 
 // Render lists a space's members.
 func (o MemberListOutput) Render() string {
-	return listing(count(len(o.Result), "member", "members"), rows(o.Result))
+	return block(listing(count(len(o.Result), "member", "members"), rows(o.Result)),
+		unparsedNote(o.Unparsed), more(o.NextPageToken))
 }
 
 // Render says who was invited.

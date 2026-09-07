@@ -74,7 +74,8 @@ func nobody() http.HandlerFunc {
 
 func TestGetMessagesResolvesSenders(t *testing.T) {
 	s := newService(t, route(ok(twoMessages), people("janedoe@example.com", "Jane D.")))
-	got, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	got := res.Messages
 	if err != nil {
 		t.Fatalf("GetMessages: %v", err)
 	}
@@ -112,7 +113,8 @@ func TestPeopleFailuresNeverEmptyAListing(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newService(t, route(ok(twoMessages), tc.people))
-			got, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+			res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+			got := res.Messages
 			if err != nil {
 				t.Fatalf("a People failure must not fail the read: %v", err)
 			}
@@ -143,7 +145,8 @@ func TestAFieldGoogleStopsSendingDoesNotCostARow(t *testing.T) {
 	  {"name":"spaces/A/messages/4","sender":{"name":"users/1"},"createTime":"not a time","thread":{"name":"spaces/A/threads/T1"},"text":"no timestamp"}
 	]}`
 	s := newService(t, route(ok(page), nobody()))
-	got, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	got := res.Messages
 	if err != nil {
 		t.Fatalf("GetMessages: %v", err)
 	}
@@ -168,7 +171,8 @@ func TestAMessageWithNoNameIsDropped(t *testing.T) {
 	  {"sender":{"name":"users/1"},"createTime":"2026-01-02T03:04:05Z","thread":{"name":"spaces/A/threads/T1"},"text":"unaddressable"}
 	]}`
 	s := newService(t, route(ok(page), nobody()))
-	got, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	got := res.Messages
 	if err != nil {
 		t.Fatalf("GetMessages: %v", err)
 	}
@@ -242,9 +246,10 @@ func TestGetThreadReadsInOrder(t *testing.T) {
 		query = r.URL.RawQuery
 		fmt.Fprint(w, twoMessages)
 	}, nobody()))
-	got, err := s.GetThread(context.Background(), GetThreadInput{
+	res, err := s.GetThread(context.Background(), GetThreadInput{
 		Space: "spaces/A", Thread: "spaces/A/threads/T1",
 	})
+	got := res.Messages
 	if err != nil {
 		t.Fatalf("GetThread: %v", err)
 	}

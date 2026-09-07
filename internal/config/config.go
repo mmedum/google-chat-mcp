@@ -113,10 +113,15 @@ type Config struct {
 	LogLevel  LogLevel
 	LogFormat LogFormat
 	ReadOnly  bool
-	// RefuseDeletes is negative where its variable is positive, so that
-	// the zero value is the ordinary server. A Config built in a test or
-	// by a future caller must not quietly lose four tools that have been
-	// in the surface since the first release.
+	// RefuseDeletes is negative where its variable is positive. It used
+	// to keep the zero value registering all four delete tools, back
+	// when the flag decided registration; it decides only whether the
+	// call goes through now, so nothing is lost from the surface either
+	// way and the safe answer is the one a zero value should give.
+	//
+	// It is on by default: a deleted Chat message has no trash behind
+	// it, unlike the Drive and Docs servers whose deletes are
+	// recoverable and whose equivalent flags are off by default anyway.
 	RefuseDeletes bool
 	// SuppressInteractionHint is negative for the same reason as
 	// RefuseDeletes: the zero value has to be the ordinary server, which
@@ -182,7 +187,8 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
 	def(&s.ReadOnly, "read-only", "READ_ONLY", "false", "register only the read-only tools")
-	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "true", "register the tools that delete things")
+	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "false",
+		"allow the tools that delete things to actually delete; they stay registered either way")
 	def(&s.InteractionHint, "interaction-hint", "INTERACTION_HINT", "true",
 		"ask the client to put a person in front of every write")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())

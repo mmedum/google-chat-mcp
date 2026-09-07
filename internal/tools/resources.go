@@ -77,13 +77,20 @@ func registerResources(s *mcp.Server, d Deps) {
 		// A resource cannot page, so it asks for as much as the tool
 		// allows rather than the tool's smaller default. Past that the
 		// caller needs get_thread, and the description says so.
-		rows, err := d.Service.GetThread(ctx, service.GetThreadInput{
+		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
 			Space: parts.space, Thread: parts.child, Limit: service.MaxLimit,
 		})
 		if err != nil {
 			return nil, resourceError(req.Params.URI, err)
 		}
-		return jsonResource(req.Params.URI, MessageListOutput{Result: messageRows(rows)})
+		// The token is carried even here, where the resource cannot pass
+		// one back: a reader that sees it knows the thread is longer
+		// than this, which is the difference between a prefix and a
+		// thread.
+		return jsonResource(req.Params.URI, MessageListOutput{
+			Result:        messageRows(got.Messages),
+			NextPageToken: nullable(got.NextPageToken),
+		})
 	})
 }
 

@@ -39,13 +39,16 @@ func memberRow(m service.Member) MemberOutput {
 
 // MemberListOutput wraps the rows.
 type MemberListOutput struct {
-	Result []MemberOutput `json:"result" jsonschema:"who is in the space"`
+	Result        []MemberOutput `json:"result" jsonschema:"who is in the space"`
+	NextPageToken *string        `json:"next_page_token,omitempty" jsonschema:"pass this back as page_token to read the next page; null when this is the last one"`
+	Unparsed      int            `json:"unparsed" jsonschema:"memberships that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE: a short list otherwise reads as a small space"`
 }
 
 // ListMembersInput selects a page of a space's members.
 type ListMembersInput struct {
-	SpaceID string `json:"space_id" jsonschema:"the space, spaces/{id}"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 200; default 50"`
+	SpaceID   string `json:"space_id" jsonschema:"the space, spaces/{id}"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 200; default 50"`
+	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
 }
 
 func registerMembers(s *mcp.Server, d Deps) {
@@ -55,15 +58,23 @@ func registerMembers(s *mcp.Server, d Deps) {
 			"not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so " +
 			"check state before reporting someone as present. People come back with their email resolved through " +
 			"the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default " +
-			"50 entries; pass limit (1-200) to widen.",
+			"50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null " +
+			"next_page_token means the space has more members than came back, so do not report the result as the " +
+			"whole membership.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ListMembersInput) (*mcp.CallToolResult, MemberListOutput, error) {
-		members, err := d.Service.ListMembers(ctx, service.ListMembersInput{Space: in.SpaceID, Limit: in.Limit})
+		got, err := d.Service.ListMembers(ctx, service.ListMembersInput{
+			Space: in.SpaceID, Limit: in.Limit, PageToken: in.PageToken,
+		})
 		if err != nil {
 			return nil, MemberListOutput{}, err
 		}
-		out := MemberListOutput{Result: make([]MemberOutput, 0, len(members))}
-		for _, m := range members {
+		out := MemberListOutput{
+			Result:        make([]MemberOutput, 0, len(got.Members)),
+			NextPageToken: nullable(got.NextPageToken),
+			Unparsed:      got.Unparsed,
+		}
+		for _, m := range got.Members {
 			out.Result = append(out.Result, memberRow(m))
 		}
 		return nil, out, nil

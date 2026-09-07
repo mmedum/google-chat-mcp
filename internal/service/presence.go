@@ -314,7 +314,7 @@ func (s *Service) ListCustomEmojis(ctx context.Context, in ListCustomEmojisInput
 
 // GetCustomEmoji returns one by resource name.
 func (s *Service) GetCustomEmoji(ctx context.Context, name string) (*CustomEmoji, error) {
-	emoji, err := requireCustomEmoji(name)
+	emoji, err := requireCustomEmoji("name", name)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +432,7 @@ type DeleteCustomEmojiResult struct {
 // It is gone for everyone, and any message already carrying it loses
 // the image. The tool says so; this only reports what happened.
 func (s *Service) DeleteCustomEmoji(ctx context.Context, in DeleteCustomEmojiInput) (*DeleteCustomEmojiResult, error) {
-	name, err := requireCustomEmoji(in.Name)
+	name, err := requireCustomEmoji("name", in.Name)
 	if err != nil {
 		return nil, err
 	}
