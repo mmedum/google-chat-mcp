@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -374,6 +375,72 @@ func TestClientCallsReadsTheSignature(t *testing.T) {
 	}
 }
 
+// The floors are the checks that catch this gate reading nothing, and a
+// floor nothing exercises is the failure it exists to prevent. Raised by
+// the google-sheets-mcp session, whose own gate has a test per failing
+// path: writing them is what found that its wildcard could absorb a
+// method the client really called.
+//
+// One floor is missing from this table on purpose. `no calls on
+// gchat.Client` cannot be reached without faking reflection over a
+// compiled type, so it is asserted the other way round, by
+// TestClientCallsIsEveryMethodButTheTwoThatReport — if that set ever
+// empties, that test fails first.
+func TestAPICoverageRefusesInputItCannotLearnFrom(t *testing.T) {
+	tests := []struct {
+		name     string
+		record   string
+		snapshot string
+		want     string
+	}{
+		{
+			name:     "a snapshot with no methods in it",
+			record:   row("chat", "spaces.list", "used", "Client.ListSpaces"),
+			snapshot: `{"fetched":"2026-09-07","apis":{}}`,
+			want:     "lists no methods: this gate is looking at nothing",
+		},
+		{
+			name:     "a snapshot whose APIs are all empty",
+			record:   row("chat", "spaces.list", "used", "Client.ListSpaces"),
+			snapshot: `{"fetched":"2026-09-07","apis":{"chat":{},"people":{}}}`,
+			want:     "lists no methods: this gate is looking at nothing",
+		},
+		{
+			name:     "a record with no rows in it",
+			record:   "# every line a comment\n",
+			snapshot: `{"fetched":"2026-09-07","apis":{"chat":{"spaces.list":{"verb":"GET","path":"v1/spaces"}}}}`,
+			want:     "holds no rows: this gate is looking at nothing",
+		},
+		{
+			name:     "a snapshot that is not JSON",
+			record:   row("chat", "spaces.list", "used", "Client.ListSpaces"),
+			snapshot: "not json at all",
+			want:     snapshotFile + ":",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			if err := os.MkdirAll("testdata", 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(coverageFile, []byte(tt.record), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(snapshotFile, []byte(tt.snapshot), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			if code := apiCoverage(nil, &stdout, &stderr); code == 0 {
+				t.Fatalf("passed on input it cannot learn from:\n%s", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), tt.want) {
+				t.Errorf("want %q, got %q", tt.want, stderr.String())
+			}
+		})
+	}
+}
+
 func TestAPICoverageRefusesASnapshotItCannotRead(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll("testdata", 0o750); err != nil {
@@ -389,5 +456,52 @@ func TestAPICoverageRefusesASnapshotItCannotRead(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "cannot read "+snapshotFile) {
 		t.Errorf("want the missing snapshot named, got %q", stderr.String())
+	}
+}
+
+// The property the shared standard asks of any refetch target: when the
+// network fails it fails loudly and leaves the committed file untouched.
+// A half-written snapshot is worse than a stale one, because the next
+// `check` then holds the record to something that is neither the old
+// truth nor the new one.
+//
+// The closed port is bound and released rather than guessed, so the
+// test cannot pass because something happened to answer on it.
+func TestARefetchThatCannotReachTheAPIWritesNothing(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := "http://" + listener.Addr().String() + "/discovery"
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "api-methods.json")
+	before := snapshot{Fetched: "2026-09-01", APIs: map[string]map[string]apiMethod{
+		"chat": {"spaces.list": {Verb: "GET", Path: "v1/spaces"}},
+	}}
+	if err := writeSnapshot(path, before); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := apiDiffWith(map[string]apiSource{"chat": {discovery: dead}}, path, &stdout, &stderr)
+	if code == 0 {
+		t.Errorf("a refetch that reached nothing reported success:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "fetch "+dead) {
+		t.Errorf("want the unreachable URL named, got %q", stderr.String())
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(original, after) {
+		t.Errorf("the snapshot was rewritten by a failed refetch:\nbefore %s\nafter  %s", original, after)
 	}
 }
