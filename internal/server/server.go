@@ -54,9 +54,10 @@ const writeInstructions = "Write with send_message, which posts the text exactly
 const readOnlyInstructions = "This server is read-only: no tool here can post, edit or delete anything in Chat."
 
 const tailInstructions = "Every space, message and thread is addressed by its resource name, never by position. A " +
-	"listing that reports unparsed rows is incomplete rather than short, and one that returns a non-null " +
-	"next_page_token has more behind it — pass the token back as page_token rather than reporting the page as " +
-	"the whole set. Resources gchat://spaces/{id} and its messages and threads carry the same content as the " +
+	"listing that reports unparsed rows is incomplete rather than short. Keep paging while next_page_token is " +
+	"non-null, and note that AN EMPTY PAGE IS NOT THE END: Google applies the page size before it filters, so a " +
+	"page can come back with no rows and a token still on it. Stopping there reports a space that has messages " +
+	"in it as empty. Resources gchat://spaces/{id} and its messages and threads carry the same content as the " +
 	"matching get_ tools."
 
 // instructionsFor is the instruction string for one configuration.

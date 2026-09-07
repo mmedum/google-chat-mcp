@@ -127,8 +127,10 @@ func registerMessages(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "get_messages",
 		Description: "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest " +
-			"first; page with page_token and next_page_token, and a non-null next_page_token means the space holds " +
-			"more than was returned. Sender email is resolved through the People API and is null when that fails.",
+			"first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an " +
+			"EMPTY result with a token still on it does not mean the space is empty, because Google applies the " +
+			"page size before it filters. Sender email is resolved through the People API and is null when that " +
+			"fails.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
