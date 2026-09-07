@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-07
+
 ### Changed
 - **Breaking: deletes are refused unless you turn them on.** Set
   `GCM_ALLOW_DESTRUCTIVE=true` to allow `delete_message`, `delete_space`,
@@ -87,3 +89,7 @@ subprocess of your client, and talks to Google Chat as you.
   keeps the command in the README.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
+
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v1.0.0
