@@ -176,8 +176,10 @@ jobs:
       # The live driver cannot run here — it needs a login and writes to
       # a real account — but its surface gate can: it reads what the
       # built binary registers, which needs no credentials.
-      - name: every tool is exercised by the live driver or excused
-        run: go test -tags=live ./internal/livecheck -run TestEveryToolIsExercisedOrExcused -count=1
+      - name: every tool and option is exercised, and every print is redacted
+        run: >
+          go test -tags=live ./internal/livecheck -count=1
+          -run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused|TestEveryPrintGoesThroughTheRedactor' 
       - name: docs match the code
         run: go run ./scripts/gates staleness ./google-chat-mcp
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

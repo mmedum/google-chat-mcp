@@ -56,7 +56,7 @@ var steps = []step{
 			d.t.Errorf("get_space returned %s, want the space it was asked for", d.redact(out.SpaceID))
 		}
 		if !strings.Contains(out.DisplayName, spacePrefix) {
-			d.t.Errorf("display name = %q, want the name create_space was given", out.DisplayName)
+			d.t.Errorf("display name = %q, want the name create_space was given", d.redact(out.DisplayName))
 		}
 	}},
 
@@ -127,7 +127,7 @@ var steps = []step{
 		}
 		d.into(d.must("get_message", map[string]any{"message_name": d.posted}), &out)
 		if out.Text != livePostBody {
-			d.t.Errorf("the body came back as %q, want it posted verbatim", out.Text)
+			d.t.Errorf("the body came back as %q, want it posted verbatim", d.redact(out.Text))
 		}
 	}},
 
@@ -174,7 +174,7 @@ var steps = []step{
 		}
 		d.into(d.must("get_message", map[string]any{"message_name": d.posted}), &out)
 		if out.Text != liveEditBody {
-			d.t.Errorf("after the edit the body is %q, want the replacement", out.Text)
+			d.t.Errorf("after the edit the body is %q, want the replacement", d.redact(out.Text))
 		}
 	}},
 

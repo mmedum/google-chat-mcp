@@ -120,7 +120,7 @@ func (d *driver) call(name string, args map[string]any) result {
 	d.t.Helper()
 	res, err := d.cs.CallTool(d.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
-		d.t.Fatalf("%s: transport: %v", name, err)
+		d.t.Fatalf("%s: transport: %s", name, d.redact(err.Error()))
 	}
 	var text strings.Builder
 	for _, c := range res.Content {
@@ -152,7 +152,7 @@ func (d *driver) into(sc map[string]any, v any) {
 		d.t.Fatal(err)
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
-		d.t.Fatalf("decode %T: %v", v, err)
+		d.t.Fatalf("decode: %s", d.redact(err.Error()))
 	}
 }
 

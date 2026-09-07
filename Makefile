@@ -107,8 +107,9 @@ evals: build ## Score a model driving these tools against a real account
 # added tomorrow from being silently unexercised, and it is worth nothing
 # if it only runs when someone remembers to run the live suite.
 .PHONY: live-surface
-live-surface: build ## Every tool is exercised by the live driver or excused with a reason
-	@$(GO) test -tags=live ./internal/livecheck -run TestEveryToolIsExercisedOrExcused -count=1
+live-surface: build ## Every tool and option is exercised by the live driver, and every print is redacted
+	@$(GO) test -tags=live ./internal/livecheck -count=1 \
+		-run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused|TestEveryPrintGoesThroughTheRedactor' 
 
 .PHONY: live
 live: build ## Drive the shipped binary against a real account
