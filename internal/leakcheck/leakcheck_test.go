@@ -184,12 +184,12 @@ var reviewedBlobs = map[string]bool{
 // can be. LEAKCHECK_HISTORY=all widens it to every commit, which is the
 // mode to use when deciding whether the published past needs rewriting.
 //
-// Only branches and tags either way. This repository once held
-// refs/entire/checkpoints/*, the local session transcripts, and those
-// are full of real ids by their nature — they record what was actually
-// said to this server. They were never pushed, and scanning them
-// reported a hundred and fifty findings about a file nobody would ever
-// receive.
+// Only branches and tags either way. A tool that checkpoints sessions
+// into refs of its own once kept its transcripts here, and those are
+// full of real ids by their nature — they record what was actually said
+// to this server. They were never pushed, and scanning them reported a
+// hundred and fifty findings about a file nobody would ever receive.
+// Any local-only ref is that same case: unpushable, so out of scope.
 //
 // Behind LEAKCHECK_HISTORY because it walks blobs rather than the tree.
 // CI sets it; `go test ./...` on a laptop skips it. Raised by the
