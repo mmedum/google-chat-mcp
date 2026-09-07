@@ -146,10 +146,20 @@ cannot write.
 
 **Recorded deviation.** The shared standard leaves destructive tools
 unregistered unless a flag enables them. This server keeps them
-registered, because the released surface is the contract this server has
-to keep; `GCM_READ_ONLY` is the same opt-in running the other way. (The
-28 tools that number once referred to were the Python server's, before
-the port. This server registers 53.)
+registered and refuses the *call* instead, because the released surface
+is the contract this server has to keep and a tool that vanishes is a
+broken client rather than a safer one: the model cannot tell "not
+permitted here" from "this server cannot do that". `GCM_READ_ONLY` is
+the same opt-in running the other way. (The 28 tools that number once
+referred to were the Python server's, before the port. This server
+registers 53.)
+
+The guard is on by default. It was off until the first outside person
+installed all three of these servers in one sitting and asked why Chat
+was the loose one — Drive and Docs gate deletes behind a variable that
+starts off, and Chat is the one of the three where the delete cannot be
+undone. A Drive file goes to a trash you can restore from; a deleted
+Chat message is gone.
 
 ### A reply carries both halves, and they are not the same bytes
 

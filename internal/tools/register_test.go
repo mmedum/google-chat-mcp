@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,10 +85,14 @@ func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 	}
 }
 
-// GCM_ALLOW_DESTRUCTIVE=false is for a deployer who wants this server
-// posting but never deleting. It takes out the deletes and leaves every
-// other write, which is what separates it from read-only mode.
-func TestRefusingDeletesLeavesTheOtherWrites(t *testing.T) {
+// Refusing deletes leaves every tool registered, including the deletes.
+//
+// The guard used to unregister them. It refuses the call instead, so the
+// model is told "not permitted here, and nothing was changed" rather
+// than being left to infer it from a tool that is not in the list — and
+// the released surface stays the same in every configuration, which is
+// what the schema diff holds.
+func TestRefusingDeletesLeavesEveryToolRegistered(t *testing.T) {
 	cfg := allToolsets()
 	cfg.RefuseDeletes = true
 	got := registered(t, cfg,
@@ -96,12 +101,9 @@ func TestRefusingDeletesLeavesTheOtherWrites(t *testing.T) {
 		spec{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
 		spec{Name: "a_delete", Description: "d", Kind: Destructive},
 	)
-	if _, ok := got["a_delete"]; ok {
-		t.Error("a delete tool is registered with deletes refused")
-	}
-	for _, name := range []string{"a_read", "a_write", "an_idempotent_write"} {
+	for _, name := range []string{"a_read", "a_write", "an_idempotent_write", "a_delete"} {
 		if _, ok := got[name]; !ok {
-			t.Errorf("%q was taken out, and only the deletes should be", name)
+			t.Errorf("%q was taken out; refusing a delete is a call-time answer, not a missing tool", name)
 		}
 	}
 }
@@ -275,3 +277,93 @@ func TestADryRunPutsTheCallOnANoWriteContext(t *testing.T) {
 type noToken struct{}
 
 func (noToken) Token(context.Context) (string, error) { return "", errors.New("no credentials") }
+
+// The refusal has to reach the model as a tool error it can read, and
+// the handler must not run. A guard that merely returns an error the
+// SDK reports as a protocol failure teaches the model nothing, and one
+// that runs the handler first has already deleted the thing.
+func TestARefusedDeleteNeverReachesItsHandler(t *testing.T) {
+	cfg := allToolsets()
+	cfg.RefuseDeletes = true
+
+	ran := false
+	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	register(s, Deps{Config: cfg}, spec{Name: "a_delete", Description: "d", Kind: Destructive},
+		func(context.Context, *mcp.CallToolRequest, probeIn) (*mcp.CallToolResult, probeOut, error) {
+			ran = true
+			return nil, probeOut{}, nil
+		})
+
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := s.Connect(context.Background(), st, nil)
+	if err != nil {
+		t.Fatalf("connect server: %v", err)
+	}
+	defer func() { _ = ss.Close() }()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).
+		Connect(context.Background(), ct, nil)
+	if err != nil {
+		t.Fatalf("connect client: %v", err)
+	}
+	defer func() { _ = cs.Close() }()
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "a_delete", Arguments: map[string]any{"name": "spaces/AAAAspace1/messages/AAAAmsg1"},
+	})
+	if err != nil {
+		t.Fatalf("the refusal must be a tool error the model can read, not a protocol failure: %v", err)
+	}
+	if ran {
+		t.Error("the handler ran; a refused delete must not reach the code that deletes")
+	}
+	if !res.IsError {
+		t.Error("a refused delete came back as a success")
+	}
+	var text string
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			text += tc.Text
+		}
+	}
+	for _, want := range []string{"[unsupported]", "Nothing was changed", "GCM_ALLOW_DESTRUCTIVE"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, text)
+		}
+	}
+}
+
+// With deletes allowed, the same call goes through.
+func TestAnAllowedDeleteReachesItsHandler(t *testing.T) {
+	cfg := allToolsets()
+	cfg.RefuseDeletes = false
+
+	ran := false
+	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	register(s, Deps{Config: cfg}, spec{Name: "a_delete", Description: "d", Kind: Destructive},
+		func(context.Context, *mcp.CallToolRequest, probeIn) (*mcp.CallToolResult, probeOut, error) {
+			ran = true
+			return nil, probeOut{}, nil
+		})
+
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := s.Connect(context.Background(), st, nil)
+	if err != nil {
+		t.Fatalf("connect server: %v", err)
+	}
+	defer func() { _ = ss.Close() }()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).
+		Connect(context.Background(), ct, nil)
+	if err != nil {
+		t.Fatalf("connect client: %v", err)
+	}
+	defer func() { _ = cs.Close() }()
+
+	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "a_delete", Arguments: map[string]any{"name": "spaces/AAAAspace1/messages/AAAAmsg1"},
+	}); err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !ran {
+		t.Error("the handler did not run with deletes allowed")
+	}
+}
