@@ -27,14 +27,17 @@ type MessageOutput struct {
 
 // MessageListOutput wraps a list of messages.
 type MessageListOutput struct {
-	Result []MessageOutput `json:"result" jsonschema:"the messages that were read"`
+	Result        []MessageOutput `json:"result" jsonschema:"the messages that were read"`
+	NextPageToken *string         `json:"next_page_token,omitempty" jsonschema:"pass this back as page_token to read the next page; null when this is the last one"`
+	Unparsed      int             `json:"unparsed" jsonschema:"messages that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE, which is not the same as the space being quiet"`
 }
 
 // GetMessagesInput selects a page of a space's history.
 type GetMessagesInput struct {
-	SpaceID string `json:"space_id" jsonschema:"the space to read, spaces/{id}, from list_spaces"`
-	Since   string `json:"since,omitempty" jsonschema:"only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 20"`
+	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
+	SpaceID   string `json:"space_id" jsonschema:"the space to read, spaces/{id}, from list_spaces"`
+	Since     string `json:"since,omitempty" jsonschema:"only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 20"`
 }
 
 // GetThreadInput selects one thread.
@@ -42,6 +45,7 @@ type GetThreadInput struct {
 	SpaceID    string `json:"space_id" jsonschema:"the thread's parent space, spaces/{id}"`
 	ThreadName string `json:"thread_name" jsonschema:"the thread, spaces/{space}/threads/{thread}, from a message's thread_id"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 50"`
+	PageToken  string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
 }
 
 // GetMessageInput names one message.
@@ -123,31 +127,42 @@ func registerMessages(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "get_messages",
 		Description: "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest " +
-			"first. Sender email is resolved through the People API and is null when that fails.",
+			"first; page with page_token and next_page_token, and a non-null next_page_token means the space holds " +
+			"more than was returned. Sender email is resolved through the People API and is null when that fails.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
-		rows, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
-			Space: in.SpaceID, Since: in.Since, Limit: in.Limit,
+		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
+			Space: in.SpaceID, Since: in.Since, Limit: in.Limit, PageToken: in.PageToken,
 		})
 		if err != nil {
 			return nil, MessageListOutput{}, err
 		}
-		return nil, MessageListOutput{Result: messageRows(rows)}, nil
+		return nil, MessageListOutput{
+			Result:        messageRows(got.Messages),
+			NextPageToken: nullable(got.NextPageToken),
+			Unparsed:      got.Unparsed,
+		}, nil
 	})
 
 	register(s, d, spec{
 		Name: "get_thread",
-		Description: "Read all messages in a single thread, oldest first. Give the parent space_id and the thread_name " +
-			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100.",
+		Description: "Read one thread's messages, oldest first. Give the parent space_id and the thread_name " +
+			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; " +
+			"page with page_token and next_page_token. A non-null next_page_token means the thread is longer than " +
+			"what came back, so do not read the result as the whole thread.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetThreadInput) (*mcp.CallToolResult, MessageListOutput, error) {
-		rows, err := d.Service.GetThread(ctx, service.GetThreadInput{
-			Space: in.SpaceID, Thread: in.ThreadName, Limit: in.Limit,
+		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
+			Space: in.SpaceID, Thread: in.ThreadName, Limit: in.Limit, PageToken: in.PageToken,
 		})
 		if err != nil {
 			return nil, MessageListOutput{}, err
 		}
-		return nil, MessageListOutput{Result: messageRows(rows)}, nil
+		return nil, MessageListOutput{
+			Result:        messageRows(got.Messages),
+			NextPageToken: nullable(got.NextPageToken),
+			Unparsed:      got.Unparsed,
+		}, nil
 	})
 
 	register(s, d, spec{
@@ -268,12 +283,13 @@ func messageRows(rows []service.MessageRow) []MessageOutput {
 
 // SendMessageInput is one message to post.
 type SendMessageInput struct {
-	SpaceID       string `json:"space_id" jsonschema:"the space to post in, spaces/{id}, from list_spaces or find_direct_message"`
-	Text          string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. <users/all> mentions and notifies EVERYONE in the space, so use it only when asked to"`
-	ThreadName    string `json:"thread_name,omitempty" jsonschema:"reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one"`
-	ReplyFallback bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
-	UploadToken   string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
-	DryRun        bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
+	SpaceID         string `json:"space_id" jsonschema:"the space to post in, spaces/{id}, from list_spaces or find_direct_message"`
+	Text            string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. <users/all> mentions and notifies EVERYONE in the space, so use it only when asked to"`
+	ThreadName      string `json:"thread_name,omitempty" jsonschema:"reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one"`
+	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
+	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
+	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
+	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
 
 // SendMessageOutput is what was posted, or what a dry run would post.
@@ -329,7 +345,8 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SendMessageInput) (*mcp.CallToolResult, SendMessageOutput, error) {
 		got, err := d.Service.SendMessage(ctx, service.SendMessageInput{
 			Space: in.SpaceID, Text: in.Text, Thread: in.ThreadName,
-			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken, DryRun: in.DryRun,
+			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken,
+			ClientMessageID: in.ClientMessageID, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, SendMessageOutput{}, err

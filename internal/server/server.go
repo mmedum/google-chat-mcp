@@ -30,16 +30,43 @@ const SDKVersion = "v1.7.0"
 // registry caps a description at 100 characters, which a test holds.
 const Description = "Google Chat as MCP tools: read, search and write to your spaces, direct messages and sidebar."
 
-// instructions are the first thing a client shows the model, so they
-// describe the tools that are actually registered. A pointer to a tool
-// that is not there costs a turn and teaches the model nothing.
-const instructions = "Google Chat tools. Start with list_spaces to find a space's resource name; whoami says which " +
-	"account is signed in. Read with get_messages, get_thread and get_message; search_messages scans one space, " +
-	"and search_people turns a name into an email address. Write with send_message, which posts the text exactly " +
-	"as given, and find_direct_message to reach one person. Every space, message and thread is addressed by its " +
-	"resource name, never by position, and a listing that reports unparsed rows is incomplete rather than short. " +
-	"Most write tools take dry_run, which returns the request body without sending it. Resources " +
-	"gchat://spaces/{id} and its messages and threads carry the same content as the matching get_ tools."
+// The instructions are the first thing a client shows the model, so
+// they describe the tools that are actually registered. A pointer to a
+// tool that is not there costs a turn and teaches the model nothing.
+//
+// Built from the config rather than fixed, because read-only mode drops
+// every write tool: a constant string named send_message and
+// find_direct_message to a server that had neither, which is the exact
+// failure the paragraph above warns about. TestInstructionsOnlyNameTools
+// ThatAreRegistered holds it for every configuration.
+const readInstructions = "Google Chat tools. Start with list_spaces to find a space's resource name; whoami says " +
+	"which account is signed in. Read with get_messages, get_thread and get_message; search_messages scans one " +
+	"space, and search_people turns a name into an email address."
+
+// writeInstructions are dropped under GCM_READ_ONLY, along with the
+// tools they name.
+const writeInstructions = "Write with send_message, which posts the text exactly as given, and find_direct_message " +
+	"to reach one person. Most write tools take dry_run, which returns the request body without sending it."
+
+// readOnlyInstructions replace them, because "no write tool is here" is
+// worth a sentence: without it the model discovers the same absence one
+// failed call at a time.
+const readOnlyInstructions = "This server is read-only: no tool here can post, edit or delete anything in Chat."
+
+const tailInstructions = "Every space, message and thread is addressed by its resource name, never by position. A " +
+	"listing that reports unparsed rows is incomplete rather than short, and one that returns a non-null " +
+	"next_page_token has more behind it — pass the token back as page_token rather than reporting the page as " +
+	"the whole set. Resources gchat://spaces/{id} and its messages and threads carry the same content as the " +
+	"matching get_ tools."
+
+// instructionsFor is the instruction string for one configuration.
+func instructionsFor(cfg config.Config) string {
+	middle := writeInstructions
+	if cfg.ReadOnly {
+		middle = readOnlyInstructions
+	}
+	return readInstructions + " " + middle + " " + tailInstructions
+}
 
 // Deps are what the server needs.
 type Deps struct {
@@ -51,7 +78,7 @@ type Deps struct {
 
 // New builds the MCP server with every tool registered.
 func New(d Deps) *mcp.Server {
-	opts := &mcp.ServerOptions{Instructions: instructions}
+	opts := &mcp.ServerOptions{Instructions: instructionsFor(d.Config)}
 	if d.Logger != nil && d.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		opts.Logger = d.Logger
 	}
