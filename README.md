@@ -262,8 +262,10 @@ make check     # everything CI runs
 `make check` is the definition of done: formatting, `go vet`,
 golangci-lint, race tests with a per-package coverage floor,
 `govulncheck`, a licence check, a stdio smoke test, a schema diff against
-the released tool surface, and a staleness gate that fails when this
-README, the docs or the changelog drift from the code. Contributing
+the released tool surface, an API-coverage gate that fails when a Google
+API method has no verdict on it or a call this server makes has no row,
+and a staleness gate that fails when this README, the docs or the
+changelog drift from the code. Contributing
 conventions are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Versioning

@@ -63,6 +63,17 @@ pins: ## Every third-party tool held to an exact version
 classes: ## The tool error vocabulary, closed from both sides
 	@$(GO) run ./scripts/gates classes
 
+.PHONY: api-coverage
+api-coverage: ## Every API method used on purpose or left out on purpose
+	@$(GO) run ./scripts/gates api-coverage
+
+# Not part of check: it fetches Google's discovery documents, and a gate
+# that fails when Google is slow is one people learn to rerun until it
+# passes. Run it when you want to know whether the API has grown.
+.PHONY: api-diff
+api-diff: ## Refetch the API method list and report what changed (needs the network)
+	$(GO) run ./scripts/gates api-diff
+
 # Both of these already run under `cover`, as part of `go test ./...`.
 # Naming them costs a fraction of a second and buys two things: they
 # print in the check output, and they can be run alone while working on
@@ -116,7 +127,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes api-coverage leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

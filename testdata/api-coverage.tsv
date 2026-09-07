@@ -1,0 +1,99 @@
+# One verdict per API method. Hand-written; the method list beside it,
+# testdata/api-methods.json, is not — `gates api-diff` writes that.
+#
+# The Chat API is bigger than the tool surface and grows without notice.
+# This record is where that gap is a set of decisions: a method Google
+# adds fails the build until somebody judges it, rather than arriving as
+# nothing.
+#
+# Columns, tab-separated: api, method, verdict, reason. A verdict of
+# `used` names the gchat.Client method that implements it; `out` gives
+# the reason it is deliberately not used. Sorted by api and method.
+#
+# `gates api-coverage` holds this record, the method list and the client
+# to each other, offline, in `make check`. `gates api-diff` refetches the
+# discovery documents and rewrites the method list; it needs the network,
+# so it is a target somebody runs rather than a gate CI depends on.
+#
+# The `openid` row has no discovery document behind it. It is the one
+# OpenID Connect endpoint this server calls, to learn which account is
+# signed in, and `apis` in scripts/gates/apicoverage.go says so.
+chat	customEmojis.create	used	Client.CreateCustomEmoji
+chat	customEmojis.delete	used	Client.DeleteCustomEmoji
+chat	customEmojis.get	used	Client.GetCustomEmoji
+chat	customEmojis.list	used	Client.ListCustomEmojis
+chat	media.download	used	Client.DownloadMedia
+chat	media.upload	used	Client.UploadAttachment
+chat	spaces.completeImport	out	import mode migrates a history under app authentication; this server is one person's client and never creates an import-mode space
+chat	spaces.create	out	spaces.setup makes the space and adds its first members in one call, which is what create_space needs; a second way to make a space is a second way to leave one half-made
+chat	spaces.delete	used	Client.DeleteSpace
+chat	spaces.findDirectMessage	used	Client.FindDirectMessage
+chat	spaces.findGroupChats	used	Client.FindGroupChats
+chat	spaces.get	used	Client.GetSpace
+chat	spaces.list	used	Client.ListSpaces
+chat	spaces.members.create	used	Client.AddMember
+chat	spaces.members.delete	used	Client.RemoveMember
+chat	spaces.members.get	used	Client.GetMembership
+chat	spaces.members.list	used	Client.ListMembers
+chat	spaces.members.patch	used	Client.UpdateMemberRole
+chat	spaces.messagePins.create	used	Client.PinMessage
+chat	spaces.messagePins.delete	used	Client.UnpinMessage
+chat	spaces.messagePins.list	used	Client.ListPins
+chat	spaces.messages.attachments.get	out	a message already carries its attachments, and downloading needs the media resource name that comes with them, so this would be a second call for bytes already in hand
+chat	spaces.messages.create	used	Client.SendMessage
+chat	spaces.messages.delete	used	Client.DeleteMessage
+chat	spaces.messages.get	used	Client.GetMessage
+chat	spaces.messages.list	used	Client.ListMessages
+chat	spaces.messages.patch	used	Client.UpdateMessage
+chat	spaces.messages.reactions.create	used	Client.AddReaction
+chat	spaces.messages.reactions.delete	used	Client.DeleteReaction
+chat	spaces.messages.reactions.list	used	Client.ListReactions
+chat	spaces.messages.search	used	Client.SearchMessages
+chat	spaces.messages.update	out	the PUT form replaces every field rather than the masked one, so it would clear cards and attachments; update_message patches the text alone
+chat	spaces.patch	used	Client.UpdateSpace
+chat	spaces.search	used	Client.SearchSpaces
+chat	spaces.setup	used	Client.SetupSpace
+chat	spaces.spaceEvents.get	used	Client.GetSpaceEvent
+chat	spaces.spaceEvents.list	used	Client.ListSpaceEvents
+chat	users.availability.get	used	Client.GetAvailability
+chat	users.availability.markAsActive	used	Client.MarkActive
+chat	users.availability.markAsAway	used	Client.MarkAway
+chat	users.availability.markAsDoNotDisturb	used	Client.MarkDoNotDisturb
+chat	users.availability.patch	used	Client.SetCustomStatus
+chat	users.sections.create	used	Client.CreateSection
+chat	users.sections.delete	used	Client.DeleteSection
+chat	users.sections.items.list	used	Client.ListSectionItems
+chat	users.sections.items.move	used	Client.MoveSectionItem
+chat	users.sections.list	used	Client.ListSections
+chat	users.sections.patch	used	Client.RenameSection
+chat	users.sections.position	used	Client.PositionSection
+chat	users.spaces.getSpaceReadState	used	Client.GetSpaceReadState
+chat	users.spaces.spaceNotificationSetting.get	used	Client.GetSpaceNotificationSetting
+chat	users.spaces.spaceNotificationSetting.patch	used	Client.UpdateSpaceNotificationSetting
+chat	users.spaces.threads.getThreadReadState	used	Client.GetThreadReadState
+chat	users.spaces.updateSpaceReadState	used	Client.UpdateSpaceReadState
+openid	userinfo	used	Client.Userinfo
+people	contactGroups.batchGet	out	which contact groups the caller keeps says nothing about who is in a Chat space
+people	contactGroups.create	out	a write to the caller's address book, which no scope this server asks for allows
+people	contactGroups.delete	out	a write to the caller's address book, which no scope this server asks for allows
+people	contactGroups.get	out	which contact groups the caller keeps says nothing about who is in a Chat space
+people	contactGroups.list	out	which contact groups the caller keeps says nothing about who is in a Chat space
+people	contactGroups.members.modify	out	a write to the caller's address book, which no scope this server asks for allows
+people	contactGroups.update	out	a write to the caller's address book, which no scope this server asks for allows
+people	otherContacts.copyOtherContactToMyContactsGroup	out	a write to the caller's address book, which no scope this server asks for allows
+people	otherContacts.list	out	needs contacts.other.readonly, which this server does not ask for
+people	otherContacts.search	out	needs contacts.other.readonly, which this server does not ask for; search_people covers the directory and the caller's own contacts
+people	people.batchCreateContacts	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.batchDeleteContacts	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.batchUpdateContacts	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.connections.list	out	enumerates the whole address book; searchContacts answers the same question from a query, and this server never lists people
+people	people.createContact	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.deleteContact	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.deleteContactPhoto	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.get	used	Client.GetPerson
+people	people.getBatchGet	used	Client.GetPeople
+people	people.listDirectoryPeople	out	enumerates the whole directory; searchDirectoryPeople answers from a query, and a whole-directory listing is a great deal of personal data for one name lookup
+people	people.searchContacts	used	Client.SearchContacts
+people	people.searchDirectoryPeople	used	Client.SearchDirectoryPeople
+people	people.updateContact	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.updateContactPhoto	out	a write to the caller's address book, which no scope this server asks for allows

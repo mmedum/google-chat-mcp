@@ -169,6 +169,8 @@ jobs:
         run: go run ./scripts/gates pins
       - name: the error vocabulary is closed
         run: go run ./scripts/gates classes
+      - name: every API method is used or left out on purpose
+        run: go run ./scripts/gates api-coverage
       - name: stdio smoke
         run: go run ./scripts/gates smoke ./google-chat-mcp
       - name: schema diff against the released baseline
