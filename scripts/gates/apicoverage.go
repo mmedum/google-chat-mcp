@@ -466,19 +466,28 @@ func readSnapshot(path string) (snapshot, error) {
 // file this writes. CONTRIBUTING's release checklist says to run it,
 // because a manual target nobody runs is a gate that never fires.
 func apiDiff(_ []string, stdout, stderr io.Writer) int {
-	old, err := readSnapshot(snapshotFile)
+	return apiDiffWith(apis, snapshotFile, stdout, stderr)
+}
+
+// apiDiffWith is apiDiff over a given set of APIs and a given file, so
+// that the property that matters can be tested: on a network failure it
+// writes nothing. A refresh target that half-writes is worse than one
+// nobody runs, because the next `check` then holds the record to a
+// snapshot that is neither the old truth nor the new one.
+func apiDiffWith(sources map[string]apiSource, snapPath string, stdout, stderr io.Writer) int {
+	old, err := readSnapshot(snapPath)
 	if err != nil {
 		// A first run has no snapshot to compare with, and that is not a
 		// failure: everything is new.
 		_, _ = fmt.Fprintf(stdout, "%v; fetching a first snapshot\n", err)
 	}
-	fresh, err := fetchSnapshot(apis)
+	fresh, err := fetchSnapshot(sources)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
 	changes := diffSnapshots(old, fresh)
-	if err := writeSnapshot(snapshotFile, fresh); err != nil {
+	if err := writeSnapshot(snapPath, fresh); err != nil {
 		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
@@ -490,7 +499,7 @@ func apiDiff(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stdout, c)
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%s rewritten. Give every new method a row in %s, then run "+
-		"`make api-coverage`.\n", snapshotFile, coverageFile)
+		"`make api-coverage`.\n", snapPath, coverageFile)
 	return 1
 }
 
