@@ -73,7 +73,7 @@ jobs:
       # The tree scan and the compiled-artefact rule, named so they show
       # up here rather than only inside `go test ./...`.
       - name: leaks
-        run: go test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoCompiledBinariesInTheTree' -count=1
+        run: go test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoBuildOutputInTheTree' -count=1
 
   lint:
     runs-on: ubuntu-latest
