@@ -80,7 +80,14 @@ func connect(t *testing.T) *server {
 	t.Helper()
 	dir := localDir(t)
 	cmd := exec.Command(binPath(t))
-	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir)
+	// Deletes are allowed here on purpose. They are refused by default now
+	// — a deleted Chat message has no trash behind it — and this suite
+	// exercises them deliberately against a scratch space it made itself,
+	// then deletes that space to clean up. Without this the run would fail
+	// its delete steps AND leave the scratch space behind in a real account,
+	// which is worse than the failure.
+	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
+		"GCM_ALLOW_DESTRUCTIVE=true")
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "evals", Version: "0"}, nil).
 		Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
