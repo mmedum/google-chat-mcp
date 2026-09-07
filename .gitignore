@@ -22,9 +22,5 @@ client_secret*.json
 .DS_Store
 Thumbs.db
 
-# Local tooling state (Claude Code + Entire). Kept even when the tool is
-# not installed: this repository is public, and Entire's checkpoints are
-# session transcripts. The cost of the line is nothing; the cost of its
-# absence is a push nobody meant to make.
+# Local tooling state (Claude Code)
 .claude/
-.entire/
