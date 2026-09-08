@@ -232,6 +232,18 @@ it too, so a new one cannot be added without saying which API method it
 is; and a verdict on a method that no longer exists fails, so the record
 cannot outlive what it was about.
 
+Two of the rules exist because writing a limit down is not keeping it.
+A `used` row is **bound** to the method it names: the HTTP verb and the
+custom-method suffix in the client's request literal have to be the ones
+Google publishes, so swapping the reasons on `markAsActive` and
+`markAsAway` fails instead of passing. And a method no scope this server
+asks for authorises is **`unreachable`**, derived from the scopes in the
+snapshot rather than argued in prose — seventeen rows used to make that
+argument by hand, and adding `contacts` to `scopes.All` would have
+falsified thirteen of them with nothing objecting. It now fails those
+thirteen, which is the moment to decide what to do with the methods that
+just came into reach.
+
 It exists because nothing else here looks outward. The schema diff
 compares this server with its own last release, and the live driver's
 surface gate compares the driver with this server. `make api-diff`
@@ -295,7 +307,8 @@ contradicted a document, which won.
 | An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
 | `markupSyntax` is output only | So a user-authenticated caller cannot ask for Markdown, whatever the release note implies. REST reference, 2026-09-05 |
 | The media upload protocol is only in the discovery document | `media.upload` is a POST to a different base with a JSON metadata part; the guide does not say so. `downloadUri` is documented as not for downloading, and is never fetched |
-| The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. The four left out are import mode, `spaces.create` — `spaces.setup` does the same thing and adds the first members — an attachment lookup for bytes a message already carries, and the PUT form of a message update, which would clear cards and attachments. Each is a row in `testdata/api-coverage.tsv` with that reason |
+| The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. Two of the four left out are not choices: `spaces.completeImport` takes only `chat.import` and `spaces.messages.attachments.get` only `chat.bot`. The other two are — `spaces.create`, because `spaces.setup` does the same thing and adds the first members, and the PUT form of a message update, which would clear cards and attachments |
+| `chat.bot` cannot be granted to this server at all | Google: "This scope only supports app authentication with service accounts. You can't authenticate with user credentials or with domain-wide delegation using this scope." Checked 2026-09-08. It is the only scope `spaces.messages.attachments.get` accepts, so that method is out of reach for a per-user client and nothing is lost by it: a message already carries its `attachment` with the `attachmentDataRef`, and the bytes come from `media.download`, which accepts `chat.messages.readonly` |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 
 ### MCP, and the clients that read it

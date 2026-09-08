@@ -6,9 +6,21 @@
 # adds fails the build until somebody judges it, rather than arriving as
 # nothing.
 #
-# Columns, tab-separated: api, method, verdict, reason. A verdict of
-# `used` names the gchat.Client method that implements it; `out` gives
-# the reason it is deliberately not used. Sorted by api and method.
+# Columns, tab-separated: api, method, verdict, reason. Sorted by api and
+# method. Three verdicts:
+#
+#   used         the reason names the gchat.Client method that
+#                implements it, and the gate checks the binding — the
+#                HTTP verb and the custom-method suffix that method
+#                builds have to be the ones Google publishes.
+#   out          a judgement: the method is reachable with the scopes
+#                this server asks for, and is deliberately not called.
+#                The reason is the argument, and there are seven.
+#   unreachable  not a judgement at all: no scope this server asks for
+#                authorises it, so leaving it out was never a choice.
+#                The reason names one scope Google does accept, and the
+#                gate checks that too. Widen scopes.All and every row
+#                that comes into reach fails until somebody judges it.
 #
 # `gates api-coverage` holds this record, the method list and the client
 # to each other, offline, in `make check`. `gates api-diff` refetches the
@@ -24,7 +36,7 @@ chat	customEmojis.get	used	Client.GetCustomEmoji
 chat	customEmojis.list	used	Client.ListCustomEmojis
 chat	media.download	used	Client.DownloadMedia
 chat	media.upload	used	Client.UploadAttachment
-chat	spaces.completeImport	out	import mode migrates a history under app authentication; this server is one person's client and never creates an import-mode space
+chat	spaces.completeImport	unreachable	https://www.googleapis.com/auth/chat.import
 chat	spaces.create	out	spaces.setup makes the space and adds its first members in one call, which is what create_space needs; a second way to make a space is a second way to leave one half-made
 chat	spaces.delete	used	Client.DeleteSpace
 chat	spaces.findDirectMessage	used	Client.FindDirectMessage
@@ -39,7 +51,7 @@ chat	spaces.members.patch	used	Client.UpdateMemberRole
 chat	spaces.messagePins.create	used	Client.PinMessage
 chat	spaces.messagePins.delete	used	Client.UnpinMessage
 chat	spaces.messagePins.list	used	Client.ListPins
-chat	spaces.messages.attachments.get	out	a message already carries its attachments, and downloading needs the media resource name that comes with them, so this would be a second call for bytes already in hand
+chat	spaces.messages.attachments.get	unreachable	https://www.googleapis.com/auth/chat.bot
 chat	spaces.messages.create	used	Client.SendMessage
 chat	spaces.messages.delete	used	Client.DeleteMessage
 chat	spaces.messages.get	used	Client.GetMessage
@@ -74,26 +86,26 @@ chat	users.spaces.threads.getThreadReadState	used	Client.GetThreadReadState
 chat	users.spaces.updateSpaceReadState	used	Client.UpdateSpaceReadState
 openid	userinfo	used	Client.Userinfo
 people	contactGroups.batchGet	out	which contact groups the caller keeps says nothing about who is in a Chat space
-people	contactGroups.create	out	a write to the caller's address book, which no scope this server asks for allows
-people	contactGroups.delete	out	a write to the caller's address book, which no scope this server asks for allows
+people	contactGroups.create	unreachable	https://www.googleapis.com/auth/contacts
+people	contactGroups.delete	unreachable	https://www.googleapis.com/auth/contacts
 people	contactGroups.get	out	which contact groups the caller keeps says nothing about who is in a Chat space
 people	contactGroups.list	out	which contact groups the caller keeps says nothing about who is in a Chat space
-people	contactGroups.members.modify	out	a write to the caller's address book, which no scope this server asks for allows
-people	contactGroups.update	out	a write to the caller's address book, which no scope this server asks for allows
-people	otherContacts.copyOtherContactToMyContactsGroup	out	a write to the caller's address book, which no scope this server asks for allows
-people	otherContacts.list	out	needs contacts.other.readonly, which this server does not ask for
-people	otherContacts.search	out	needs contacts.other.readonly, which this server does not ask for; search_people covers the directory and the caller's own contacts
-people	people.batchCreateContacts	out	a write to the caller's address book, which no scope this server asks for allows
-people	people.batchDeleteContacts	out	a write to the caller's address book, which no scope this server asks for allows
-people	people.batchUpdateContacts	out	a write to the caller's address book, which no scope this server asks for allows
+people	contactGroups.members.modify	unreachable	https://www.googleapis.com/auth/contacts
+people	contactGroups.update	unreachable	https://www.googleapis.com/auth/contacts
+people	otherContacts.copyOtherContactToMyContactsGroup	unreachable	https://www.googleapis.com/auth/contacts
+people	otherContacts.list	unreachable	https://www.googleapis.com/auth/contacts.other.readonly
+people	otherContacts.search	unreachable	https://www.googleapis.com/auth/contacts.other.readonly
+people	people.batchCreateContacts	unreachable	https://www.googleapis.com/auth/contacts
+people	people.batchDeleteContacts	unreachable	https://www.googleapis.com/auth/contacts
+people	people.batchUpdateContacts	unreachable	https://www.googleapis.com/auth/contacts
 people	people.connections.list	out	enumerates the whole address book; searchContacts answers the same question from a query, and this server never lists people
-people	people.createContact	out	a write to the caller's address book, which no scope this server asks for allows
-people	people.deleteContact	out	a write to the caller's address book, which no scope this server asks for allows
-people	people.deleteContactPhoto	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.createContact	unreachable	https://www.googleapis.com/auth/contacts
+people	people.deleteContact	unreachable	https://www.googleapis.com/auth/contacts
+people	people.deleteContactPhoto	unreachable	https://www.googleapis.com/auth/contacts
 people	people.get	used	Client.GetPerson
 people	people.getBatchGet	used	Client.GetPeople
 people	people.listDirectoryPeople	out	enumerates the whole directory; searchDirectoryPeople answers from a query, and a whole-directory listing is a great deal of personal data for one name lookup
 people	people.searchContacts	used	Client.SearchContacts
 people	people.searchDirectoryPeople	used	Client.SearchDirectoryPeople
-people	people.updateContact	out	a write to the caller's address book, which no scope this server asks for allows
-people	people.updateContactPhoto	out	a write to the caller's address book, which no scope this server asks for allows
+people	people.updateContact	unreachable	https://www.googleapis.com/auth/contacts
+people	people.updateContactPhoto	unreachable	https://www.googleapis.com/auth/contacts
