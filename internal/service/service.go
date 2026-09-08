@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
-	"github.com/mmedum/google-chat-mcp/internal/directory"
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
 // Service turns tool intent into Chat API calls and applies the rules

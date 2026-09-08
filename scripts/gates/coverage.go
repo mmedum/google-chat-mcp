@@ -13,7 +13,7 @@ import (
 
 // module is this repository's import path, which prefixes every block in
 // a coverage profile.
-const module = "github.com/mmedum/google-chat-mcp"
+const module = "github.com/mmedum/google-chat-mcp/v2"
 
 // defaultFloor is the statement coverage every package has to clear.
 const defaultFloor = 80.0

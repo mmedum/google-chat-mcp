@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
 )
 
 // counter records how many requests a tool call made. A dry run's whole

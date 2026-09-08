@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
 // DownloadAttachmentInput names one attachment on one message.

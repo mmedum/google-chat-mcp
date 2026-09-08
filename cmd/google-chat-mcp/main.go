@@ -19,9 +19,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
-	"github.com/mmedum/google-chat-mcp/internal/server"
-	"github.com/mmedum/google-chat-mcp/internal/version"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/server"
+	"github.com/mmedum/google-chat-mcp/v2/internal/version"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

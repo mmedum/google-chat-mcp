@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
 )
 
 // Section listing limits, as the tool schema documents them.

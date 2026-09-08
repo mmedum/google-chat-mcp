@@ -7,9 +7,9 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
-	"github.com/mmedum/google-chat-mcp/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v2/internal/userconfig"
 )
 
 // tempProfile points the config directory at a temporary one. No test

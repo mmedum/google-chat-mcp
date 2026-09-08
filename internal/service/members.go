@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's

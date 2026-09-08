@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
-	"github.com/mmedum/google-chat-mcp/internal/directory"
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
 // localDir is a throwaway directory with its links already resolved,
