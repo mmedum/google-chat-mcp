@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
 // row spells one entry with tabs, so a fixture reads as columns rather

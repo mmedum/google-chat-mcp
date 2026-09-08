@@ -3,7 +3,7 @@
 GO       ?= go
 BIN      ?= ./google-chat-mcp
 VERSION  ?= dev
-PKG       = github.com/mmedum/google-chat-mcp
+PKG       = github.com/mmedum/google-chat-mcp/v2
 LDFLAGS   = -s -w -X $(PKG)/internal/version.Version=$(VERSION)
 COVER_MIN ?= 80
 GOBIN    := $(shell $(GO) env GOPATH)/bin

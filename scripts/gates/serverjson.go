@@ -10,7 +10,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/internal/server"
+	"github.com/mmedum/google-chat-mcp/v2/internal/server"
 )
 
 // serverJSON writes the MCP registry entry for a release.
@@ -68,12 +68,24 @@ type registryTransport struct {
 // that is already true — a constant beside it would be a second copy
 // with nothing keeping it honest.
 func githubRepo(module string) (owner, name string, err error) {
+	// A module at v2 or above carries its major version as a final path
+	// element — Go requires it, and it is not part of the repository
+	// name. Stripped rather than rejected: this refused
+	// github.com/mmedum/google-chat-mcp/v2 outright, which would have
+	// failed the release at the tag, in public, the first time the
+	// module went to v2.
 	parts := strings.Split(module, "/")
+	if len(parts) == 4 && majorVersion.MatchString(parts[3]) {
+		parts = parts[:3]
+	}
 	if len(parts) != 3 || parts[0] != "github.com" || parts[1] == "" || parts[2] == "" {
 		return "", "", fmt.Errorf("module path %q is not github.com/OWNER/REPO", module)
 	}
 	return parts[1], parts[2], nil
 }
+
+// majorVersion matches the /vN a module path carries from v2 onwards.
+var majorVersion = regexp.MustCompile(`^v[1-9][0-9]*$`)
 
 func moduleRepo() (owner, name string, err error) {
 	info, ok := debug.ReadBuildInfo()

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/internal/service"
+	"github.com/mmedum/google-chat-mcp/v2/internal/service"
 )
 
 // The model reads the leading class, so it has to survive the trip from
