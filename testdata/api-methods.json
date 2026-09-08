@@ -1,320 +1,698 @@
 {
-  "fetched": "2026-09-07",
+  "fetched": "2026-09-08",
   "apis": {
     "chat": {
       "customEmojis.create": {
         "verb": "POST",
-        "path": "v1/customEmojis"
+        "path": "v1/customEmojis",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.customemojis"
+        ]
       },
       "customEmojis.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.customemojis"
+        ]
       },
       "customEmojis.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.customemojis",
+          "https://www.googleapis.com/auth/chat.customemojis.readonly"
+        ]
       },
       "customEmojis.list": {
         "verb": "GET",
-        "path": "v1/customEmojis"
+        "path": "v1/customEmojis",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.customemojis",
+          "https://www.googleapis.com/auth/chat.customemojis.readonly"
+        ]
       },
       "media.download": {
         "verb": "GET",
-        "path": "v1/media/{+resourceName}"
+        "path": "v1/media/{+resourceName}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
       },
       "media.upload": {
         "verb": "POST",
-        "path": "v1/{+parent}/attachments:upload"
+        "path": "v1/{+parent}/attachments:upload",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.create"
+        ]
       },
       "spaces.completeImport": {
         "verb": "POST",
-        "path": "v1/{+name}:completeImport"
+        "path": "v1/{+name}:completeImport",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.import"
+        ]
       },
       "spaces.create": {
         "verb": "POST",
-        "path": "v1/spaces"
+        "path": "v1/spaces",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.app.spaces",
+          "https://www.googleapis.com/auth/chat.app.spaces.create",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.create"
+        ]
       },
       "spaces.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.delete",
+          "https://www.googleapis.com/auth/chat.app.delete",
+          "https://www.googleapis.com/auth/chat.delete",
+          "https://www.googleapis.com/auth/chat.import"
+        ]
       },
       "spaces.findDirectMessage": {
         "verb": "GET",
-        "path": "v1/spaces:findDirectMessage"
+        "path": "v1/spaces:findDirectMessage",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.findGroupChats": {
         "verb": "GET",
-        "path": "v1/spaces:findGroupChats"
+        "path": "v1/spaces:findGroupChats",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.readonly"
+        ]
       },
       "spaces.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.spaces",
+          "https://www.googleapis.com/auth/chat.admin.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.app.spaces",
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.list": {
         "verb": "GET",
-        "path": "v1/spaces"
+        "path": "v1/spaces",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.members.create": {
         "verb": "POST",
-        "path": "v1/{+parent}/members"
+        "path": "v1/{+parent}/members",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.memberships",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.app"
+        ]
       },
       "spaces.members.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.memberships",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.app"
+        ]
       },
       "spaces.members.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.memberships",
+          "https://www.googleapis.com/auth/chat.admin.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.readonly"
+        ]
       },
       "spaces.members.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/members"
+        "path": "v1/{+parent}/members",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.memberships",
+          "https://www.googleapis.com/auth/chat.admin.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.readonly"
+        ]
       },
       "spaces.members.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.memberships",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.memberships"
+        ]
       },
       "spaces.messagePins.create": {
         "verb": "POST",
-        "path": "v1/{+parent}/messagePins"
+        "path": "v1/{+parent}/messagePins",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.pins"
+        ]
       },
       "spaces.messagePins.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.pins"
+        ]
       },
       "spaces.messagePins.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/messagePins"
+        "path": "v1/{+parent}/messagePins",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.pins",
+          "https://www.googleapis.com/auth/chat.spaces.pins.readonly",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.messages.attachments.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot"
+        ]
       },
       "spaces.messages.create": {
         "verb": "POST",
-        "path": "v1/{+parent}/messages"
+        "path": "v1/{+parent}/messages",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.create"
+        ]
       },
       "spaces.messages.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages"
+        ]
       },
       "spaces.messages.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.app.messages.readonly",
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
       },
       "spaces.messages.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/messages"
+        "path": "v1/{+parent}/messages",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.app.messages.readonly",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
       },
       "spaces.messages.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages"
+        ]
       },
       "spaces.messages.reactions.create": {
         "verb": "POST",
-        "path": "v1/{+parent}/reactions"
+        "path": "v1/{+parent}/reactions",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.reactions",
+          "https://www.googleapis.com/auth/chat.messages.reactions.create"
+        ]
       },
       "spaces.messages.reactions.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.reactions"
+        ]
       },
       "spaces.messages.reactions.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/reactions"
+        "path": "v1/{+parent}/reactions",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.reactions",
+          "https://www.googleapis.com/auth/chat.messages.reactions.readonly",
+          "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
       },
       "spaces.messages.search": {
         "verb": "POST",
-        "path": "v1/{+parent}/messages:search"
+        "path": "v1/{+parent}/messages:search",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
       },
       "spaces.messages.update": {
         "verb": "PUT",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.messages"
+        ]
       },
       "spaces.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.spaces",
+          "https://www.googleapis.com/auth/chat.app.spaces",
+          "https://www.googleapis.com/auth/chat.import",
+          "https://www.googleapis.com/auth/chat.spaces"
+        ]
       },
       "spaces.search": {
         "verb": "GET",
-        "path": "v1/spaces:search"
+        "path": "v1/spaces:search",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.admin.spaces",
+          "https://www.googleapis.com/auth/chat.admin.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.setup": {
         "verb": "POST",
-        "path": "v1/spaces:setup"
+        "path": "v1/spaces:setup",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.create"
+        ]
       },
       "spaces.spaceEvents.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.app.all.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.all.messages.readonly",
+          "https://www.googleapis.com/auth/chat.app.all.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.app.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.messages.readonly",
+          "https://www.googleapis.com/auth/chat.app.spaces",
+          "https://www.googleapis.com/auth/chat.app.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.reactions",
+          "https://www.googleapis.com/auth/chat.messages.reactions.readonly",
+          "https://www.googleapis.com/auth/chat.messages.readonly",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "spaces.spaceEvents.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/spaceEvents"
+        "path": "v1/{+parent}/spaceEvents",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.app.all.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.all.messages.readonly",
+          "https://www.googleapis.com/auth/chat.app.all.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.app.memberships",
+          "https://www.googleapis.com/auth/chat.app.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.app.messages.readonly",
+          "https://www.googleapis.com/auth/chat.app.spaces",
+          "https://www.googleapis.com/auth/chat.app.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.memberships",
+          "https://www.googleapis.com/auth/chat.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.messages",
+          "https://www.googleapis.com/auth/chat.messages.reactions",
+          "https://www.googleapis.com/auth/chat.messages.reactions.readonly",
+          "https://www.googleapis.com/auth/chat.messages.readonly",
+          "https://www.googleapis.com/auth/chat.spaces",
+          "https://www.googleapis.com/auth/chat.spaces.readonly"
+        ]
       },
       "users.availability.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.availability",
+          "https://www.googleapis.com/auth/chat.users.availability.readonly"
+        ]
       },
       "users.availability.markAsActive": {
         "verb": "POST",
-        "path": "v1/{+name}:markAsActive"
+        "path": "v1/{+name}:markAsActive",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.availability"
+        ]
       },
       "users.availability.markAsAway": {
         "verb": "POST",
-        "path": "v1/{+name}:markAsAway"
+        "path": "v1/{+name}:markAsAway",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.availability"
+        ]
       },
       "users.availability.markAsDoNotDisturb": {
         "verb": "POST",
-        "path": "v1/{+name}:markAsDoNotDisturb"
+        "path": "v1/{+name}:markAsDoNotDisturb",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.availability"
+        ]
       },
       "users.availability.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.availability"
+        ]
       },
       "users.sections.create": {
         "verb": "POST",
-        "path": "v1/{+parent}/sections"
+        "path": "v1/{+parent}/sections",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections"
+        ]
       },
       "users.sections.delete": {
         "verb": "DELETE",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections"
+        ]
       },
       "users.sections.items.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/items"
+        "path": "v1/{+parent}/items",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections",
+          "https://www.googleapis.com/auth/chat.users.sections.readonly"
+        ]
       },
       "users.sections.items.move": {
         "verb": "POST",
-        "path": "v1/{+name}:move"
+        "path": "v1/{+name}:move",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections"
+        ]
       },
       "users.sections.list": {
         "verb": "GET",
-        "path": "v1/{+parent}/sections"
+        "path": "v1/{+parent}/sections",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections",
+          "https://www.googleapis.com/auth/chat.users.sections.readonly"
+        ]
       },
       "users.sections.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections"
+        ]
       },
       "users.sections.position": {
         "verb": "POST",
-        "path": "v1/{+name}:position"
+        "path": "v1/{+name}:position",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.sections"
+        ]
       },
       "users.spaces.getSpaceReadState": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.readstate",
+          "https://www.googleapis.com/auth/chat.users.readstate.readonly"
+        ]
       },
       "users.spaces.spaceNotificationSetting.get": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.spacesettings"
+        ]
       },
       "users.spaces.spaceNotificationSetting.patch": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.spacesettings"
+        ]
       },
       "users.spaces.threads.getThreadReadState": {
         "verb": "GET",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.readstate",
+          "https://www.googleapis.com/auth/chat.users.readstate.readonly"
+        ]
       },
       "users.spaces.updateSpaceReadState": {
         "verb": "PATCH",
-        "path": "v1/{+name}"
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.users.readstate"
+        ]
       }
     },
     "people": {
       "contactGroups.batchGet": {
         "verb": "GET",
-        "path": "v1/contactGroups:batchGet"
+        "path": "v1/contactGroups:batchGet",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ]
       },
       "contactGroups.create": {
         "verb": "POST",
-        "path": "v1/contactGroups"
+        "path": "v1/contactGroups",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "contactGroups.delete": {
         "verb": "DELETE",
-        "path": "v1/{+resourceName}"
+        "path": "v1/{+resourceName}",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "contactGroups.get": {
         "verb": "GET",
-        "path": "v1/{+resourceName}"
+        "path": "v1/{+resourceName}",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ]
       },
       "contactGroups.list": {
         "verb": "GET",
-        "path": "v1/contactGroups"
+        "path": "v1/contactGroups",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ]
       },
       "contactGroups.members.modify": {
         "verb": "POST",
-        "path": "v1/{+resourceName}/members:modify"
+        "path": "v1/{+resourceName}/members:modify",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "contactGroups.update": {
         "verb": "PUT",
-        "path": "v1/{+resourceName}"
+        "path": "v1/{+resourceName}",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "otherContacts.copyOtherContactToMyContactsGroup": {
         "verb": "POST",
-        "path": "v1/{+resourceName}:copyOtherContactToMyContactsGroup"
+        "path": "v1/{+resourceName}:copyOtherContactToMyContactsGroup",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.other.readonly"
+        ]
       },
       "otherContacts.list": {
         "verb": "GET",
-        "path": "v1/otherContacts"
+        "path": "v1/otherContacts",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts.other.readonly"
+        ]
       },
       "otherContacts.search": {
         "verb": "GET",
-        "path": "v1/otherContacts:search"
+        "path": "v1/otherContacts:search",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts.other.readonly"
+        ]
       },
       "people.batchCreateContacts": {
         "verb": "POST",
-        "path": "v1/people:batchCreateContacts"
+        "path": "v1/people:batchCreateContacts",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.batchDeleteContacts": {
         "verb": "POST",
-        "path": "v1/people:batchDeleteContacts"
+        "path": "v1/people:batchDeleteContacts",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.batchUpdateContacts": {
         "verb": "POST",
-        "path": "v1/people:batchUpdateContacts"
+        "path": "v1/people:batchUpdateContacts",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.connections.list": {
         "verb": "GET",
-        "path": "v1/{+resourceName}/connections"
+        "path": "v1/{+resourceName}/connections",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ]
       },
       "people.createContact": {
         "verb": "POST",
-        "path": "v1/people:createContact"
+        "path": "v1/people:createContact",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.deleteContact": {
         "verb": "DELETE",
-        "path": "v1/{+resourceName}:deleteContact"
+        "path": "v1/{+resourceName}:deleteContact",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.deleteContactPhoto": {
         "verb": "DELETE",
-        "path": "v1/{+resourceName}:deleteContactPhoto"
+        "path": "v1/{+resourceName}:deleteContactPhoto",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.get": {
         "verb": "GET",
-        "path": "v1/{+resourceName}"
+        "path": "v1/{+resourceName}",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.other.readonly",
+          "https://www.googleapis.com/auth/contacts.readonly",
+          "https://www.googleapis.com/auth/directory.readonly",
+          "https://www.googleapis.com/auth/user.addresses.read",
+          "https://www.googleapis.com/auth/user.birthday.read",
+          "https://www.googleapis.com/auth/user.emails.read",
+          "https://www.googleapis.com/auth/user.gender.read",
+          "https://www.googleapis.com/auth/user.organization.read",
+          "https://www.googleapis.com/auth/user.phonenumbers.read",
+          "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/userinfo.profile"
+        ]
       },
       "people.getBatchGet": {
         "verb": "GET",
-        "path": "v1/people:batchGet"
+        "path": "v1/people:batchGet",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.other.readonly",
+          "https://www.googleapis.com/auth/contacts.readonly",
+          "https://www.googleapis.com/auth/directory.readonly",
+          "https://www.googleapis.com/auth/user.addresses.read",
+          "https://www.googleapis.com/auth/user.birthday.read",
+          "https://www.googleapis.com/auth/user.emails.read",
+          "https://www.googleapis.com/auth/user.gender.read",
+          "https://www.googleapis.com/auth/user.organization.read",
+          "https://www.googleapis.com/auth/user.phonenumbers.read",
+          "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/userinfo.profile"
+        ]
       },
       "people.listDirectoryPeople": {
         "verb": "GET",
-        "path": "v1/people:listDirectoryPeople"
+        "path": "v1/people:listDirectoryPeople",
+        "scopes": [
+          "https://www.googleapis.com/auth/directory.readonly"
+        ]
       },
       "people.searchContacts": {
         "verb": "GET",
-        "path": "v1/people:searchContacts"
+        "path": "v1/people:searchContacts",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ]
       },
       "people.searchDirectoryPeople": {
         "verb": "GET",
-        "path": "v1/people:searchDirectoryPeople"
+        "path": "v1/people:searchDirectoryPeople",
+        "scopes": [
+          "https://www.googleapis.com/auth/directory.readonly"
+        ]
       },
       "people.updateContact": {
         "verb": "PATCH",
-        "path": "v1/{+resourceName}:updateContact"
+        "path": "v1/{+resourceName}:updateContact",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       },
       "people.updateContactPhoto": {
         "verb": "PATCH",
-        "path": "v1/{+resourceName}:updateContactPhoto"
+        "path": "v1/{+resourceName}:updateContactPhoto",
+        "scopes": [
+          "https://www.googleapis.com/auth/contacts"
+        ]
       }
     }
   }

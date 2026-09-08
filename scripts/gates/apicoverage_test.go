@@ -505,3 +505,193 @@ func TestARefetchThatCannotReachTheAPIWritesNothing(t *testing.T) {
 		t.Errorf("the snapshot was rewritten by a failed refetch:\nbefore %s\nafter  %s", original, after)
 	}
 }
+
+// A method Google publishes with scopes, for the reachability table.
+func published(scopes ...string) apiMethod {
+	return apiMethod{Verb: "POST", Path: "v1/things", Scopes: scopes}
+}
+
+const (
+	// One scope this server asks for, and one it does not.
+	scopeAsked  = "https://www.googleapis.com/auth/chat.spaces"
+	scopeUnheld = "https://www.googleapis.com/auth/contacts"
+)
+
+func TestCheckReachableDerivesTheVerdictRatherThanTrustingIt(t *testing.T) {
+	tests := []struct {
+		name   string
+		row    string
+		method apiMethod
+		want   string
+	}{
+		{
+			name:   "arguing in prose for something that was never a choice",
+			row:    row("chat", "spaces.list", "out", "we would rather not"),
+			method: published(scopeUnheld),
+			want:   "no scope this server asks for authorises it",
+		},
+		{
+			name:   "calling something no scope authorises",
+			row:    row("chat", "spaces.list", "used", "Client.ListSpaces"),
+			method: published(scopeUnheld),
+			want:   "no scope this server asks for authorises it",
+		},
+		{
+			name:   "out of scope when it is in reach",
+			row:    row("chat", "spaces.list", "unreachable", scopeAsked),
+			method: published(scopeAsked),
+			want:   "which Google accepts for it. Judge it instead",
+		},
+		{
+			name:   "naming a scope Google does not accept for it",
+			row:    row("chat", "spaces.list", "unreachable", "https://www.googleapis.com/auth/chat.bot"),
+			method: published(scopeUnheld),
+			want:   "must name one scope Google accepts for it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries, problems := readCoverage(write(t, "api-coverage.tsv", tt.row))
+			if len(problems) > 0 {
+				t.Fatalf("the fixture itself is malformed: %v", problems)
+			}
+			got := checkReachable(entries, map[methodKey]apiMethod{key("chat", "spaces.list"): tt.method})
+			if !slices.ContainsFunc(got, func(p string) bool { return strings.Contains(p, tt.want) }) {
+				t.Errorf("want a problem containing %q, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+// The row that is right stays quiet, or the table above proves nothing.
+func TestCheckReachableAcceptsAVerdictThatMatches(t *testing.T) {
+	rows := row("chat", "spaces.get", "unreachable", scopeUnheld) +
+		row("chat", "spaces.list", "used", "Client.ListSpaces")
+	entries, _ := readCoverage(write(t, "api-coverage.tsv", rows))
+	got := checkReachable(entries, map[methodKey]apiMethod{
+		key("chat", "spaces.get"):  published(scopeUnheld),
+		key("chat", "spaces.list"): published(scopeAsked),
+	})
+	if len(got) > 0 {
+		t.Errorf("want no problems, got %v", got)
+	}
+}
+
+// The failure this check was built for: a row naming the wrong member of
+// a family, which every other rule here passes.
+func TestCheckBindingCatchesARowNamingTheWrongMethod(t *testing.T) {
+	shapes := map[string]requestShape{
+		"MarkActive":  {httpVerb: "POST", apiVerb: "markAsActive"},
+		"MarkAway":    {httpVerb: "POST", apiVerb: "markAsAway"},
+		"GetSpace":    {httpVerb: "GET"},
+		"DeleteSpace": {httpVerb: "DELETE"},
+		"Delegating":  {delegate: "GetSpace"},
+	}
+	active := apiMethod{Verb: "POST", Path: "v1/{+name}:markAsActive"}
+	get := apiMethod{Verb: "GET", Path: "v1/{+name}"}
+
+	tests := []struct {
+		name   string
+		method string
+		claims string
+		api    apiMethod
+		want   string
+	}{
+		{
+			name:   "the wrong member of a family",
+			method: "users.availability.markAsActive",
+			claims: "Client.MarkAway",
+			api:    active,
+			want:   "is :markAsActive and Client.MarkAway builds :markAsAway",
+		},
+		{
+			name:   "the wrong HTTP verb",
+			method: "spaces.get",
+			claims: "Client.DeleteSpace",
+			api:    get,
+			want:   "is GET and Client.DeleteSpace sends DELETE",
+		},
+		{
+			name:   "a custom method bound to a plain path",
+			method: "users.availability.markAsActive",
+			claims: "Client.GetSpace",
+			api:    active,
+			want:   "builds a plain resource path",
+		},
+		{
+			name:   "a method that builds no request this can read",
+			method: "spaces.get",
+			claims: "Client.Missing",
+			api:    get,
+			want:   "no request this gate can read is built there",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries, problems := readCoverage(write(t, "api-coverage.tsv",
+				row("chat", tt.method, "used", tt.claims)))
+			if len(problems) > 0 {
+				t.Fatalf("the fixture itself is malformed: %v", problems)
+			}
+			got := checkBinding(entries,
+				map[methodKey]apiMethod{key("chat", tt.method): tt.api}, shapes)
+			if !slices.ContainsFunc(got, func(p string) bool { return strings.Contains(p, tt.want) }) {
+				t.Errorf("want a problem containing %q, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+// And the rows that are right stay quiet.
+func TestCheckBindingAcceptsARowThatMatches(t *testing.T) {
+	shapes := map[string]requestShape{
+		"MarkActive": {httpVerb: "POST", apiVerb: "markAsActive"},
+		"GetSpace":   {httpVerb: "GET"},
+	}
+	rows := row("chat", "spaces.get", "used", "Client.GetSpace") +
+		row("chat", "users.availability.markAsActive", "used", "Client.MarkActive")
+	entries, _ := readCoverage(write(t, "api-coverage.tsv", rows))
+	got := checkBinding(entries, map[methodKey]apiMethod{
+		key("chat", "spaces.get"):                      {Verb: "GET", Path: "v1/{+name}"},
+		key("chat", "users.availability.markAsActive"): {Verb: "POST", Path: "v1/{+name}:markAsActive"},
+	}, shapes)
+	if len(got) > 0 {
+		t.Errorf("want no problems, got %v", got)
+	}
+}
+
+// Delegation is followed, because six deletes share one helper and
+// reading only each method's own body would leave all six unbound.
+func TestResolveFollowsDelegation(t *testing.T) {
+	shapes := map[string]requestShape{
+		"DeleteReaction": {delegate: "deleteName"},
+		"deleteName":     {httpVerb: "DELETE"},
+		"Circular":       {delegate: "AlsoCircular"},
+		"AlsoCircular":   {delegate: "Circular"},
+	}
+	if got := resolve(shapes, "DeleteReaction"); got.httpVerb != "DELETE" {
+		t.Errorf("want DELETE through the helper, got %+v", got)
+	}
+	if got := resolve(shapes, "Circular"); got.httpVerb != "" {
+		t.Errorf("a cycle must end, got %+v", got)
+	}
+	if got := resolve(shapes, "Absent"); got.httpVerb != "" {
+		t.Errorf("an unknown method has no shape, got %+v", got)
+	}
+}
+
+// The real client, read the way the gate reads it: every method a `used`
+// row names has to yield a verb, or the binding check is passing on
+// methods it cannot see.
+func TestClientRequestsReadsTheRealClient(t *testing.T) {
+	t.Chdir(repoRoot(t))
+	shapes, err := clientRequests(clientDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range clientCalls() {
+		if resolve(shapes, name).httpVerb == "" {
+			t.Errorf("%s.%s builds no request this gate can read", clientType, name)
+		}
+	}
+}
