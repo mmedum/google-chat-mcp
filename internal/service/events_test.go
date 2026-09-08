@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
 )
 
 func TestListSpaceEventsSendsGooglesFilter(t *testing.T) {

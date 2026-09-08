@@ -13,8 +13,8 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/internal/config"
-	"github.com/mmedum/google-chat-mcp/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v2/internal/config"
+	"github.com/mmedum/google-chat-mcp/v2/internal/userconfig"
 )
 
 // A client going away is the ordinary end of a session, and the exit

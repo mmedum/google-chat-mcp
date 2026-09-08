@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API

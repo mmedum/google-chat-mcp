@@ -11,6 +11,19 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-08
+
+### Fixed
+- **`go install` works again.** The module path is now
+  `github.com/mmedum/google-chat-mcp/v2`, which Go requires from v2
+  onwards. Without it `go install ...@v2.0.0` failed outright and
+  `@latest` silently installed v1.0.0 — deletes ungated, none of the 2.0.0
+  fixes, and no warning. Install with:
+  `go install github.com/mmedum/google-chat-mcp/v2/cmd/google-chat-mcp@latest`.
+  The archives, the Claude Desktop bundle and the registry entry were
+  never affected. **Breaking for importers only:** if you import this
+  module, add `/v2` to the path. The tool surface is unchanged.
+
 ## [2.0.0] - 2026-09-07
 
 ### Changed

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/internal/server"
+	"github.com/mmedum/google-chat-mcp/v2/internal/server"
 )
 
 // testdata/server-2025-12-11.schema.json is the registry's published
@@ -164,8 +164,14 @@ func TestGitHubRepoRefusesAnythingElse(t *testing.T) {
 		ok          bool
 	}{
 		{module: "github.com/mmedum/google-chat-mcp", owner: "mmedum", name: "google-chat-mcp", ok: true},
+		// A module at v2 or above: the major version is Go's, not the
+		// repository's, so it comes off.
+		{module: "github.com/mmedum/google-chat-mcp/v2", owner: "mmedum", name: "google-chat-mcp", ok: true},
+		{module: "github.com/mmedum/google-chat-mcp/v10", owner: "mmedum", name: "google-chat-mcp", ok: true},
 		{module: "gitlab.com/mmedum/google-chat-mcp"},
-		{module: "github.com/mmedum/google-chat-mcp/v2"},
+		{module: "github.com/mmedum/google-chat-mcp/v2/v2"},
+		{module: "github.com/mmedum/google-chat-mcp/internal"},
+		{module: "github.com/mmedum/google-chat-mcp/v0"},
 		{module: "github.com/mmedum"},
 		{module: "github.com//google-chat-mcp"},
 		{module: ""},
