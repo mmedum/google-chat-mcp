@@ -9,6 +9,16 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
+## [Unreleased]
+
+### Changed
+- The address masking moved into `internal/redact`, the same package with
+  the same two functions that the three sibling servers have. It was
+  defined in the wire package here and in a different place with a
+  different name in each of the others — four answers to one question,
+  which is how a session working on one server ends up inventing a fifth
+  rather than finding the fourth.
+
 ## [2.0.3] - 2026-09-13
 
 ### Changed
