@@ -9,7 +9,7 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
-## [Unreleased]
+## [2.0.3] - 2026-09-13
 
 ### Changed
 - `status` reports the account the same way in all four: the local part
