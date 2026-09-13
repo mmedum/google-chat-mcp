@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mmedum/google-chat-mcp/v2/internal/version"
 	"io"
 	"os"
 	"slices"
@@ -176,39 +177,46 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, "%v", err)
 	}
 
-	_, _ = fmt.Fprintf(stdout, "profile:      %s\n", cfg.Profile)
+	// The four servers print the same eight lines in the same order,
+	// with the same labels. They had drifted into four shapes, which a
+	// reader running them side by side noticed before anyone here did.
+	_, _ = fmt.Fprintln(stdout, version.Info())
+	_, _ = fmt.Fprintf(stdout, "profile:        %s\n", cfg.Profile)
 	if dir, err := userconfig.ProfileDir(cfg.Profile); err == nil {
-		_, _ = fmt.Fprintf(stdout, "config dir:   %s\n", dir)
+		_, _ = fmt.Fprintf(stdout, "config dir:     %s\n", dir)
 	}
 
 	stored, err := userconfig.Load(cfg.Profile)
 	switch {
 	case errors.Is(err, userconfig.ErrNotFound):
-		_, _ = fmt.Fprintln(stdout, "account:      not signed in")
+		_, _ = fmt.Fprintln(stdout, "account:        not signed in")
 		_, _ = fmt.Fprintln(stdout, "\nRun `google-chat-mcp login --client-secret <path>` to sign in.")
 		return 0
 	case err != nil:
 		return fail(stderr, "%v", err)
 	}
 
-	_, _ = fmt.Fprintf(stdout, "account:      %s\n", cmp.Or(stored.AccountEmail, "(none)"))
-	_, _ = fmt.Fprintf(stdout, "client json:  %s\n", cmp.Or(stored.ClientSecretPath, "(none)"))
+	_, _ = fmt.Fprintf(stdout, "account:        %s\n", cmp.Or(gchat.MaskAccount(stored.AccountEmail), "(none)"))
+	_, _ = fmt.Fprintf(stdout, "client secret:  %s\n", cmp.Or(stored.ClientSecretPath, "(none)"))
 
 	store, err := credentialStore(cfg, nil)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
 	if _, source, err := store.Resolve(); err == nil {
-		_, _ = fmt.Fprintf(stdout, "token store:  %s\n", source)
+		_, _ = fmt.Fprintf(stdout, "token store:    %s\n", source)
 	} else {
-		_, _ = fmt.Fprintf(stdout, "token store:  none (%v)\n", err)
+		_, _ = fmt.Fprintf(stdout, "token store:    none (%v)\n", err)
 	}
 
-	_, _ = fmt.Fprintf(stdout, "read only:    %t\n", cfg.ReadOnly)
-	_, _ = fmt.Fprintf(stdout, "deletes:      %t\n", !cfg.RefuseDeletes)
-	_, _ = fmt.Fprintf(stdout, "toolsets:     %s\n", joinToolsets(cfg.Toolsets))
-	_, _ = fmt.Fprintf(stdout, "chat api:     %s\n", cfg.ChatAPIBase)
-	_, _ = fmt.Fprintf(stdout, "log:          %s %s\n", cfg.LogLevel, cfg.LogFormat)
+	if len(stored.Scopes) > 0 {
+		_, _ = fmt.Fprintf(stdout, "scopes:         %s\n", strings.Join(stored.Scopes, " "))
+	}
+	_, _ = fmt.Fprintf(stdout, "read-only:      %t\n", cfg.ReadOnly)
+	_, _ = fmt.Fprintf(stdout, "destructive:    %t\n", !cfg.RefuseDeletes)
+	_, _ = fmt.Fprintf(stdout, "toolsets:       %s\n", joinToolsets(cfg.Toolsets))
+	_, _ = fmt.Fprintf(stdout, "chat api:       %s\n", cfg.ChatAPIBase)
+	_, _ = fmt.Fprintf(stdout, "log:            %s %s\n", cfg.LogLevel, cfg.LogFormat)
 
 	if missing := scopes.Missing(stored.Scopes, cfg.Enabled(config.ToolsetAdmin)); len(missing) > 0 {
 		_, _ = fmt.Fprintf(stdout, "\n%d scope(s) not granted; tools needing them report a [scope] error:\n", len(missing))
@@ -292,11 +300,15 @@ func accountEmail(ctx context.Context, cfg config.Config, accessToken string) st
 	return info.Email
 }
 
+// accountSuffix names the account a command acted for, masked to the
+// same shape as `status`: login is one command away from it, and a
+// person pasting either into an issue should not get a different answer
+// about what is safe to share.
 func accountSuffix(email string) string {
 	if email == "" {
 		return ""
 	}
-	return " as " + email
+	return " as " + gchat.MaskAccount(email)
 }
 
 func joinToolsets(ts []config.Toolset) string {
