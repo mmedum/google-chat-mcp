@@ -123,6 +123,10 @@ func init() {
 			arity: 1, runsIn: inCheck,
 			doc: "the tool error vocabulary, closed from both sides",
 		},
+		"transcript": {
+			run: transcript, arity: 1,
+			doc: "the drivers put nothing in their transcript unredacted", runsIn: inCheck,
+		},
 		"coverage": {
 			run:   coverage,
 			arity: 1, maxArity: 2, args: "[PROFILE]", runsIn: inCheck,

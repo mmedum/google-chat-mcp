@@ -114,7 +114,10 @@ func (s *server) must(name string, args map[string]any) map[string]any {
 				b.WriteString(tc.Text)
 			}
 		}
-		s.t.Fatalf("harness step %s failed: %s", name, b.String())
+		// Through clip, like every other line of this transcript: the
+		// tool response is message content, and a harness failure is
+		// exactly when somebody pastes the log into an issue.
+		s.t.Fatalf("harness step %s failed: %s", name, clip(b.String(), 400))
 	}
 	sc, _ := res.StructuredContent.(map[string]any)
 	return sc
