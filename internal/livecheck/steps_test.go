@@ -9,7 +9,13 @@ import (
 	"time"
 )
 
-var emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+// The "…" is in the local-part class on purpose: gapi masks an address
+// in Google's error text to "…@domain" before it ever reaches the
+// driver, and a pattern needing a local part stops matching it — so the
+// upstream mask would hide the address from this redactor rather than
+// from the reader, and the organisation domain would land in the
+// transcript. That happened in two sibling servers before it was caught.
+var emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-…]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
 
 // step is one check against the live API. `tool` is what it exercises,
 // and the surface gate reads it — a tool named by no step and excused by

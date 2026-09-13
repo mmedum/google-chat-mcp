@@ -63,6 +63,10 @@ pins: ## Every third-party tool held to an exact version
 classes: ## The tool error vocabulary, closed from both sides
 	@$(GO) run ./scripts/gates classes
 
+.PHONY: transcript
+transcript: ## The drivers put nothing in their transcript unredacted
+	@$(GO) run ./scripts/gates transcript
+
 .PHONY: api-coverage
 api-coverage: ## Every API method used on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-coverage
@@ -131,7 +135,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes api-coverage api-fields leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes transcript api-coverage api-fields leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

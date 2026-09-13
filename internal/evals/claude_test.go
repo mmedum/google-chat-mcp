@@ -5,6 +5,7 @@ package evals
 import (
 	"encoding/json"
 	"errors"
+	redactpkg "github.com/mmedum/google-chat-mcp/v2/internal/redact"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -348,7 +349,17 @@ func namesSpace(input map[string]any, space string) bool {
 	return false
 }
 
+// clip is what puts a value in the transcript: it masks first, then
+// truncates.
+//
+// It used to only truncate, which reads as safe and is not — the first
+// 300 characters of a tool response are exactly where an address is. The
+// live driver had a redactor and the eval harness did not, so the same
+// promise held on one side of this repository and not the other. Masking
+// first also matters: truncating first can cut an address in half and
+// leave the pattern nothing to match.
 func clip(s string, n int) string {
+	s = redactpkg.Accounts(s)
 	if len(s) <= n {
 		return s
 	}

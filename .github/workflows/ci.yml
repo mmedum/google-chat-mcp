@@ -169,6 +169,8 @@ jobs:
         run: go run ./scripts/gates pins
       - name: the error vocabulary is closed
         run: go run ./scripts/gates classes
+      - name: the drivers redact their transcript
+        run: go run ./scripts/gates transcript
       - name: every API method is used or left out on purpose
         run: go run ./scripts/gates api-coverage
       - name: every published field is modelled or left out on purpose
