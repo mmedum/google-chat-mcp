@@ -1,0 +1,186 @@
+# One verdict per exception. Hand-written; the field list beside it,
+# testdata/api-fields.json, is not — `gates api-diff` writes that.
+#
+# out		the property is published and this server deliberately does not model it
+# extra		the field is modelled and public discovery does not publish it
+# alias		the schema is modelled by the struct the reason names (property *)
+# owner		which API a struct of a shared name models (property *)
+# unrelated	a struct sharing this schema's name is about something else (property *)
+# local		a struct in internal/gchat that models no published schema at all (property *)
+#
+# local is the one verdict whose SECOND column names a Go struct rather
+# than a schema, and whose API column is therefore `-`. It is what makes
+# the set of compared types part of the rule: the gate walks the wire
+# package as well as the snapshot, so a type renamed out of the way fails
+# here instead of quietly dropping out of the comparison.
+#
+# The rule an out row is judged against: if a tool here WRITES a field,
+# the types must carry it, because a person should not be able to set
+# something no read will show them. Nothing below is written by a tool;
+# the one field that was — a quoted message's attachments, modelled under
+# the singular tag a Message uses — was a bug this gate found, and it is
+# fixed rather than written off.
+#
+# api	schema	property	verdict	reason
+#
+# Two APIs publish a Membership. This server's is Chat's: who is in a
+# space. People's is a contact group's membership, which it never reads.
+chat	Membership	*	owner	Chat's: who is in a space, which list_members and add_member work on
+#
+# Names that collide with something else entirely. Chat publishes a
+# Section and a SectionItem of cards and widgets, for a message's card
+# layout; this server's Section is a space's place in the sidebar, from
+# the API that manages those. Its Media is the bytes of a download, not
+# the resource name of an attachment.
+chat	Section	*	unrelated	this server's Section is a sidebar section of spaces; Chat's is a card layout of widgets
+chat	Media	*	unrelated	this server's Media is a download's bytes, content type and length; Chat's is an attachment resource name
+#
+# The sidebar API is not in the public discovery document, so the fields
+# this server reads from it have nothing to be checked against. They are
+# real and in use — list_sections and position_section depend on them.
+chat	SectionItem	sortOrder	extra	the sidebar API orders a section's spaces by this; not in public discovery
+#
+# Cards, slash commands and interaction responses: this server sends and
+# reads text, and says so. A card is a payload it has no way to build
+# and no way to render, and accessoryWidgets is as far as it goes.
+chat	Message	actionResponse	out	this server sends and reads text, not cards or interactions
+chat	Message	cards	out	this server sends and reads text, not cards or interactions
+chat	Message	cardsV2	out	this server sends and reads text, not cards or interactions
+chat	Message	matchedUrl	out	this server sends and reads text, not cards or interactions
+chat	Message	slashCommand	out	this server sends and reads text, not cards or interactions
+chat	Message	silent	out	no tool sends a message without notifying; send_message notifies, which is the point of sending it
+chat	Space	importModeExpireTime	out	import mode is a migration state no tool enters or reports
+#
+# People API, read for one purpose.
+people	Person	addresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	ageRange	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	ageRanges	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	biographies	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	birthdays	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	braggingRights	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	calendarUrls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	clientData	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	coverPhotos	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	etag	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	events	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	externalIds	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	fileAses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	genders	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	imClients	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	interests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	locales	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	locations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	memberships	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	metadata	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	miscKeywords	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	nicknames	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	occupations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	phoneNumbers	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	relations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	relationshipInterests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	relationshipStatuses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	residences	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	sipAddresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	skills	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	taglines	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	urls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	userDefined	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	PersonResponse	httpStatusCode	out	a per-person status in a batch this server does not batch; a failed lookup is an error
+people	FieldMetadata	sourcePrimary	out	this server takes the first value of a field, not Google's notion of primary
+people	FieldMetadata	verified	out	no tool reports whether a directory value is verified
+#
+# Structs whose name Google spells out in full, or spells once per
+# event kind. Each models its schema's properties exactly, so the alias
+# costs nothing and brings the schema into the comparison.
+people	GetPeopleResponse	*	alias	BatchGetPeopleResponse
+chat	CustomEmojiMetadata	*	alias	CustomEmojiMeta
+chat	DoNotDisturbMetadata	*	alias	DNDMetadata
+chat	MarkAsActiveRequest	*	alias	DNDRequest
+chat	MarkAsDoNotDisturbRequest	*	alias	DNDRequest
+chat	CustomEmojiPayload	*	alias	EmojiPayload
+chat	ForwardedMetadata	*	alias	ForwardedMeta
+chat	MembershipBatchCreatedEventData	*	alias	MembershipBatchEventData
+chat	MembershipBatchDeletedEventData	*	alias	MembershipBatchEventData
+chat	MembershipBatchUpdatedEventData	*	alias	MembershipBatchEventData
+chat	MembershipCount	*	alias	MembershipCnt
+chat	MembershipCreatedEventData	*	alias	MembershipEventData
+chat	MembershipDeletedEventData	*	alias	MembershipEventData
+chat	MembershipUpdatedEventData	*	alias	MembershipEventData
+chat	MessageBatchCreatedEventData	*	alias	MessageBatchEventData
+chat	MessageBatchDeletedEventData	*	alias	MessageBatchEventData
+chat	MessageBatchUpdatedEventData	*	alias	MessageBatchEventData
+chat	MessageCreatedEventData	*	alias	MessageEventData
+chat	MessageDeletedEventData	*	alias	MessageEventData
+chat	MessageUpdatedEventData	*	alias	MessageEventData
+chat	PermissionSetting	*	alias	PermSetting
+chat	PermissionSettings	*	alias	PermSettings
+chat	QuotedMessageMetadata	*	alias	QuotedMessageMeta
+chat	ReactionBatchCreatedEventData	*	alias	ReactionBatchEventData
+chat	ReactionBatchDeletedEventData	*	alias	ReactionBatchEventData
+chat	ReactionCreatedEventData	*	alias	ReactionEventData
+chat	ReactionDeletedEventData	*	alias	ReactionEventData
+chat	EmojiReactionSummary	*	alias	ReactionSummary
+chat	SpaceBatchUpdatedEventData	*	alias	SpaceBatchEventData
+chat	SpaceUpdatedEventData	*	alias	SpaceEventData
+chat	UserMentionMetadata	*	alias	UserMention
+#
+# Structs that model part of a schema on purpose. Aliased so the part
+# they do model stays compared, with a row for each property they leave out.
+chat	Attachment	*	alias	MessageAttachment
+chat	Attachment	contentName	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	contentType	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	downloadUri	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	driveDataRef	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	name	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	source	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+chat	Attachment	thumbnailUri	out	send_message attaches an already-uploaded file by its data ref; the rest of an attachment is read back through get_message, which models Attachment itself
+people	EmailAddress	*	alias	PersonEmail
+people	EmailAddress	displayName	out	search_people reports the address and whether it is primary; nothing reads the rest
+people	EmailAddress	formattedType	out	search_people reports the address and whether it is primary; nothing reads the rest
+people	Name	*	alias	PersonName
+people	Name	displayNameLastFirst	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	honorificPrefix	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	honorificSuffix	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	middleName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticFamilyName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticFullName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticGivenName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticHonorificPrefix	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticHonorificSuffix	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	phoneticMiddleName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Name	unstructuredName	out	search_people reports the display name; no tool reads a person`s name broken into parts
+people	Organization	*	alias	PersonOrg
+people	Organization	costCenter	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	current	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	domain	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	endDate	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	formattedType	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	fullTimeEquivalentMillipercent	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	jobDescription	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	location	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	phoneticName	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	startDate	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	symbol	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	type	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Photo	*	alias	PersonPhoto
+people	Photo	default	out	search_people reports the picture url; nothing reads the rest
+chat	SetUpSpaceRequest	*	alias	SetupSpaceRequest
+chat	SetUpSpaceRequest	requestId	out	create_space builds the body itself and sends no idempotency token
+#
+# Request bodies and local shapes that model no published schema.
+# A request body is deliberately a few fields of the resource, so
+# aliasing it to that resource would claim it models the whole thing.
+-	AccessSet	*	local	who may discover and join a space, as create_space asks for it, not as Chat returns it
+-	GroupRef	*	local	the Google Group half of a membership request body
+-	MemberRef	*	local	the member half of a membership request body
+-	MembershipRequest	*	local	the spaces.members.create body: the member or group being added
+-	ReactionRequest	*	local	the messages.reactions.create body: the emoji being added
+-	SearchContactsResponse	*	local	people.searchContacts, whose response this server shapes for its own reading
+-	SectionRequest	*	local	the users.sections.create body: the fields a custom section is made from
+-	SendMessageRequest	*	local	the spaces.messages.create body: the few fields of Message a caller may set
+-	SetupSpace	*	local	the space half of a spaces.setup body; a Space with only what setup accepts
+-	UpdateMessageRequest	*	local	the patch body for a message: the one field update_message may set
+-	UpdateSpaceDetails	*	local	the details half of an update_space body
+-	UpdateSpaceRequest	*	local	the patch body for a space: the fields update_space may set, not a Space
+-	UserInfo	*	local	the OpenID Connect userinfo response, which is not a Chat or People schema at all
+-	errorEnvelope	*	local	the failed-answer shape apiError parses; not a published schema

@@ -488,7 +488,7 @@ func TestUpdateMessageEditsTheText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateMessage: %v", err)
 	}
-	if sent := rec.last(t); sent.Method != "PATCH" || sent.Query != "updateMask=text" {
+	if sent := rec.last(t); sent.Method != "PATCH" || sent.mask(t) != "text" {
 		t.Errorf("request = %s ?%s", sent.Method, sent.Query)
 	}
 	if got.Name != "spaces/A/messages/1" || got.Text != "edited" {

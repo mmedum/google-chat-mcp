@@ -73,8 +73,11 @@ type PermSettings struct {
 
 // PermSetting is one permission's audience.
 type PermSetting struct {
-	ManagersAllowed bool `json:"managersAllowed,omitempty"`
-	MembersAllowed  bool `json:"membersAllowed,omitempty"`
+	// assistantManagersAllowed was missing, so a permission granted to
+	// ROLE_ASSISTANT_MANAGER decoded as granted to nobody.
+	AssistantManagersAllowed bool `json:"assistantManagersAllowed,omitempty"`
+	ManagersAllowed          bool `json:"managersAllowed,omitempty"`
+	MembersAllowed           bool `json:"membersAllowed,omitempty"`
 }
 
 // ListSpacesResponse is spaces.list.
@@ -137,14 +140,13 @@ type User struct {
 
 // Membership is a person's or group's place in a space.
 type Membership struct {
-	Name         string `json:"name"`
-	State        string `json:"state,omitempty"`
-	Role         string `json:"role,omitempty"`
-	Member       *User  `json:"member,omitempty"`
-	GroupMember  *Group `json:"groupMember,omitempty"`
-	CreateTime   string `json:"createTime,omitempty"`
-	DeleteTime   string `json:"deleteTime,omitempty"`
-	MembershipID string `json:"membershipId,omitempty"`
+	Name        string `json:"name"`
+	State       string `json:"state,omitempty"`
+	Role        string `json:"role,omitempty"`
+	Member      *User  `json:"member,omitempty"`
+	GroupMember *Group `json:"groupMember,omitempty"`
+	CreateTime  string `json:"createTime,omitempty"`
+	DeleteTime  string `json:"deleteTime,omitempty"`
 	// Affiliation is how the person relates to the organisation:
 	// INTERNAL, EXTERNAL or MANAGED_EXTERNAL, output only. It is the
 	// field a live doctor run reported as drift twice before anything
@@ -228,12 +230,20 @@ type QuotedMessageSnapshot struct {
 	Text          string       `json:"text,omitempty"`
 	FormattedText string       `json:"formattedText,omitempty"`
 	Annotations   []Annotation `json:"annotations,omitempty"`
-	Attachments   []Attachment `json:"attachment,omitempty"`
+	// Chat spells this one plural, where a Message spells it singular.
+	// The singular was copied here, so a quoted message's attachments
+	// never decoded; the api-fields gate is what noticed.
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // ForwardedMeta is where a forwarded message came from.
 type ForwardedMeta struct {
-	SpaceName string `json:"spaceName,omitempty"`
+	// Chat publishes these as `space` and `spaceDisplayName` on
+	// ForwardedMetadata. This type carried a single `spaceName`, which the
+	// API sends under no name at all, so a forwarded message decoded with
+	// nothing in it. Found by the api-fields gate's third direction.
+	Space            string `json:"space,omitempty"`
+	SpaceDisplayName string `json:"spaceDisplayName,omitempty"`
 }
 
 // AttachedGif is a GIF in a message.
@@ -360,10 +370,8 @@ type ListReactionsResponse struct {
 
 // MessagePin is a pinned message in a space.
 type MessagePin struct {
-	Name       string `json:"name,omitempty"`
-	Message    string `json:"message,omitempty"`
-	CreateTime string `json:"createTime,omitempty"`
-	Creator    *User  `json:"creator,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // ListMessagePinsResponse is spaces.messagePins.list.
