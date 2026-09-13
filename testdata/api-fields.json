@@ -1,0 +1,2178 @@
+{
+  "fetched": "2026-09-13",
+  "apis": [
+    {
+      "api": "chat",
+      "discovery": "https://chat.googleapis.com/$discovery/rest?version=v1",
+      "schemas": [
+        {
+          "name": "AccessPermissionSetting",
+          "properties": [
+            "principals"
+          ]
+        },
+        {
+          "name": "AccessPermissionSettings",
+          "properties": [
+            "discoverSpaceSetting",
+            "joinSpaceSetting"
+          ]
+        },
+        {
+          "name": "AccessSettings",
+          "properties": [
+            "accessPermissionSettings",
+            "accessState",
+            "audience"
+          ]
+        },
+        {
+          "name": "AccessoryWidget",
+          "properties": [
+            "buttonList"
+          ]
+        },
+        {
+          "name": "ActionParameter",
+          "properties": [
+            "key",
+            "value"
+          ]
+        },
+        {
+          "name": "ActionResponse",
+          "properties": [
+            "dialogAction",
+            "type",
+            "updatedWidget",
+            "url"
+          ]
+        },
+        {
+          "name": "ActionStatus",
+          "properties": [
+            "statusCode",
+            "userFacingMessage"
+          ]
+        },
+        {
+          "name": "Annotation",
+          "properties": [
+            "customEmojiMetadata",
+            "length",
+            "richLinkMetadata",
+            "slashCommand",
+            "startIndex",
+            "type",
+            "userMention"
+          ]
+        },
+        {
+          "name": "AppCommandMetadata",
+          "properties": [
+            "appCommandId",
+            "appCommandType"
+          ]
+        },
+        {
+          "name": "AttachedGif",
+          "properties": [
+            "uri"
+          ]
+        },
+        {
+          "name": "Attachment",
+          "properties": [
+            "attachmentDataRef",
+            "contentName",
+            "contentType",
+            "downloadUri",
+            "driveDataRef",
+            "name",
+            "source",
+            "thumbnailUri"
+          ]
+        },
+        {
+          "name": "AttachmentDataRef",
+          "properties": [
+            "attachmentUploadToken",
+            "resourceName"
+          ]
+        },
+        {
+          "name": "Audience",
+          "properties": [
+            "name"
+          ]
+        },
+        {
+          "name": "Availability",
+          "properties": [
+            "customStatus",
+            "doNotDisturbMetadata",
+            "name",
+            "state"
+          ]
+        },
+        {
+          "name": "Button",
+          "properties": [
+            "imageButton",
+            "textButton"
+          ]
+        },
+        {
+          "name": "CalendarEventLinkData",
+          "properties": [
+            "calendarId",
+            "eventId"
+          ]
+        },
+        {
+          "name": "Card",
+          "properties": [
+            "cardActions",
+            "header",
+            "name",
+            "sections"
+          ]
+        },
+        {
+          "name": "CardAction",
+          "properties": [
+            "actionLabel",
+            "onClick"
+          ]
+        },
+        {
+          "name": "CardHeader",
+          "properties": [
+            "imageStyle",
+            "imageUrl",
+            "subtitle",
+            "title"
+          ]
+        },
+        {
+          "name": "CardWithId",
+          "properties": [
+            "card",
+            "cardId"
+          ]
+        },
+        {
+          "name": "ChatAppLogEntry",
+          "properties": [
+            "deployment",
+            "deploymentFunction",
+            "error"
+          ]
+        },
+        {
+          "name": "ChatClientDataSourceMarkup",
+          "properties": [
+            "spaceDataSource"
+          ]
+        },
+        {
+          "name": "ChatSpaceLinkData",
+          "properties": [
+            "message",
+            "space",
+            "thread"
+          ]
+        },
+        {
+          "name": "Color",
+          "properties": [
+            "alpha",
+            "blue",
+            "green",
+            "red"
+          ]
+        },
+        {
+          "name": "CommonEventObject",
+          "properties": [
+            "formInputs",
+            "hostApp",
+            "invokedFunction",
+            "parameters",
+            "platform",
+            "timeZone",
+            "userLocale"
+          ]
+        },
+        {
+          "name": "CompleteImportSpaceRequest",
+          "properties": null
+        },
+        {
+          "name": "CompleteImportSpaceResponse",
+          "properties": [
+            "space"
+          ]
+        },
+        {
+          "name": "CustomEmoji",
+          "properties": [
+            "emojiName",
+            "name",
+            "payload",
+            "temporaryImageUri",
+            "uid"
+          ]
+        },
+        {
+          "name": "CustomEmojiMetadata",
+          "properties": [
+            "customEmoji"
+          ]
+        },
+        {
+          "name": "CustomEmojiPayload",
+          "properties": [
+            "fileContent",
+            "filename"
+          ]
+        },
+        {
+          "name": "CustomStatus",
+          "properties": [
+            "emoji",
+            "expireTime",
+            "text",
+            "ttl"
+          ]
+        },
+        {
+          "name": "DateInput",
+          "properties": [
+            "msSinceEpoch"
+          ]
+        },
+        {
+          "name": "DateTimeInput",
+          "properties": [
+            "hasDate",
+            "hasTime",
+            "msSinceEpoch"
+          ]
+        },
+        {
+          "name": "DeletionMetadata",
+          "properties": [
+            "deletionType"
+          ]
+        },
+        {
+          "name": "DeprecatedEvent",
+          "properties": [
+            "action",
+            "appCommandMetadata",
+            "common",
+            "configCompleteRedirectUrl",
+            "dialogEventType",
+            "eventTime",
+            "isDialogEvent",
+            "message",
+            "space",
+            "thread",
+            "threadKey",
+            "token",
+            "type",
+            "user"
+          ]
+        },
+        {
+          "name": "Dialog",
+          "properties": [
+            "body"
+          ]
+        },
+        {
+          "name": "DialogAction",
+          "properties": [
+            "actionStatus",
+            "dialog"
+          ]
+        },
+        {
+          "name": "DoNotDisturbMetadata",
+          "properties": [
+            "expirationTime"
+          ]
+        },
+        {
+          "name": "DriveDataRef",
+          "properties": [
+            "driveFileId"
+          ]
+        },
+        {
+          "name": "DriveLinkData",
+          "properties": [
+            "driveDataRef",
+            "mimeType"
+          ]
+        },
+        {
+          "name": "Emoji",
+          "properties": [
+            "customEmoji",
+            "unicode"
+          ]
+        },
+        {
+          "name": "EmojiReactionSummary",
+          "properties": [
+            "emoji",
+            "reactionCount"
+          ]
+        },
+        {
+          "name": "Empty",
+          "properties": null
+        },
+        {
+          "name": "FindGroupChatsResponse",
+          "properties": [
+            "nextPageToken",
+            "spaces"
+          ]
+        },
+        {
+          "name": "FormAction",
+          "properties": [
+            "actionMethodName",
+            "parameters"
+          ]
+        },
+        {
+          "name": "ForwardedMetadata",
+          "properties": [
+            "space",
+            "spaceDisplayName"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Action",
+          "properties": [
+            "allWidgetsAreRequired",
+            "function",
+            "interaction",
+            "loadIndicator",
+            "parameters",
+            "persistValues",
+            "requiredWidgets"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ActionParameter",
+          "properties": [
+            "key",
+            "value"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1BorderStyle",
+          "properties": [
+            "cornerRadius",
+            "strokeColor",
+            "type"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Button",
+          "properties": [
+            "altText",
+            "color",
+            "disabled",
+            "icon",
+            "onClick",
+            "text",
+            "type"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ButtonList",
+          "properties": [
+            "buttons"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Card",
+          "properties": [
+            "cardActions",
+            "displayStyle",
+            "expressionData",
+            "fixedFooter",
+            "header",
+            "name",
+            "peekCardHeader",
+            "sectionDividerStyle",
+            "sections"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CardAction",
+          "properties": [
+            "actionLabel",
+            "onClick"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CardFixedFooter",
+          "properties": [
+            "primaryButton",
+            "secondaryButton"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CardHeader",
+          "properties": [
+            "imageAltText",
+            "imageType",
+            "imageUrl",
+            "subtitle",
+            "title"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Carousel",
+          "properties": [
+            "carouselCards"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CarouselCard",
+          "properties": [
+            "footerWidgets",
+            "widgets"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Chip",
+          "properties": [
+            "altText",
+            "disabled",
+            "enabled",
+            "icon",
+            "label",
+            "onClick"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ChipList",
+          "properties": [
+            "chips",
+            "layout"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CollapseControl",
+          "properties": [
+            "collapseButton",
+            "expandButton",
+            "horizontalAlignment"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Column",
+          "properties": [
+            "horizontalAlignment",
+            "horizontalSizeStyle",
+            "verticalAlignment",
+            "widgets"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Columns",
+          "properties": [
+            "columnItems"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1CommonWidgetAction",
+          "properties": [
+            "updateVisibilityAction"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Condition",
+          "properties": [
+            "actionRuleId",
+            "expressionDataCondition"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1DataSourceConfig",
+          "properties": [
+            "minCharactersTrigger",
+            "platformDataSource",
+            "remoteDataSource"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1DateTimePicker",
+          "properties": [
+            "hostAppDataSource",
+            "label",
+            "name",
+            "onChangeAction",
+            "timezoneOffsetDate",
+            "type",
+            "valueMsEpoch"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1DecoratedText",
+          "properties": [
+            "bottomLabel",
+            "bottomLabelText",
+            "button",
+            "contentText",
+            "endIcon",
+            "icon",
+            "onClick",
+            "startIcon",
+            "startIconVerticalAlignment",
+            "switchControl",
+            "text",
+            "topLabel",
+            "topLabelText",
+            "wrapText"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Divider",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCardV1EventAction",
+          "properties": [
+            "actionRuleId",
+            "commonWidgetAction",
+            "postEventTriggers"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ExpressionData",
+          "properties": [
+            "conditions",
+            "eventActions",
+            "expression",
+            "id"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ExpressionDataCondition",
+          "properties": [
+            "conditionType"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Grid",
+          "properties": [
+            "borderStyle",
+            "columnCount",
+            "items",
+            "onClick",
+            "title"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1GridItem",
+          "properties": [
+            "id",
+            "image",
+            "layout",
+            "subtitle",
+            "title"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Icon",
+          "properties": [
+            "altText",
+            "iconUrl",
+            "imageType",
+            "knownIcon",
+            "materialIcon"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Image",
+          "properties": [
+            "altText",
+            "imageUrl",
+            "onClick"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ImageComponent",
+          "properties": [
+            "altText",
+            "borderStyle",
+            "cropStyle",
+            "imageUri"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1ImageCropStyle",
+          "properties": [
+            "aspectRatio",
+            "type"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1MaterialIcon",
+          "properties": [
+            "fill",
+            "grade",
+            "name",
+            "weight"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1NestedWidget",
+          "properties": [
+            "buttonList",
+            "image",
+            "textParagraph"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1OnClick",
+          "properties": [
+            "action",
+            "card",
+            "openDynamicLinkAction",
+            "openLink",
+            "overflowMenu"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1OpenLink",
+          "properties": [
+            "onClose",
+            "openAs",
+            "url"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1OverflowMenu",
+          "properties": [
+            "items"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1OverflowMenuItem",
+          "properties": [
+            "disabled",
+            "onClick",
+            "startIcon",
+            "text"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1PlatformDataSource",
+          "properties": [
+            "commonDataSource",
+            "hostAppDataSource"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Section",
+          "properties": [
+            "collapseControl",
+            "collapsible",
+            "header",
+            "id",
+            "uncollapsibleWidgetsCount",
+            "widgets"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1SelectionInput",
+          "properties": [
+            "dataSourceConfigs",
+            "externalDataSource",
+            "hintText",
+            "items",
+            "label",
+            "multiSelectMaxSelectedItems",
+            "multiSelectMinQueryLength",
+            "name",
+            "onChangeAction",
+            "platformDataSource",
+            "type"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1SelectionItem",
+          "properties": [
+            "bottomText",
+            "selected",
+            "startIconUri",
+            "text",
+            "value"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1SuggestionItem",
+          "properties": [
+            "text"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Suggestions",
+          "properties": [
+            "items"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1SwitchControl",
+          "properties": [
+            "controlType",
+            "name",
+            "onChangeAction",
+            "selected",
+            "value"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1TextInput",
+          "properties": [
+            "autoCompleteAction",
+            "hintText",
+            "hostAppDataSource",
+            "initialSuggestions",
+            "label",
+            "name",
+            "onChangeAction",
+            "placeholderText",
+            "type",
+            "validation",
+            "value"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1TextParagraph",
+          "properties": [
+            "maxLines",
+            "text",
+            "textSyntax"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Trigger",
+          "properties": [
+            "actionRuleId"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1UpdateVisibilityAction",
+          "properties": [
+            "visibility"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Validation",
+          "properties": [
+            "characterLimit",
+            "inputType"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Widget",
+          "properties": [
+            "buttonList",
+            "carousel",
+            "chipList",
+            "columns",
+            "dateTimePicker",
+            "decoratedText",
+            "divider",
+            "eventActions",
+            "grid",
+            "horizontalAlignment",
+            "id",
+            "image",
+            "selectionInput",
+            "textInput",
+            "textParagraph",
+            "visibility"
+          ]
+        },
+        {
+          "name": "GoogleAppsCardV1Widgets",
+          "properties": [
+            "buttonList",
+            "chipList",
+            "dateTimePicker",
+            "decoratedText",
+            "image",
+            "selectionInput",
+            "textInput",
+            "textParagraph"
+          ]
+        },
+        {
+          "name": "GoogleChatV1Section",
+          "properties": [
+            "displayName",
+            "name",
+            "sortOrder",
+            "type"
+          ]
+        },
+        {
+          "name": "Group",
+          "properties": [
+            "name"
+          ]
+        },
+        {
+          "name": "HostAppDataSourceMarkup",
+          "properties": [
+            "chatDataSource",
+            "workflowDataSource"
+          ]
+        },
+        {
+          "name": "Image",
+          "properties": [
+            "aspectRatio",
+            "imageUrl",
+            "onClick"
+          ]
+        },
+        {
+          "name": "ImageButton",
+          "properties": [
+            "icon",
+            "iconUrl",
+            "name",
+            "onClick"
+          ]
+        },
+        {
+          "name": "Inputs",
+          "properties": [
+            "dateInput",
+            "dateTimeInput",
+            "stringInputs",
+            "timeInput"
+          ]
+        },
+        {
+          "name": "KeyValue",
+          "properties": [
+            "bottomLabel",
+            "button",
+            "content",
+            "contentMultiline",
+            "icon",
+            "iconUrl",
+            "onClick",
+            "topLabel"
+          ]
+        },
+        {
+          "name": "ListCustomEmojisResponse",
+          "properties": [
+            "customEmojis",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListMembershipsResponse",
+          "properties": [
+            "memberships",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListMessagePinsResponse",
+          "properties": [
+            "messagePins",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListMessagesResponse",
+          "properties": [
+            "messages",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListReactionsResponse",
+          "properties": [
+            "nextPageToken",
+            "reactions"
+          ]
+        },
+        {
+          "name": "ListSectionItemsResponse",
+          "properties": [
+            "nextPageToken",
+            "sectionItems"
+          ]
+        },
+        {
+          "name": "ListSectionsResponse",
+          "properties": [
+            "nextPageToken",
+            "sections"
+          ]
+        },
+        {
+          "name": "ListSpaceEventsResponse",
+          "properties": [
+            "nextPageToken",
+            "spaceEvents"
+          ]
+        },
+        {
+          "name": "ListSpacesResponse",
+          "properties": [
+            "nextPageToken",
+            "spaces"
+          ]
+        },
+        {
+          "name": "MarkAsActiveRequest",
+          "properties": [
+            "expireTime",
+            "ttl"
+          ]
+        },
+        {
+          "name": "MarkAsAwayRequest",
+          "properties": null
+        },
+        {
+          "name": "MarkAsDoNotDisturbRequest",
+          "properties": [
+            "expireTime",
+            "ttl"
+          ]
+        },
+        {
+          "name": "MatchedUrl",
+          "properties": [
+            "url"
+          ]
+        },
+        {
+          "name": "Media",
+          "properties": [
+            "resourceName"
+          ]
+        },
+        {
+          "name": "MeetSpaceLinkData",
+          "properties": [
+            "huddleStatus",
+            "meetingCode",
+            "type"
+          ]
+        },
+        {
+          "name": "Membership",
+          "properties": [
+            "affiliation",
+            "createTime",
+            "deleteTime",
+            "groupMember",
+            "member",
+            "name",
+            "role",
+            "state"
+          ]
+        },
+        {
+          "name": "MembershipBatchCreatedEventData",
+          "properties": [
+            "memberships"
+          ]
+        },
+        {
+          "name": "MembershipBatchDeletedEventData",
+          "properties": [
+            "memberships"
+          ]
+        },
+        {
+          "name": "MembershipBatchUpdatedEventData",
+          "properties": [
+            "memberships"
+          ]
+        },
+        {
+          "name": "MembershipCount",
+          "properties": [
+            "joinedDirectHumanUserCount",
+            "joinedGroupCount"
+          ]
+        },
+        {
+          "name": "MembershipCreatedEventData",
+          "properties": [
+            "membership"
+          ]
+        },
+        {
+          "name": "MembershipDeletedEventData",
+          "properties": [
+            "membership"
+          ]
+        },
+        {
+          "name": "MembershipUpdatedEventData",
+          "properties": [
+            "membership"
+          ]
+        },
+        {
+          "name": "Message",
+          "properties": [
+            "accessoryWidgets",
+            "actionResponse",
+            "annotations",
+            "argumentText",
+            "attachedGifs",
+            "attachment",
+            "cards",
+            "cardsV2",
+            "clientAssignedMessageId",
+            "createTime",
+            "deleteTime",
+            "deletionMetadata",
+            "emojiReactionSummaries",
+            "fallbackText",
+            "formattedText",
+            "lastUpdateTime",
+            "markupSyntax",
+            "matchedUrl",
+            "name",
+            "privateMessageViewer",
+            "quotedMessageMetadata",
+            "sender",
+            "silent",
+            "slashCommand",
+            "space",
+            "text",
+            "thread",
+            "threadReply"
+          ]
+        },
+        {
+          "name": "MessageBatchCreatedEventData",
+          "properties": [
+            "messages"
+          ]
+        },
+        {
+          "name": "MessageBatchDeletedEventData",
+          "properties": [
+            "messages"
+          ]
+        },
+        {
+          "name": "MessageBatchUpdatedEventData",
+          "properties": [
+            "messages"
+          ]
+        },
+        {
+          "name": "MessageCreatedEventData",
+          "properties": [
+            "message"
+          ]
+        },
+        {
+          "name": "MessageDeletedEventData",
+          "properties": [
+            "message"
+          ]
+        },
+        {
+          "name": "MessagePin",
+          "properties": [
+            "message",
+            "name"
+          ]
+        },
+        {
+          "name": "MessageUpdatedEventData",
+          "properties": [
+            "message"
+          ]
+        },
+        {
+          "name": "MoveSectionItemRequest",
+          "properties": [
+            "targetSection"
+          ]
+        },
+        {
+          "name": "MoveSectionItemResponse",
+          "properties": [
+            "sectionItem"
+          ]
+        },
+        {
+          "name": "OnClick",
+          "properties": [
+            "action",
+            "openLink"
+          ]
+        },
+        {
+          "name": "OpenLink",
+          "properties": [
+            "url"
+          ]
+        },
+        {
+          "name": "PermissionSetting",
+          "properties": [
+            "assistantManagersAllowed",
+            "managersAllowed",
+            "membersAllowed"
+          ]
+        },
+        {
+          "name": "PermissionSettings",
+          "properties": [
+            "manageApps",
+            "manageMembersAndGroups",
+            "manageWebhooks",
+            "modifySpaceDetails",
+            "postMessages",
+            "replyMessages",
+            "toggleHistory",
+            "useAtMentionAll"
+          ]
+        },
+        {
+          "name": "PositionSectionRequest",
+          "properties": [
+            "relativePosition",
+            "sortOrder"
+          ]
+        },
+        {
+          "name": "PositionSectionResponse",
+          "properties": [
+            "section"
+          ]
+        },
+        {
+          "name": "Principal",
+          "properties": [
+            "audience"
+          ]
+        },
+        {
+          "name": "QuotedMessageMetadata",
+          "properties": [
+            "forwardedMetadata",
+            "lastUpdateTime",
+            "name",
+            "quoteType",
+            "quotedMessageSnapshot"
+          ]
+        },
+        {
+          "name": "QuotedMessageSnapshot",
+          "properties": [
+            "annotations",
+            "attachments",
+            "formattedText",
+            "sender",
+            "text"
+          ]
+        },
+        {
+          "name": "Reaction",
+          "properties": [
+            "emoji",
+            "name",
+            "user"
+          ]
+        },
+        {
+          "name": "ReactionBatchCreatedEventData",
+          "properties": [
+            "reactions"
+          ]
+        },
+        {
+          "name": "ReactionBatchDeletedEventData",
+          "properties": [
+            "reactions"
+          ]
+        },
+        {
+          "name": "ReactionCreatedEventData",
+          "properties": [
+            "reaction"
+          ]
+        },
+        {
+          "name": "ReactionDeletedEventData",
+          "properties": [
+            "reaction"
+          ]
+        },
+        {
+          "name": "RichLinkMetadata",
+          "properties": [
+            "calendarEventLinkData",
+            "chatSpaceLinkData",
+            "driveLinkData",
+            "meetSpaceLinkData",
+            "richLinkType",
+            "uri"
+          ]
+        },
+        {
+          "name": "SearchMessageResult",
+          "properties": [
+            "message",
+            "read",
+            "spaceMuteSetting"
+          ]
+        },
+        {
+          "name": "SearchMessagesRequest",
+          "properties": [
+            "filter",
+            "markupSyntax",
+            "orderBy",
+            "pageSize",
+            "pageToken",
+            "view"
+          ]
+        },
+        {
+          "name": "SearchMessagesResponse",
+          "properties": [
+            "nextPageToken",
+            "results"
+          ]
+        },
+        {
+          "name": "SearchSpaceResult",
+          "properties": [
+            "space"
+          ]
+        },
+        {
+          "name": "SearchSpacesResponse",
+          "properties": [
+            "nextPageToken",
+            "results",
+            "spaces",
+            "totalSize"
+          ]
+        },
+        {
+          "name": "Section",
+          "properties": [
+            "header",
+            "widgets"
+          ]
+        },
+        {
+          "name": "SectionItem",
+          "properties": [
+            "name",
+            "space"
+          ]
+        },
+        {
+          "name": "SelectionItems",
+          "properties": [
+            "items"
+          ]
+        },
+        {
+          "name": "SetUpSpaceRequest",
+          "properties": [
+            "memberships",
+            "requestId",
+            "space"
+          ]
+        },
+        {
+          "name": "SlashCommand",
+          "properties": [
+            "commandId"
+          ]
+        },
+        {
+          "name": "SlashCommandMetadata",
+          "properties": [
+            "bot",
+            "commandId",
+            "commandName",
+            "triggersDialog",
+            "type"
+          ]
+        },
+        {
+          "name": "Space",
+          "properties": [
+            "accessSettings",
+            "adminInstalled",
+            "createTime",
+            "customer",
+            "displayName",
+            "externalUserAllowed",
+            "importMode",
+            "importModeExpireTime",
+            "lastActiveTime",
+            "membershipCount",
+            "name",
+            "permissionSettings",
+            "predefinedPermissionSettings",
+            "singleUserBotDm",
+            "spaceDetails",
+            "spaceHistoryState",
+            "spaceThreadingState",
+            "spaceType",
+            "spaceUri",
+            "threaded",
+            "type"
+          ]
+        },
+        {
+          "name": "SpaceBatchUpdatedEventData",
+          "properties": [
+            "spaces"
+          ]
+        },
+        {
+          "name": "SpaceDataSource",
+          "properties": [
+            "defaultToCurrentSpace"
+          ]
+        },
+        {
+          "name": "SpaceDetails",
+          "properties": [
+            "description",
+            "guidelines"
+          ]
+        },
+        {
+          "name": "SpaceEvent",
+          "properties": [
+            "eventTime",
+            "eventType",
+            "membershipBatchCreatedEventData",
+            "membershipBatchDeletedEventData",
+            "membershipBatchUpdatedEventData",
+            "membershipCreatedEventData",
+            "membershipDeletedEventData",
+            "membershipUpdatedEventData",
+            "messageBatchCreatedEventData",
+            "messageBatchDeletedEventData",
+            "messageBatchUpdatedEventData",
+            "messageCreatedEventData",
+            "messageDeletedEventData",
+            "messageUpdatedEventData",
+            "name",
+            "reactionBatchCreatedEventData",
+            "reactionBatchDeletedEventData",
+            "reactionCreatedEventData",
+            "reactionDeletedEventData",
+            "spaceBatchUpdatedEventData",
+            "spaceUpdatedEventData"
+          ]
+        },
+        {
+          "name": "SpaceNotificationSetting",
+          "properties": [
+            "muteSetting",
+            "name",
+            "notificationSetting"
+          ]
+        },
+        {
+          "name": "SpaceReadState",
+          "properties": [
+            "lastReadTime",
+            "name"
+          ]
+        },
+        {
+          "name": "SpaceUpdatedEventData",
+          "properties": [
+            "space"
+          ]
+        },
+        {
+          "name": "Status",
+          "properties": [
+            "code",
+            "details",
+            "message"
+          ]
+        },
+        {
+          "name": "StringInputs",
+          "properties": [
+            "value"
+          ]
+        },
+        {
+          "name": "TextButton",
+          "properties": [
+            "onClick",
+            "text"
+          ]
+        },
+        {
+          "name": "TextParagraph",
+          "properties": [
+            "text"
+          ]
+        },
+        {
+          "name": "Thread",
+          "properties": [
+            "name",
+            "threadKey"
+          ]
+        },
+        {
+          "name": "ThreadReadState",
+          "properties": [
+            "lastReadTime",
+            "name"
+          ]
+        },
+        {
+          "name": "TimeInput",
+          "properties": [
+            "hours",
+            "minutes"
+          ]
+        },
+        {
+          "name": "TimeZone",
+          "properties": [
+            "id",
+            "offset"
+          ]
+        },
+        {
+          "name": "UpdatedWidget",
+          "properties": [
+            "suggestions",
+            "widget"
+          ]
+        },
+        {
+          "name": "UploadAttachmentRequest",
+          "properties": [
+            "filename"
+          ]
+        },
+        {
+          "name": "UploadAttachmentResponse",
+          "properties": [
+            "attachmentDataRef"
+          ]
+        },
+        {
+          "name": "User",
+          "properties": [
+            "displayName",
+            "domainId",
+            "isAnonymous",
+            "name",
+            "type"
+          ]
+        },
+        {
+          "name": "UserMentionMetadata",
+          "properties": [
+            "type",
+            "user"
+          ]
+        },
+        {
+          "name": "WidgetMarkup",
+          "properties": [
+            "buttons",
+            "image",
+            "keyValue",
+            "textParagraph"
+          ]
+        },
+        {
+          "name": "WorkflowDataSourceMarkup",
+          "properties": [
+            "includeVariables",
+            "type"
+          ]
+        }
+      ]
+    },
+    {
+      "api": "people",
+      "discovery": "https://people.googleapis.com/$discovery/rest?version=v1",
+      "schemas": [
+        {
+          "name": "Address",
+          "properties": [
+            "city",
+            "country",
+            "countryCode",
+            "extendedAddress",
+            "formattedType",
+            "formattedValue",
+            "metadata",
+            "poBox",
+            "postalCode",
+            "region",
+            "streetAddress",
+            "type"
+          ]
+        },
+        {
+          "name": "AgeRangeType",
+          "properties": [
+            "ageRange",
+            "metadata"
+          ]
+        },
+        {
+          "name": "BatchCreateContactsRequest",
+          "properties": [
+            "contacts",
+            "readMask",
+            "sources"
+          ]
+        },
+        {
+          "name": "BatchCreateContactsResponse",
+          "properties": [
+            "createdPeople"
+          ]
+        },
+        {
+          "name": "BatchDeleteContactsRequest",
+          "properties": [
+            "resourceNames"
+          ]
+        },
+        {
+          "name": "BatchGetContactGroupsResponse",
+          "properties": [
+            "responses"
+          ]
+        },
+        {
+          "name": "BatchUpdateContactsRequest",
+          "properties": [
+            "contacts",
+            "readMask",
+            "sources",
+            "updateMask"
+          ]
+        },
+        {
+          "name": "BatchUpdateContactsResponse",
+          "properties": [
+            "updateResult"
+          ]
+        },
+        {
+          "name": "Biography",
+          "properties": [
+            "contentType",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Birthday",
+          "properties": [
+            "date",
+            "metadata",
+            "text"
+          ]
+        },
+        {
+          "name": "BraggingRights",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "CalendarUrl",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "type",
+            "url"
+          ]
+        },
+        {
+          "name": "ClientData",
+          "properties": [
+            "key",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "ContactGroup",
+          "properties": [
+            "clientData",
+            "etag",
+            "formattedName",
+            "groupType",
+            "memberCount",
+            "memberResourceNames",
+            "metadata",
+            "name",
+            "resourceName"
+          ]
+        },
+        {
+          "name": "ContactGroupMembership",
+          "properties": [
+            "contactGroupId",
+            "contactGroupResourceName"
+          ]
+        },
+        {
+          "name": "ContactGroupMetadata",
+          "properties": [
+            "deleted",
+            "updateTime"
+          ]
+        },
+        {
+          "name": "ContactGroupResponse",
+          "properties": [
+            "contactGroup",
+            "requestedResourceName",
+            "status"
+          ]
+        },
+        {
+          "name": "ContactToCreate",
+          "properties": [
+            "contactPerson"
+          ]
+        },
+        {
+          "name": "CopyOtherContactToMyContactsGroupRequest",
+          "properties": [
+            "copyMask",
+            "readMask",
+            "sources"
+          ]
+        },
+        {
+          "name": "CoverPhoto",
+          "properties": [
+            "default",
+            "metadata",
+            "url"
+          ]
+        },
+        {
+          "name": "CreateContactGroupRequest",
+          "properties": [
+            "contactGroup",
+            "readGroupFields"
+          ]
+        },
+        {
+          "name": "Date",
+          "properties": [
+            "day",
+            "month",
+            "year"
+          ]
+        },
+        {
+          "name": "DeleteContactPhotoResponse",
+          "properties": [
+            "person"
+          ]
+        },
+        {
+          "name": "DomainMembership",
+          "properties": [
+            "inViewerDomain"
+          ]
+        },
+        {
+          "name": "EmailAddress",
+          "properties": [
+            "displayName",
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "Empty",
+          "properties": null
+        },
+        {
+          "name": "Event",
+          "properties": [
+            "date",
+            "formattedType",
+            "metadata",
+            "type"
+          ]
+        },
+        {
+          "name": "ExternalId",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "FieldMetadata",
+          "properties": [
+            "primary",
+            "source",
+            "sourcePrimary",
+            "verified"
+          ]
+        },
+        {
+          "name": "FileAs",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Gender",
+          "properties": [
+            "addressMeAs",
+            "formattedValue",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "GetPeopleResponse",
+          "properties": [
+            "responses"
+          ]
+        },
+        {
+          "name": "GroupClientData",
+          "properties": [
+            "key",
+            "value"
+          ]
+        },
+        {
+          "name": "ImClient",
+          "properties": [
+            "formattedProtocol",
+            "formattedType",
+            "metadata",
+            "protocol",
+            "type",
+            "username"
+          ]
+        },
+        {
+          "name": "Interest",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "ListConnectionsResponse",
+          "properties": [
+            "connections",
+            "nextPageToken",
+            "nextSyncToken",
+            "totalItems",
+            "totalPeople"
+          ]
+        },
+        {
+          "name": "ListContactGroupsResponse",
+          "properties": [
+            "contactGroups",
+            "nextPageToken",
+            "nextSyncToken",
+            "totalItems"
+          ]
+        },
+        {
+          "name": "ListDirectoryPeopleResponse",
+          "properties": [
+            "nextPageToken",
+            "nextSyncToken",
+            "people"
+          ]
+        },
+        {
+          "name": "ListOtherContactsResponse",
+          "properties": [
+            "nextPageToken",
+            "nextSyncToken",
+            "otherContacts",
+            "totalSize"
+          ]
+        },
+        {
+          "name": "Locale",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Location",
+          "properties": [
+            "buildingId",
+            "current",
+            "deskCode",
+            "floor",
+            "floorSection",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "Membership",
+          "properties": [
+            "contactGroupMembership",
+            "domainMembership",
+            "metadata"
+          ]
+        },
+        {
+          "name": "MiscKeyword",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "ModifyContactGroupMembersRequest",
+          "properties": [
+            "resourceNamesToAdd",
+            "resourceNamesToRemove"
+          ]
+        },
+        {
+          "name": "ModifyContactGroupMembersResponse",
+          "properties": [
+            "canNotRemoveLastContactGroupResourceNames",
+            "notFoundResourceNames"
+          ]
+        },
+        {
+          "name": "Name",
+          "properties": [
+            "displayName",
+            "displayNameLastFirst",
+            "familyName",
+            "givenName",
+            "honorificPrefix",
+            "honorificSuffix",
+            "metadata",
+            "middleName",
+            "phoneticFamilyName",
+            "phoneticFullName",
+            "phoneticGivenName",
+            "phoneticHonorificPrefix",
+            "phoneticHonorificSuffix",
+            "phoneticMiddleName",
+            "unstructuredName"
+          ]
+        },
+        {
+          "name": "Nickname",
+          "properties": [
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "Occupation",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Organization",
+          "properties": [
+            "costCenter",
+            "current",
+            "department",
+            "domain",
+            "endDate",
+            "formattedType",
+            "fullTimeEquivalentMillipercent",
+            "jobDescription",
+            "location",
+            "metadata",
+            "name",
+            "phoneticName",
+            "startDate",
+            "symbol",
+            "title",
+            "type"
+          ]
+        },
+        {
+          "name": "Person",
+          "properties": [
+            "addresses",
+            "ageRange",
+            "ageRanges",
+            "biographies",
+            "birthdays",
+            "braggingRights",
+            "calendarUrls",
+            "clientData",
+            "coverPhotos",
+            "emailAddresses",
+            "etag",
+            "events",
+            "externalIds",
+            "fileAses",
+            "genders",
+            "imClients",
+            "interests",
+            "locales",
+            "locations",
+            "memberships",
+            "metadata",
+            "miscKeywords",
+            "names",
+            "nicknames",
+            "occupations",
+            "organizations",
+            "phoneNumbers",
+            "photos",
+            "relations",
+            "relationshipInterests",
+            "relationshipStatuses",
+            "residences",
+            "resourceName",
+            "sipAddresses",
+            "skills",
+            "taglines",
+            "urls",
+            "userDefined"
+          ]
+        },
+        {
+          "name": "PersonMetadata",
+          "properties": [
+            "deleted",
+            "linkedPeopleResourceNames",
+            "objectType",
+            "previousResourceNames",
+            "sources"
+          ]
+        },
+        {
+          "name": "PersonResponse",
+          "properties": [
+            "httpStatusCode",
+            "person",
+            "requestedResourceName",
+            "status"
+          ]
+        },
+        {
+          "name": "PhoneNumber",
+          "properties": [
+            "canonicalForm",
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "Photo",
+          "properties": [
+            "default",
+            "metadata",
+            "url"
+          ]
+        },
+        {
+          "name": "ProfileMetadata",
+          "properties": [
+            "objectType",
+            "userTypes"
+          ]
+        },
+        {
+          "name": "Relation",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "person",
+            "type"
+          ]
+        },
+        {
+          "name": "RelationshipInterest",
+          "properties": [
+            "formattedValue",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "RelationshipStatus",
+          "properties": [
+            "formattedValue",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Residence",
+          "properties": [
+            "current",
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "SearchDirectoryPeopleResponse",
+          "properties": [
+            "nextPageToken",
+            "people",
+            "totalSize"
+          ]
+        },
+        {
+          "name": "SearchResponse",
+          "properties": [
+            "results"
+          ]
+        },
+        {
+          "name": "SearchResult",
+          "properties": [
+            "person"
+          ]
+        },
+        {
+          "name": "SipAddress",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "Skill",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "Source",
+          "properties": [
+            "etag",
+            "id",
+            "profileMetadata",
+            "type",
+            "updateTime"
+          ]
+        },
+        {
+          "name": "Status",
+          "properties": [
+            "code",
+            "details",
+            "message"
+          ]
+        },
+        {
+          "name": "Tagline",
+          "properties": [
+            "metadata",
+            "value"
+          ]
+        },
+        {
+          "name": "UpdateContactGroupRequest",
+          "properties": [
+            "contactGroup",
+            "readGroupFields",
+            "updateGroupFields"
+          ]
+        },
+        {
+          "name": "UpdateContactPhotoRequest",
+          "properties": [
+            "personFields",
+            "photoBytes",
+            "sources"
+          ]
+        },
+        {
+          "name": "UpdateContactPhotoResponse",
+          "properties": [
+            "person"
+          ]
+        },
+        {
+          "name": "Url",
+          "properties": [
+            "formattedType",
+            "metadata",
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "UserDefined",
+          "properties": [
+            "key",
+            "metadata",
+            "value"
+          ]
+        }
+      ]
+    }
+  ]
+}

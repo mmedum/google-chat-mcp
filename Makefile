@@ -67,6 +67,10 @@ classes: ## The tool error vocabulary, closed from both sides
 api-coverage: ## Every API method used on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-coverage
 
+.PHONY: api-fields
+api-fields: ## Every published field modelled on purpose or left out on purpose
+	@$(GO) run ./scripts/gates api-fields
+
 # Not part of check: it fetches Google's discovery documents, and a gate
 # that fails when Google is slow is one people learn to rerun until it
 # passes. Run it when you want to know whether the API has grown.
@@ -127,7 +131,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes api-coverage leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes api-coverage api-fields leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

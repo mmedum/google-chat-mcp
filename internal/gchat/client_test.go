@@ -92,7 +92,7 @@ func TestListSpacesDoesNotFollowThePageToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{}); err != nil {
+	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{PageSize: 50}); err != nil {
 		t.Fatalf("ListSpaces: %v", err)
 	}
 	if calls.Load() != 1 {
@@ -111,7 +111,7 @@ func TestRetriesOn5xxThenSucceeds(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{}); err != nil {
+	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{PageSize: 50}); err != nil {
 		t.Fatalf("ListSpaces: %v", err)
 	}
 	if calls.Load() != 3 {
@@ -131,7 +131,7 @@ func TestRetriesOn429(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{}); err != nil {
+	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{PageSize: 50}); err != nil {
 		t.Fatalf("ListSpaces: %v", err)
 	}
 	if calls.Load() != 2 {
@@ -150,7 +150,7 @@ func TestGivesUpAfterMaxRetriesAndReportsTheRealError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{})
+	_, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{PageSize: 50})
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -827,5 +827,58 @@ func TestARedirectWithinTheAllowedHostsIsFollowed(t *testing.T) {
 	}
 	if got.DisplayName != "Team" || hops.Load() != 2 {
 		t.Errorf("space = %+v after %d hops", got, hops.Load())
+	}
+}
+
+// Google indents its JSON unless told not to, and prettyPrint is a
+// system parameter of every Google API rather than a Chat feature, so
+// this client asks once in newRequest — which both the JSON path and the
+// transfer path come through — instead of at each place that builds a
+// query.
+func TestCompactJSONIsAskedForOnEveryJSONRequest(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"spaces":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := newTestClient(t, srv).ListSpaces(context.Background(), ListSpacesOptions{PageSize: 50}); err != nil {
+		t.Fatalf("ListSpaces: %v", err)
+	}
+	q, err := url.ParseQuery(gotQuery)
+	if err != nil {
+		t.Fatalf("query %q does not parse: %v", gotQuery, err)
+	}
+	if q.Get("prettyPrint") != "false" {
+		t.Errorf("query = %q, want compact JSON asked for", gotQuery)
+	}
+	// And the parameters the call site set are still there.
+	if q.Get("pageSize") == "" {
+		t.Errorf("query = %q lost what the call site set", gotQuery)
+	}
+}
+
+// A download asks for bytes. How Google would have formatted a JSON
+// response it is not sending is none of that call's business, and a
+// media URL carrying a JSON formatting parameter reads as a mistake.
+func TestCompactJSONIsNotAskedForOnAMediaRequest(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		"https://chat.googleapis.com/v1/media/x?alt=media", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	askCompactJSON(req, "application/octet-stream")
+	if req.URL.RawQuery != "alt=media" {
+		t.Errorf("a media request was rewritten to %q", req.URL.RawQuery)
+	}
+	// A caller that has said so itself is not overruled either.
+	req, err = http.NewRequestWithContext(context.Background(), http.MethodGet,
+		"https://chat.googleapis.com/v1/spaces?prettyPrint=true", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	askCompactJSON(req, "application/json")
+	if !strings.Contains(req.URL.RawQuery, "prettyPrint=true") {
+		t.Errorf("an explicit prettyPrint was overruled: %q", req.URL.RawQuery)
 	}
 }

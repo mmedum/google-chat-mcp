@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -246,7 +247,11 @@ func TestUpdateMessageMasksTextOnly(t *testing.T) {
 		"spaces/AAA/messages/BBB", BuildUpdateMessage("edited")); err != nil {
 		t.Fatalf("UpdateMessage: %v", err)
 	}
-	if rec.Method != "PATCH" || rec.Query != "updateMask=text" {
+	// The mask, not the whole query: every request also asks for compact
+	// JSON, and what this test is about is that text is the only field
+	// masked — an unmasked patch is what would clear the cards.
+	q, err := url.ParseQuery(rec.Query)
+	if rec.Method != "PATCH" || err != nil || q.Get("updateMask") != "text" {
 		t.Errorf("request = %s ?%s", rec.Method, rec.Query)
 	}
 	if rec.Body != `{"text":"edited"}` {
@@ -400,7 +405,10 @@ func TestRenameSectionMasksTheNameAndSendsNoType(t *testing.T) {
 		"users/123/sections/SSS", BuildRenameSection("Clients")); err != nil {
 		t.Fatalf("RenameSection: %v", err)
 	}
-	if rec.Query != "updateMask=displayName" {
+	// The mask, not the whole query: every request also asks for compact
+	// JSON, and what this test is about is that displayName is the only
+	// field masked.
+	if q, err := url.ParseQuery(rec.Query); err != nil || q.Get("updateMask") != "displayName" {
 		t.Errorf("query = %q", rec.Query)
 	}
 	if rec.Body != `{"displayName":"Clients"}` {

@@ -589,6 +589,7 @@ var ciRunsForTarget = map[string]string{
 	"classes":      "gates classes",
 	"leaks":        "TestNoBuildOutputInTheTree",
 	"api-coverage": "gates api-coverage",
+	"api-fields":   "gates api-fields",
 	"parity":       "TestMakeCheckAndCIRunTheSameGates",
 	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",

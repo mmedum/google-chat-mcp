@@ -219,7 +219,7 @@ func TestRenameSectionRenames(t *testing.T) {
 	if got.Name != "users/123/sections/S" {
 		t.Errorf("name = %q", got.Name)
 	}
-	if sent := rec.last(t); sent.Query != "updateMask=displayName" {
+	if sent := rec.last(t); sent.mask(t) != "displayName" {
 		t.Errorf("query = %q", sent.Query)
 	}
 }

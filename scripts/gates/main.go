@@ -161,6 +161,11 @@ func init() {
 			arity: 1, runsIn: inCheck,
 			doc: "every API method used on purpose or left out on purpose",
 		},
+		"api-fields": {
+			run:   apiFields,
+			arity: 1, runsIn: inCheck,
+			doc: "every published field modelled on purpose or left out on purpose",
+		},
 		"api-diff": {
 			run:   apiDiff,
 			arity: 1, runsIn: manual,
