@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mmedum/google-chat-mcp/v2/internal/redact"
 	"github.com/mmedum/google-chat-mcp/v2/internal/version"
 	"io"
 	"os"
@@ -196,7 +197,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, "%v", err)
 	}
 
-	_, _ = fmt.Fprintf(stdout, "account:        %s\n", cmp.Or(gchat.MaskAccount(stored.AccountEmail), "(none)"))
+	_, _ = fmt.Fprintf(stdout, "account:        %s\n", cmp.Or(redact.Account(stored.AccountEmail), "(none)"))
 	_, _ = fmt.Fprintf(stdout, "client secret:  %s\n", cmp.Or(stored.ClientSecretPath, "(none)"))
 
 	store, err := credentialStore(cfg, nil)
@@ -308,7 +309,7 @@ func accountSuffix(email string) string {
 	if email == "" {
 		return ""
 	}
-	return " as " + gchat.MaskAccount(email)
+	return " as " + redact.Account(email)
 }
 
 func joinToolsets(ts []config.Toolset) string {
