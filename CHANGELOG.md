@@ -9,6 +9,49 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
+## [Unreleased]
+
+### Changed
+- `status` reports the account the same way in all four: the local part
+  removed, the domain kept. The domain is the half a diagnosis uses —
+  shared drives are a Workspace feature and a personal account cannot
+  create one, so `@gmail.com` and a Workspace domain are two different
+  sets of behaviour to explain — while the local part answers nothing.
+  It is never an input to any command here, and this output is what the
+  issue form asks people to paste. One server showed it in full, one
+  masked the domain as well (which hid the useful half), and two sat in
+  between.
+
+### Fixed
+- `--version` reports one spelling whichever way the binary was built.
+  goreleaser stamps its own `{{.Version}}`, which has the leading `v`
+  stripped, so a release archive said `1.1.0`; `go install` stamps
+  nothing and the fallback reads `v1.1.0` out of the build info. The same
+  release therefore reported two different strings depending on how
+  somebody installed it, and anything parsing `--version` got a different
+  answer per install method. Reported from outside by a reader comparing
+  five servers side by side.
+  The release stamp now carries the tag itself rather than goreleaser's
+  v-stripped form, so the two sources agree at the source; the
+  normalisation stays for a version passed by hand to `make`.
+- `status` prints the same lines, in the same order, with the same
+  labels as the three sibling servers, once a profile is configured (the
+  not-yet-signed-in message still differs between them). They had drifted into four shapes
+  — a version banner in three of them, `client secret` against
+  `client json`, `read-only` against `read only`, four label widths — and
+  the same reader found that too.
+- A permission failure no longer repeats the account it refused. Google
+  names the account in the message of a 403, and that message was
+  repeated verbatim into the error string — as was the whole response
+  body when it was not an error envelope at all. That string reaches
+  stderr, and the MCP stdio transport says a server may write logging
+  there and clients "MAY capture, forward, or ignore" it, while the
+  protocol's logging section says log messages MUST NOT carry personal
+  identifying information. The local part is now masked where Google's
+  text is parsed — one place, rather than at each print, so a print added
+  later is safe without its author knowing the rule, and a writer wrapper
+  could split an address across two Write calls and miss it. The domain
+  is kept, because it is what says which account was refused.
 ## [2.0.2] - 2026-09-13
 
 ### Added

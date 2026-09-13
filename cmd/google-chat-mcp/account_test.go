@@ -61,7 +61,10 @@ func TestAccountSuffix(t *testing.T) {
 	if got := accountSuffix(""); got != "" {
 		t.Errorf("accountSuffix(\"\") = %q, want empty", got)
 	}
-	if got := accountSuffix("janedoe@example.com"); got != " as janedoe@example.com" {
+	// Masked to the same shape as `status`: login is one command away from
+	// it, so pasting either into an issue gives the same answer about what
+	// is safe to share.
+	if got := accountSuffix("janedoe@example.com"); got != " as …@example.com" {
 		t.Errorf("accountSuffix = %q", got)
 	}
 }
@@ -187,9 +190,14 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("status exited %d: %s", code, stderr)
 	}
+	// The labels the four servers now share, in the shape they share —
+	// and the account with its local part removed, keeping the domain,
+	// which is the half that says whether shared drives and admin
+	// policy apply at all.
 	for _, want := range []string{
-		"janedoe@example.com", "client json:", "token store:",
-		"read only:", "deletes:", "toolsets:", "chat api:",
+		"…@example.com", "client secret:", "token store:",
+		"read-only:", "destructive:", "toolsets:", "chat api:",
+		"profile:        ", "config dir:     ", "account:        ",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("status did not report %q:\n%s", want, stdout)

@@ -254,3 +254,24 @@ func TestAPlainRefusalIsNotAScopeError(t *testing.T) {
 		t.Error("a plain refusal should be reported as forbidden")
 	}
 }
+
+// TestAPermissionDenialDoesNotRepeatTheAccount: Google names the account in
+// the message of a permission failure, and APIError.Error repeats that
+// message verbatim into a string that reaches a log, a terminal and a
+// tool response. The domain stays, because it is what tells a person
+// which account was refused.
+func TestAPermissionDenialDoesNotRepeatTheAccount(t *testing.T) {
+	body := []byte(`{"error":{"code":403,"status":"PERMISSION_DENIED",` +
+		`"message":"The caller someone.private@example.com lacks permission."}}`)
+	e := parseAPIError(403, body, "GET", "/v1/spaces/x")
+	if strings.Contains(e.Error(), "someone.private@example.com") {
+		t.Errorf("the address was repeated verbatim: %s", e.Error())
+	}
+	if !strings.Contains(e.Error(), "…@example.com") {
+		t.Errorf("the domain should survive so the account is still identifiable: %s", e.Error())
+	}
+	plain := parseAPIError(404, []byte(`{"error":{"message":"Space not found."}}`), "GET", "/v1/spaces/x")
+	if plain.Message != "Space not found." {
+		t.Errorf("message = %q, want it unchanged", plain.Message)
+	}
+}

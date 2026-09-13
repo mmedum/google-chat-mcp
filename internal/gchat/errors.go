@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -97,7 +98,7 @@ func parseAPIError(statusCode int, body []byte, method, path string) *APIError {
 	var env errorEnvelope
 	if err := json.Unmarshal(body, &env); err == nil {
 		e.Status = env.Error.Status
-		e.Message = env.Error.Message
+		e.Message = maskAddresses(env.Error.Message)
 		for _, d := range env.Error.Details {
 			if d.Reason != "" {
 				e.Reason = d.Reason
@@ -289,4 +290,43 @@ func retryable(statusCode int) bool {
 // what the backend did.
 func turnedAway(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusServiceUnavailable
+}
+
+var addressPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-…]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+
+// maskAddresses hides the local part of every address in text this
+// server did not write, keeping the domain.
+//
+// The MCP stdio transport says a server may write logging to stderr
+// and that clients "MAY capture, forward, or ignore" it, and the
+// protocol's logging section says log messages MUST NOT carry personal
+// identifying information. A 403 names the account it refused.
+//
+// Masked where Google's text becomes part of an error this server
+// raises, rather than at each print: a print added later is safe without
+// its author knowing the rule, and a writer wrapper could split an
+// address across two Write calls and miss it. The domain survives
+// because it is what says which account was refused.
+//
+// The account `status` reports is masked too, separately and to the same
+// shape.
+func maskAddresses(s string) string {
+	return addressPattern.ReplaceAllStringFunc(s, MaskAccount)
+}
+
+// MaskAccount is an address with the local part removed and the domain
+// kept.
+//
+// The domain is the half a diagnosis uses: shared drives are a Workspace
+// feature and a personal account cannot create one, so @gmail.com and a
+// Workspace domain are two different sets of behaviour to explain. The
+// local part answers nothing — it is never an input to any command here.
+func MaskAccount(addr string) string {
+	local, domain, ok := strings.Cut(addr, "@")
+	// Not an address: left alone rather than mangled, so a strange value
+	// stays legible to whoever is debugging it.
+	if !ok || local == "" || domain == "" {
+		return addr
+	}
+	return "…@" + domain
 }
