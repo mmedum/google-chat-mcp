@@ -11,6 +11,44 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Fixed
+- The release page shows the release notes. `release.yml` has always
+  written the `CHANGELOG.md` section for the tag and passed it with
+  `--release-notes`, and `.goreleaser.yaml` has always thrown it away:
+  `changelog: disable: true` is evaluated in the changelog pipe's `Skip`,
+  which runs before `Run`, so `ctx.ReleaseNotes` was never assigned and
+  the file the workflow had just written was never opened. The body
+  collapsed to the footer. Every release page this project has published
+  carries a footer and nothing above it, and the step that built the
+  notes passed green each time — the failure was only visible by reading
+  the page afterwards, which nobody did.
+
+  The block is deleted rather than set to false. `release.footer` is
+  untouched and still applies: `internal/pipe/release/body.go` renders
+  `Header`, `ReleaseNotes`, `Footer` on every path, `--release-notes`
+  included. Verified against goreleaser v2.18.1; the documentation does
+  not describe the interaction, and its summary of it is misleading in
+  the other direction.
+
+  The README said the changelog "is also what the release notes are made
+  from", which was the intent and not the behaviour. It is true now.
+
+### Changed
+- The README follows the skeleton now shared by the sibling servers,
+  checked against GitHub's own README guidance, the community profile
+  checklist and the standard-readme spec. This repository supplied the
+  skeleton and the tail, and was missing three things the sources name: a
+  description under 120 characters, *why the project is useful*, and
+  *where users can get help*. So: a shorter opening line, a `Why
+  google-chat-mcp` section, `Getting help` carrying the `doctor` advice
+  that was buried in the client setup, a `Documentation` section listing
+  the five files under `docs/`, and a `Contributing` section, which the
+  spec requires and which had been a sentence inside `Development`.
+  `Connect your client` is `Connect a client` and `What keeps you safe`
+  is `Safety`, so the four servers read the same.
+- The release footer is the shared wording, and now carries the
+  verification commands rather than telling you to verify.
+
 ### Added
 - A `transcript` gate, the last of the four to get one. The live driver
   and the eval harness may put a value into their transcript only through
