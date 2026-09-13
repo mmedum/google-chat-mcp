@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-09-13
+
 ### Added
 - A `transcript` gate, the last of the four to get one. The live driver
   and the eval harness may put a value into their transcript only through
@@ -293,6 +295,10 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...HEAD
+[2.0.4]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.3...v2.0.4
+[2.0.3]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.2...v2.0.3
+[2.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/mmedum/google-chat-mcp/releases/tag/v1.0.0
