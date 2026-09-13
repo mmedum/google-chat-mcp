@@ -88,11 +88,18 @@ signs:
     artifacts: checksum
     output: true
 
-# The release notes come from CHANGELOG.md, passed with --release-notes
-# by release.yml. Generating them from commit subjects would publish our
-# commit hygiene to people deciding whether to upgrade.
-changelog:
-  disable: true
+# No changelog block at all. The release notes come from CHANGELOG.md,
+# passed with --release-notes by release.yml, and generating them from
+# commit subjects instead would publish our commit hygiene to people
+# deciding whether to upgrade.
+#
+# This used to say `changelog: disable: true`, which reads like the way
+# to suppress the generated list and is not: Disable is evaluated in the
+# changelog pipe's Skip, which runs before Run, so ctx.ReleaseNotes was
+# never assigned and the file release.yml had just written was never
+# opened. Every release page since carried this footer and nothing above
+# it, while the workflow step that built the notes passed green. Deleting
+# the block is what actually leaves --release-notes in charge.
 
 release:
   # A tag is the decision; a draft nobody publishes is how releases go
@@ -104,8 +111,27 @@ release:
   # the file the MCP registry entry points at.
   extra_files:
     - glob: ./dist/*.mcpb
+  # Appended under the notes on every path, --release-notes included:
+  # internal/pipe/release/body.go renders Header, ReleaseNotes, Footer.
+  # Shared wording with the sibling servers.
   footer: |
-    Built by GoReleaser from the tag. Verify a download against
-    `checksums.txt`; every archive carries the binary, LICENSE and README.
-    `.mcpb` is the Claude Desktop bundle: macOS and Windows, installed by
-    opening it.
+    ---
+
+    Built by GoReleaser from the tag. Every archive carries the binary,
+    LICENSE and README, and ships an SBOM beside it.
+
+    Verify a download before you run it:
+
+    ```bash
+    sha256sum -c checksums.txt --ignore-missing
+    cosign verify-blob checksums.txt --bundle checksums.txt.bundle \
+      --certificate-identity-regexp 'https://github\.com/mmedum/google-chat-mcp/' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    gh attestation verify google-chat-mcp_*.tar.gz --repo mmedum/google-chat-mcp
+    ```
+
+    `.mcpb` is the Claude Desktop bundle: open it and Claude Desktop
+    installs the server and asks for your OAuth client JSON, with no
+    config file to edit. It does **not** log you in — install the binary
+    as well and run `google-chat-mcp login` once. Its SHA-256 is in the
+    same signed `checksums.txt`.
