@@ -9,7 +9,7 @@ Sections are the Keep a Changelog set — Added, Changed, Deprecated, Removed,
 Fixed, Security — in that order. Changes that require deployer action before
 upgrading are marked **Breaking:** and say what to do.
 
-## [Unreleased]
+## [2.0.2] - 2026-09-13
 
 ### Added
 - The API-fields gate judges every struct, not only the ones whose name a
@@ -44,6 +44,28 @@ upgrading are marked **Breaking:** and say what to do.
   the sidebar where Chat publishes a card layout, and its `Media` is a
   download's bytes where Chat publishes a resource name.
 
+### Changed
+- **Compact JSON on every request.** Google indents its JSON unless told
+  otherwise, and `prettyPrint` is a system parameter of every Google API
+  rather than a Chat feature, so this client now asks for it once in
+  `newRequest` — which both the JSON path and the transfer path come
+  through — instead of at each place that builds a query. A call added
+  later and given no thought gets it too. A space's message history is
+  what pays for the indentation here; on a sibling server the same change
+  took a large response from 7.44 MB to 2.96 MB. Set after the host
+  allowlist check, which is what makes rewriting the URL safe: every
+  request reaching that point is one this client has already decided the
+  access token may go to. Skipped for a request that is not asking for
+  JSON — an attachment download asks for bytes, and a media URL carrying
+  a JSON formatting parameter reads as a mistake. A query that names
+  `prettyPrint` itself is left alone.
+
+  Three patch tests compared the whole query string against
+  `updateMask=…`, which made them assertions about every parameter rather
+  than about the mask. They read the mask out of the query now, through
+  one helper, which is what they were always about: an unmasked patch is
+  what clears the cards and attachments this server cannot rebuild.
+
 ### Fixed
 - A forwarded message's space is read again. `ForwardedMeta` carried a
   single `spaceName`, a name Chat publishes nowhere — `ForwardedMetadata`
@@ -67,28 +89,6 @@ upgrading are marked **Breaking:** and say what to do.
   live doctor run reported it as drift twice before anything modelled
   it; that is the same class of problem, now caught by a gate rather
   than by someone noticing.
-
-### Changed
-- **Compact JSON on every request.** Google indents its JSON unless told
-  otherwise, and `prettyPrint` is a system parameter of every Google API
-  rather than a Chat feature, so this client now asks for it once in
-  `newRequest` — which both the JSON path and the transfer path come
-  through — instead of at each place that builds a query. A call added
-  later and given no thought gets it too. A space's message history is
-  what pays for the indentation here; on a sibling server the same change
-  took a large response from 7.44 MB to 2.96 MB. Set after the host
-  allowlist check, which is what makes rewriting the URL safe: every
-  request reaching that point is one this client has already decided the
-  access token may go to. Skipped for a request that is not asking for
-  JSON — an attachment download asks for bytes, and a media URL carrying
-  a JSON formatting parameter reads as a mistake. A query that names
-  `prettyPrint` itself is left alone.
-
-  Three patch tests compared the whole query string against
-  `updateMask=…`, which made them assertions about every parameter rather
-  than about the mask. They read the mask out of the query now, through
-  one helper, which is what they were always about: an unmasked patch is
-  what clears the cards and attachments this server cannot rebuild.
 
 ## [2.0.1] - 2026-09-08
 
