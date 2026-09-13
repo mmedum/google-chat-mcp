@@ -5,15 +5,29 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v2.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v2)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
-Google Chat as MCP tools. Read, search and write to your spaces, direct
-messages and sidebar from Claude Code, Claude Desktop, or any other MCP
-client.
+Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
 
 A single Go binary that speaks MCP over stdio. It runs as a subprocess of
 your client, on your own machine, against your own Google account. There
 is no server to host, no shared deployment and no service account: you
 create a Google OAuth client, log in once, and the refresh token stays in
-your OS keyring.
+your OS keyring. Claude Code, Claude Desktop and any other MCP client can
+drive it.
+
+## Why google-chat-mcp
+
+Chat integrations are normally apps: they post as a bot, see only the
+spaces somebody added them to, and need a service account an
+administrator provisions. This one runs as **you**. It reaches what your
+account already reaches, and messages you send are from you, not from an
+app with your name on it.
+
+That also puts the user-scoped half of Chat in reach, which an app
+identity cannot get to at all: your sidebar sections, how far you have
+read in a space or a thread, your availability and custom status, and
+your organisation's custom emoji. Fifty-five tools cover it, every write
+takes `dry_run`, and nothing is requested at login beyond the scopes the
+tools you are actually using need.
 
 ## Install
 
@@ -101,7 +115,7 @@ ssh -N -L <port>:127.0.0.1:<port> user@remote-host
 Then open the URL locally. If `ssh` reports `bind: Address already in
 use`, cancel the login with Ctrl-C and run it again to draw another port.
 
-## Connect your client
+## Connect a client
 
 Claude Code:
 
@@ -132,10 +146,6 @@ knowing now: `GCM_READ_ONLY=true` leaves out every tool that changes anything in
 and `GCM_LOCAL_DIR` names the one directory files may be written to and
 read from. Without that last one the server touches no files at all,
 and the three tools that move them say so.
-
-If something does not work, run `google-chat-mcp doctor`. It checks the
-credentials, the granted scopes and what Google actually answers, and
-names what is missing.
 
 ## Tools
 
@@ -205,7 +215,7 @@ client that includes resources in its context:
 - `gchat://spaces/{space_id}/messages/{message_id}`
 - `gchat://spaces/{space_id}/threads/{thread_id}`
 
-## What keeps you safe
+## Safety
 
 - **`dry_run` on 25 write tools.** It returns the request body that
   would have been sent, and the call cannot reach the network: the flag
@@ -245,11 +255,31 @@ MCP client ──stdio──► google-chat-mcp
                        └── auth       refresh token → access token
 ```
 
-[`docs/architecture.md`](docs/architecture.md) has the request flow, the
-package layout, the evidence log behind the conventions, and the design
-decisions a contributor should not undo. The threat model is in
-[`docs/security.md`](docs/security.md), and the procedures for rotating
-or recovering credentials are in [`docs/runbook.md`](docs/runbook.md).
+Every space, message and thread is addressed by its resource name, never
+by position, and a listing keeps paging while Google returns a token —
+including past an empty page, which Chat returns when it applies the page
+size before the filter.
+
+## Getting help
+
+If something does not work, run `google-chat-mcp doctor`. It checks the
+credentials, the granted scopes and what Google actually answers, and
+names what is missing — most first-run trouble is an API that was never
+enabled or a consent screen without you on it.
+
+If that does not explain it,
+[open an issue](https://github.com/mmedum/google-chat-mcp/issues). Never
+paste a space or message resource name, message text, a
+`client_secret.json` or a token into one; describe the shape instead.
+Security problems go through [`SECURITY.md`](SECURITY.md), privately.
+
+## Versioning
+
+Tool names and their output fields are stable within a major version. A
+change needing you to act — a new scope, another login, a different
+command in your client config — is marked **Breaking:** in
+[`CHANGELOG.md`](CHANGELOG.md), which is also what each release's notes
+are made from.
 
 ## Development
 
@@ -265,16 +295,27 @@ golangci-lint, race tests with a per-package coverage floor,
 the released tool surface, an API-coverage gate that fails when a Google
 API method has no verdict on it or a call this server makes has no row,
 and a staleness gate that fails when this README, the docs or the
-changelog drift from the code. Contributing
-conventions are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+changelog drift from the code.
 
-## Versioning
+## Documentation
 
-Tool names and their output fields are stable within a major version. A
-change needing you to act — a new scope, another login, a different
-command in your client config — is marked **Breaking:** in
-[`CHANGELOG.md`](CHANGELOG.md), which is also what the release notes are
-made from.
+- [`docs/architecture.md`](docs/architecture.md) — the request flow, the
+  package layout, the evidence log behind the conventions, and the
+  design decisions a contributor should not undo.
+- [`docs/configuration.md`](docs/configuration.md) — every environment
+  variable.
+- [`docs/gcp-setup.md`](docs/gcp-setup.md) — the Google Cloud project and
+  OAuth client, step by step.
+- [`docs/security.md`](docs/security.md) — the threat model.
+- [`docs/runbook.md`](docs/runbook.md) — rotating or recovering
+  credentials.
+
+## Contributing
+
+Questions and bugs go in
+[issues](https://github.com/mmedum/google-chat-mcp/issues); pull requests
+are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the branch and
+review flow, and `make check` is what has to pass.
 
 ## Security
 
