@@ -75,3 +75,33 @@ func TestReleaseNotesAcceptsATagName(t *testing.T) {
 		t.Errorf("stdout = %q", out.String())
 	}
 }
+
+// The page and the file are different documents: GitHub renders the tag
+// name as the h1, so a section published unaltered starts at h3 under an
+// h1 and skips a rank.
+func TestReleaseNotesLiftHeadingsOneLevel(t *testing.T) {
+	var out, errOut bytes.Buffer
+	path := write(t, "CHANGELOG.md", changelogFixture)
+	if code := releaseNotes([]string{"release-notes", "1.0.0", path}, &out, &errOut); code != 0 {
+		t.Fatalf("releaseNotes exited %d: %s", code, errOut.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "## Added") || strings.Contains(got, "### ") {
+		t.Errorf("headings were not lifted, so the page still skips a rank:\n%s", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(line, "# ") {
+			t.Errorf("emitted an h1, which duplicates the tag heading: %q", line)
+		}
+	}
+}
+
+func TestPromoteHeadingsLeavesFencedCodeAlone(t *testing.T) {
+	const body = "### Added\n- a thing\n\n```bash\n# not a heading\n### also not a heading\n```\n\n#### Deeper\n"
+	got := promoteHeadings(body)
+	for _, want := range []string{"## Added", "# not a heading", "### also not a heading", "### Deeper"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("promoteHeadings dropped or mangled %q:\n%s", want, got)
+		}
+	}
+}

@@ -11,6 +11,23 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+- Release notes are published one heading level up. In `CHANGELOG.md` a
+  version is an `##` and its change kinds are `###` underneath it; on the
+  release page the version heading is gone, because GitHub renders the
+  tag name as the page's `h1`. Published unaltered, the notes therefore
+  started at `h3` directly under an `h1` — a skipped rank, which the
+  W3C's heading guidance says to avoid. Confirmed by reading the rendered
+  page rather than guessing: `h1 v2.0.4`, then `h3 Added`.
+
+  So the section's headings are lifted one level on the way out, and the
+  page reads `h1` then `h2` with nothing missing between. No wrapper
+  heading was added: "Changelog" restates what the page obviously is, and
+  repeating the version duplicates what GitHub already prints above it.
+  Fenced code is left alone, since a `#` comment in a shell block is not
+  a heading, and only `h3` and deeper are lifted, so a second `h1` can
+  never be emitted.
+
 ## [2.0.4] - 2026-09-13
 
 ### Added
