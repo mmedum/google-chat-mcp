@@ -562,7 +562,16 @@ func readSnapshot(path string) (snapshot, error) {
 // file this writes. CONTRIBUTING's release checklist says to run it,
 // because a manual target nobody runs is a gate that never fires.
 func apiDiff(_ []string, stdout, stderr io.Writer) int {
-	return apiDiffWith(apis, snapshotFile, stdout, stderr)
+	if code := apiDiffWith(apis, snapshotFile, stdout, stderr); code != 0 {
+		return code
+	}
+	// The field snapshot the api-fields gate reads is refreshed by the
+	// same command, because it is the same fetch of the same documents.
+	if err := writeFieldsSnapshot(stdout); err != nil {
+		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 // apiDiffWith is apiDiff over a given set of APIs and a given file, so

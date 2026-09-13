@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -399,6 +400,20 @@ func (c *calls) last(t *testing.T) call {
 	return got[len(got)-1]
 }
 
+// mask is the updateMask the call sent, read out of the query rather
+// than compared against the whole of it: every request also asks for
+// compact JSON, and what a patch test is about is which fields it
+// masked. An unmasked patch is what clears the cards and attachments
+// this server cannot rebuild, so the mask is the assertion that matters.
+func (c call) mask(t *testing.T) string {
+	t.Helper()
+	q, err := url.ParseQuery(c.Query)
+	if err != nil {
+		t.Fatalf("query %q does not parse: %v", c.Query, err)
+	}
+	return q.Get("updateMask")
+}
+
 // recorded builds a Service whose every request is remembered.
 func recorded(t *testing.T, h http.HandlerFunc) (*Service, *calls) {
 	t.Helper()
@@ -620,8 +635,8 @@ func TestUpdateSpaceMasksWhatItChanges(t *testing.T) {
 				t.Fatalf("UpdateSpace: %v", err)
 			}
 			sent := rec.last(t)
-			if sent.Query != "updateMask="+tc.wantMask {
-				t.Errorf("query = %q, want the mask %q", sent.Query, tc.wantMask)
+			if got := sent.mask(t); got != tc.wantMask {
+				t.Errorf("mask = %q, want %q (query %q)", got, tc.wantMask, sent.Query)
 			}
 			if !strings.Contains(sent.Body, tc.wantInBody) {
 				t.Errorf("body = %s", sent.Body)

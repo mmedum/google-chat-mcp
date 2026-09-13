@@ -11,6 +11,85 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+- The API-fields gate judges every struct, not only the ones whose name a
+  schema happens to share. It compared the name matches and skipped the
+  rest in silence, with a floor of 20 under the number matched standing in
+  for a check — which against a real 49 left 29 renames of headroom. A repo-wide
+  rename of a modelled struct took its properties out of the comparison
+  and the gate still printed ok. It now runs a third direction over the
+  wire package: every struct carrying a JSON tag must match a published
+  schema, be named by an `alias` row, or carry a new `local` row saying it
+  models none. The floor is gone rather than raised, because the rename
+  now fails on the renamed type itself. Forty structs were invisible; they are accounted for now, and 36 more schemas are compared (49 to 85).
+  A rejected row no longer counts as a decision either: an invalid `out`
+  row used to excuse the very field it named.
+- **An API-fields gate.** `make api-fields` is the coverage gate one
+  level down: `testdata/api-fields.json` is every schema and property
+  the Chat and People discovery documents publish, `testdata/api-fields.tsv`
+  is one hand-written row per exception, and the modelled side is read
+  out of `internal/gchat` with `go/ast`, promoting embedded structs'
+  tags. Both directions fail — a field Google adds to a type this server
+  models, and a field this server carries that nothing publishes — and
+  the number of schemas matched is part of the rule, because a gate that
+  matches a struct to a schema by name goes blind the moment somebody
+  renames a struct.
+
+  It is keyed by API, not by schema name, because Chat and People both
+  publish a `Membership`: merging them invents missing fields and
+  unpublished ones in equal measure. Two other verdicts exist for the
+  same reason. `owner` says which API a struct of a shared name models,
+  and `unrelated` says a struct that merely shares a schema's name is
+  about something else — this server's `Section` is a space's place in
+  the sidebar where Chat publishes a card layout, and its `Media` is a
+  download's bytes where Chat publishes a resource name.
+
+### Fixed
+- A forwarded message's space is read again. `ForwardedMeta` carried a
+  single `spaceName`, a name Chat publishes nowhere — `ForwardedMetadata`
+  publishes `space` and `spaceDisplayName` — so the field never decoded
+  and a forwarded message came back with nothing in it. Found by the new
+  third direction of the api-fields gate.
+- A space permission granted to assistant managers is reported. The
+  permission-setting type modelled `managersAllowed` and `membersAllowed`
+  and not `assistantManagersAllowed`, so a ROLE_ASSISTANT_MANAGER grant
+  decoded as granted to nobody.
+- **A quoted message's attachments never decoded.** Chat spells the
+  field `attachments` on `QuotedMessageSnapshot` and `attachment` on a
+  `Message`; the singular was copied to the plural's type, so the field
+  was silently always empty. Found by the api-fields gate on its first
+  run, which is the kind of bug it exists for: a wrong tag reads exactly
+  like an API that sent nothing.
+- **Three fields that could never be populated are gone.**
+  `MessagePin.createTime` and `.creator`, and `Membership.membershipId`,
+  are not published by the API and were read by nothing. The
+  `Affiliation` field beside the last of them carries a comment saying a
+  live doctor run reported it as drift twice before anything modelled
+  it; that is the same class of problem, now caught by a gate rather
+  than by someone noticing.
+
+### Changed
+- **Compact JSON on every request.** Google indents its JSON unless told
+  otherwise, and `prettyPrint` is a system parameter of every Google API
+  rather than a Chat feature, so this client now asks for it once in
+  `newRequest` — which both the JSON path and the transfer path come
+  through — instead of at each place that builds a query. A call added
+  later and given no thought gets it too. A space's message history is
+  what pays for the indentation here; on a sibling server the same change
+  took a large response from 7.44 MB to 2.96 MB. Set after the host
+  allowlist check, which is what makes rewriting the URL safe: every
+  request reaching that point is one this client has already decided the
+  access token may go to. Skipped for a request that is not asking for
+  JSON — an attachment download asks for bytes, and a media URL carrying
+  a JSON formatting parameter reads as a mistake. A query that names
+  `prettyPrint` itself is left alone.
+
+  Three patch tests compared the whole query string against
+  `updateMask=…`, which made them assertions about every parameter rather
+  than about the mask. They read the mask out of the query now, through
+  one helper, which is what they were always about: an unmasked patch is
+  what clears the cards and attachments this server cannot rebuild.
+
 ## [2.0.1] - 2026-09-08
 
 ### Fixed
