@@ -11,6 +11,27 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+- A `transcript` gate, the last of the four to get one. The live driver
+  and the eval harness may put a value into their transcript only through
+  a redactor, and the gate reads their syntax trees to say so — 101
+  writes, each a literal, a count, or through one, with an allowlist
+  carrying a reason per entry.
+
+  It found two things. The eval harness logged the whole tool response on
+  a failure, unredacted, while every neighbouring line went through
+  `clip` — the same line, in the same function, as a sibling server. And
+  `clip` did not redact at all: it truncated, which reads as safe and is
+  not, because the first 300 characters of a tool response are where an
+  address is. It masks first and truncates second now, and a test holds
+  that, because the gate can only say a value went through `clip` and not
+  that `clip` still does anything.
+
+  Also: the live driver's own address pattern could not match an address
+  that had already been masked upstream, so the domain would have
+  survived into the transcript — the third instance of that same fault,
+  after two siblings.
+
 ### Changed
 - The address masking moved into `internal/redact`, the same package with
   the same two functions that the three sibling servers have. It was
