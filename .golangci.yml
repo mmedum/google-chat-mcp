@@ -28,7 +28,20 @@ linters:
     - nilerr
     - prealloc
     - makezero
+    - forbidigo
   settings:
+    forbidigo:
+      # The MCP spec's stdio transport is normative: the server MUST NOT
+      # write anything to stdout that is not a valid MCP message, and MAY
+      # log to stderr. A stray print corrupts the JSON-RPC stream and the
+      # client silently stops working, so the process's streams are named
+      # in exactly one place and forbidden everywhere else.
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: stdout carries only MCP JSON-RPC frames; write through the boundary helpers
+        - pattern: ^os\.Stdout$
+          msg: stdout carries only MCP JSON-RPC frames; take an io.Writer instead
     gocyclo:
       min-complexity: 25
     govet:
@@ -46,6 +59,9 @@ linters:
         - name: unreachable-code
   exclusions:
     rules:
+      # scripts/ is maintainer tooling run at a terminal, not the server.
+      - path: ^scripts/
+        linters: [forbidigo]
       - path: _test\.go
         linters: [gocyclo, unparam, errcheck, bodyclose, revive, prealloc]
 

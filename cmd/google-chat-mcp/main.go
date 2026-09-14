@@ -24,6 +24,9 @@ import (
 	"github.com/mmedum/google-chat-mcp/v2/internal/version"
 )
 
+// below takes them as io.Writer, so nothing else can reach stdout.
+//
+//nolint:forbidigo // the one place the process's streams are named; everything
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func usage(w io.Writer) {
