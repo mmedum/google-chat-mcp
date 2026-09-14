@@ -216,6 +216,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintf(stdout, "read-only:      %t\n", cfg.ReadOnly)
 	_, _ = fmt.Fprintf(stdout, "destructive:    %t\n", !cfg.RefuseDeletes)
 	_, _ = fmt.Fprintf(stdout, "toolsets:       %s\n", joinToolsets(cfg.Toolsets))
+	_, _ = fmt.Fprintf(stdout, "local dir:      %s\n", orUnset(cfg.LocalDir))
 	_, _ = fmt.Fprintf(stdout, "chat api:       %s\n", cfg.ChatAPIBase)
 	_, _ = fmt.Fprintf(stdout, "log:            %s %s\n", cfg.LogLevel, cfg.LogFormat)
 
@@ -344,4 +345,15 @@ func confirm(w io.Writer, prompt string) bool {
 	}
 	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
+}
+
+// orUnset names the empty string, so a setting that is off reads as a
+// decision rather than a blank. The sibling servers print their
+// directory this way and this one printed nothing at all, so `status`
+// could not tell you whether attachments would work.
+func orUnset(s string) string {
+	if s == "" {
+		return "(unset)"
+	}
+	return s
 }

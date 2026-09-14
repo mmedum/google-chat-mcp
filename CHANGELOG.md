@@ -11,6 +11,20 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Fixed
+- The local directory has to exist. Only a relative path was refused before, so
+  an absolute one with a typo in it was accepted at startup and failed
+  much later, at the moment somebody tried to move a file — a long way
+  from the setting that caused it. `GCM_LOCAL_DIR` is now checked for being an
+  absolute path, existing, and being a directory, and each failure names
+  the setting. Unset is still allowed and still means the feature is off;
+  that is a decision, not a mistake.
+- `status` prints the local directory. It was honoured but invisible, so
+  the one command whose job is to say how this server is configured could
+  not tell you whether attachments would work — while the Docs and Drive
+  servers both print theirs. It reads `(unset)` when off, as Drive's
+  does.
+
 ## [2.0.5] - 2026-09-14
 
 ### Added
