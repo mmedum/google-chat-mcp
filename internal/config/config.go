@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -313,10 +314,23 @@ func (s *Settings) Build() (Config, error) {
 	// who started it — and the directory bounds where a download may
 	// land.
 	if dir := strings.TrimSpace(s.LocalDir); dir != "" {
-		if !filepath.IsAbs(dir) {
+		// Existence is part of the rule, not a detail. A relative path was
+		// always refused here; an absolute one that does not exist was not,
+		// so a typo was accepted at startup and surfaced later as a file
+		// operation failing for reasons nobody could see from `status`.
+		var info os.FileInfo
+		var statErr error
+		switch {
+		case !filepath.IsAbs(dir):
 			errs = append(errs, fmt.Errorf("%w: local dir %q must be an absolute path", ErrInvalid, dir))
-		} else {
-			c.LocalDir = filepath.Clean(dir)
+		default:
+			if info, statErr = os.Stat(dir); statErr != nil {
+				errs = append(errs, fmt.Errorf("%w: local dir %q cannot be read: %w", ErrInvalid, dir, statErr))
+			} else if !info.IsDir() {
+				errs = append(errs, fmt.Errorf("%w: local dir %q is not a directory", ErrInvalid, dir))
+			} else {
+				c.LocalDir = filepath.Clean(dir)
+			}
 		}
 	}
 
