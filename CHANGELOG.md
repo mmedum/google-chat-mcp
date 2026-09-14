@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-09-14
+
 ### Fixed
 - The local directory has to exist. Only a relative path was refused before, so
   an absolute one with a typo in it was accepted at startup and failed
@@ -359,7 +361,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.5...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.6...HEAD
+[2.0.6]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.2...v2.0.3
