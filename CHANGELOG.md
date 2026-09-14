@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-09-14
+
 ### Added
 - `forbidigo` holds the rule that stdout carries only MCP JSON-RPC
   frames. That rule is in this repository's CLAUDE.md and in the MCP
@@ -343,7 +345,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.5...HEAD
+[2.0.5]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.1...v2.0.2
