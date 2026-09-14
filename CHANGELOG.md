@@ -11,6 +11,37 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+- `forbidigo` holds the rule that stdout carries only MCP JSON-RPC
+  frames. That rule is in this repository's CLAUDE.md and in the MCP
+  specification — the stdio transport says the server **MUST NOT** write
+  anything to stdout that is not a valid MCP message, and **MAY** log to
+  stderr — and until now nothing enforced it. Verified by injection
+  rather than by reading: a `fmt.Println` added to `internal/service/`
+  passed the entire `make check`, in all four servers. A stray print
+  there corrupts the JSON-RPC stream, and the failure a person sees is a
+  client that silently stops working.
+
+  It is configuration rather than a new gate, because golangci-lint
+  already runs here and `forbidigo` already does this job. Two patterns,
+  `^fmt\.Print.*$` and `^os\.Stdout$`, with `analyze-types: true` so
+  that an aliased import still matches and so that stdout is caught as a
+  *destination*: after the writers were threaded through there are far
+  fewer `fmt.Print*` calls and many `fmt.Fprint*`, and
+  `fmt.Fprintf(os.Stdout, …)` corrupts the stream identically. Both
+  spellings are held, and both were injected and watched to fail.
+
+  The process's streams are now named in exactly one place — `main`,
+  which carries the single `//nolint:forbidigo` and a sentence saying
+  why. `scripts/` is excluded by path: it is maintainer tooling run at a
+  terminal, not the server.
+
+  A hand-written gate was drafted first and thrown away. It would have
+  needed a path constant, which is how the existing print check came to
+  read one file (`const file = "main.go"`) out of a whole server, and a
+  floor on files read so it could not pass by reading nothing. Neither
+  problem exists in a linter that is handed the package list.
+
 ### Changed
 - Release notes are published one heading level up. In `CHANGELOG.md` a
   version is an `##` and its change kinds are `###` underneath it; on the
