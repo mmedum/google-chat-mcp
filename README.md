@@ -100,6 +100,15 @@ directory inherits, not the mode.
 token lives. `google-chat-mcp logout` revokes the token at Google and
 deletes the local copy.
 
+`google-chat-mcp status --json` prints the same state as one JSON object
+on stdout, for a script that needs to know whether this server is
+authorised before starting it. `credentials.resolved` is the field to
+branch on, `credentials.signed_in` distinguishes "no profile yet" from
+"profile but no token", `schema_version` changes only when a field is
+removed or its meaning changes, and the account is masked to its domain
+exactly as the text output masks it. A label in the human output is free
+to be reworded in any release; the object is not.
+
 ### Logging in over SSH
 
 The callback goes to the *remote* host's loopback address, and your

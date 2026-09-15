@@ -2,13 +2,11 @@ package main
 
 import (
 	"bufio"
-	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/mmedum/google-chat-mcp/v2/internal/redact"
-	"github.com/mmedum/google-chat-mcp/v2/internal/version"
 	"io"
 	"os"
 	"slices"
@@ -173,60 +171,29 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 
 // cmdStatus prints where things are and what is missing.
 func cmdStatus(args []string, stdout, stderr io.Writer) int {
-	cfg, err := loadConfig("status", args, stderr, nil)
+	var asJSON bool
+	cfg, err := loadConfig("status", args, stderr, func(fs *flag.FlagSet) {
+		fs.BoolVar(&asJSON, "json", false, "print the same state as one JSON object")
+	})
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
 
-	// The four servers print the same eight lines in the same order,
-	// with the same labels. They had drifted into four shapes, which a
-	// reader running them side by side noticed before anyone here did.
-	_, _ = fmt.Fprintln(stdout, version.Info())
-	_, _ = fmt.Fprintf(stdout, "profile:        %s\n", cfg.Profile)
-	if dir, err := userconfig.ProfileDir(cfg.Profile); err == nil {
-		_, _ = fmt.Fprintf(stdout, "config dir:     %s\n", dir)
-	}
-
-	stored, err := userconfig.Load(cfg.Profile)
-	switch {
-	case errors.Is(err, userconfig.ErrNotFound):
-		_, _ = fmt.Fprintln(stdout, "account:        not signed in")
-		_, _ = fmt.Fprintln(stdout, "\nRun `google-chat-mcp login --client-secret <path>` to sign in.")
-		return 0
-	case err != nil:
-		return fail(stderr, "%v", err)
-	}
-
-	_, _ = fmt.Fprintf(stdout, "account:        %s\n", cmp.Or(redact.Account(stored.AccountEmail), "(none)"))
-	_, _ = fmt.Fprintf(stdout, "client secret:  %s\n", cmp.Or(stored.ClientSecretPath, "(none)"))
-
-	store, err := credentialStore(cfg, nil)
+	// The four servers print the same lines in the same order, with the
+	// same labels. They had drifted into four shapes, which a reader
+	// running them side by side noticed before anyone here did — and the
+	// object below exists because a label is not a contract.
+	r, err := newStatusReport(cfg)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
-	if _, source, err := store.Resolve(); err == nil {
-		_, _ = fmt.Fprintf(stdout, "token store:    %s\n", source)
-	} else {
-		_, _ = fmt.Fprintf(stdout, "token store:    none (%v)\n", err)
-	}
-
-	if len(stored.Scopes) > 0 {
-		_, _ = fmt.Fprintf(stdout, "scopes:         %s\n", strings.Join(stored.Scopes, " "))
-	}
-	_, _ = fmt.Fprintf(stdout, "read-only:      %t\n", cfg.ReadOnly)
-	_, _ = fmt.Fprintf(stdout, "destructive:    %t\n", !cfg.RefuseDeletes)
-	_, _ = fmt.Fprintf(stdout, "toolsets:       %s\n", joinToolsets(cfg.Toolsets))
-	_, _ = fmt.Fprintf(stdout, "local dir:      %s\n", orUnset(cfg.LocalDir))
-	_, _ = fmt.Fprintf(stdout, "chat api:       %s\n", cfg.ChatAPIBase)
-	_, _ = fmt.Fprintf(stdout, "log:            %s %s\n", cfg.LogLevel, cfg.LogFormat)
-
-	if missing := scopes.Missing(stored.Scopes, cfg.Enabled(config.ToolsetAdmin)); len(missing) > 0 {
-		_, _ = fmt.Fprintf(stdout, "\n%d scope(s) not granted; tools needing them report a [scope] error:\n", len(missing))
-		for _, s := range missing {
-			_, _ = fmt.Fprintf(stdout, "  %s\n", s)
+	if asJSON {
+		if err := r.writeJSON(stdout); err != nil {
+			return fail(stderr, "%v", err)
 		}
-		_, _ = fmt.Fprintln(stdout, "\nAdd them to the consent screen, then run `google-chat-mcp login` again.")
+		return 0
 	}
+	r.writeText(stdout)
 	return 0
 }
 
