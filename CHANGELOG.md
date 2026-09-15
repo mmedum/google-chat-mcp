@@ -11,6 +11,27 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+- A fifth rule in the `pins` gate: every action is classified, and an
+  unknown one fails. The four rules before it each judge a version that
+  is *written*; an action that installs a tool and names no version at
+  all is an absence, and nothing could see it.
+
+  That is not hypothetical. The Pipedrive server's release published
+  nothing, because `sigstore/cosign-installer` was pinned by sha with no
+  `cosign-release`: the job installed whatever cosign was newest, and
+  that cosign had changed its default signing format.
+  `anchore/sbom-action/download-syft` had the same hole one step below
+  it. **A sha pins the wrapper, not the tool.**
+
+  This repository pins both and was never affected, but nothing held
+  that. Every action is now in one of two tables — the installers with
+  the input that pins each one's tool, and the actions that install
+  nothing with the reason — and an action in neither fails the gate,
+  because being unclassified is the state that let the other two through.
+
+  Watched failing on all three shapes before being trusted.
+
 ## [2.1.0] - 2026-09-15
 
 ### Added
