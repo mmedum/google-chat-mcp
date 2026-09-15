@@ -11,6 +11,30 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+- `status --json` prints the same state as one JSON object on stdout, so
+  a script can read whether this server is authorised instead of parsing
+  output written for a person. `credentials.resolved` is the field to
+  branch on; `schema_version` changes only when a field is removed or its
+  meaning changes.
+
+  The design is an outside contributor's, from the Drive server where it
+  landed first. The reason is drift this family has already caused: the
+  four servers printed four shapes for the same state, and a label that
+  moves under a release takes a caller's check with it, silently.
+
+  Two things needed deciding here rather than copying. **Not being signed
+  in returns early in the text output** — it prints "not signed in" and a
+  sentence, and stops — so the object had to make that a state rather
+  than a truncation: `signed_in` and `resolved` are separate fields and
+  every key is present either way, because a caller cannot tell a short
+  object from a failed parse. And **the text collapses a complete toolset
+  list to "all"** while the object carries the names, since a script
+  wants to know which ones.
+
+  One collector, two renderers. The text output is byte-identical to what
+  the released binary prints, asserted by diffing them.
+
 ## [2.0.6] - 2026-09-14
 
 ### Fixed
