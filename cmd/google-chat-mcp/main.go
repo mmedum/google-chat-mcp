@@ -36,7 +36,7 @@ Usage:
   google-chat-mcp                          serve MCP over stdio
   google-chat-mcp login --client-secret P  authorize a Google account
   google-chat-mcp logout                   revoke and delete the stored token
-  google-chat-mcp status                   account, token location, settings
+  google-chat-mcp status [--json]          account, token location, settings
   google-chat-mcp doctor [--spaces N]      check live responses against our models
   google-chat-mcp --version
   google-chat-mcp --dump-schemas           tool and resource schemas as JSON
