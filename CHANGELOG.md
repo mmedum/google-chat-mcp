@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-15
+
 ### Added
 - `status --json` prints the same state as one JSON object on stdout, so
   a script can read whether this server is authorised instead of parsing
@@ -385,7 +387,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.6...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.6...v2.1.0
 [2.0.6]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.3...v2.0.4
