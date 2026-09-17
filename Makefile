@@ -21,6 +21,17 @@ build: ## Build the binary
 install: ## go install the binary
 	CGO_ENABLED=0 $(GO) install -trimpath -ldflags="$(LDFLAGS)" ./cmd/google-chat-mcp
 
+# Rehearses the release: the six archives, built and thrown away. The
+# version is here rather than in CONTRIBUTING because a version in prose
+# is a copy, and the copy is what goes stale — the runbook named no
+# version at all, so a rehearsal ran whatever goreleaser was on the
+# maintainer's PATH, which on the machine this was found on was four
+# minor releases behind the one the tag uses. The pins gate holds this
+# and release.yml to the same version.
+.PHONY: release-rehearse
+release-rehearse: ## Build the release archives locally, publishing nothing
+	go run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish
+
 .PHONY: fmt
 fmt: ## Fail if gofmt would change anything
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt issues:"; echo "$$out"; exit 1; fi

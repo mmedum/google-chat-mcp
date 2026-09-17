@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.3.schema.json",
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/v2.1.2/schemas/mcpb-manifest-v0.3.schema.json",
   "manifest_version": "0.3",
   "name": "google-chat-mcp",
   "display_name": "Google Chat",
