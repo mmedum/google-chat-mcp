@@ -195,3 +195,86 @@ func TestUnpinnedTools(t *testing.T) {
 		})
 	}
 }
+
+// The sixth rule: two exact pins that name different versions. Every
+// other rule passes on both lines, because each one is pinned — the
+// defect is that they disagree, and it shipped as a runbook naming a
+// goreleaser four minor releases behind the one the tag used.
+func TestGoreleaserPinsAgree(t *testing.T) {
+	const makefile = "release-rehearse:\n\tgo run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot\n"
+	const workflow = "      - uses: goreleaser/goreleaser-action@" +
+		"0000000000000000000000000000000000000000  # v7.2.3\n        with:\n          version: v2.18.1\n"
+
+	rehearse, _ := goreleaserPins("Makefile", makefile)
+	_, release := goreleaserPins("release.yml", workflow)
+	if rehearse.version != "2.18.1" || release.version != "2.18.1" {
+		t.Fatalf("read %q and %q, want both pins found", rehearse.version, release.version)
+	}
+	if got := goreleaserVerdict(rehearse, release); got != "" {
+		t.Errorf("two pins at the same version: %s", got)
+	}
+
+	for _, tc := range []struct {
+		name              string
+		rehearse, release goreleaserPin
+		want              string
+	}{
+		{
+			name:     "the rehearsal drifts ahead of the release",
+			rehearse: goreleaserPin{"2.18.2", "Makefile:33"},
+			release:  goreleaserPin{"2.18.1", "release.yml:112"},
+			want:     "a rehearsal has to build with the tool the tag will",
+		},
+		{
+			// A rule that finds nothing to compare passes, which is the
+			// failure this rule exists to stop.
+			name:    "the rehearsal target is deleted",
+			release: goreleaserPin{"2.18.1", "release.yml:112"},
+			want:    "the rehearsal target is gone",
+		},
+		{
+			name:     "the release's pin is deleted",
+			rehearse: goreleaserPin{"2.18.1", "Makefile:33"},
+			want:     "the release's goreleaser pin is gone",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := goreleaserVerdict(tc.rehearse, tc.release)
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("verdict = %q, want it to mention %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A version belongs to the action it sits under. Reading the next step's
+// version as goreleaser's would hold the release to the wrong number.
+func TestGoreleaserPinIgnoresAnotherStepsVersion(t *testing.T) {
+	const workflow = "      - uses: goreleaser/goreleaser-action@" +
+		"0000000000000000000000000000000000000000  # v7.2.3\n" +
+		"        with:\n          version: v2.18.1\n" +
+		"      - uses: anchore/sbom-action@1111111111111111111111111111111111111111  # v0.20.9\n" +
+		"        with:\n          syft-version: v1.51.1\n"
+
+	_, release := goreleaserPins("release.yml", workflow)
+	if release.version != "2.18.1" {
+		t.Errorf("release pin = %q, want goreleaser's own version", release.version)
+	}
+}
+
+// The repository's own files have to agree, or the rule is aspirational.
+func TestTheRealGoreleaserPinsAgree(t *testing.T) {
+	var rehearse, release goreleaserPin
+	for _, rel := range []string{"Makefile", ".github/workflows/release.yml"} {
+		r, x := goreleaserPins(rel, readRepoFile(t, rel))
+		if r.version != "" {
+			rehearse = r
+		}
+		if x.version != "" {
+			release = x
+		}
+	}
+	if got := goreleaserVerdict(rehearse, release); got != "" {
+		t.Error(got)
+	}
+}

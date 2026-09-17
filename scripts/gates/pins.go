@@ -24,6 +24,12 @@ import (
 //   - an action input names a version range, or a bare major line
 //   - `go run module@latest` resolves to whatever shipped this morning
 //   - a container image with no tag, or `:latest`
+//
+// And one rule for a version that is pinned twice: the rehearsal and the
+// release must run the same goreleaser. Both pins are exact, so every
+// rule above passes while the two name different versions — which they
+// did, in prose, by four minor releases. A rehearsal that builds with a
+// different tool than the tag is a rehearsal of something else.
 
 // A `uses:` line: the action, its ref, and whatever comment follows.
 var usesLine = regexp.MustCompile(`^\s*-?\s*uses:\s*([^\s@]+)@([^\s#]+)\s*(#.*)?$`)
@@ -82,6 +88,10 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "gates: pins read no lines: this gate is looking at nothing")
 		return 1
 	}
+	if p := goreleaserAgrees(files); p != "" {
+		problems = append(problems, p)
+	}
+
 	// A classification table that matches nothing passes for the wrong
 	// reason, the same way zero lines would.
 	if installers < 3 {
@@ -98,6 +108,77 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintf(stdout, "pins ok (%d lines across %d files, %d installers name their tool's version)\n",
 		examined, len(files), installers)
 	return 0
+}
+
+// goreleaserAction is the action that runs goreleaser on a tag; the
+// `version:` under it is the release's pin.
+const goreleaserAction = "goreleaser/goreleaser-action@"
+
+// goreleaserPin is a version and where it is written down.
+type goreleaserPin struct{ version, at string }
+
+// goreleaserPins reads one file for the two ways this repository names a
+// goreleaser: the rehearsal's `go run`, and the `version:` under the
+// action that runs it on a tag.
+func goreleaserPins(file, content string) (rehearse, release goreleaserPin) {
+	inAction := false
+	for i, line := range strings.Split(content, "\n") {
+		where := fmt.Sprintf("%s:%d", file, i+1)
+		if m := goRunPin.FindStringSubmatch(line); m != nil && strings.Contains(m[1], "goreleaser") {
+			rehearse = goreleaserPin{strings.TrimPrefix(m[2], "v"), where}
+		}
+		if strings.Contains(line, goreleaserAction) {
+			inAction = true
+			continue
+		}
+		// The version belongs to the action it sits under, so the block
+		// ends at the next step. Without this, the version of whatever
+		// step comes next would be read as goreleaser's.
+		if strings.Contains(line, "- uses:") || strings.Contains(line, "- name:") {
+			inAction = false
+		}
+		if m := versionKey.FindStringSubmatch(line); m != nil && inAction {
+			release = goreleaserPin{strings.TrimPrefix(m[2], "v"), where}
+		}
+	}
+	return rehearse, release
+}
+
+// goreleaserVerdict compares the two pins, and says so when either is
+// missing: a rule with nothing to compare passes for the wrong reason,
+// which is how a version in prose went four minor releases stale.
+func goreleaserVerdict(rehearse, release goreleaserPin) string {
+	switch {
+	case rehearse.version == "":
+		return "no `go run ...goreleaser...@version` found: the rehearsal target is gone, " +
+			"and nothing holds a local build to the version the tag uses"
+	case release.version == "":
+		return "no version found under " + goreleaserAction + ": the release's goreleaser pin is gone"
+	case rehearse.version != release.version:
+		return fmt.Sprintf("%s rehearses with goreleaser %s, and %s releases with %s: "+
+			"a rehearsal has to build with the tool the tag will",
+			rehearse.at, rehearse.version, release.at, release.version)
+	}
+	return ""
+}
+
+// goreleaserAgrees holds the rehearsal and the release to one version.
+func goreleaserAgrees(files []string) string {
+	var rehearse, release goreleaserPin
+	for _, file := range files {
+		raw, err := os.ReadFile(file) //nolint:gosec // paths this gate chose
+		if err != nil {
+			return fmt.Sprintf("pins cannot read %s: %v", file, err)
+		}
+		r, rel := goreleaserPins(file, string(raw))
+		if r.version != "" {
+			rehearse = r
+		}
+		if rel.version != "" {
+			release = rel
+		}
+	}
+	return goreleaserVerdict(rehearse, release)
 }
 
 // pinProblems is the rules, over one file's text. It returns what is
