@@ -66,6 +66,7 @@ var loggedPlain = map[string]string{
 	"len(exercised) + len(excused)": "a count",
 	"out.Unparsed":                  "a count",
 	"out.NotificationSetting":       "an enum value, ALL or none",
+	"got.LinkType":                  "an enum value, Google's kind of rich link",
 	"res.Total":                     "a count",
 	"res.Passed":                    "a count",
 	"tr.Turns":                      "a count",

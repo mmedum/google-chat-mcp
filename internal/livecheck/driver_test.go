@@ -56,6 +56,9 @@ type driver struct {
 
 	// What earlier steps wrote, for the steps that read it back.
 	posted string
+	// linked is the message whose body is a link to posted, for the
+	// step that reads a link back.
+	linked string
 	thread string
 	member string
 	// email is this account's own address, which remove_reaction needs:

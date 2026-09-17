@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
 )
 
@@ -834,5 +836,128 @@ func TestAMentionIsPostedVerbatim(t *testing.T) {
 	}
 	if sent != text {
 		t.Errorf("sent %q, want the body verbatim: %q", sent, text)
+	}
+}
+
+// A message whose body is a link carries the anchor text in `text` and
+// the target in an annotation, so a reader that drops annotations sees
+// someone saying "Here" and nothing else. The linked message's resource
+// name is the thing worth keeping: it is what get_message takes.
+const linkedMessage = `{"name":"spaces/A/messages/1","sender":{"name":"users/1"},
+  "createTime":"2026-01-02T03:04:05Z","text":"Here",
+  "formattedText":"<https://chat.google.com/room/AAAAspace1/AAAAmsg9|Here>",
+  "thread":{"name":"spaces/A/threads/T1"},
+  "annotations":[
+    {"type":"USER_MENTION","startIndex":0,"length":4,
+     "userMention":{"type":"MENTION","user":{"name":"users/2"}}},
+    {"type":"RICH_LINK","startIndex":0,"length":4,
+     "richLinkMetadata":{"richLinkType":"CHAT_SPACE",
+       "uri":"https://chat.google.com/room/AAAAspace1/AAAAmsg9",
+       "chatSpaceLinkData":{"space":"spaces/AAAAspace1",
+         "thread":"spaces/AAAAspace1/threads/AAAAthread9",
+         "message":"spaces/AAAAspace1/messages/AAAAmsg9"}}},
+    {"type":"RICH_LINK","startIndex":5,"length":3,
+     "richLinkMetadata":{"richLinkType":"DRIVE_FILE",
+       "uri":"https://docs.google.com/document/d/AAAAdoc1/edit",
+       "driveLinkData":{"mimeType":"application/vnd.google-apps.document",
+         "driveDataRef":{"driveFileId":"AAAAdoc1"}}}}]}`
+
+func TestGetMessageCarriesItsLinks(t *testing.T) {
+	s := newService(t, route(ok(linkedMessage), nobody()))
+	got, err := s.GetMessage(context.Background(), "spaces/A/messages/1")
+	if err != nil {
+		t.Fatalf("GetMessage: %v", err)
+	}
+	if got.FormattedText != "<https://chat.google.com/room/AAAAspace1/AAAAmsg9|Here>" {
+		t.Errorf("formatted text = %q, want the markup Google sent", got.FormattedText)
+	}
+	want := []MessageLink{
+		{
+			Type:    "CHAT_SPACE",
+			URI:     "https://chat.google.com/room/AAAAspace1/AAAAmsg9",
+			Space:   "spaces/AAAAspace1",
+			Thread:  "spaces/AAAAspace1/threads/AAAAthread9",
+			Message: "spaces/AAAAspace1/messages/AAAAmsg9",
+			Length:  4,
+		},
+		{
+			Type:        "DRIVE_FILE",
+			URI:         "https://docs.google.com/document/d/AAAAdoc1/edit",
+			DriveFileID: "AAAAdoc1",
+			MimeType:    "application/vnd.google-apps.document",
+			Start:       5,
+			Length:      3,
+		},
+	}
+	if !slices.Equal(got.Links, want) {
+		t.Errorf("links = %+v, want %+v", got.Links, want)
+	}
+}
+
+// Google sends the markup for an unformatted message too, character for
+// character the same as the text. Carrying it then sends the body twice
+// in the half the model reads, for nothing.
+func TestGetMessageDropsMarkupThatSaysNothingNew(t *testing.T) {
+	const same = `{"name":"spaces/A/messages/1","sender":{"name":"users/1"},
+	  "createTime":"2026-01-02T03:04:05Z","text":"hello","formattedText":"hello"}`
+	s := newService(t, route(ok(same), nobody()))
+	got, err := s.GetMessage(context.Background(), "spaces/A/messages/1")
+	if err != nil {
+		t.Fatalf("GetMessage: %v", err)
+	}
+	if got.FormattedText != "" {
+		t.Errorf("formatted text = %q, want it dropped when it matches the text", got.FormattedText)
+	}
+}
+
+// The listing path is where a link matters most: scanning a space, a
+// message that is only a link is the one that reads as a bare word.
+func TestGetMessagesCarryTheirLinks(t *testing.T) {
+	s := newService(t, route(ok(`{"messages":[`+linkedMessage+`]}`), nobody()))
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/A"})
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(res.Messages) != 1 {
+		t.Fatalf("messages = %+v, want the one", res.Messages)
+	}
+	if got := res.Messages[0].Links; len(got) != 2 || got[0].Message != "spaces/AAAAspace1/messages/AAAAmsg9" {
+		t.Errorf("links = %+v, want both, the chat one first", got)
+	}
+}
+
+// A mention and a custom emoji are annotations too, and both are
+// already in the text. Only a link says something the text does not.
+func TestMessageLinksKeepsOnlyTheLinks(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []gchat.Annotation
+	}{
+		{"a mention", []gchat.Annotation{{Type: "USER_MENTION", UserMention: &gchat.UserMention{Type: "MENTION"}}}},
+		{"a custom emoji", []gchat.Annotation{{Type: "CUSTOM_EMOJI", CustomEmojiMeta: &gchat.CustomEmojiMeta{}}}},
+		{"a link with nothing in it", []gchat.Annotation{{Type: "RICH_LINK", RichLinkMeta: &gchat.RichLinkMetadata{}}}},
+		{"a span with nothing to follow", []gchat.Annotation{
+			{Type: "RICH_LINK", StartIndex: 5, Length: 3, RichLinkMeta: &gchat.RichLinkMetadata{}},
+		}},
+		{"no annotations at all", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := messageLinks(tc.in); len(got) != 0 {
+				t.Errorf("links = %+v, want none", got)
+			}
+		})
+	}
+}
+
+// Google adds link kinds — a Gmail message, a Meet call, a Calendar
+// event — and a kind this server has never heard of still has a URI,
+// which is the whole of what a reader needs to follow it.
+func TestMessageLinksKeepsAKindItDoesNotModel(t *testing.T) {
+	got := messageLinks([]gchat.Annotation{{Type: "RICH_LINK", RichLinkMeta: &gchat.RichLinkMetadata{
+		Type: "GMAIL_MESSAGE", URI: "https://mail.google.com/mail/u/0/#inbox/AAAAmail1",
+	}}})
+	want := []MessageLink{{Type: "GMAIL_MESSAGE", URI: "https://mail.google.com/mail/u/0/#inbox/AAAAmail1"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("links = %+v, want %+v", got, want)
 	}
 }
