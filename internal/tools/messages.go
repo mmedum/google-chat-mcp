@@ -16,13 +16,31 @@ import (
 // the caller's organisation. The message is still here: an enrichment
 // failure never costs a row.
 type MessageOutput struct {
-	MessageID         string    `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
-	SenderUserID      string    `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	SenderEmail       *string   `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
-	SenderDisplayName *string   `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
-	Text              string    `json:"text" jsonschema:"the message body as plain text; empty for a message that is only an attachment or a card"`
-	Timestamp         time.Time `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
-	ThreadID          string    `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
+	MessageID         string              `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
+	SenderUserID      string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
+	SenderEmail       *string             `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
+	SenderDisplayName *string             `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
+	Text              string              `json:"text" jsonschema:"the message body as plain text; empty for a message that is only an attachment or a card"`
+	Timestamp         time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
+	ThreadID          string              `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
+	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to; empty when it links to nothing. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
+}
+
+// MessageLinkOutput is one link in a message's text.
+//
+// The text says what the link was called; this says where it goes. A
+// message whose whole body is a link to another message carries that
+// message's resource name here and nowhere else.
+type MessageLinkOutput struct {
+	LinkType     string  `json:"link_type" jsonschema:"Google's own word for what is linked: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. A link to a single message is CHAT_SPACE with message_id set"`
+	URI          string  `json:"uri" jsonschema:"the link itself"`
+	SpaceID      *string `json:"space_id" jsonschema:"the linked space, spaces/{id}, or null when the link does not point into Chat"`
+	ThreadID     *string `json:"thread_id" jsonschema:"the linked thread, spaces/{space}/threads/{thread}, or null"`
+	MessageID    *string `json:"message_id" jsonschema:"the linked message, spaces/{space}/messages/{message}; pass it to get_message to read what was linked. Null when the link names a space rather than one message"`
+	DriveFileID  *string `json:"drive_file_id" jsonschema:"the linked Google Drive file's id, or null"`
+	MimeType     *string `json:"mime_type" jsonschema:"the linked Drive file's MIME type, or null"`
+	AnchorStart  int     `json:"anchor_start" jsonschema:"where in text the linked words start, counted from 0"`
+	AnchorLength int     `json:"anchor_length" jsonschema:"how many characters of text this link covers, which is what says which words go where when a message carries several links. Zero for a chip Chat shows beside the message rather than in it"`
 }
 
 // MessageListOutput wraps a list of messages.
@@ -68,6 +86,8 @@ type MessageDetailOutput struct {
 	SenderEmail       *string                 `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
 	SenderDisplayName *string                 `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
 	Text              string                  `json:"text" jsonschema:"the message body as plain text"`
+	FormattedText     *string                 `json:"formatted_text" jsonschema:"the same body with Chat's markup left in — bold, italics, mentions and the URL behind a link — or null when the markup says nothing the plain text does not"`
+	Links             []MessageLinkOutput     `json:"links" jsonschema:"what the text links to; empty when it links to nothing"`
 	Timestamp         time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	LastUpdateTime    *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
 	Reactions         []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
@@ -105,12 +125,13 @@ type SearchMessagesInput struct {
 
 // SearchMatchOutput is one message that matched.
 type SearchMatchOutput struct {
-	MessageID    string    `json:"message_id" jsonschema:"the message's resource name"`
-	ThreadID     string    `json:"thread_id" jsonschema:"the thread it belongs to"`
-	SenderUserID string    `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	Text         string    `json:"text" jsonschema:"the whole message body"`
-	Timestamp    time.Time `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
-	Snippet      string    `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
+	MessageID    string              `json:"message_id" jsonschema:"the message's resource name"`
+	ThreadID     string              `json:"thread_id" jsonschema:"the thread it belongs to"`
+	SenderUserID string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
+	Text         string              `json:"text" jsonschema:"the whole message body"`
+	Timestamp    time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
+	Snippet      string              `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
+	Links        []MessageLinkOutput `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
 }
 
 // SearchMessagesOutput is what a scan found and how far it got.
@@ -130,7 +151,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an " +
 			"EMPTY result with a token still on it does not mean the space is empty, because Google applies the " +
 			"page size before it filters. Sender email is resolved through the People API and is null when that " +
-			"fails.",
+			"fails. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
+			"message reading as a bare word may be a link to something.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
@@ -151,7 +173,7 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Description: "Read one thread's messages, oldest first. Give the parent space_id and the thread_name " +
 			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; " +
 			"page with page_token and next_page_token. A non-null next_page_token means the thread is longer than " +
-			"what came back, so do not read the result as the whole thread.",
+			"what came back, so do not read the result as the whole thread. Each message carries its links.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetThreadInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
@@ -171,7 +193,9 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Name: "get_message",
 		Description: "Fetch a single message by its resource name (spaces/{space}/messages/{message}). Reaction " +
 			"summaries are inline; reactions_paged true means there were too many to inline and list_reactions has " +
-			"the detail. Attachments are listed with the name download_attachment takes.",
+			"the detail. Attachments are listed with the name download_attachment takes. links is what the text " +
+			"links to — a message whose body is a link names the target there and nowhere else — and " +
+			"formatted_text is the same body with Chat's markup left in.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessageInput) (*mcp.CallToolResult, MessageDetailOutput, error) {
 		got, err := d.Service.GetMessage(ctx, in.MessageName)
@@ -188,7 +212,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one " +
 			"space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads " +
 			"pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is " +
-			"partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong.",
+			"partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. " +
+			"Each hit carries its links.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchMessagesInput) (*mcp.CallToolResult, SearchMessagesOutput, error) {
 		got, err := d.Service.SearchMessages(ctx, service.SearchMessagesInput{
@@ -211,23 +236,13 @@ func registerMessages(s *mcp.Server, d Deps) {
 			return nil, SearchMessagesOutput{}, err
 		}
 		out := SearchMessagesOutput{
-			Matches:       make([]SearchMatchOutput, 0, len(got.Matches)),
 			Scanned:       got.Scanned,
 			CapReached:    got.CapReached,
 			NextPageToken: got.NextPageToken,
 			ServerSide:    got.Server,
 			Unparsed:      got.Unparsed,
 		}
-		for _, m := range got.Matches {
-			out.Matches = append(out.Matches, SearchMatchOutput{
-				MessageID:    m.Name,
-				ThreadID:     m.ThreadName,
-				SenderUserID: m.SenderUserID,
-				Text:         m.Text,
-				Timestamp:    m.CreateTime,
-				Snippet:      m.Snippet,
-			})
-		}
+		out.Matches = searchMatches(got.Matches)
 		return nil, out, nil
 	})
 }
@@ -244,6 +259,8 @@ func messageDetail(got *service.MessageDetail) MessageDetailOutput {
 		SenderEmail:       nullable(got.SenderEmail),
 		SenderDisplayName: nullable(got.SenderDisplayName),
 		Text:              got.Text,
+		FormattedText:     nullable(got.FormattedText),
+		Links:             messageLinks(got.Links),
 		Timestamp:         got.CreateTime,
 		LastUpdateTime:    nullableTime(got.LastUpdateTime),
 		Reactions:         make([]ReactionSummaryOutput, 0, len(got.Reactions)),
@@ -278,6 +295,45 @@ func messageRows(rows []service.MessageRow) []MessageOutput {
 			Text:              r.Text,
 			Timestamp:         r.CreateTime,
 			ThreadID:          r.ThreadName,
+			Links:             messageLinks(r.Links),
+		})
+	}
+	return out
+}
+
+// searchMatches shapes the hits for the model, beside messageRows and
+// messageDetail so that a field is added to a message in one place.
+func searchMatches(matches []service.SearchMatch) []SearchMatchOutput {
+	out := make([]SearchMatchOutput, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, SearchMatchOutput{
+			MessageID:    m.Name,
+			ThreadID:     m.ThreadName,
+			SenderUserID: m.SenderUserID,
+			Text:         m.Text,
+			Timestamp:    m.CreateTime,
+			Snippet:      m.Snippet,
+			Links:        messageLinks(m.Links),
+		})
+	}
+	return out
+}
+
+// messageLinks shapes a message's links for the model. Every message
+// read path uses this one, so a link reads the same wherever it is seen.
+func messageLinks(links []service.MessageLink) []MessageLinkOutput {
+	out := make([]MessageLinkOutput, 0, len(links))
+	for _, l := range links {
+		out = append(out, MessageLinkOutput{
+			LinkType:     l.Type,
+			URI:          l.URI,
+			SpaceID:      nullable(l.Space),
+			ThreadID:     nullable(l.Thread),
+			MessageID:    nullable(l.Message),
+			DriveFileID:  nullable(l.DriveFileID),
+			MimeType:     nullable(l.MimeType),
+			AnchorStart:  l.Start,
+			AnchorLength: l.Length,
 		})
 	}
 	return out

@@ -69,6 +69,32 @@ type SearchMatch struct {
 	// Snippet is the text around the first match, so a caller can see
 	// why the message matched without reading all of it.
 	Snippet string
+	// Links is what the message's text links to; see MessageLink. A hit
+	// whose body is a link reads as a bare word without it.
+	Links []MessageLink
+}
+
+// searchMatch shapes one hit, with the snippet centred on at.
+//
+// Both searches read the same messages and differ only in where the
+// snippet starts, so they shape a hit here rather than each in its own
+// loop: a field added to SearchMatch is filled once. A missing sender
+// or thread arrives empty, the way a listing keeps the row.
+func searchMatch(m gchat.Message, at int) SearchMatch {
+	match := SearchMatch{
+		Name:       m.Name,
+		Text:       m.Text,
+		CreateTime: parseTime(m.CreateTime),
+		Snippet:    snippet(m.Text, at),
+		Links:      messageLinks(m.Annotations),
+	}
+	if m.Thread != nil {
+		match.ThreadName = m.Thread.Name
+	}
+	if m.Sender != nil {
+		match.SenderUserID = m.Sender.Name
+	}
+	return match
 }
 
 // SearchMessagesResult is what a search found and how much it left.
@@ -188,19 +214,7 @@ func (s *Service) scanSpace(ctx context.Context, in SearchMessagesInput) (*Searc
 			if !found {
 				continue
 			}
-			match := SearchMatch{
-				Name:    m.Name,
-				Text:    m.Text,
-				Snippet: snippet(m.Text, at),
-			}
-			match.CreateTime = parseTime(m.CreateTime)
-			if m.Thread != nil {
-				match.ThreadName = m.Thread.Name
-			}
-			if m.Sender != nil {
-				match.SenderUserID = m.Sender.Name
-			}
-			out.Matches = append(out.Matches, match)
+			out.Matches = append(out.Matches, searchMatch(m, at))
 			if len(out.Matches) >= limit {
 				// Full, with history still unread. Saying otherwise
 				// reports fifty of four hundred matches as all of them,
@@ -274,22 +288,10 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 			out.Unparsed++
 			continue
 		}
-		match := SearchMatch{
-			Name:       m.Name,
-			Text:       m.Text,
-			CreateTime: parseTime(m.CreateTime),
-			// Google matches whole words wherever they are, so there is
-			// no single offset to centre on. The first line stands in,
-			// which is what a person scanning results reads anyway.
-			Snippet: snippet(m.Text, 0),
-		}
-		if m.Thread != nil {
-			match.ThreadName = m.Thread.Name
-		}
-		if m.Sender != nil {
-			match.SenderUserID = m.Sender.Name
-		}
-		out.Matches = append(out.Matches, match)
+		// Google matches whole words wherever they are, so there is no
+		// single offset to centre on. The first line stands in, which
+		// is what a person scanning results reads anyway.
+		out.Matches = append(out.Matches, searchMatch(*m, 0))
 	}
 	return out, nil
 }

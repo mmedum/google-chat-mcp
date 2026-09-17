@@ -31,6 +31,85 @@ type MessageRow struct {
 	Text              string
 	CreateTime        time.Time
 	ThreadName        string
+	// Links is what the text links to. Chat keeps a link out of the
+	// text, so a message that is only a link reads as a bare word
+	// without this.
+	Links []MessageLink
+	// FormattedText is the body with Chat's markup left in, and is
+	// empty when the markup says nothing the text does not — Google
+	// sends it for an unformatted message too, character for character
+	// the same. Only get_message surfaces it: a listing carrying both
+	// bodies would be twice the size for a second copy of itself.
+	FormattedText string
+}
+
+// MessageLink is a link Chat recognised in a message's text: to another
+// message or space, a Drive file, a Gmail message, a Meet call or a
+// Calendar event.
+//
+// URI is set for every link and is what a person follows. The other
+// targets are set for the kinds another tool here can take: a Meet or
+// Calendar link carries its identifiers in the URI, so it is left at
+// that.
+type MessageLink struct {
+	// Type is Google's own word: DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE,
+	// MEET_SPACE or CALENDAR_EVENT. A link to one message is CHAT_SPACE
+	// with Message set.
+	Type string
+	URI  string
+	// Space, Thread and Message address a message get_message can read.
+	// A link to a space names the space alone.
+	Space   string
+	Thread  string
+	Message string
+	// DriveFileID names a file Drive can open, and MimeType is its kind.
+	DriveFileID string
+	MimeType    string
+	// Start and Length are the span of Text this link covers, which is
+	// what says which words go to which target when a message carries
+	// more than one. Both are zero for a chip Chat shows beside the
+	// message rather than in it.
+	Start  int
+	Length int
+}
+
+// messageLinks shapes a message's rich-link annotations.
+//
+// Annotations of every other kind are skipped: a mention and a custom
+// emoji are already in the text, and a link is the one thing that is
+// not. A link with no URI and no target is skipped too, there being
+// nothing to follow.
+func messageLinks(all []gchat.Annotation) []MessageLink {
+	// Left nil until there is a link. Most messages carry none, and
+	// sizing from the annotation count allocates for the mentions too.
+	var out []MessageLink
+	for _, a := range all {
+		if a.RichLinkMeta == nil {
+			continue
+		}
+		link := MessageLink{
+			Type:   a.RichLinkMeta.Type,
+			URI:    a.RichLinkMeta.URI,
+			Start:  a.StartIndex,
+			Length: a.Length,
+		}
+		if chat := a.RichLinkMeta.ChatSpaceLink; chat != nil {
+			link.Space = chat.Space
+			link.Thread = chat.Thread
+			link.Message = chat.Message
+		}
+		if drive := a.RichLinkMeta.DriveLink; drive != nil {
+			link.MimeType = drive.MimeType
+			if drive.DriveDataRef != nil {
+				link.DriveFileID = drive.DriveDataRef.DriveFileID
+			}
+		}
+		if link.URI == "" && link.Space == "" && link.Message == "" && link.DriveFileID == "" {
+			continue
+		}
+		out = append(out, link)
+	}
+	return out
 }
 
 // GetMessagesInput selects a page of a space's history.
@@ -171,7 +250,14 @@ type MessageDetail struct {
 	SenderEmail       string
 	SenderDisplayName string
 	Text              string
-	CreateTime        time.Time
+	// FormattedText is the body with Chat's markup left in — bold,
+	// italics, mentions and the URL behind a link — and is empty when
+	// the markup says nothing the text does not. See MessageRow.
+	FormattedText string
+	// Links is what the text links to, and the only place a link's
+	// target appears.
+	Links      []MessageLink
+	CreateTime time.Time
 	// LastUpdateTime is the zero value when the message was never
 	// edited.
 	LastUpdateTime time.Time
@@ -249,6 +335,8 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 		SenderEmail:       row.SenderEmail,
 		SenderDisplayName: row.SenderDisplayName,
 		Text:              row.Text,
+		FormattedText:     row.FormattedText,
+		Links:             row.Links,
 		CreateTime:        row.CreateTime,
 		LastUpdateTime:    parseTime(got.LastUpdateTime),
 	}
@@ -303,7 +391,10 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			unparsed++
 			continue
 		}
-		row := MessageRow{Name: m.Name, Text: m.Text}
+		row := MessageRow{Name: m.Name, Text: m.Text, Links: messageLinks(m.Annotations)}
+		if m.FormattedText != m.Text {
+			row.FormattedText = m.FormattedText
+		}
 		row.CreateTime = parseTime(m.CreateTime)
 		if m.Thread != nil {
 			row.ThreadName = m.Thread.Name
