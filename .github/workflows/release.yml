@@ -121,37 +121,64 @@ jobs:
         with:
           subject-path: "dist/*.tar.gz,dist/*.zip,dist/*.mcpb,dist/checksums.txt"
 
-      # The MCP registry entry. It comes last because the registry does a
-      # HEAD on the bundle's download URL before it accepts the entry, so
-      # the release has to exist first. A tag pushed while
-      # `release.disable` is still set in .goreleaser.yaml publishes
-      # nothing and fails here, which is the right way round: an entry
-      # pointing at a release nobody can download is worse than no entry.
-      #
-      # The hash comes from the release's own checksums.txt. Clients
-      # check the bundle against it before they install, and the registry
-      # requires it for an MCPB package — which is why this is not
-      # goreleaser's `mcp` block, whose package entry has nowhere to put
-      # a hash.
-      # A prerelease tag rehearses the pipeline; it must not rehearse the
-      # registry. The registry takes a prerelease version happily and an
-      # entry cannot be taken back, so `v1.0.0-rc1` would leave a
-      # permanent row pointing at a bundle nobody should install. Same
-      # rule goreleaser's `prerelease: auto` uses: a hyphen in the tag.
+  # The registry entry is its own job, and for two reasons.
+  #
+  # PRIVILEGE. mcp-publisher is a third-party binary handed a token that
+  # can publish under io.github.mmedum. The goreleaser job also holds
+  # contents: write and attestations: write, so running the publisher
+  # there gave it the ability to rewrite the release it had just been
+  # told about. Verifying the binary is what makes running it acceptable;
+  # least privilege is what stops that being the only thing in the way.
+  #
+  # RERUNNABILITY. The registry sends a HEAD to the bundle's download URL
+  # before accepting an entry, so this can only run after the release
+  # exists — and a step that can only run last needs a way to be run
+  # again on its own, without cutting another release.
+  #
+  # It reads the PUBLISHED release's checksums rather than the build's
+  # local copy, so the hash a client verifies is the number cosign
+  # signed.
+  registry:
+    needs: goreleaser
+    # A prerelease rehearses the pipeline and must NOT rehearse the
+    # registry: an entry cannot be taken back, so v1.0.0-rc1 would leave
+    # a permanent row pointing at a bundle nobody should install. Same
+    # rule goreleaser's `prerelease: auto` uses: a hyphen in the tag.
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The registry proves the io.github.mmedum namespace from this
+      # token, and that is the only thing this job may do.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # cosign is here to VERIFY, not to sign: this job signs nothing.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Take the checksums from the published release
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${REF_NAME}" --pattern checksums.txt --dir dist
+
       - name: Registry entry from the release's own checksums
-        if: ${{ !contains(github.ref_name, '-') }}
         env:
           REF_NAME: ${{ github.ref_name }}
         run: |
           go run ./scripts/gates server-json "${REF_NAME}" dist/checksums.txt > dist/server.json
           cat dist/server.json
 
-      # Same rule as cosign and syft above: pinned, and verified before
-      # it runs. This job holds an identity that can publish under
-      # io.github.mmedum, so an unverified binary here would be handed
-      # exactly that.
-      - name: Install mcp-publisher
-        if: ${{ !contains(github.ref_name, '-') }}
+      - name: Publish to the MCP registry
         env:
           PUBLISHER: v1.8.1
           BASE: https://github.com/modelcontextprotocol/registry/releases/download
@@ -160,16 +187,15 @@ jobs:
           asset=mcp-publisher_linux_amd64.tar.gz
           curl -fsSL -O "${BASE}/${PUBLISHER}/${asset}"
           curl -fsSL -O "${BASE}/${PUBLISHER}/${asset}.sigstore.json"
+          # A version pins WHICH artifact to fetch; it does not say the
+          # bytes are the ones upstream built. Verified before it is
+          # unpacked, which is why the download is a file rather than a
+          # pipe into tar: a stream already extracted cannot be checked.
           cosign verify-blob "${asset}" \
             --bundle "${asset}.sigstore.json" \
             --certificate-identity \
               "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${PUBLISHER}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
           tar xzf "${asset}" mcp-publisher
-
-      - name: Publish to the MCP registry
-        if: ${{ !contains(github.ref_name, '-') }}
-        run: |
-          set -euo pipefail
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish dist/server.json
