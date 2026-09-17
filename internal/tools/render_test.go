@@ -95,6 +95,61 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"text 0-0"},
 		},
 		{
+			// The bug behind #30: a reply came back with no sign it was
+			// replying to anything.
+			name: "a reply carries what it is replying to",
+			out: MessageDetailOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg2", SpaceID: "spaces/AAAAspace1",
+				Timestamp: at("2026-01-02T03:10:00Z"), SenderUserID: "users/1",
+				Text: "agreed, 10 works",
+				Quote: &MessageQuoteOutput{
+					MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", QuoteType: "REPLY",
+					Sender:         "John Doe",
+					Text:           "shall we move the standup?",
+					LastUpdateTime: ptr(at("2026-01-02T03:04:05Z")),
+				},
+			},
+			want: []string{"agreed, 10 works", "quoting spaces/AAAAspace1/messages/AAAAmsg1",
+				"REPLY", "John Doe", "> shall we move the standup?"},
+			// A reply-quote has none of these, and an empty list would
+			// read as a fact about the quoted message.
+			avoid: []string{"quoted link", "quoted attachment", "forwarded from"},
+		},
+		{
+			name: "a forward carries the space it came from",
+			out: MessageOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg3",
+				Timestamp: at("2026-01-02T04:00:00Z"), SenderUserID: "users/1", Text: "fyi",
+				Quote: &MessageQuoteOutput{
+					MessageID: "spaces/AAAAspace9/messages/AAAAmsg9", QuoteType: "FORWARD",
+					Sender: "John Doe", Text: "the notes",
+					SpaceID: ptr("spaces/AAAAspace9"), SpaceDisplayName: ptr("Client project"),
+					LastUpdateTime: ptr(at("2026-01-01T09:00:00Z")),
+					Links: []MessageLinkOutput{{
+						LinkType: "DRIVE_FILE", URI: "https://docs.google.com/document/d/AAAAdoc1/edit",
+						DriveFileID: ptr("AAAAdoc1"),
+					}},
+					Attachments: []AttachmentOutput{{
+						AttachmentName: "spaces/AAAAspace9/messages/AAAAmsg9/attachments/AAAAatt1",
+						FileName:       "notes.pdf", ContentType: "application/pdf",
+						Source: "UPLOADED_CONTENT", Downloadable: true,
+					}},
+				},
+			},
+			want: []string{"fyi", "FORWARD", "forwarded from Client project",
+				"> the notes", "1 quoted link:", "1 quoted attachment:", "notes.pdf"},
+		},
+		{
+			name: "a quote with no type reads as the reply Google defaults to",
+			out: MessageQuoteOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", Sender: "John Doe",
+				Text: "first line\nsecond line", LastUpdateTime: ptr(at("2026-01-02T03:04:05Z")),
+			},
+			// Every line is marked, or the tail of a quote reads as the
+			// sender's own words.
+			want: []string{"REPLY", "> first line", "> second line"},
+		},
+		{
 			name:  "an empty listing says so rather than trailing a colon",
 			out:   ListSpacesOutput{},
 			want:  []string{"0 spaces."},

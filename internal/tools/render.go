@@ -302,7 +302,8 @@ func (o MessageOutput) Render() string {
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
 			labelled("thread", o.ThreadID)),
 		o.Text,
-		linksBlock(o.Links),
+		optionalListing(o.Links, "link", "links"),
+		quoteBlock(o.Quote),
 	)
 }
 
@@ -332,13 +333,76 @@ func (o MessageLinkOutput) Render() string {
 		deref(o.MimeType), span)
 }
 
-// linksBlock lists a message's links, and nothing at all for a message
-// that links to nothing.
-func linksBlock(links []MessageLinkOutput) string {
-	if len(links) == 0 {
+// optionalListing is a listing that prints nothing at all when there is
+// nothing in it, for a block that is one of several on one record. A
+// record's own listing says "0 links." instead, because there the count
+// is the answer.
+func optionalListing[T renderer](items []T, one, many string) string {
+	if len(items) == 0 {
 		return ""
 	}
-	return listing(count(len(links), "link", "links"), rows(links))
+	return listing(count(len(items), one, many), rows(items))
+}
+
+// quoted marks every line of a quoted body, so a quote cannot be read as
+// something the sender said.
+func quoted(text string) string {
+	if text == "" {
+		return ""
+	}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = "> " + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Render is the message a reply quotes or a forward carries. Everything
+// Google did not send is left out: a reply-quote has no links, no files
+// and no source space, and printing empty ones would read as facts about
+// the quoted message.
+func (o MessageQuoteOutput) Render() string {
+	// Google documents an absent quote type as REPLY, so the label says
+	// so — but only when nothing contradicts it. A quote carrying a
+	// source space is a forward, and "REPLY · forwarded from" would be
+	// this server inventing a word Google did not send.
+	kind := o.QuoteType
+	if kind == "" && o.SpaceID == nil && o.SpaceDisplayName == nil {
+		kind = "REPLY"
+	}
+	return block(
+		meta("quoting "+o.MessageID, kind,
+			o.Sender,
+			labelled("forwarded from", deref(o.SpaceDisplayName)),
+			// The space is in the quoted message's own name already,
+			// so it is printed only when there is no name.
+			labelled("in", quoteSpace(o)),
+			stamp("quoted at", o.LastUpdateTime)),
+		quoted(o.Text),
+		labelled("quoted markup:", deref(o.FormattedText)),
+		// Named "quoted", because a message's own links and files
+		// render the same way and the two blocks sit on one record.
+		optionalListing(o.Links, "quoted link", "quoted links"),
+		optionalListing(o.Attachments, "quoted attachment", "quoted attachments"),
+	)
+}
+
+// quoteSpace is the space a quote names, when the quoted message's own
+// name does not carry it.
+func quoteSpace(o MessageQuoteOutput) string {
+	if o.MessageID != "" {
+		return ""
+	}
+	return deref(o.SpaceID)
+}
+
+// quoteBlock renders what a message quotes, and nothing for a message
+// that quotes nothing.
+func quoteBlock(q *MessageQuoteOutput) string {
+	if q == nil {
+		return ""
+	}
+	return q.Render()
 }
 
 // Render lists a page of messages.
@@ -361,10 +425,6 @@ func (o MessageDetailOutput) Render() string {
 			reactions += " (more not shown; call list_reactions)"
 		}
 	}
-	attachments := ""
-	if len(o.Attachments) > 0 {
-		attachments = listing(count(len(o.Attachments), "attachment", "attachments"), rows(o.Attachments))
-	}
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
@@ -372,9 +432,10 @@ func (o MessageDetailOutput) Render() string {
 			stamp("edited", o.LastUpdateTime)),
 		o.Text,
 		labelled("markup:", deref(o.FormattedText)),
-		linksBlock(o.Links),
+		optionalListing(o.Links, "link", "links"),
+		quoteBlock(o.Quote),
 		reactions,
-		attachments,
+		optionalListing(o.Attachments, "attachment", "attachments"),
 	)
 }
 
@@ -395,7 +456,8 @@ func (o SearchMatchOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp), o.SenderUserID, labelled("thread", o.ThreadID)),
 		o.Snippet,
-		linksBlock(o.Links),
+		optionalListing(o.Links, "link", "links"),
+		quoteBlock(o.Quote),
 	)
 }
 

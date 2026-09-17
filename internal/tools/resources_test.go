@@ -94,7 +94,10 @@ func TestMessageResourceMatchesTheTool(t *testing.T) {
 	  "thread":{"name":"spaces/A/threads/T1"},"text":"hello",
 	  "annotations":[{"type":"RICH_LINK","richLinkMetadata":{"richLinkType":"CHAT_SPACE",
 	    "uri":"https://chat.google.com/room/AAAAspace1/AAAAmsg9",
-	    "chatSpaceLinkData":{"space":"spaces/AAAAspace1","message":"spaces/AAAAspace1/messages/AAAAmsg9"}}}]}`
+	    "chatSpaceLinkData":{"space":"spaces/AAAAspace1","message":"spaces/AAAAspace1/messages/AAAAmsg9"}}}],
+	  "quotedMessageMetadata":{"name":"spaces/AAAAspace1/messages/AAAAmsg8",
+	    "lastUpdateTime":"2026-01-02T03:00:00Z","quoteType":"REPLY",
+	    "quotedMessageSnapshot":{"sender":"users/2","text":"the message being replied to"}}}`
 	cs := session(t, chatAndPeople(body(one), personHit))
 
 	var viaTool MessageDetailOutput
@@ -111,6 +114,9 @@ func TestMessageResourceMatchesTheTool(t *testing.T) {
 	// field would satisfy the comparison above.
 	if len(viaResource.Links) != 1 || deref(viaResource.Links[0].MessageID) != "spaces/AAAAspace1/messages/AAAAmsg9" {
 		t.Errorf("links = %+v, want the linked message named", viaResource.Links)
+	}
+	if viaResource.Quote == nil || viaResource.Quote.MessageID != "spaces/AAAAspace1/messages/AAAAmsg8" {
+		t.Errorf("quote = %+v, want the quoted message named", viaResource.Quote)
 	}
 }
 

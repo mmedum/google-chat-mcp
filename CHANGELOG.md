@@ -88,6 +88,30 @@ upgrading are marked **Breaking:** and say what to do.
   calendar server hitting the same thing and saying so.
 
 ### Fixed
+- A reply now says what it is replying to. Chat keeps a quote out of the
+  message body the same way it keeps a link out: `quotedMessageMetadata`
+  was decoded and dropped, so a reply came back indistinguishable from a
+  message that quoted nothing, and a forward arrived with no sign of
+  where it came from.
+
+  `get_messages`, `get_thread`, `get_message`, `search_messages` and the
+  `gchat://` resources now carry `quote`: the quoted message's resource
+  name, its sender, its text as it read when it was quoted, and the
+  version it was taken at. The sender is a **display name**, not a
+  `users/{id}`: it names somebody and identifies nobody, so it cannot be
+  passed to another tool. A forward carries more, because Google sends
+  more for one — its links, its files and the space it came from, which
+  is the only copy of that content a reader may be able to see, since a
+  forwarded message usually comes from a space they are not in. A reply
+  gets the sender and the text, which is all Google populates; the field
+  descriptions say which is which, so an empty list reads as "Google did
+  not send this" rather than as a fact about the quoted message.
+
+  This also makes an earlier claim true. The 2.0.0 entry said quoted
+  messages carry their content "so a reply can be read together with what
+  it replied to", which was true of the wire types and false at the tool
+  surface. ([#30](https://github.com/mmedum/google-chat-mcp/issues/30))
+
 - A message that links to another message now says what it links to.
   Chat keeps a link out of the message body: the text carries the words
   that were linked and the target arrives as an annotation. Those

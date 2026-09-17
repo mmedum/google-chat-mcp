@@ -69,6 +69,10 @@ type SearchMatch struct {
 	// Snippet is the text around the first match, so a caller can see
 	// why the message matched without reading all of it.
 	Snippet string
+	// Quote is what the message quotes or forwards, and is nil when it
+	// quotes nothing. Its sender's address is unresolved here: a search
+	// reports the ids it was given and resolves nobody.
+	Quote *MessageQuote
 	// Links is what the message's text links to; see MessageLink. A hit
 	// whose body is a link reads as a bare word without it.
 	Links []MessageLink
@@ -87,6 +91,7 @@ func searchMatch(m gchat.Message, at int) SearchMatch {
 		CreateTime: parseTime(m.CreateTime),
 		Snippet:    snippet(m.Text, at),
 		Links:      messageLinks(m.Annotations),
+		Quote:      messageQuote(m.QuotedMessage),
 	}
 	if m.Thread != nil {
 		match.ThreadName = m.Thread.Name
