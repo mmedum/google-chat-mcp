@@ -61,15 +61,23 @@ var safeFields = map[string]bool{
 	"Unparsed": true,
 	// A fixed enum from a closed set this repository declares.
 	"NotificationSetting": true,
+	// Google's kind of rich link: DRIVE_FILE, CHAT_SPACE and the rest.
+	"LinkType": true,
 }
 
-// beforeTheAccount are prints that happen before the driver has spoken
-// to Google, so nothing they carry came from it.
+// beforeTheAccount are the driver's functions that run before it has
+// spoken to Google, so nothing they print came from the account.
 //
 // Both are start-up failures: the binary is not built, or the process
 // would not connect. Redacting them would hide the path or the transport
 // error that says what is actually wrong.
-var beforeTheAccount = map[int]bool{79: true, 104: true}
+//
+// Keyed on the function, not on the line it sits at. It was a pair of
+// line numbers, and adding a field to the driver's struct three lines
+// above them moved both — a diff that has nothing to do with redaction
+// failed the gate that holds it, and a shifted number landing on an
+// unsafe print would have been waved through in silence.
+var beforeTheAccount = map[string]bool{"binPath": true, "connect": true}
 
 func TestEveryPrintGoesThroughTheRedactor(t *testing.T) {
 	fset := token.NewFileSet()
@@ -96,32 +104,42 @@ func TestEveryPrintGoesThroughTheRedactor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", e.Name(), err)
 		}
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
+		// Per declaration rather than per file, so a print can be
+		// attributed to the function it is in. A declaration that is
+		// not a function — the step table is one, and its steps print
+		// — is walked under no name, and so is exempt from nothing.
+		for _, decl := range file.Decls {
+			name := ""
+			if fn, ok := decl.(*ast.FuncDecl); ok {
+				name = fn.Name.Name
+			}
+			ast.Inspect(decl, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || !printers[sel.Sel.Name] {
+					return true
+				}
+				printsSeen++
+				for i, arg := range call.Args {
+					// The format string itself is a literal by construction.
+					if i == 0 {
+						continue
+					}
+					if safeToPrint(arg) {
+						continue
+					}
+					if e.Name() == "driver_test.go" && beforeTheAccount[name] {
+						continue
+					}
+					problems = append(problems, fmt.Sprintf("%s: %s prints %s unredacted",
+						fset.Position(arg.Pos()), sel.Sel.Name, render(fset, arg)))
+				}
 				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !printers[sel.Sel.Name] {
-				return true
-			}
-			printsSeen++
-			for i, arg := range call.Args {
-				// The format string itself is a literal by construction.
-				if i == 0 {
-					continue
-				}
-				if safeToPrint(arg) {
-					continue
-				}
-				if e.Name() == "driver_test.go" && beforeTheAccount[fset.Position(arg.Pos()).Line] {
-					continue
-				}
-				problems = append(problems, fmt.Sprintf("%s: %s prints %s unredacted",
-					fset.Position(arg.Pos()), sel.Sel.Name, render(fset, arg)))
-			}
-			return true
-		})
+			})
+		}
 	}
 
 	if printsSeen == 0 {

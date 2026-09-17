@@ -56,6 +56,25 @@ upgrading are marked **Breaking:** and say what to do.
 
   Watched failing on all three shapes before being trusted.
 
+### Fixed
+- A message that links to another message now says what it links to.
+  Chat keeps a link out of the message body: the text carries the words
+  that were linked and the target arrives as an annotation. Those
+  annotations were dropped, so a message whose whole body was a link
+  read as a bare word, and there was no second route to the target —
+  the `gchat://` resources returned the same fields.
+
+  `get_messages`, `get_thread`, `get_message`, `search_messages` and the
+  resources now carry `links`. Each link names its `uri` and Google's
+  own word for what it is, plus the resource names another tool here can
+  take: `space_id`, `thread_id` and `message_id` for a link into Chat,
+  which `get_message` reads, and `drive_file_id` with `mime_type` for a
+  Drive file. Each link also says which characters of `text` it covers,
+  so a message carrying several links says which words go where.
+  `get_message` also carries `formatted_text`, the body with Chat's
+  markup left in, and null when that markup says nothing the plain text
+  does not. ([#29](https://github.com/mmedum/google-chat-mcp/issues/29))
+
 ## [2.1.0] - 2026-09-15
 
 ### Added

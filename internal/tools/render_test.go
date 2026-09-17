@@ -49,6 +49,52 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"<>", "()", " · ·"},
 		},
 		{
+			// The bug this fixes: a message whose body is a link read
+			// as the anchor text alone, with nothing naming what it
+			// linked to.
+			name: "a message that is only a link names what it links to",
+			out: MessageDetailOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", SpaceID: "spaces/AAAAspace1",
+				Timestamp: at("2026-01-02T03:04:05Z"), SenderUserID: "users/1", Text: "Here",
+				FormattedText: ptr("<https://chat.google.com/room/AAAAspace1/AAAAmsg9|Here>"),
+				Links: []MessageLinkOutput{{
+					LinkType: "CHAT_SPACE", URI: "https://chat.google.com/room/AAAAspace1/AAAAmsg9",
+					SpaceID: ptr("spaces/AAAAspace1"), MessageID: ptr("spaces/AAAAspace1/messages/AAAAmsg9"),
+					AnchorLength: 4,
+				}},
+			},
+			want: []string{"Here", "1 link:", "CHAT_SPACE",
+				"message spaces/AAAAspace1/messages/AAAAmsg9", "markup: <https://", "text 0-4"},
+		},
+		{
+			// A message with no markup and no links prints neither,
+			// rather than the labels with nothing after them.
+			name: "a plain message prints no markup line and no links",
+			out: MessageDetailOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", SpaceID: "spaces/AAAAspace1",
+				Timestamp: at("2026-01-02T03:04:05Z"), SenderUserID: "users/1",
+				Text: "the standup moved to 10",
+			},
+			want:  []string{"the standup moved to 10"},
+			avoid: []string{"markup", "link"},
+		},
+		{
+			name: "a listed message carries its links too",
+			out: MessageOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1",
+				Timestamp: at("2026-01-02T03:04:05Z"), SenderUserID: "users/1", Text: "and the doc",
+				Links: []MessageLinkOutput{{
+					LinkType: "DRIVE_FILE", URI: "https://docs.google.com/document/d/AAAAdoc1/edit",
+					DriveFileID: ptr("AAAAdoc1"), MimeType: ptr("application/vnd.google-apps.document"),
+				}},
+			},
+			// A chip carries no span, and an empty one is left out
+			// rather than printed as a range over no text.
+			want: []string{"1 link:", "DRIVE_FILE", "drive file AAAAdoc1",
+				"application/vnd.google-apps.document"},
+			avoid: []string{"text 0-0"},
+		},
+		{
 			name:  "an empty listing says so rather than trailing a colon",
 			out:   ListSpacesOutput{},
 			want:  []string{"0 spaces."},
