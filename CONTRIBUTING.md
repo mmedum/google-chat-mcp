@@ -178,9 +178,9 @@ Release cutting is maintainer-only:
    runs last because the registry fetches the bundle's URL before it
    accepts the entry, so it needs the release to exist.
 
-To rehearse the build without publishing anything:
-`goreleaser release --snapshot --clean --skip=sign,sbom,publish`. It
-needs nothing but the Go toolchain: `scripts/gates` packs the bundle.
+To rehearse the build without publishing anything: `make
+release-rehearse`. It needs nothing but the Go toolchain: the target
+pins goreleaser, and `scripts/gates` packs the bundle.
 
 The staleness gate accepts a release commit: it wants the changes since
 the last tag written down either under `[Unreleased]` or under the

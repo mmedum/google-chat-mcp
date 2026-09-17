@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -570,5 +571,107 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 				t.Errorf("problem\n got %q\nwant something containing %q", problems[0], tt.want)
 			}
 		})
+	}
+}
+
+// A $schema at a branch is a claim about a document that can be amended
+// under it. Every other claim here holds the manifest against itself or
+// against the tree; this one holds it against a fixed thing upstream.
+func TestSchemaRefMustNameATag(t *testing.T) {
+	const base = "https://raw.githubusercontent.com/anthropics/mcpb/"
+	for _, tc := range []struct {
+		name, schema, want string
+	}{
+		{
+			name:   "a tag",
+			schema: base + "v2.1.2/schemas/mcpb-manifest-v0.3.schema.json",
+		},
+		{
+			name:   "a branch",
+			schema: base + "main/schemas/mcpb-manifest-v0.3.schema.json",
+			want:   "does not name anthropics/mcpb at a tag",
+		},
+		{
+			name:   "a partial tag, which is a moving target too",
+			schema: base + "v2.1/schemas/mcpb-manifest-v0.3.schema.json",
+			want:   "does not name anthropics/mcpb at a tag",
+		},
+		{
+			name:   "somewhere else entirely",
+			schema: "https://example.com/mcpb-manifest-v0.3.schema.json",
+			want:   "does not name anthropics/mcpb at a tag",
+		},
+		{
+			name: "no schema at all",
+			want: "names no $schema",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var m bundleManifest
+			m.Schema = tc.schema
+			got := schemaRefProblem(m)
+			if tc.want == "" {
+				if got != "" {
+					t.Errorf("a tagged ref was refused: %s", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("problem = %q, want it to mention %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The repository's own manifest has to pass, or the rule is aspirational.
+func TestTheRealManifestNamesATaggedSchema(t *testing.T) {
+	var m bundleManifest
+	if err := json.Unmarshal([]byte(readRepoFile(t, manifestSource)), &m); err != nil {
+		t.Fatalf("%s: %v", manifestSource, err)
+	}
+	if p := schemaRefProblem(m); p != "" {
+		t.Error(p)
+	}
+}
+
+// The vendored schema is the fixture every version claim leans on: the
+// manifest is held to manifest_version "0.3" by that copy's own `const`,
+// through a real schema library, which is a stronger pin than a string
+// comparison here would be. What it cannot catch is the document and the
+// copy being moved down together — 0.2 beside a 0.2 schema agrees with
+// itself. So the copy gets a floor, the way the property count does.
+func TestTheVendoredSchemaIsNotBelowTheFormatWeTarget(t *testing.T) {
+	const floorMajor, floorMinor = 0, 3
+
+	var schema struct {
+		Properties struct {
+			ManifestVersion struct {
+				Const string `json:"const"`
+			} `json:"manifest_version"`
+		} `json:"properties"`
+	}
+	raw := readRepoFile(t, filepath.Join("scripts", "gates", "testdata", "mcpb-manifest-v0.3.schema.json"))
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("vendored schema: %v", err)
+	}
+
+	got := schema.Properties.ManifestVersion.Const
+	major, minor, ok := strings.Cut(got, ".")
+	if !ok {
+		t.Fatalf("vendored schema pins manifest_version to %q, which is not a version: "+
+			"the copy is not the one every other claim assumes", got)
+	}
+	gotMajor, err := strconv.Atoi(major)
+	if err != nil {
+		t.Fatalf("vendored schema manifest_version major %q: %v", major, err)
+	}
+	gotMinor, err := strconv.Atoi(minor)
+	if err != nil {
+		t.Fatalf("vendored schema manifest_version minor %q: %v", minor, err)
+	}
+	if gotMajor < floorMajor || (gotMajor == floorMajor && gotMinor < floorMinor) {
+		t.Errorf("vendored schema pins manifest_version to %q, below the %d.%d this server targets: "+
+			"a manifest moved down with the copy it validates against still agrees with itself",
+			got, floorMajor, floorMinor)
 	}
 }

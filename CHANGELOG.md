@@ -35,6 +35,19 @@ upgrading are marked **Breaking:** and say what to do.
   sibling server: cosign reported `Verified OK`, the publish succeeded,
   and the registry's hash matched the release's `checksums.txt`.
 
+- The bundle manifest's `$schema` names a tag instead of `main`. The
+  version in the path pins the format; the ref pins the bytes, so a
+  document claiming to conform to `main` claims to conform to whatever
+  `main` says tomorrow — the same float the `pins` gate refuses in a
+  workflow. The schema at `v2.1.2` and at `main` were byte-identical when
+  this changed, checked by hash, so the tag costs nothing.
+
+  The bundle packer now refuses a `$schema` that names a branch, and the
+  vendored schema the manifest is validated against has a floor of its
+  own: that copy pins `manifest_version` by `const`, so the manifest
+  cannot drift from it, but both could be moved down together and still
+  agree. Raised by google-calendar-mcp, which found it in six repos.
+
 ### Added
 - A fifth rule in the `pins` gate: every action is classified, and an
   unknown one fails. The four rules before it each judge a version that
@@ -55,6 +68,24 @@ upgrading are marked **Breaking:** and say what to do.
   because being unclassified is the state that let the other two through.
 
   Watched failing on all three shapes before being trusted.
+
+- A sixth rule in the `pins` gate: the rehearsal and the release must run
+  the same goreleaser, and a missing pin on either side fails too.
+
+  Every rule before it judges one version in one place, so two exact pins
+  naming different versions passed them all. That was the state here:
+  `release.yml` pinned v2.18.1, and CONTRIBUTING told a maintainer to
+  rehearse with a bare `goreleaser release --snapshot`, which runs
+  whatever is on their PATH — 2.14.0 on the machine this was found on,
+  four minor releases behind the tag. This repository has already had to
+  read goreleaser's behaviour "at v2.18.0 and again at v2.18.1", so the
+  difference is not academic.
+
+  The fix deletes the copy rather than gating the prose: `make
+  release-rehearse` pins goreleaser beside the other tools, and the
+  runbook names the target and carries no version at all. The rule then
+  compares the two pins that remain, both of them code. Found by the
+  calendar server hitting the same thing and saying so.
 
 ### Fixed
 - A message that links to another message now says what it links to.
