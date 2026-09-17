@@ -690,12 +690,19 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 	// hooks are `post:` and `before:` rather than `run:`. Dropping the
 	// comments is the half that carries here — a hook commented out is
 	// the same hazard as a step commented out.
+	// publish-mcp.yml is the third file the release runs through. It is
+	// called by release.yml and dispatchable on its own, because the
+	// registry entry can only be written after the release exists — so a
+	// release step may legitimately live there, and a check that knew
+	// only the other two would report a step that runs as a step that
+	// does not.
 	release := executes(uncommented(readRepoFile(t, filepath.Join(".github", "workflows", "release.yml")))) +
+		"\n" + executes(uncommented(readRepoFile(t, filepath.Join(".github", "workflows", "publish-mcp.yml")))) +
 		"\n" + uncommented(readRepoFile(t, ".goreleaser.yaml"))
 	for _, name := range commandsRunningIn(inRelease) {
 		if !strings.Contains(release, "gates "+name) {
-			t.Errorf("the registry marks %q a release step and neither release.yml nor "+
-				".goreleaser.yaml runs it", name)
+			t.Errorf("the registry marks %q a release step and no release file "+
+				"runs it", name)
 		}
 	}
 

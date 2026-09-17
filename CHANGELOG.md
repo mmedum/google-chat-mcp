@@ -13,7 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Changed
 
-- The MCP registry entry is published from its own job, with
+- The MCP registry entry is published from its own workflow, with
   `id-token: write` and `contents: read` and nothing else. It ran inside
   the goreleaser job, which also holds `contents: write` and
   `attestations: write` — so `mcp-publisher`, a third-party binary, had a
@@ -21,10 +21,19 @@ upgrading are marked **Breaking:** and say what to do.
   Verifying the binary is what makes running it acceptable; least
   privilege is what stops that being the only thing in the way.
 
-  It also reads the **published** release's `checksums.txt` rather than
-  the build's local copy, so the hash a client verifies is the number
-  cosign signed, and it can be re-run on its own without cutting another
-  release.
+  A separate workflow rather than a separate job, because the registry
+  HEADs the bundle's download URL before accepting an entry: this can
+  only run after the release exists, and a step that can only run last
+  needs a way to be run again on its own. As a job inside `release.yml`
+  it had none — re-running that workflow re-runs goreleaser against a
+  release that already exists, and an entry for a tag that shipped weeks
+  ago could not be published at all.
+
+  It reads the **published** release's `checksums.txt` rather than the
+  build's local copy, so the hash a client verifies is the number cosign
+  signed. Verified end to end by dispatching the same workflow in a
+  sibling server: cosign reported `Verified OK`, the publish succeeded,
+  and the registry's hash matched the release's `checksums.txt`.
 
 ### Added
 - A fifth rule in the `pins` gate: every action is classified, and an
