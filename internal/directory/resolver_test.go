@@ -331,3 +331,32 @@ func TestAGenuineMissIsCached(t *testing.T) {
 		t.Errorf("upstream was called %d times; a known miss should be cached", calls)
 	}
 }
+
+// Some Chat payloads name a person instead of identifying them: a quoted
+// message's sender is a display name. One layer down that becomes
+// "people/Jane Doe", a malformed id in a batch of real ones — and Google
+// answers per person, so the real ones still resolve and nothing looks
+// wrong. Refused here, where every caller is covered at once.
+func TestResolveAsksOnlyForChatUserIDs(t *testing.T) {
+	var asked []string
+	r := newResolver(t, nil, func(w http.ResponseWriter, req *http.Request) {
+		asked = append(asked, req.URL.Query()["resourceNames"]...)
+		fmt.Fprint(w, `{"responses":[{"requestedResourceName":"people/1","person":{
+		  "resourceName":"people/1","emailAddresses":[{"value":"janedoe@example.com"}]}}]}`)
+	})
+
+	got := r.Resolve(context.Background(), []string{"users/1", "Jane Doe", "people/2", ""})
+
+	// People is asked for people/{id}, which is what a users/{id}
+	// becomes one layer down.
+	for _, id := range asked {
+		if id != "people/1" {
+			t.Errorf("asked for %q, want only the Chat user id", id)
+		}
+	}
+	// The contract is unchanged for the caller: every id it passed is
+	// present, and one that cannot be resolved is a zero Person.
+	if _, ok := got["users/1"]; !ok {
+		t.Error("the Chat user id is missing from the result")
+	}
+}

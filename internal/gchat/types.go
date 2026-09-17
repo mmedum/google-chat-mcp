@@ -222,9 +222,10 @@ type QuotedMessageMeta struct {
 // QuotedMessageSnapshot is the quoted message's content, frozen at the
 // moment it was quoted.
 //
-// Sender is a resource name rather than a User: Google documents it as
-// the author's name, "users/{user}", not the object the parent message
-// carries.
+// Sender is a display name, not a resource name and not the User object
+// the parent message carries: Google's "author name" is what it says,
+// read off a real reply-quote and a real forward on 2026-09-17. Nothing
+// downstream may treat it as an id.
 type QuotedMessageSnapshot struct {
 	Sender        string       `json:"sender,omitempty"`
 	Text          string       `json:"text,omitempty"`
