@@ -91,7 +91,10 @@ func TestSpaceResourceTakesABareID(t *testing.T) {
 // what makes the two interchangeable.
 func TestMessageResourceMatchesTheTool(t *testing.T) {
 	const one = `{"name":"spaces/A/messages/1","sender":{"name":"users/1"},"createTime":"2026-01-02T03:04:05Z",
-	  "thread":{"name":"spaces/A/threads/T1"},"text":"hello"}`
+	  "thread":{"name":"spaces/A/threads/T1"},"text":"hello",
+	  "annotations":[{"type":"RICH_LINK","richLinkMetadata":{"richLinkType":"CHAT_SPACE",
+	    "uri":"https://chat.google.com/room/AAAAspace1/AAAAmsg9",
+	    "chatSpaceLinkData":{"space":"spaces/AAAAspace1","message":"spaces/AAAAspace1/messages/AAAAmsg9"}}}]}`
 	cs := session(t, chatAndPeople(body(one), personHit))
 
 	var viaTool MessageDetailOutput
@@ -103,6 +106,11 @@ func TestMessageResourceMatchesTheTool(t *testing.T) {
 	}
 	if !reflect.DeepEqual(viaTool, viaResource) {
 		t.Errorf("resource = %+v, tool = %+v", viaResource, viaTool)
+	}
+	// Named as well as compared: two routes returning the same empty
+	// field would satisfy the comparison above.
+	if len(viaResource.Links) != 1 || deref(viaResource.Links[0].MessageID) != "spaces/AAAAspace1/messages/AAAAmsg9" {
+		t.Errorf("links = %+v, want the linked message named", viaResource.Links)
 	}
 }
 

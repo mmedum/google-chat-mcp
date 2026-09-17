@@ -3,6 +3,7 @@
 package livecheck
 
 import (
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -152,6 +153,65 @@ var steps = []step{
 		d.t.Error("the posted message is not in get_messages")
 	}},
 
+	// Chat keeps a link out of the message text: it arrives as an
+	// annotation naming what was linked, and a reader that drops
+	// annotations sees the anchor word alone. Posting one here and
+	// reading it back in a later exchange is the only way to find out
+	// whether Chat makes a link chip for a message posted through the
+	// API — every fake in the unit suite is written from a belief about
+	// that, and this is the thing that can contradict it.
+	{"a message linking to another one is posted", "send_message", func(d *driver) {
+		if d.posted == "" {
+			d.t.Skip("nothing was posted to link to")
+		}
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " linked " + messageURL(d.space, d.thread, d.posted),
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the linking message")
+		}
+		d.record(out.MessageID)
+		d.linked = out.MessageID
+	}},
+
+	{"a posted link reads back as a link", "get_message", func(d *driver) {
+		if d.linked == "" {
+			d.t.Skip("no linking message was posted")
+		}
+		var out struct {
+			Links []struct {
+				LinkType  string `json:"link_type"`
+				SpaceID   string `json:"space_id"`
+				MessageID string `json:"message_id"`
+			} `json:"links"`
+		}
+		d.into(d.must("get_message", map[string]any{"message_name": d.linked}), &out)
+		if len(out.Links) == 0 {
+			// Not a failure. It says Chat made no chip for a link
+			// posted through the API, which is Google's behaviour
+			// rather than this server's, and is worth knowing either
+			// way. A link pasted in the Chat client is still carried.
+			d.t.Log("Chat attached no rich link to a link posted through the API")
+			return
+		}
+		got := out.Links[0]
+		switch {
+		case got.MessageID == d.posted:
+			// The linked message, named as the resource get_message takes.
+		case got.SpaceID == d.space:
+			// Chat read the URL as the space rather than one message in
+			// it. The URL shape is this test's own, so that is a fact
+			// about the link and not a failure of the server.
+			d.t.Log("Chat resolved the posted link to the space rather than to the message")
+		default:
+			d.t.Errorf("the link came back as %s naming %s, want the message or the space it points at",
+				got.LinkType, d.redact(got.MessageID))
+		}
+	}},
+
 	{"the thread carries the message", "get_thread", func(d *driver) {
 		if d.thread == "" {
 			d.t.Skip("no thread id was returned")
@@ -288,9 +348,24 @@ var steps = []step{
 	}},
 
 	{"search finds the message in this space", "search_messages", func(d *driver) {
-		d.must("search_messages", map[string]any{
+		var out struct {
+			Matches []struct {
+				MessageID string     `json:"message_id"`
+				Links     []struct{} `json:"links"`
+			} `json:"matches"`
+		}
+		d.into(d.must("search_messages", map[string]any{
 			"space_id": d.space, "query": searchTerm,
-		})
+		}), &out)
+		// Google's search returns the matched message; whether it
+		// returns that message's annotations with it is a belief the
+		// unit fakes are written from, and this is the only place it
+		// can be contradicted. The linking message is one of the hits.
+		for _, m := range out.Matches {
+			if m.MessageID == d.linked && len(m.Links) == 0 {
+				d.t.Log("Google's search returned the linking message with no links on it")
+			}
+		}
 	}},
 
 	{"the space is marked read", "mark_space_read", func(d *driver) {
@@ -523,10 +598,31 @@ func TestLive(t *testing.T) {
 			inner := *d
 			inner.t = t
 			s.run(&inner)
-			d.posted, d.thread, d.member, d.email = inner.posted, inner.thread, inner.member, inner.email
-			d.event, d.attached, d.uploadToken = inner.event, inner.attached, inner.uploadToken
+			// Everything the step wrote comes back, with the parent's
+			// testing.T put back on top. This was a hand-listed set of
+			// fields, and a field added for a new step was not on it:
+			// the id that step recorded was dropped between the write
+			// and the read, and the read skipped itself for want of it,
+			// green and having checked nothing.
+			inner.t = d.t
+			*d = inner
 		}) {
 			t.Fatalf("stopping: later steps read what %q wrote", s.name)
 		}
 	}
+}
+
+// messageURL is the link Copy link puts on the clipboard in Chat: the
+// bare space, thread and message ids, and the query Chat appends.
+//
+// Read off a real one on 2026-09-17 rather than guessed. A message
+// created through the API is named {id}.{id} and the URL carries the
+// half before the dot, which is also the thread's id. The shape matters
+// because this step is asking whether Chat chips what it is given: a
+// URL of this server's own invention would answer a question nobody
+// has.
+func messageURL(space, thread, message string) string {
+	id, _, _ := strings.Cut(path.Base(message), ".")
+	return "https://chat.google.com/room/" + path.Base(space) + "/" +
+		path.Base(thread) + "/" + id + "?cls=10"
 }

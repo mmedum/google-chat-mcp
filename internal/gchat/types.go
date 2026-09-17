@@ -274,15 +274,71 @@ type DriveDataRef struct {
 	DriveFileID string `json:"driveFileId,omitempty"`
 }
 
-// Annotation marks a span of message text, such as a mention.
+// Annotation marks a span of message text, such as a mention or a link.
 type Annotation struct {
-	Type            string           `json:"type,omitempty"`
-	StartIndex      int              `json:"startIndex,omitempty"`
-	Length          int              `json:"length,omitempty"`
-	UserMention     *UserMention     `json:"userMention,omitempty"`
-	SlashCommand    any              `json:"slashCommand,omitempty"`
-	RichLinkMeta    any              `json:"richLinkMetadata,omitempty"`
-	CustomEmojiMeta *CustomEmojiMeta `json:"customEmojiMetadata,omitempty"`
+	Type            string            `json:"type,omitempty"`
+	StartIndex      int               `json:"startIndex,omitempty"`
+	Length          int               `json:"length,omitempty"`
+	UserMention     *UserMention      `json:"userMention,omitempty"`
+	SlashCommand    any               `json:"slashCommand,omitempty"`
+	RichLinkMeta    *RichLinkMetadata `json:"richLinkMetadata,omitempty"`
+	CustomEmojiMeta *CustomEmojiMeta  `json:"customEmojiMetadata,omitempty"`
+}
+
+// RichLinkMetadata is a link Chat recognised in a message: to another
+// message or space, a Drive file, a Gmail message, a Meet call or a
+// Calendar event.
+//
+// The link lives here and nowhere else. A message whose body is a link
+// carries the anchor text in Text and the target only in this
+// annotation, so dropping it leaves a message that reads as a bare word.
+//
+// Type is Google's own word, from the discovery document read on
+// 2026-09-17: DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE, MEET_SPACE or
+// CALENDAR_EVENT. A link to a single message is CHAT_SPACE with the
+// message named in ChatSpaceLink; there is no CHAT_MESSAGE.
+type RichLinkMetadata struct {
+	Type              string                 `json:"richLinkType,omitempty"`
+	URI               string                 `json:"uri,omitempty"`
+	ChatSpaceLink     *ChatSpaceLinkData     `json:"chatSpaceLinkData,omitempty"`
+	DriveLink         *DriveLinkData         `json:"driveLinkData,omitempty"`
+	MeetSpaceLink     *MeetSpaceLinkData     `json:"meetSpaceLinkData,omitempty"`
+	CalendarEventLink *CalendarEventLinkData `json:"calendarEventLinkData,omitempty"`
+}
+
+// ChatSpaceLinkData is where in Chat a link points. A link to a space
+// names the space alone; a link to a message names all three.
+type ChatSpaceLinkData struct {
+	Space   string `json:"space,omitempty"`
+	Thread  string `json:"thread,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// DriveLinkData is a Drive file linked in a message.
+type DriveLinkData struct {
+	DriveDataRef *DriveDataRef `json:"driveDataRef,omitempty"`
+	MimeType     string        `json:"mimeType,omitempty"`
+}
+
+// MeetSpaceLinkData is a Meet call linked in a message. HuddleStatus is
+// ENDED or MISSED for a huddle whose URI and codes have stopped working.
+//
+// No tool reads these fields: a Meet or Calendar link is surfaced as its
+// URI, which carries the same identifiers. They are typed rather than
+// left as `any` so that the api-fields gate compares them against
+// Google's schema and the drift reporter descends into them — an
+// any-typed field models nothing, which is how the rich link itself went
+// unnoticed.
+type MeetSpaceLinkData struct {
+	MeetingCode  string `json:"meetingCode,omitempty"`
+	Type         string `json:"type,omitempty"`
+	HuddleStatus string `json:"huddleStatus,omitempty"`
+}
+
+// CalendarEventLinkData is a Calendar event linked in a message.
+type CalendarEventLinkData struct {
+	CalendarID string `json:"calendarId,omitempty"`
+	EventID    string `json:"eventId,omitempty"`
 }
 
 // UserMention is an @mention.

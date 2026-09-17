@@ -302,7 +302,43 @@ func (o MessageOutput) Render() string {
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
 			labelled("thread", o.ThreadID)),
 		o.Text,
+		linksBlock(o.Links),
 	)
+}
+
+// Render is one link in a message: what kind it is, where it goes, and
+// the resource names of what it points at when there are any. A link to
+// another message is the case that matters most, because the text shows
+// only what the link was called.
+func (o MessageLinkOutput) Render() string {
+	// The span is printed only when there is one: a chip carries zeroes,
+	// and "text 0-0" would read as a fact about the body.
+	span := ""
+	if o.AnchorLength > 0 {
+		span = "text " + strconv.Itoa(o.AnchorStart) + "-" + strconv.Itoa(o.AnchorStart+o.AnchorLength)
+	}
+	// The space is printed only for a link that names nothing narrower:
+	// a message or thread name has the space in it already, so printing
+	// it beside them is the same id three times on one line.
+	space := ""
+	if o.MessageID == nil && o.ThreadID == nil {
+		space = labelled("space", deref(o.SpaceID))
+	}
+	return meta(o.LinkType, o.URI,
+		labelled("message", deref(o.MessageID)),
+		labelled("thread", deref(o.ThreadID)),
+		space,
+		labelled("drive file", deref(o.DriveFileID)),
+		deref(o.MimeType), span)
+}
+
+// linksBlock lists a message's links, and nothing at all for a message
+// that links to nothing.
+func linksBlock(links []MessageLinkOutput) string {
+	if len(links) == 0 {
+		return ""
+	}
+	return listing(count(len(links), "link", "links"), rows(links))
 }
 
 // Render lists a page of messages.
@@ -335,6 +371,8 @@ func (o MessageDetailOutput) Render() string {
 			labelled("space", o.SpaceID), labelled("thread", o.ThreadID),
 			stamp("edited", o.LastUpdateTime)),
 		o.Text,
+		labelled("markup:", deref(o.FormattedText)),
+		linksBlock(o.Links),
 		reactions,
 		attachments,
 	)
@@ -357,6 +395,7 @@ func (o SearchMatchOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp), o.SenderUserID, labelled("thread", o.ThreadID)),
 		o.Snippet,
+		linksBlock(o.Links),
 	)
 }
 

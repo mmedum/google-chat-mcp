@@ -372,3 +372,32 @@ func TestAnUnreadSearchNamesBothScopes(t *testing.T) {
 		}
 	}
 }
+
+// Both searches read the same messages, so both have to carry what a
+// message links to. A hit whose body is a link is otherwise a row of
+// anchor text with nowhere to go.
+func TestSearchCarriesTheLinksOnAHit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		page string
+		in   SearchMessagesInput
+	}{
+		{"the local scan", `{"messages":[` + linkedMessage + `]}`, SearchMessagesInput{Space: "spaces/A", Regex: "Here"}},
+		{"Google's search", `{"results":[{"message":` + linkedMessage + `}]}`, SearchMessagesInput{Query: "Here"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newService(t, ok(tc.page))
+			got, err := s.SearchMessages(context.Background(), tc.in)
+			if err != nil {
+				t.Fatalf("SearchMessages: %v", err)
+			}
+			if len(got.Matches) != 1 {
+				t.Fatalf("matches = %+v, want the one hit", got.Matches)
+			}
+			links := got.Matches[0].Links
+			if len(links) != 2 || links[0].Message != "spaces/AAAAspace1/messages/AAAAmsg9" {
+				t.Errorf("links = %+v, want the linked message named", links)
+			}
+		})
+	}
+}
