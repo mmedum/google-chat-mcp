@@ -35,6 +35,19 @@ upgrading are marked **Breaking:** and say what to do.
   sibling server: cosign reported `Verified OK`, the publish succeeded,
   and the registry's hash matched the release's `checksums.txt`.
 
+- The bundle manifest's `$schema` names a tag instead of `main`. The
+  version in the path pins the format; the ref pins the bytes, so a
+  document claiming to conform to `main` claims to conform to whatever
+  `main` says tomorrow — the same float the `pins` gate refuses in a
+  workflow. The schema at `v2.1.2` and at `main` were byte-identical when
+  this changed, checked by hash, so the tag costs nothing.
+
+  The bundle packer now refuses a `$schema` that names a branch, and the
+  vendored schema the manifest is validated against has a floor of its
+  own: that copy pins `manifest_version` by `const`, so the manifest
+  cannot drift from it, but both could be moved down together and still
+  agree. Raised by google-calendar-mcp, which found it in six repos.
+
 ### Added
 - A fifth rule in the `pins` gate: every action is classified, and an
   unknown one fails. The four rules before it each judge a version that

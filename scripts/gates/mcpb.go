@@ -32,6 +32,30 @@ import (
 // then does nothing. Those three are checked here against the tree about
 // to be packed; the schema is checked by a test, against a vendored copy.
 
+// schemaRef is the $schema a manifest may name: anthropics/mcpb at a
+// tag, never at a branch.
+//
+// The version in the path pins the format; the ref pins the bytes. A
+// document that claims to conform to `main` claims to conform to
+// whatever `main` says tomorrow, which is the same float the pins gate
+// refuses in a workflow. The schema at v2.1.2 and at main were
+// byte-identical when this was written — sha256 3a0ac9d8…, checked
+// 2026-09-17 — so naming the tag costs nothing and fixes what is being
+// conformed to.
+var schemaRef = regexp.MustCompile(`^https://raw\.githubusercontent\.com/anthropics/mcpb/v\d+\.\d+\.\d+/schemas/`)
+
+// schemaRefProblem reports a $schema that is missing or floating.
+func schemaRefProblem(m bundleManifest) string {
+	switch {
+	case m.Schema == "":
+		return "the manifest names no $schema, so nothing says which format it claims to be"
+	case !schemaRef.MatchString(m.Schema):
+		return fmt.Sprintf("$schema is %q, which does not name anthropics/mcpb at a tag: "+
+			"a branch ref can be amended under a document that claims to conform to it", m.Schema)
+	}
+	return ""
+}
+
 // manifestSource is the manifest as the repository carries it, with the
 // placeholder version still in it.
 var manifestSource = filepath.Join("packaging", "mcpb", "manifest.json")
@@ -94,6 +118,9 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 	var m bundleManifest
 	if err := json.Unmarshal(manifest, &m); err != nil {
 		return fail("the rendered manifest: %v", err)
+	}
+	if p := schemaRefProblem(m); p != "" {
+		return fail("%s", p)
 	}
 	if problems := checkManifest(m, files); len(problems) > 0 {
 		for _, p := range problems {
@@ -363,6 +390,7 @@ func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
 
 // bundleManifest is the part of the manifest these gates read.
 type bundleManifest struct {
+	Schema      string `json:"$schema"`
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Description string `json:"description"`
