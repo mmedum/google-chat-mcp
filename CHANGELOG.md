@@ -11,6 +11,21 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- The MCP registry entry is published from its own job, with
+  `id-token: write` and `contents: read` and nothing else. It ran inside
+  the goreleaser job, which also holds `contents: write` and
+  `attestations: write` — so `mcp-publisher`, a third-party binary, had a
+  token that could rewrite the release it had just been told about.
+  Verifying the binary is what makes running it acceptable; least
+  privilege is what stops that being the only thing in the way.
+
+  It also reads the **published** release's `checksums.txt` rather than
+  the build's local copy, so the hash a client verifies is the number
+  cosign signed, and it can be re-run on its own without cutting another
+  release.
+
 ### Added
 - A fifth rule in the `pins` gate: every action is classified, and an
   unknown one fails. The four rules before it each judge a version that
