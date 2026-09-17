@@ -167,7 +167,7 @@ and the three tools that move them say so.
 | `find_group_chats` | The group chats holding exactly you and the people you name | `chat.memberships.readonly`, `chat.spaces.readonly` |
 | `find_direct_message` | The direct message with one person, created if there is none yet | `chat.spaces.readonly`, `chat.spaces.create` |
 | `get_messages` | Recent messages in a space, newest first, senders resolved to names | `chat.messages.readonly` |
-| `get_message` | One message, with its reaction counts and what its text links to | `chat.messages.readonly` |
+| `get_message` | One message, with its reaction counts, what its text links to and what it quotes | `chat.messages.readonly` |
 | `get_thread` | Every message in one thread, oldest first | `chat.messages.readonly` |
 | `download_attachment` | Save a message's attachment into the server's local directory | `chat.messages.readonly` |
 | `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only` |

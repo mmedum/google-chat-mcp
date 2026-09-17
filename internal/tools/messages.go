@@ -23,7 +23,27 @@ type MessageOutput struct {
 	Text              string              `json:"text" jsonschema:"the message body as plain text; empty for a message that is only an attachment or a card"`
 	Timestamp         time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	ThreadID          string              `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
-	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to; empty when it links to nothing. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
+	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
+	Quote             *MessageQuoteOutput `json:"quote" jsonschema:"the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing"`
+}
+
+// MessageQuoteOutput is the message this one quotes or forwards.
+//
+// Which fields Google fills depends on the quote type, and that is its
+// rule rather than this server's. The schemas say so field by field,
+// because an empty list otherwise reads as a fact about the quoted
+// message rather than about what Google sent.
+type MessageQuoteOutput struct {
+	MessageID        string              `json:"message_id" jsonschema:"the quoted message, spaces/{space}/messages/{message}. A reply quotes something in this space, so get_message reads the rest of it; a forward usually does not"`
+	QuoteType        string              `json:"quote_type" jsonschema:"Google's own word: REPLY or FORWARD. Empty means REPLY, which Google documents as its default"`
+	Sender           string              `json:"sender" jsonschema:"who wrote the quoted message, as a display name. Not a resource name: it identifies nobody and cannot be passed to another tool"`
+	Text             string              `json:"text" jsonschema:"the quoted body as it read when it was quoted, which is not necessarily what it says now. Empty also means Google sent no snapshot"`
+	FormattedText    *string             `json:"formatted_text" jsonschema:"the quoted body with Chat's markup left in, or null. FORWARD only, and the only place a markdown link in it appears: that is not an annotation, so links stays empty for one"`
+	Links            []MessageLinkOutput `json:"links" jsonschema:"what the quoted text links to. FORWARD only, so empty on a REPLY means Google did not say, not that there are none"`
+	Attachments      []AttachmentOutput  `json:"attachments" jsonschema:"the files on the quoted message, FORWARD only. download_attachment reads the message that owns a file, so fetching one means naming the quoted message and being able to read it"`
+	SpaceID          *string             `json:"space_id" jsonschema:"the space a forwarded message came from, or null. FORWARD only"`
+	SpaceDisplayName *string             `json:"space_display_name" jsonschema:"what that space was called when the message was forwarded, or null. For a direct message it is the other person"`
+	LastUpdateTime   *time.Time          `json:"last_update_time" jsonschema:"when the quoted message was created, or last edited if it was; null when Google sent no timestamp"`
 }
 
 // MessageLinkOutput is one link in a message's text.
@@ -32,15 +52,15 @@ type MessageOutput struct {
 // message whose whole body is a link to another message carries that
 // message's resource name here and nowhere else.
 type MessageLinkOutput struct {
-	LinkType     string  `json:"link_type" jsonschema:"Google's own word for what is linked: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. A link to a single message is CHAT_SPACE with message_id set"`
+	LinkType     string  `json:"link_type" jsonschema:"Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set"`
 	URI          string  `json:"uri" jsonschema:"the link itself"`
-	SpaceID      *string `json:"space_id" jsonschema:"the linked space, spaces/{id}, or null when the link does not point into Chat"`
-	ThreadID     *string `json:"thread_id" jsonschema:"the linked thread, spaces/{space}/threads/{thread}, or null"`
-	MessageID    *string `json:"message_id" jsonschema:"the linked message, spaces/{space}/messages/{message}; pass it to get_message to read what was linked. Null when the link names a space rather than one message"`
+	SpaceID      *string `json:"space_id" jsonschema:"the linked space, or null when the link does not point into Chat"`
+	ThreadID     *string `json:"thread_id" jsonschema:"the linked thread, or null"`
+	MessageID    *string `json:"message_id" jsonschema:"the linked message; pass it to get_message. Null when the link names a space rather than one message"`
 	DriveFileID  *string `json:"drive_file_id" jsonschema:"the linked Google Drive file's id, or null"`
 	MimeType     *string `json:"mime_type" jsonschema:"the linked Drive file's MIME type, or null"`
-	AnchorStart  int     `json:"anchor_start" jsonschema:"where in text the linked words start, counted from 0"`
-	AnchorLength int     `json:"anchor_length" jsonschema:"how many characters of text this link covers, which is what says which words go where when a message carries several links. Zero for a chip Chat shows beside the message rather than in it"`
+	AnchorStart  int     `json:"anchor_start" jsonschema:"where in text the linked words start"`
+	AnchorLength int     `json:"anchor_length" jsonschema:"how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message"`
 }
 
 // MessageListOutput wraps a list of messages.
@@ -88,6 +108,7 @@ type MessageDetailOutput struct {
 	Text              string                  `json:"text" jsonschema:"the message body as plain text"`
 	FormattedText     *string                 `json:"formatted_text" jsonschema:"the same body with Chat's markup left in — bold, italics, mentions and the URL behind a link — or null when the markup says nothing the plain text does not"`
 	Links             []MessageLinkOutput     `json:"links" jsonschema:"what the text links to; empty when it links to nothing"`
+	Quote             *MessageQuoteOutput     `json:"quote" jsonschema:"the message this one quotes or forwards; null when it quotes nothing"`
 	Timestamp         time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	LastUpdateTime    *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
 	Reactions         []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
@@ -132,6 +153,7 @@ type SearchMatchOutput struct {
 	Timestamp    time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	Snippet      string              `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
 	Links        []MessageLinkOutput `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
+	Quote        *MessageQuoteOutput `json:"quote" jsonschema:"the message this hit quotes or forwards; null when it quotes nothing"`
 }
 
 // SearchMessagesOutput is what a scan found and how far it got.
@@ -152,7 +174,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"EMPTY result with a token still on it does not mean the space is empty, because Google applies the " +
 			"page size before it filters. Sender email is resolved through the People API and is null when that " +
 			"fails. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
-			"message reading as a bare word may be a link to something.",
+			"message reading as a bare word may be a link to something. quote is what a message replies to or " +
+			"forwards, which Chat also keeps out of the body.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
@@ -173,7 +196,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Description: "Read one thread's messages, oldest first. Give the parent space_id and the thread_name " +
 			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; " +
 			"page with page_token and next_page_token. A non-null next_page_token means the thread is longer than " +
-			"what came back, so do not read the result as the whole thread. Each message carries its links.",
+			"what came back, so do not read the result as the whole thread. Each message carries its links and " +
+			"what it quotes.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetThreadInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
@@ -195,7 +219,9 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"summaries are inline; reactions_paged true means there were too many to inline and list_reactions has " +
 			"the detail. Attachments are listed with the name download_attachment takes. links is what the text " +
 			"links to — a message whose body is a link names the target there and nowhere else — and " +
-			"formatted_text is the same body with Chat's markup left in.",
+			"formatted_text is the same body with Chat's markup left in. quote is the message this one replies " +
+			"to or forwards, as it read when it was quoted; a forward carries the whole snapshot, because the " +
+			"space it came from is often one you cannot read.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessageInput) (*mcp.CallToolResult, MessageDetailOutput, error) {
 		got, err := d.Service.GetMessage(ctx, in.MessageName)
@@ -213,7 +239,7 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads " +
 			"pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is " +
 			"partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. " +
-			"Each hit carries its links.",
+			"Each hit carries its links and what it quotes.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchMessagesInput) (*mcp.CallToolResult, SearchMessagesOutput, error) {
 		got, err := d.Service.SearchMessages(ctx, service.SearchMessagesInput{
@@ -261,17 +287,25 @@ func messageDetail(got *service.MessageDetail) MessageDetailOutput {
 		Text:              got.Text,
 		FormattedText:     nullable(got.FormattedText),
 		Links:             messageLinks(got.Links),
+		Quote:             messageQuote(got.Quote),
 		Timestamp:         got.CreateTime,
 		LastUpdateTime:    nullableTime(got.LastUpdateTime),
 		Reactions:         make([]ReactionSummaryOutput, 0, len(got.Reactions)),
 		ReactionsPaged:    got.ReactionsPaged,
-		Attachments:       make([]AttachmentOutput, 0, len(got.Attachments)),
 	}
 	for _, r := range got.Reactions {
 		out.Reactions = append(out.Reactions, ReactionSummaryOutput{Emoji: r.Emoji, Count: r.Count})
 	}
-	for _, a := range got.Attachments {
-		out.Attachments = append(out.Attachments, AttachmentOutput{
+	out.Attachments = attachmentOutputs(got.Attachments)
+	return out
+}
+
+// attachmentOutputs shapes a message's files for the model, for the
+// message itself and for one it quotes.
+func attachmentOutputs(all []service.AttachmentRow) []AttachmentOutput {
+	out := make([]AttachmentOutput, 0, len(all))
+	for _, a := range all {
+		out = append(out, AttachmentOutput{
 			AttachmentName: a.Name,
 			FileName:       a.ContentName,
 			ContentType:    a.ContentType,
@@ -296,6 +330,7 @@ func messageRows(rows []service.MessageRow) []MessageOutput {
 			Timestamp:         r.CreateTime,
 			ThreadID:          r.ThreadName,
 			Links:             messageLinks(r.Links),
+			Quote:             messageQuote(r.Quote),
 		})
 	}
 	return out
@@ -314,9 +349,31 @@ func searchMatches(matches []service.SearchMatch) []SearchMatchOutput {
 			Timestamp:    m.CreateTime,
 			Snippet:      m.Snippet,
 			Links:        messageLinks(m.Links),
+			Quote:        messageQuote(m.Quote),
 		})
 	}
 	return out
+}
+
+// messageQuote shapes what a message quotes, and nil stays nil: a
+// message that quotes nothing says so with null rather than with an
+// object of empty fields.
+func messageQuote(q *service.MessageQuote) *MessageQuoteOutput {
+	if q == nil {
+		return nil
+	}
+	return &MessageQuoteOutput{
+		MessageID:        q.Name,
+		QuoteType:        q.Type,
+		Sender:           q.Sender,
+		Text:             q.Text,
+		FormattedText:    nullable(q.FormattedText),
+		Links:            messageLinks(q.Links),
+		Attachments:      attachmentOutputs(q.Attachments),
+		SpaceID:          nullable(q.Space),
+		SpaceDisplayName: nullable(q.SpaceDisplayName),
+		LastUpdateTime:   nullableTime(q.LastUpdate),
+	}
 }
 
 // messageLinks shapes a message's links for the model. Every message
