@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -960,4 +961,131 @@ func TestMessageLinksKeepsAKindItDoesNotModel(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("links = %+v, want %+v", got, want)
 	}
+}
+
+// A reply that quotes another message: Google sends the quoted sender
+// and the quoted text, and nothing else. Before this was surfaced, a
+// reply came back with no sign it was replying to anything.
+const replyQuoting = `{"name":"spaces/A/messages/2","sender":{"name":"users/1"},
+  "createTime":"2026-01-02T03:10:00Z","text":"agreed, 10 works",
+  "thread":{"name":"spaces/A/threads/T1"},
+  "quotedMessageMetadata":{"name":"spaces/A/messages/1",
+    "lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"REPLY",
+    "quotedMessageSnapshot":{"sender":"John Doe","text":"shall we move the standup?"}}}`
+
+// A forward carries the whole snapshot, because the space it came from
+// is often one the reader is not in: the markup, the links, the files
+// and the name that space had at the time.
+const forwarding = `{"name":"spaces/A/messages/3","sender":{"name":"users/1"},
+  "createTime":"2026-01-02T04:00:00Z","text":"fyi",
+  "thread":{"name":"spaces/A/threads/T2"},
+  "quotedMessageMetadata":{"name":"spaces/AAAAspace9/messages/AAAAmsg9",
+    "lastUpdateTime":"2026-01-01T09:00:00Z","quoteType":"FORWARD",
+    "forwardedMetadata":{"space":"spaces/AAAAspace9","spaceDisplayName":"Client project"},
+    "quotedMessageSnapshot":{"sender":"John Doe","text":"the notes",
+      "formattedText":"<https://docs.google.com/document/d/AAAAdoc1/edit|the notes>",
+      "annotations":[{"type":"RICH_LINK","startIndex":0,"length":9,
+        "richLinkMetadata":{"richLinkType":"DRIVE_FILE",
+          "uri":"https://docs.google.com/document/d/AAAAdoc1/edit",
+          "driveLinkData":{"mimeType":"application/vnd.google-apps.document",
+            "driveDataRef":{"driveFileId":"AAAAdoc1"}}}}],
+      "attachments":[{"name":"spaces/AAAAspace9/messages/AAAAmsg9/attachments/AAAAatt1",
+        "contentName":"notes.pdf","contentType":"application/pdf","source":"UPLOADED_CONTENT",
+        "attachmentDataRef":{"resourceName":"AAAAref1"}}]}}}`
+
+// One table, because every case is the same exchange: a message read
+// back, and what its quote came to. Compared whole, so a field filled
+// where Google sends nothing fails here.
+func TestGetMessageCarriesWhatItQuotes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want *MessageQuote
+	}{
+		{
+			// A reply: Google sends the author's name and the text,
+			// and nothing else at all.
+			name: "a reply quote",
+			body: replyQuoting,
+			want: &MessageQuote{
+				Name:       "spaces/A/messages/1",
+				Type:       "REPLY",
+				Sender:     "John Doe",
+				Text:       "shall we move the standup?",
+				LastUpdate: mustTime("2026-01-02T03:04:05Z"),
+			},
+		},
+		{
+			// A forward: the whole snapshot, because the space it came
+			// from is usually one the reader is not in.
+			name: "a forward",
+			body: forwarding,
+			want: &MessageQuote{
+				Name:          "spaces/AAAAspace9/messages/AAAAmsg9",
+				Type:          "FORWARD",
+				Sender:        "John Doe",
+				Text:          "the notes",
+				FormattedText: "<https://docs.google.com/document/d/AAAAdoc1/edit|the notes>",
+				Links: []MessageLink{{
+					Type:        "DRIVE_FILE",
+					URI:         "https://docs.google.com/document/d/AAAAdoc1/edit",
+					DriveFileID: "AAAAdoc1",
+					MimeType:    "application/vnd.google-apps.document",
+					Length:      9,
+				}},
+				Attachments: []AttachmentRow{{
+					Name:         "spaces/AAAAspace9/messages/AAAAmsg9/attachments/AAAAatt1",
+					ContentName:  "notes.pdf",
+					ContentType:  "application/pdf",
+					Source:       "UPLOADED_CONTENT",
+					Downloadable: true,
+				}},
+				Space:            "spaces/AAAAspace9",
+				SpaceDisplayName: "Client project",
+				LastUpdate:       mustTime("2026-01-01T09:00:00Z"),
+			},
+		},
+		{
+			// Keyed on nothing-at-all rather than on the id: a
+			// forward's snapshot is the only copy there is.
+			name: "a forward whose quoted message has no name",
+			body: `{"name":"spaces/A/messages/1","sender":{"name":"users/1"},
+			  "createTime":"2026-01-02T03:10:00Z","text":"fyi",
+			  "quotedMessageMetadata":{"quoteType":"FORWARD",
+			    "forwardedMetadata":{"space":"spaces/AAAAspace9","spaceDisplayName":"Client project"},
+			    "quotedMessageSnapshot":{"sender":"John Doe","text":"the notes"}}}`,
+			want: &MessageQuote{
+				Type:             "FORWARD",
+				Sender:           "John Doe",
+				Text:             "the notes",
+				Space:            "spaces/AAAAspace9",
+				SpaceDisplayName: "Client project",
+			},
+		},
+		{
+			name: "a message that quotes nothing",
+			body: oneMessage,
+			want: nil,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newService(t, route(ok(tc.body), nobody()))
+			got, err := s.GetMessage(context.Background(), "spaces/A/messages/1")
+			if err != nil {
+				t.Fatalf("GetMessage: %v", err)
+			}
+			if !reflect.DeepEqual(got.Quote, tc.want) {
+				t.Errorf("quote = %+v, want %+v", got.Quote, tc.want)
+			}
+		})
+	}
+}
+
+// mustTime parses a timestamp a fixture states.
+func mustTime(v string) time.Time {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }

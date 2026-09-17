@@ -30,6 +30,10 @@ func NewResolver(people PeopleAPI, cache *Cache, log *slog.Logger) *Resolver {
 	return &Resolver{people: people, cache: cache, log: log}
 }
 
+// chatUserPrefix is what a Chat user id starts with, and the only shape
+// Resolve will look up.
+const chatUserPrefix = "users/"
+
 // Resolve looks up every id and never fails.
 //
 // Every id asked for is present in the result, so a caller can index
@@ -40,7 +44,16 @@ func (r *Resolver) Resolve(ctx context.Context, ids []string) map[string]Person 
 	unique := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		if id == "" || seen[id] {
+		// Only a Chat user id is a lookup. Google names a person in
+		// some payloads rather than identifying them — a quoted
+		// message's sender is a display name — and every one of
+		// those becomes "people/Jane Doe" one layer down, a
+		// malformed id in a batch that has real ones in it. Google
+		// answers per person, so the others resolve and nothing
+		// fails: the cost is invisible, which is why it is refused
+		// here rather than at each call site. Dropping it changes
+		// nothing for a caller, who gets a zero Person either way.
+		if id == "" || seen[id] || !strings.HasPrefix(id, chatUserPrefix) {
 			continue
 		}
 		seen[id] = true
@@ -140,7 +153,7 @@ func chatUserOf(resourceName string) string {
 	if !ok || id == "" {
 		return ""
 	}
-	return "users/" + id
+	return chatUserPrefix + id
 }
 
 // workspaceProfile matches the one People resource shape that shares a
@@ -156,7 +169,7 @@ func ChatUserID(resourceName string) string {
 	if m == nil {
 		return ""
 	}
-	return "users/" + m[1]
+	return chatUserPrefix + m[1]
 }
 
 // Learn records people that were resolved somewhere else, such as a

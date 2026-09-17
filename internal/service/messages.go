@@ -35,6 +35,9 @@ type MessageRow struct {
 	// text, so a message that is only a link reads as a bare word
 	// without this.
 	Links []MessageLink
+	// Quote is the message this one quotes or forwards, and is nil when
+	// it quotes nothing.
+	Quote *MessageQuote
 	// FormattedText is the body with Chat's markup left in, and is
 	// empty when the markup says nothing the text does not — Google
 	// sends it for an unformatted message too, character for character
@@ -71,6 +74,95 @@ type MessageLink struct {
 	// message rather than in it.
 	Start  int
 	Length int
+}
+
+// MessageQuote is the message a reply quotes, or the message that was
+// forwarded, as it read when it was quoted.
+//
+// What Google fills in depends on Type, and that is its rule rather than
+// this server's: the fields below say which is which, and the evidence
+// log in docs/architecture.md records where that was read.
+//
+// For a forward this snapshot is the only copy there is: the source
+// space is often one the caller is not in, so reading Name there fails.
+// A reply-quote is the other way round — Name is in the same space, and
+// get_message has the rest.
+type MessageQuote struct {
+	// Name is the quoted message, spaces/{space}/messages/{message}.
+	Name string
+	// Type is Google's own word: REPLY or FORWARD. Empty means REPLY,
+	// which is what Google defaults to when a message does not say.
+	Type string
+	// Sender is the quoted message's author as Google names it, and it
+	// is a DISPLAY NAME rather than a resource name: read off a real
+	// reply-quote and a real forward on 2026-09-17, both of which
+	// carried a person's name where the reference says "author name".
+	// So it names somebody and identifies nobody — it cannot be passed
+	// to another tool, and it is not worth a directory lookup.
+	Sender string
+	// Text is the quoted body, and is empty when Google sent no
+	// snapshot with the quote — which is not the same as a quote of an
+	// empty message.
+	Text string
+	// FormattedText is the quoted body with Chat's markup left in.
+	// Forwards only. It is the only place a plain markdown link in the
+	// quoted text appears: that is not an annotation, so Links is empty
+	// for it and the URL would otherwise be lost.
+	FormattedText string
+	// Links is what the quoted text linked to. Forwards only.
+	Links []MessageLink
+	// Attachments are the files on the quoted message. Forwards only.
+	// Downloadable on one of these says what it says everywhere — Chat
+	// holds the bytes — and not that download_attachment can reach
+	// them: that reads the message owning the file, which is this
+	// quoted one rather than the message carrying the quote.
+	Attachments []AttachmentRow
+	// Space and SpaceDisplayName are where a forwarded message came
+	// from. Forwards only. The display name is what that space was
+	// called at the time, which for a direct message is the other
+	// person and for a group chat is a name built from its members.
+	Space            string
+	SpaceDisplayName string
+	// LastUpdate is when the quoted message was created, or last edited
+	// if it was. Google requires it to match the quoted message's
+	// current version, so a quote that is out of date fails rather than
+	// quoting silently stale text.
+	LastUpdate time.Time
+}
+
+// messageQuote shapes what a message quotes.
+func messageQuote(q *gchat.QuotedMessageMeta) *MessageQuote {
+	// Keyed on "nothing here at all" rather than on the name. Two of
+	// the three fields beside it in the wire struct were once wrong
+	// about Google's spelling, and a forward's whole snapshot — the only
+	// copy of it a caller can reach — would be dropped over a missing
+	// id if this tested Name alone.
+	if q == nil || (q.Name == "" && q.Snapshot == nil && q.Forwarded == nil) {
+		return nil
+	}
+	out := &MessageQuote{
+		Name:       q.Name,
+		Type:       q.QuoteType,
+		LastUpdate: parseTime(q.LastUpdate),
+	}
+	if snapshot := q.Snapshot; snapshot != nil {
+		out.Sender = snapshot.Sender
+		out.Text = snapshot.Text
+		if snapshot.FormattedText != snapshot.Text {
+			out.FormattedText = snapshot.FormattedText
+		}
+		out.Links = messageLinks(snapshot.Annotations)
+		// Left nil when there are none, the way Links is: a quote
+		// carrying nothing should look like one.
+		if len(snapshot.Attachments) > 0 {
+			out.Attachments = attachmentRows(snapshot.Attachments)
+		}
+	}
+	if forwarded := q.Forwarded; forwarded != nil {
+		out.Space = forwarded.Space
+		out.SpaceDisplayName = forwarded.SpaceDisplayName
+	}
+	return out
 }
 
 // messageLinks shapes a message's rich-link annotations.
@@ -256,7 +348,11 @@ type MessageDetail struct {
 	FormattedText string
 	// Links is what the text links to, and the only place a link's
 	// target appears.
-	Links      []MessageLink
+	Links []MessageLink
+	// Quote is what this message quotes or forwards, and is nil when it
+	// quotes nothing.
+	Quote *MessageQuote
+
 	CreateTime time.Time
 	// LastUpdateTime is the zero value when the message was never
 	// edited.
@@ -337,6 +433,7 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 		Text:              row.Text,
 		FormattedText:     row.FormattedText,
 		Links:             row.Links,
+		Quote:             row.Quote,
 		CreateTime:        row.CreateTime,
 		LastUpdateTime:    parseTime(got.LastUpdateTime),
 	}
@@ -391,7 +488,12 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			unparsed++
 			continue
 		}
-		row := MessageRow{Name: m.Name, Text: m.Text, Links: messageLinks(m.Annotations)}
+		row := MessageRow{
+			Name:  m.Name,
+			Text:  m.Text,
+			Links: messageLinks(m.Annotations),
+			Quote: messageQuote(m.QuotedMessage),
+		}
 		if m.FormattedText != m.Text {
 			row.FormattedText = m.FormattedText
 		}
