@@ -56,6 +56,24 @@ upgrading are marked **Breaking:** and say what to do.
 
   Watched failing on all three shapes before being trusted.
 
+- A sixth rule in the `pins` gate: the rehearsal and the release must run
+  the same goreleaser, and a missing pin on either side fails too.
+
+  Every rule before it judges one version in one place, so two exact pins
+  naming different versions passed them all. That was the state here:
+  `release.yml` pinned v2.18.1, and CONTRIBUTING told a maintainer to
+  rehearse with a bare `goreleaser release --snapshot`, which runs
+  whatever is on their PATH — 2.14.0 on the machine this was found on,
+  four minor releases behind the tag. This repository has already had to
+  read goreleaser's behaviour "at v2.18.0 and again at v2.18.1", so the
+  difference is not academic.
+
+  The fix deletes the copy rather than gating the prose: `make
+  release-rehearse` pins goreleaser beside the other tools, and the
+  runbook names the target and carries no version at all. The rule then
+  compares the two pins that remain, both of them code. Found by the
+  calendar server hitting the same thing and saying so.
+
 ### Fixed
 - A message that links to another message now says what it links to.
   Chat keeps a link out of the message body: the text carries the words
