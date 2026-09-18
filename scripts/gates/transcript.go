@@ -65,6 +65,7 @@ var loggedPlain = map[string]string{
 	"printsSeen":                    "a count",
 	"len(exercised) + len(excused)": "a count",
 	"out.Unparsed":                  "a count",
+	"res.Unreachable":               "why a task could not run, written as a literal in the task table",
 	"out.NotificationSetting":       "an enum value, ALL or none",
 	"got.LinkType":                  "an enum value, Google's kind of rich link",
 	"res.Total":                     "a count",
@@ -152,35 +153,76 @@ func transcriptProblems(file string) (int, []string, error) {
 	}
 	var problems []string
 	calls := 0
-	ast.Inspect(parsed, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
+	// Per declaration rather than per file, so a print can be
+	// attributed to the function it sits in. A declaration that is not
+	// a function — the live driver's step table is one, and its steps
+	// print — is walked under no name and so is exempt from nothing.
+	for _, decl := range parsed.Decls {
+		fn := ""
+		if d, ok := decl.(*ast.FuncDecl); ok {
+			fn = d.Name.Name
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || !isTestLog(sel.Sel.Name) {
-			return true
-		}
-		calls++
-		// The first argument is the format string; the rest are values.
-		for _, arg := range call.Args[min(1, len(call.Args)):] {
-			expr := exprText(arg)
-			switch {
-			case isLiteral(arg), isRedacted(arg), isCount(arg), loggedPlain[expr] != "":
-			default:
-				problems = append(problems, fmt.Sprintf(
-					"%s: %s reaches the transcript unredacted; wrap it in %s, or add it to loggedPlain "+
-						"with the reason it is safe", fset.Position(arg.Pos()), expr,
-					strings.Join(redactors[:2], " or ")))
+		exempt := beforeTheAccount[filepath.ToSlash(file)+":"+fn]
+		ast.Inspect(decl, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
-		}
-		return true
-	})
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			formatted, isPrinter := printers[sel.Sel.Name]
+			if !isPrinter {
+				return true
+			}
+			calls++
+			args := call.Args
+			if formatted && len(args) > 0 {
+				// Only an f-variant has a format string to skip.
+				args = args[1:]
+			}
+			for _, arg := range args {
+				expr := exprText(arg)
+				switch {
+				case exempt, isLiteral(arg), isRedacted(arg), isCount(arg), loggedPlain[expr] != "":
+				default:
+					problems = append(problems, fmt.Sprintf(
+						"%s: %s reaches the transcript unredacted; wrap it in %s, or add it to loggedPlain "+
+							"with the reason it is safe", fset.Position(arg.Pos()), expr,
+						strings.Join(redactors[:2], " or ")))
+				}
+			}
+			return true
+		})
+	}
 	return calls, problems, nil
 }
 
-func isTestLog(name string) bool {
-	return slices.Contains([]string{"Log", "Logf", "Error", "Errorf", "Fatal", "Fatalf"}, name)
+// printers are the testing.T calls that reach a person's terminal, and
+// whether the first argument is a format string.
+//
+// That distinction is the rule, not a detail. This gate skipped the
+// first argument of every call, because the f-variants put their format
+// string there — so `t.Fatal(err)` and `t.Error(err)` were read as a
+// format string and checked no further, and an error carrying a search
+// term or a space name went into the transcript with the gate green.
+// The eval harness has a dozen of them.
+var printers = map[string]bool{
+	"Log": false, "Logf": true,
+	"Error": false, "Errorf": true,
+	"Fatal": false, "Fatalf": true,
+	"Skip": false, "Skipf": true,
+}
+
+// beforeTheAccount are functions that run before the driver has spoken
+// to Google, so nothing they print came from an account. Keyed on the
+// function rather than on a line: this list was line numbers in the
+// copy of this gate that used to live in internal/livecheck, and adding
+// a struct field three lines above them moved both.
+var beforeTheAccount = map[string]bool{
+	"internal/livecheck/driver_test.go:binPath": true,
+	"internal/livecheck/driver_test.go:connect": true,
 }
 
 // isCount reports a call to the len builtin, which returns an int and
@@ -195,7 +237,15 @@ func isCount(e ast.Expr) bool {
 	return ok && id.Name == "len"
 }
 
+// isLiteral reports a literal, including several joined with +. A
+// message too long for one line is written as "part " + "part", which
+// is still a literal and says nothing about an account; a rule rather
+// than three allowlist entries, because the next long message would
+// need a fourth.
 func isLiteral(e ast.Expr) bool {
+	if bin, ok := e.(*ast.BinaryExpr); ok {
+		return bin.Op == token.ADD && isLiteral(bin.X) && isLiteral(bin.Y)
+	}
 	_, ok := e.(*ast.BasicLit)
 	return ok
 }
