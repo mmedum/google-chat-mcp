@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "2.0.0",
+  "version": "v2.2.0",
   "sdk": "v1.7.0",
   "tools": [
     {
@@ -1001,7 +1001,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Fetch a single message by its resource name (spaces/{space}/messages/{message}). Reaction summaries are inline; reactions_paged true means there were too many to inline and list_reactions has the detail. Attachments are listed with the name download_attachment takes.",
+      "description": "Fetch a single message by its resource name (spaces/{space}/messages/{message}). Reaction summaries are inline; reactions_paged true means there were too many to inline and list_reactions has the detail. Attachments are listed with the name download_attachment takes. links is what the text links to — a message whose body is a link names the target there and nowhere else — and formatted_text is the same body with Chat's markup left in. quote is the message this one replies to or forwards, as it read when it was quoted; a forward carries the whole snapshot, because the space it came from is often one you cannot read.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1067,6 +1067,13 @@
               "array"
             ]
           },
+          "formatted_text": {
+            "description": "the same body with Chat's markup left in — bold, italics, mentions and the URL behind a link — or null when the markup says nothing the plain text does not",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "last_update_time": {
             "description": "when it was last edited, or null when it never was",
             "format": "date-time",
@@ -1075,9 +1082,274 @@
               "string"
             ]
           },
+          "links": {
+            "description": "what the text links to; empty when it links to nothing",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor_length": {
+                  "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                  "type": "integer"
+                },
+                "anchor_start": {
+                  "description": "where in text the linked words start",
+                  "type": "integer"
+                },
+                "drive_file_id": {
+                  "description": "the linked Google Drive file's id, or null",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "link_type": {
+                  "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                  "type": "string"
+                },
+                "message_id": {
+                  "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "mime_type": {
+                  "description": "the linked Drive file's MIME type, or null",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "space_id": {
+                  "description": "the linked space, or null when the link does not point into Chat",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "thread_id": {
+                  "description": "the linked thread, or null",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "uri": {
+                  "description": "the link itself",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "link_type",
+                "uri",
+                "space_id",
+                "thread_id",
+                "message_id",
+                "drive_file_id",
+                "mime_type",
+                "anchor_start",
+                "anchor_length"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "message_id": {
             "description": "the message's resource name",
             "type": "string"
+          },
+          "quote": {
+            "additionalProperties": false,
+            "description": "the message this one quotes or forwards; null when it quotes nothing",
+            "properties": {
+              "attachments": {
+                "description": "the files on the quoted message, FORWARD only. download_attachment reads the message that owns a file, so fetching one means naming the quoted message and being able to read it",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attachment_name": {
+                      "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                      "type": "string"
+                    },
+                    "content_type": {
+                      "description": "the MIME type Google reported",
+                      "type": "string"
+                    },
+                    "downloadable": {
+                      "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                      "type": "boolean"
+                    },
+                    "drive_file_id": {
+                      "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "file_name": {
+                      "description": "the original file name",
+                      "type": "string"
+                    },
+                    "source": {
+                      "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "attachment_name",
+                    "file_name",
+                    "content_type",
+                    "source",
+                    "drive_file_id",
+                    "downloadable"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "formatted_text": {
+                "description": "the quoted body with Chat's markup left in, or null. FORWARD only, and the only place a markdown link in it appears: that is not an annotation, so links stays empty for one",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "last_update_time": {
+                "description": "when the quoted message was created, or last edited if it was; null when Google sent no timestamp",
+                "format": "date-time",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "links": {
+                "description": "what the quoted text links to. FORWARD only, so empty on a REPLY means Google did not say, not that there are none",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor_length": {
+                      "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                      "type": "integer"
+                    },
+                    "anchor_start": {
+                      "description": "where in text the linked words start",
+                      "type": "integer"
+                    },
+                    "drive_file_id": {
+                      "description": "the linked Google Drive file's id, or null",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "link_type": {
+                      "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "mime_type": {
+                      "description": "the linked Drive file's MIME type, or null",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "space_id": {
+                      "description": "the linked space, or null when the link does not point into Chat",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "thread_id": {
+                      "description": "the linked thread, or null",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "uri": {
+                      "description": "the link itself",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "link_type",
+                    "uri",
+                    "space_id",
+                    "thread_id",
+                    "message_id",
+                    "drive_file_id",
+                    "mime_type",
+                    "anchor_start",
+                    "anchor_length"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "message_id": {
+                "description": "the quoted message, spaces/{space}/messages/{message}. A reply quotes something in this space, so get_message reads the rest of it; a forward usually does not",
+                "type": "string"
+              },
+              "quote_type": {
+                "description": "Google's own word: REPLY or FORWARD. Empty means REPLY, which Google documents as its default",
+                "type": "string"
+              },
+              "sender": {
+                "description": "who wrote the quoted message, as a display name. Not a resource name: it identifies nobody and cannot be passed to another tool",
+                "type": "string"
+              },
+              "space_display_name": {
+                "description": "what that space was called when the message was forwarded, or null. For a direct message it is the other person",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "space_id": {
+                "description": "the space a forwarded message came from, or null. FORWARD only",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "text": {
+                "description": "the quoted body as it read when it was quoted, which is not necessarily what it says now. Empty also means Google sent no snapshot",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message_id",
+              "quote_type",
+              "sender",
+              "text",
+              "formatted_text",
+              "links",
+              "attachments",
+              "space_id",
+              "space_display_name",
+              "last_update_time"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
           },
           "reactions": {
             "description": "one entry per distinct emoji on the message",
@@ -1152,6 +1424,9 @@
           "sender_email",
           "sender_display_name",
           "text",
+          "formatted_text",
+          "links",
+          "quote",
           "timestamp",
           "last_update_time",
           "reactions",
@@ -1167,7 +1442,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is resolved through the People API and is null when that fails.",
+      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is resolved through the People API and is null when that fails. Each message carries links: what its text links to, which Chat keeps out of the body, so a message reading as a bare word may be a link to something. quote is what a message replies to or forwards, which Chat also keeps out of the body.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1209,9 +1484,274 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "links": {
+                  "description": "what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "anchor_length": {
+                        "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                        "type": "integer"
+                      },
+                      "anchor_start": {
+                        "description": "where in text the linked words start",
+                        "type": "integer"
+                      },
+                      "drive_file_id": {
+                        "description": "the linked Google Drive file's id, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "link_type": {
+                        "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                        "type": "string"
+                      },
+                      "message_id": {
+                        "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "mime_type": {
+                        "description": "the linked Drive file's MIME type, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "space_id": {
+                        "description": "the linked space, or null when the link does not point into Chat",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "thread_id": {
+                        "description": "the linked thread, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "uri": {
+                        "description": "the link itself",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "link_type",
+                      "uri",
+                      "space_id",
+                      "thread_id",
+                      "message_id",
+                      "drive_file_id",
+                      "mime_type",
+                      "anchor_start",
+                      "anchor_length"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
                 "message_id": {
                   "description": "the message's resource name, spaces/{space}/messages/{message}",
                   "type": "string"
+                },
+                "quote": {
+                  "additionalProperties": false,
+                  "description": "the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing",
+                  "properties": {
+                    "attachments": {
+                      "description": "the files on the quoted message, FORWARD only. download_attachment reads the message that owns a file, so fetching one means naming the quoted message and being able to read it",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attachment_name": {
+                            "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                            "type": "string"
+                          },
+                          "content_type": {
+                            "description": "the MIME type Google reported",
+                            "type": "string"
+                          },
+                          "downloadable": {
+                            "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                            "type": "boolean"
+                          },
+                          "drive_file_id": {
+                            "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "file_name": {
+                            "description": "the original file name",
+                            "type": "string"
+                          },
+                          "source": {
+                            "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "attachment_name",
+                          "file_name",
+                          "content_type",
+                          "source",
+                          "drive_file_id",
+                          "downloadable"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "formatted_text": {
+                      "description": "the quoted body with Chat's markup left in, or null. FORWARD only, and the only place a markdown link in it appears: that is not an annotation, so links stays empty for one",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "last_update_time": {
+                      "description": "when the quoted message was created, or last edited if it was; null when Google sent no timestamp",
+                      "format": "date-time",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "links": {
+                      "description": "what the quoted text links to. FORWARD only, so empty on a REPLY means Google did not say, not that there are none",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "anchor_length": {
+                            "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                            "type": "integer"
+                          },
+                          "anchor_start": {
+                            "description": "where in text the linked words start",
+                            "type": "integer"
+                          },
+                          "drive_file_id": {
+                            "description": "the linked Google Drive file's id, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "link_type": {
+                            "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "mime_type": {
+                            "description": "the linked Drive file's MIME type, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "space_id": {
+                            "description": "the linked space, or null when the link does not point into Chat",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "thread_id": {
+                            "description": "the linked thread, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "uri": {
+                            "description": "the link itself",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "link_type",
+                          "uri",
+                          "space_id",
+                          "thread_id",
+                          "message_id",
+                          "drive_file_id",
+                          "mime_type",
+                          "anchor_start",
+                          "anchor_length"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "message_id": {
+                      "description": "the quoted message, spaces/{space}/messages/{message}. A reply quotes something in this space, so get_message reads the rest of it; a forward usually does not",
+                      "type": "string"
+                    },
+                    "quote_type": {
+                      "description": "Google's own word: REPLY or FORWARD. Empty means REPLY, which Google documents as its default",
+                      "type": "string"
+                    },
+                    "sender": {
+                      "description": "who wrote the quoted message, as a display name. Not a resource name: it identifies nobody and cannot be passed to another tool",
+                      "type": "string"
+                    },
+                    "space_display_name": {
+                      "description": "what that space was called when the message was forwarded, or null. For a direct message it is the other person",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "space_id": {
+                      "description": "the space a forwarded message came from, or null. FORWARD only",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "text": {
+                      "description": "the quoted body as it read when it was quoted, which is not necessarily what it says now. Empty also means Google sent no snapshot",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message_id",
+                    "quote_type",
+                    "sender",
+                    "text",
+                    "formatted_text",
+                    "links",
+                    "attachments",
+                    "space_id",
+                    "space_display_name",
+                    "last_update_time"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
                 },
                 "sender_display_name": {
                   "description": "the sender's name, or null when Google gave none",
@@ -1252,7 +1792,9 @@
                 "sender_display_name",
                 "text",
                 "timestamp",
-                "thread_id"
+                "thread_id",
+                "links",
+                "quote"
               ],
               "type": "object"
             },
@@ -1505,7 +2047,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read one thread's messages, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; page with page_token and next_page_token. A non-null next_page_token means the thread is longer than what came back, so do not read the result as the whole thread.",
+      "description": "Read one thread's messages, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; page with page_token and next_page_token. A non-null next_page_token means the thread is longer than what came back, so do not read the result as the whole thread. Each message carries its links and what it quotes.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1548,9 +2090,274 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "links": {
+                  "description": "what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "anchor_length": {
+                        "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                        "type": "integer"
+                      },
+                      "anchor_start": {
+                        "description": "where in text the linked words start",
+                        "type": "integer"
+                      },
+                      "drive_file_id": {
+                        "description": "the linked Google Drive file's id, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "link_type": {
+                        "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                        "type": "string"
+                      },
+                      "message_id": {
+                        "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "mime_type": {
+                        "description": "the linked Drive file's MIME type, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "space_id": {
+                        "description": "the linked space, or null when the link does not point into Chat",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "thread_id": {
+                        "description": "the linked thread, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "uri": {
+                        "description": "the link itself",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "link_type",
+                      "uri",
+                      "space_id",
+                      "thread_id",
+                      "message_id",
+                      "drive_file_id",
+                      "mime_type",
+                      "anchor_start",
+                      "anchor_length"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
                 "message_id": {
                   "description": "the message's resource name, spaces/{space}/messages/{message}",
                   "type": "string"
+                },
+                "quote": {
+                  "additionalProperties": false,
+                  "description": "the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing",
+                  "properties": {
+                    "attachments": {
+                      "description": "the files on the quoted message, FORWARD only. download_attachment reads the message that owns a file, so fetching one means naming the quoted message and being able to read it",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attachment_name": {
+                            "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                            "type": "string"
+                          },
+                          "content_type": {
+                            "description": "the MIME type Google reported",
+                            "type": "string"
+                          },
+                          "downloadable": {
+                            "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                            "type": "boolean"
+                          },
+                          "drive_file_id": {
+                            "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "file_name": {
+                            "description": "the original file name",
+                            "type": "string"
+                          },
+                          "source": {
+                            "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "attachment_name",
+                          "file_name",
+                          "content_type",
+                          "source",
+                          "drive_file_id",
+                          "downloadable"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "formatted_text": {
+                      "description": "the quoted body with Chat's markup left in, or null. FORWARD only, and the only place a markdown link in it appears: that is not an annotation, so links stays empty for one",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "last_update_time": {
+                      "description": "when the quoted message was created, or last edited if it was; null when Google sent no timestamp",
+                      "format": "date-time",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "links": {
+                      "description": "what the quoted text links to. FORWARD only, so empty on a REPLY means Google did not say, not that there are none",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "anchor_length": {
+                            "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                            "type": "integer"
+                          },
+                          "anchor_start": {
+                            "description": "where in text the linked words start",
+                            "type": "integer"
+                          },
+                          "drive_file_id": {
+                            "description": "the linked Google Drive file's id, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "link_type": {
+                            "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "mime_type": {
+                            "description": "the linked Drive file's MIME type, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "space_id": {
+                            "description": "the linked space, or null when the link does not point into Chat",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "thread_id": {
+                            "description": "the linked thread, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "uri": {
+                            "description": "the link itself",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "link_type",
+                          "uri",
+                          "space_id",
+                          "thread_id",
+                          "message_id",
+                          "drive_file_id",
+                          "mime_type",
+                          "anchor_start",
+                          "anchor_length"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "message_id": {
+                      "description": "the quoted message, spaces/{space}/messages/{message}. A reply quotes something in this space, so get_message reads the rest of it; a forward usually does not",
+                      "type": "string"
+                    },
+                    "quote_type": {
+                      "description": "Google's own word: REPLY or FORWARD. Empty means REPLY, which Google documents as its default",
+                      "type": "string"
+                    },
+                    "sender": {
+                      "description": "who wrote the quoted message, as a display name. Not a resource name: it identifies nobody and cannot be passed to another tool",
+                      "type": "string"
+                    },
+                    "space_display_name": {
+                      "description": "what that space was called when the message was forwarded, or null. For a direct message it is the other person",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "space_id": {
+                      "description": "the space a forwarded message came from, or null. FORWARD only",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "text": {
+                      "description": "the quoted body as it read when it was quoted, which is not necessarily what it says now. Empty also means Google sent no snapshot",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message_id",
+                    "quote_type",
+                    "sender",
+                    "text",
+                    "formatted_text",
+                    "links",
+                    "attachments",
+                    "space_id",
+                    "space_display_name",
+                    "last_update_time"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
                 },
                 "sender_display_name": {
                   "description": "the sender's name, or null when Google gave none",
@@ -1591,7 +2398,9 @@
                 "sender_display_name",
                 "text",
                 "timestamp",
-                "thread_id"
+                "thread_id",
+                "links",
+                "quote"
               ],
               "type": "object"
             },
@@ -2871,7 +3680,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Search Google Chat message history. Two searches in one tool. Pass query and Google searches every space you can see, matching whole words; narrow it with space_id, sender_email, mentions_me, has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong.",
+      "description": "Search Google Chat message history. Two searches in one tool. Pass query and Google searches every space you can see, matching whole words; narrow it with space_id, sender_email, mentions_me, has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. Each hit carries its links and what it quotes.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2947,9 +3756,274 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "links": {
+                  "description": "what the message's text links to; empty when it links to nothing",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "anchor_length": {
+                        "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                        "type": "integer"
+                      },
+                      "anchor_start": {
+                        "description": "where in text the linked words start",
+                        "type": "integer"
+                      },
+                      "drive_file_id": {
+                        "description": "the linked Google Drive file's id, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "link_type": {
+                        "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                        "type": "string"
+                      },
+                      "message_id": {
+                        "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "mime_type": {
+                        "description": "the linked Drive file's MIME type, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "space_id": {
+                        "description": "the linked space, or null when the link does not point into Chat",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "thread_id": {
+                        "description": "the linked thread, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "uri": {
+                        "description": "the link itself",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "link_type",
+                      "uri",
+                      "space_id",
+                      "thread_id",
+                      "message_id",
+                      "drive_file_id",
+                      "mime_type",
+                      "anchor_start",
+                      "anchor_length"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
                 "message_id": {
                   "description": "the message's resource name",
                   "type": "string"
+                },
+                "quote": {
+                  "additionalProperties": false,
+                  "description": "the message this hit quotes or forwards; null when it quotes nothing",
+                  "properties": {
+                    "attachments": {
+                      "description": "the files on the quoted message, FORWARD only. download_attachment reads the message that owns a file, so fetching one means naming the quoted message and being able to read it",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attachment_name": {
+                            "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                            "type": "string"
+                          },
+                          "content_type": {
+                            "description": "the MIME type Google reported",
+                            "type": "string"
+                          },
+                          "downloadable": {
+                            "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                            "type": "boolean"
+                          },
+                          "drive_file_id": {
+                            "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "file_name": {
+                            "description": "the original file name",
+                            "type": "string"
+                          },
+                          "source": {
+                            "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "attachment_name",
+                          "file_name",
+                          "content_type",
+                          "source",
+                          "drive_file_id",
+                          "downloadable"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "formatted_text": {
+                      "description": "the quoted body with Chat's markup left in, or null. FORWARD only, and the only place a markdown link in it appears: that is not an annotation, so links stays empty for one",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "last_update_time": {
+                      "description": "when the quoted message was created, or last edited if it was; null when Google sent no timestamp",
+                      "format": "date-time",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "links": {
+                      "description": "what the quoted text links to. FORWARD only, so empty on a REPLY means Google did not say, not that there are none",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "anchor_length": {
+                            "description": "how many characters of text it covers, which says which words go where when there are several. Zero for a chip shown beside the message",
+                            "type": "integer"
+                          },
+                          "anchor_start": {
+                            "description": "where in text the linked words start",
+                            "type": "integer"
+                          },
+                          "drive_file_id": {
+                            "description": "the linked Google Drive file's id, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "link_type": {
+                            "description": "Google's own word: CHAT_SPACE, DRIVE_FILE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. One message is CHAT_SPACE with message_id set",
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "description": "the linked message; pass it to get_message. Null when the link names a space rather than one message",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "mime_type": {
+                            "description": "the linked Drive file's MIME type, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "space_id": {
+                            "description": "the linked space, or null when the link does not point into Chat",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "thread_id": {
+                            "description": "the linked thread, or null",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "uri": {
+                            "description": "the link itself",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "link_type",
+                          "uri",
+                          "space_id",
+                          "thread_id",
+                          "message_id",
+                          "drive_file_id",
+                          "mime_type",
+                          "anchor_start",
+                          "anchor_length"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "message_id": {
+                      "description": "the quoted message, spaces/{space}/messages/{message}. A reply quotes something in this space, so get_message reads the rest of it; a forward usually does not",
+                      "type": "string"
+                    },
+                    "quote_type": {
+                      "description": "Google's own word: REPLY or FORWARD. Empty means REPLY, which Google documents as its default",
+                      "type": "string"
+                    },
+                    "sender": {
+                      "description": "who wrote the quoted message, as a display name. Not a resource name: it identifies nobody and cannot be passed to another tool",
+                      "type": "string"
+                    },
+                    "space_display_name": {
+                      "description": "what that space was called when the message was forwarded, or null. For a direct message it is the other person",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "space_id": {
+                      "description": "the space a forwarded message came from, or null. FORWARD only",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "text": {
+                      "description": "the quoted body as it read when it was quoted, which is not necessarily what it says now. Empty also means Google sent no snapshot",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message_id",
+                    "quote_type",
+                    "sender",
+                    "text",
+                    "formatted_text",
+                    "links",
+                    "attachments",
+                    "space_id",
+                    "space_display_name",
+                    "last_update_time"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
                 },
                 "sender_user_id": {
                   "description": "who sent it, users/{id}",
@@ -2979,7 +4053,9 @@
                 "sender_user_id",
                 "text",
                 "timestamp",
-                "snippet"
+                "snippet",
+                "links",
+                "quote"
               ],
               "type": "object"
             },
