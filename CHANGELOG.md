@@ -11,6 +11,23 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- The bundle packer refuses a manifest whose `$schema` names one format
+  version and whose `manifest_version` declares another.
+
+  The two halves of that URL say different things: the ref pins the bytes
+  — already held to a tag — and the file name pins what those bytes
+  describe. Nothing compared the second with the manifest's own
+  declaration. The manifest is validated against a vendored copy of the
+  schema, and that copy pins `manifest_version` with a `const`, so the
+  manifest cannot drift from the copy; it could drift from its own URL,
+  because nothing asks the copy where it came from.
+
+  Found by the Pipedrive server, which makes this claim directly and was
+  asked whether it had the two defects found here. It had neither, and
+  had one this repository was missing.
+
 ## [2.2.0] - 2026-09-18
 
 ### Changed

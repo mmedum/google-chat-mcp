@@ -44,6 +44,11 @@ import (
 // conformed to.
 var schemaRef = regexp.MustCompile(`^https://raw\.githubusercontent\.com/anthropics/mcpb/v\d+\.\d+\.\d+/schemas/`)
 
+// schemaFormat is the format version in the schema's file name, which is
+// the other half of what a $schema URL says: the ref pins the bytes, and
+// this pins what those bytes describe.
+var schemaFormat = regexp.MustCompile(`/schemas/mcpb-manifest-v(\d+\.\d+)\.schema\.json$`)
+
 // schemaRefProblem reports a $schema that is missing or floating.
 func schemaRefProblem(m bundleManifest) string {
 	switch {
@@ -52,6 +57,25 @@ func schemaRefProblem(m bundleManifest) string {
 	case !schemaRef.MatchString(m.Schema):
 		return fmt.Sprintf("$schema is %q, which does not name anthropics/mcpb at a tag: "+
 			"a branch ref can be amended under a document that claims to conform to it", m.Schema)
+	}
+
+	// The two halves have to agree. A manifest validates against the
+	// vendored copy of the schema, and that copy pins manifest_version
+	// with a const — so the manifest cannot drift from the copy. It can
+	// drift from its own URL: point $schema at v0.4 while declaring 0.3
+	// and every other check here still passes, because nothing asks the
+	// copy about the URL it came from. The Pipedrive server checks this
+	// directly, and it is the claim this gate was missing.
+	format := schemaFormat.FindStringSubmatch(m.Schema)
+	switch {
+	case format == nil:
+		return fmt.Sprintf("$schema is %q, which does not name a manifest schema file: "+
+			"the version it describes cannot be read from it", m.Schema)
+	case m.ManifestVersion == "":
+		return "the manifest declares no manifest_version, so nothing says which format it is"
+	case format[1] != m.ManifestVersion:
+		return fmt.Sprintf("$schema names the %s schema and manifest_version is %q: "+
+			"the document claims to be one format and points at another", format[1], m.ManifestVersion)
 	}
 	return ""
 }
@@ -390,11 +414,12 @@ func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
 
 // bundleManifest is the part of the manifest these gates read.
 type bundleManifest struct {
-	Schema      string `json:"$schema"`
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	Server      struct {
+	Schema          string `json:"$schema"`
+	ManifestVersion string `json:"manifest_version"`
+	Name            string `json:"name"`
+	Version         string `json:"version"`
+	Description     string `json:"description"`
+	Server          struct {
 		Type       string `json:"type"`
 		EntryPoint string `json:"entry_point"`
 		MCPConfig  struct {

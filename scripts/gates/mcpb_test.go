@@ -579,40 +579,66 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 // against the tree; this one holds it against a fixed thing upstream.
 func TestSchemaRefMustNameATag(t *testing.T) {
 	const base = "https://raw.githubusercontent.com/anthropics/mcpb/"
+	const file = "/schemas/mcpb-manifest-v0.3.schema.json"
 	for _, tc := range []struct {
-		name, schema, want string
+		name, schema, version, want string
 	}{
 		{
-			name:   "a tag",
-			schema: base + "v2.1.2/schemas/mcpb-manifest-v0.3.schema.json",
+			name:    "a tag, naming the format the manifest declares",
+			schema:  base + "v2.1.2" + file,
+			version: "0.3",
 		},
 		{
-			name:   "a branch",
-			schema: base + "main/schemas/mcpb-manifest-v0.3.schema.json",
-			want:   "does not name anthropics/mcpb at a tag",
+			name:    "a branch",
+			schema:  base + "main" + file,
+			version: "0.3",
+			want:    "does not name anthropics/mcpb at a tag",
 		},
 		{
-			name:   "a partial tag, which is a moving target too",
-			schema: base + "v2.1/schemas/mcpb-manifest-v0.3.schema.json",
-			want:   "does not name anthropics/mcpb at a tag",
+			name:    "a partial tag, which is a moving target too",
+			schema:  base + "v2.1" + file,
+			version: "0.3",
+			want:    "does not name anthropics/mcpb at a tag",
 		},
 		{
-			name:   "somewhere else entirely",
-			schema: "https://example.com/mcpb-manifest-v0.3.schema.json",
-			want:   "does not name anthropics/mcpb at a tag",
+			name:    "somewhere else entirely",
+			schema:  "https://example.com/mcpb-manifest-v0.3.schema.json",
+			version: "0.3",
+			want:    "does not name anthropics/mcpb at a tag",
 		},
 		{
 			name: "no schema at all",
 			want: "names no $schema",
 		},
+		{
+			// The claim the vendored copy cannot make: it pins
+			// manifest_version by const, so the manifest cannot drift
+			// from the copy — but nothing asks the copy about the URL.
+			name:    "a schema for one format, a manifest declaring another",
+			schema:  base + "v2.1.2/schemas/mcpb-manifest-v0.4.schema.json",
+			version: "0.3",
+			want:    "claims to be one format and points at another",
+		},
+		{
+			name:   "a tagged ref with no manifest_version beside it",
+			schema: base + "v2.1.2" + file,
+			want:   "declares no manifest_version",
+		},
+		{
+			name:    "a tagged ref that names no schema file",
+			schema:  base + "v2.1.2/schemas/something-else.json",
+			version: "0.3",
+			want:    "does not name a manifest schema file",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var m bundleManifest
 			m.Schema = tc.schema
+			m.ManifestVersion = tc.version
 			got := schemaRefProblem(m)
 			if tc.want == "" {
 				if got != "" {
-					t.Errorf("a tagged ref was refused: %s", got)
+					t.Errorf("a good $schema was refused: %s", got)
 				}
 				return
 			}
