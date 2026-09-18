@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-18
+
 ### Changed
 
 - The MCP registry entry is published from its own workflow, with
@@ -88,6 +90,16 @@ upgrading are marked **Breaking:** and say what to do.
   calendar server hitting the same thing and saying so.
 
 ### Fixed
+- The registry entry is not built from an unverified checksum file.
+  `publish-mcp.yml` downloaded the published `checksums.txt` and fed it
+  to the gate that writes the entry, whose `fileSha256` comes out of that
+  file — the number a registry-driven client checks its download against.
+  The only `cosign verify-blob` in the job covered the `mcp-publisher`
+  tarball. Somebody able to replace a release asset could edit
+  `checksums.txt` beside it, and the dispatch path would copy their
+  digest into a registry that cannot take an entry back. The signature is
+  verified before the file is read, with the certificate identity pinned
+  to this repository's `release.yml` at the exact tag.
 - A reply now says what it is replying to. Chat keeps a quote out of the
   message body the same way it keeps a link out: `quotedMessageMetadata`
   was decoded and dropped, so a reply came back indistinguishable from a
@@ -506,7 +518,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.6...v2.1.0
 [2.0.6]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/mmedum/google-chat-mcp/compare/v2.0.4...v2.0.5
