@@ -182,6 +182,28 @@ To rehearse the build without publishing anything: `make
 release-rehearse`. It needs nothing but the Go toolchain: the target
 pins goreleaser, and `scripts/gates` packs the bundle.
 
+### Checking that the release verified
+
+Signing, attestation and the registry entry are the three steps no
+rehearsal reaches: each needs an OIDC token only a workflow run has. So
+they are checked after the tag, from outside, against the published
+artefacts rather than the build's own copies.
+
+Check the attestation against a deliberately corrupted copy as well as
+the genuine bundle. A check that passes on anything is not a check, and
+this is the one place that distinction is cheap to buy.
+
+Three ways the checking misreads itself, each of which cost a sibling
+server real time on its first tag:
+
+- `gh attestation verify` prints nothing at all when it succeeds. An
+  empty log is a pass, not a silent failure.
+- `$?` after a pipe is the pipe's last command, not `gh`. Capture the
+  exit code without piping, or a broken measurement reads as a broken
+  attestation.
+- Do not truncate `checksums.txt` while looking for the bundle. It sorts
+  first among the rows, so `tail` hides exactly what you came to find.
+
 The staleness gate accepts a release commit: it wants the changes since
 the last tag written down either under `[Unreleased]` or under the
 heading for the version being cut. Requiring `[Unreleased]` would fail
