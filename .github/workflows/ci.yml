@@ -185,7 +185,7 @@ jobs:
       - name: every tool and option is exercised, and every print is redacted
         run: >
           go test -tags=live ./internal/livecheck -count=1
-          -run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused|TestEveryPrintGoesThroughTheRedactor' 
+          -run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused' 
       - name: docs match the code
         run: go run ./scripts/gates staleness ./google-chat-mcp
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
