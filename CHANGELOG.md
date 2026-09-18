@@ -13,6 +13,22 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
+- The transcript gate reads every argument of an unformatted print. It
+  skipped the first argument of every call, because `Logf` and its
+  siblings put a format string there — so `t.Fatal(err)` and
+  `t.Error(out.Text)` were read as a format string and checked no
+  further. The eval harness has a dozen calls in that shape. `Skip` and
+  `Skipf` are in the printer set now too, which is how a task's skip
+  reason reaches a terminal.
+
+  The rule also lived in two places, `scripts/gates/transcript.go` and a
+  copy inside the live suite, which had drifted: one blessed an
+  expression, the other any field of that name, and each new exemption
+  went to whichever file the person was looking at. There is one now,
+  under `scripts/` with the other gates, and it has the tests the copy
+  had — including that the functions its exemption list names still
+  exist.
+
 - The bundle packer refuses a manifest whose `$schema` names one format
   version and whose `manifest_version` declares another.
 
