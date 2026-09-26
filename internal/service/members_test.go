@@ -502,3 +502,54 @@ func TestGetMemberNamesWhatItIs(t *testing.T) {
 		t.Errorf("member = %+v", got)
 	}
 }
+
+// Chat names a member's address itself, external people included, and
+// the People API cannot see outside the caller's organization. So a
+// member Chat named is never looked up, and only the one it left empty
+// is.
+func TestListMembersPrefersTheAddressChatSent(t *testing.T) {
+	page := `{"memberships":[
+	  {"name":"spaces/AAAAspace1/members/AAAAmember1","state":"JOINED","member":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"}},
+	  {"name":"spaces/AAAAspace1/members/AAAAmember2","state":"JOINED","member":{"name":"users/AAAAuser2","displayName":"John Doe","type":"HUMAN"}}
+	]}`
+	var asked []string
+	lookup := people("john.doe@example.com", "John D.")
+	s := newService(t, route(ok(page), func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Query()["resourceNames"]...)
+		lookup(w, r)
+	}))
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/AAAAspace1"})
+	if err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	got := res.Members
+	if got[0].Email != "jane.doe@example.com" || got[0].DisplayName != "Jane Doe" {
+		t.Errorf("first = %+v, want what Chat sent", got[0])
+	}
+	if got[1].Email != "john.doe@example.com" {
+		t.Errorf("second = %+v, want the directory's answer", got[1])
+	}
+	if len(asked) != 1 || asked[0] != "people/AAAAuser2" {
+		t.Errorf("People was asked about %v, want only the member Chat left empty", asked)
+	}
+}
+
+func TestGetMemberPrefersTheAddressChatSent(t *testing.T) {
+	var peopleCalls int
+	s := newService(t, route(ok(`{"name":"spaces/AAAAspace1/members/AAAAmember1","state":"JOINED",
+	  "member":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"}}`),
+		func(w http.ResponseWriter, r *http.Request) {
+			peopleCalls++
+			nobody()(w, r)
+		}))
+	got, err := s.GetMember(context.Background(), "spaces/AAAAspace1/members/AAAAmember1")
+	if err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if got.Email != "jane.doe@example.com" {
+		t.Errorf("email = %q, want the one Chat sent", got.Email)
+	}
+	if peopleCalls != 0 {
+		t.Errorf("People was called %d times, want none", peopleCalls)
+	}
+}

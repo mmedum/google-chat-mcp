@@ -11,9 +11,9 @@ import (
 
 // MessageOutput is one message in a listing.
 //
-// sender_email and sender_display_name are null when the People API
-// could not say who the sender is, which is normal for someone outside
-// the caller's organization. The message is still here: an enrichment
+// sender_email and sender_display_name are null when neither Chat nor
+// the People API said who the sender is, which is normal for an app or
+// for an account that is gone. The message is still here: an enrichment
 // failure never costs a row.
 type MessageOutput struct {
 	MessageID         string              `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
@@ -172,8 +172,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Description: "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest " +
 			"first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an " +
 			"EMPTY result with a token still on it does not mean the space is empty, because Google applies the " +
-			"page size before it filters. Sender email is resolved through the People API and is null when that " +
-			"fails. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
+			"page size before it filters. Sender email is the one Chat sends, or a People API lookup when " +
+			"Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
 			"message reading as a bare word may be a link to something. quote is what a message replies to or " +
 			"forwards, which Chat also keeps out of the body.",
 		Kind: Read,

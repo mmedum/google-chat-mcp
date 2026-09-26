@@ -260,9 +260,9 @@ func (s *Service) removeReactionByPerson(ctx context.Context, in RemoveReactionI
 		return &RemoveReactionResult{}, nil
 	}
 
-	users := make([]string, 0, len(listed.Reactions))
+	users := make([]*gchat.User, 0, len(listed.Reactions))
 	for _, r := range listed.Reactions {
-		users = append(users, userOf(r.User))
+		users = append(users, r.User)
 	}
 	people := s.resolvePeople(ctx, users)
 
