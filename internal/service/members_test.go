@@ -553,3 +553,113 @@ func TestGetMemberPrefersTheAddressChatSent(t *testing.T) {
 		t.Errorf("People was called %d times, want none", peopleCalls)
 	}
 }
+
+// Google's reference says a user-auth sender carries only a name and a
+// type, so Chat may send an address with no display name. The name is
+// then asked of People, and Chat's address is kept.
+func TestAnAddressWithoutANameStillAsksPeopleForTheName(t *testing.T) {
+	page := `{"memberships":[
+	  {"name":"spaces/AAAAspace1/members/AAAAmember1","state":"JOINED","member":{"name":"users/AAAAuser1","type":"HUMAN","email":"jane.doe@example.com"}}
+	]}`
+	var asked []string
+	lookup := people("someone.else@example.com", "Jane D.")
+	s := newService(t, route(ok(page), func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Query()["resourceNames"]...)
+		lookup(w, r)
+	}))
+	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/AAAAspace1"})
+	if err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	got := res.Members[0]
+	if got.Email != "jane.doe@example.com" || got.DisplayName != "Jane D." {
+		t.Errorf("member = %+v, want Chat's address and People's name", got)
+	}
+	if len(asked) != 1 || asked[0] != "people/AAAAuser1" {
+		t.Errorf("People was asked about %v, want the member with no name", asked)
+	}
+}
+
+// A person seen with an address on one row and without on another is
+// already known, so People is not asked about them.
+func TestAUserChatNamedOnceIsNotLookedUp(t *testing.T) {
+	page := `{"messages":[
+	  {"name":"spaces/AAAAspace1/messages/AAAAmsg1","sender":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN"},"text":"first"},
+	  {"name":"spaces/AAAAspace1/messages/AAAAmsg2","sender":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"},"text":"second"}
+	]}`
+	var peopleCalls int
+	s := newService(t, route(ok(page), func(w http.ResponseWriter, r *http.Request) {
+		peopleCalls++
+		nobody()(w, r)
+	}))
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/AAAAspace1"})
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	for _, m := range res.Messages {
+		if m.SenderEmail != "jane.doe@example.com" {
+			t.Errorf("%s: email = %q, want the one Chat named on the other row", m.Name, m.SenderEmail)
+		}
+	}
+	if peopleCalls != 0 {
+		t.Errorf("People was called %d times, want none", peopleCalls)
+	}
+}
+
+// Chat names an external person's address on a membership but not on a
+// reaction, and People cannot see them. What a listing learned is what
+// lets remove_reaction match them by address.
+func TestAnAddressChatNamedIsRememberedForAReaction(t *testing.T) {
+	members := `{"memberships":[
+	  {"name":"spaces/AAAAspace1/members/AAAAmember9","state":"JOINED","member":{"name":"users/AAAAuser9","displayName":"John Doe","type":"HUMAN","email":"john.doe@example.org"}}
+	]}`
+	reactions := `{"reactions":[{"name":"spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreaction1","emoji":{"unicode":"👍"},"user":{"name":"users/AAAAuser9"}}]}`
+	var deleted string
+	s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete:
+			deleted = r.URL.Path
+			fmt.Fprint(w, `{}`)
+		case strings.Contains(r.URL.Path, "/reactions"):
+			fmt.Fprint(w, reactions)
+		default:
+			fmt.Fprint(w, members)
+		}
+	}, nobody()))
+
+	if _, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/AAAAspace1"}); err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	got, err := s.RemoveReaction(context.Background(), RemoveReactionInput{
+		Message: "spaces/AAAAspace1/messages/AAAAmsg1", Emoji: "👍", Email: "john.doe@example.org",
+	})
+	if err != nil {
+		t.Fatalf("RemoveReaction: %v", err)
+	}
+	if !got.Removed || !strings.HasSuffix(deleted, "/reactions/AAAAreaction1") {
+		t.Errorf("result = %+v, deleted %q; want the reaction of the member the listing named", got, deleted)
+	}
+}
+
+// member_id is who the membership is for, the way list_members reports
+// it, never the membership's own name.
+func TestGetMemberReportsWhoTheMembershipIsFor(t *testing.T) {
+	for _, tc := range []struct {
+		body, want string
+	}{
+		{`{"name":"spaces/AAAAspace1/members/AAAAmember1","member":{"name":"users/AAAAuser1","type":"HUMAN"}}`, "users/AAAAuser1"},
+		{`{"name":"spaces/AAAAspace1/members/AAAAmember2","groupMember":{"name":"groups/AAAAgroup1"}}`, "groups/AAAAgroup1"},
+	} {
+		s := newService(t, route(ok(tc.body), nobody()))
+		got, err := s.GetMember(context.Background(), "spaces/AAAAspace1/members/AAAAmember1")
+		if err != nil {
+			t.Fatalf("GetMember: %v", err)
+		}
+		if got.Name != tc.want {
+			t.Errorf("member id = %q, want %q", got.Name, tc.want)
+		}
+		if !strings.HasPrefix(got.Membership, "spaces/AAAAspace1/members/") {
+			t.Errorf("membership = %q, want the membership's own name", got.Membership)
+		}
+	}
+}

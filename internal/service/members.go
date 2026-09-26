@@ -49,8 +49,9 @@ type Member struct {
 	Membership  string
 	Name        string
 	DisplayName string
-	// Email is empty for a group, and for a person the People API
-	// could not resolve.
+	// Email is the address Chat sent, or the People API's when Chat
+	// sent none. It is empty for a group and for a person neither
+	// named.
 	Email string
 	Role  string
 	State string
@@ -189,26 +190,28 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 	}
 	row := Member{
 		Membership:  got.Name,
-		Name:        got.Name,
 		Role:        narrowEnum(got.Role, memberRoles, "ROLE_UNSPECIFIED"),
 		State:       narrowEnum(got.State, memberStates, "MEMBERSHIP_STATE_UNSPECIFIED"),
 		Affiliation: narrowEnum(got.Affiliation, affiliations, ""),
 	}
 	switch {
 	case got.Member != nil:
+		// Name is who the membership is for, users/{id}, the way a
+		// listing reports it. It was the membership's own name, which
+		// the row already carries.
 		row.Kind = KindHuman
-		row.DisplayName = got.Member.DisplayName
+		row.Name = got.Member.Name
 		// One lookup, and a failure costs the address and nothing
 		// else, which is the rule everywhere a person is resolved.
-		if people := s.resolvePeople(ctx, []*gchat.User{got.Member}); len(people) > 0 {
-			row.Email = people[got.Member.Name].Email
-			if row.DisplayName == "" {
-				row.DisplayName = people[got.Member.Name].DisplayName
-			}
+		person := s.resolvePeople(ctx, []*gchat.User{got.Member})[got.Member.Name]
+		row.Email = person.Email
+		row.DisplayName = person.DisplayName
+		if row.DisplayName == "" {
+			row.DisplayName = got.Member.DisplayName
 		}
 	case got.GroupMember != nil:
 		row.Kind = KindGroup
-		row.Name = got.Name
+		row.Name = got.GroupMember.Name
 		row.DisplayName = got.GroupMember.Name
 	}
 	return &row, nil

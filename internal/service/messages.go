@@ -20,9 +20,10 @@ const (
 
 // MessageRow is one message in a listing.
 //
-// SenderEmail is empty when the People API could not say who the sender
-// is, which is normal for someone outside the caller's organization. It
-// is never a reason to leave the message out.
+// SenderEmail is the address Chat sent, or the People API's when Chat
+// sent none. It is empty when neither named one, which is normal for an
+// app or an account that is gone. It is never a reason to leave the
+// message out.
 type MessageRow struct {
 	Name              string
 	SenderUserID      string

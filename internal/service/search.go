@@ -64,8 +64,11 @@ type SearchMatch struct {
 	Name         string
 	ThreadName   string
 	SenderUserID string
-	Text         string
-	CreateTime   time.Time
+	// SenderEmail is the address Chat named for the sender, and empty
+	// when it named none. A search looks nobody up in People.
+	SenderEmail string
+	Text        string
+	CreateTime  time.Time
 	// Snippet is the text around the first match, so a caller can see
 	// why the message matched without reading all of it.
 	Snippet string
@@ -98,6 +101,7 @@ func searchMatch(m gchat.Message, at int) SearchMatch {
 	}
 	if m.Sender != nil {
 		match.SenderUserID = m.Sender.Name
+		match.SenderEmail = m.Sender.Email
 	}
 	return match
 }

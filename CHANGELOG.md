@@ -11,6 +11,12 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `search_messages` matches carry `sender_email` when Chat names the
+  sender's address. It is null otherwise: a search does not look anyone
+  up in the People API.
+
 ### Changed
 
 - Sender and member email addresses come from Chat itself, which names
@@ -18,6 +24,22 @@ upgrading are marked **Breaking:** and say what to do.
   when Chat sends no address, so external members and senders now come
   back with an email instead of null, and a listing costs fewer People
   requests. Output fields are unchanged.
+- When Chat names a person's address, the display name Chat sends with
+  it is used, not the People profile name. Before, the People name won.
+  A display name can change for the same person, such as "Jane Doe"
+  where "Jane D." was reported before. The People name still wins for
+  someone Chat sends no address for.
+- Addresses Chat names are remembered in the directory cache, so
+  `remove_reaction` by `user_email` can match someone outside your
+  organization this server has already seen in a listing.
+
+### Fixed
+
+- `get_member` reports `member_id` as `users/{id}` for a person and
+  `groups/{id}` for a group, as the schema says and `list_members` does.
+  It was the membership's own name, `spaces/{space}/members/{member}`.
+  Its `display_name` for a person now follows the `list_members` rule
+  too.
 
 ## [2.2.2] - 2026-09-26
 
