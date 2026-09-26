@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
 	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
 )
 
@@ -120,26 +121,8 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 	out := make([]Member, 0, len(resp.Memberships))
 	var unparsed int
 	for _, m := range resp.Memberships {
-		row := Member{
-			Membership:  m.Name,
-			Role:        narrowEnum(m.Role, memberRoles, "ROLE_UNSPECIFIED"),
-			State:       narrowEnum(m.State, memberStates, "MEMBERSHIP_STATE_UNSPECIFIED"),
-			Affiliation: narrowEnum(m.Affiliation, affiliations, ""),
-		}
-		switch {
-		case m.Member != nil:
-			person := people[m.Member.Name]
-			row.Kind = KindHuman
-			row.Name = m.Member.Name
-			row.Email = person.Email
-			row.DisplayName = person.DisplayName
-			if row.DisplayName == "" {
-				row.DisplayName = m.Member.DisplayName
-			}
-		case m.GroupMember != nil:
-			row.Kind = KindGroup
-			row.Name = m.GroupMember.Name
-		default:
+		row, known := memberRow(m, people)
+		if !known {
 			// Neither a person nor a group: Google has added a third
 			// kind of member. Dropping the row is the only honest
 			// answer, but a short list reads as a small space, so the
@@ -188,33 +171,38 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 	if err != nil {
 		return nil, Classify(err)
 	}
-	row := Member{
-		Membership:  got.Name,
-		Role:        narrowEnum(got.Role, memberRoles, "ROLE_UNSPECIFIED"),
-		State:       narrowEnum(got.State, memberStates, "MEMBERSHIP_STATE_UNSPECIFIED"),
-		Affiliation: narrowEnum(got.Affiliation, affiliations, ""),
+	// One lookup, and a failure costs the address and nothing else,
+	// which is the rule everywhere a person is resolved.
+	row, _ := memberRow(*got, s.resolvePeople(ctx, []*gchat.User{got.Member}))
+	return &row, nil
+}
+
+// memberRow is one membership as the member tools report it, so
+// list_members and get_member cannot drift apart. Name is who the
+// membership is for, users/{id} or groups/{id}, not the membership's
+// own name, which the row carries separately. known is false for a
+// kind of member this server does not recognize.
+func memberRow(m gchat.Membership, people map[string]directory.Person) (row Member, known bool) {
+	row = Member{
+		Membership:  m.Name,
+		Role:        narrowEnum(m.Role, memberRoles, "ROLE_UNSPECIFIED"),
+		State:       narrowEnum(m.State, memberStates, "MEMBERSHIP_STATE_UNSPECIFIED"),
+		Affiliation: narrowEnum(m.Affiliation, affiliations, ""),
 	}
 	switch {
-	case got.Member != nil:
-		// Name is who the membership is for, users/{id}, the way a
-		// listing reports it. It was the membership's own name, which
-		// the row already carries.
+	case m.Member != nil:
+		person := people[m.Member.Name]
 		row.Kind = KindHuman
-		row.Name = got.Member.Name
-		// One lookup, and a failure costs the address and nothing
-		// else, which is the rule everywhere a person is resolved.
-		person := s.resolvePeople(ctx, []*gchat.User{got.Member})[got.Member.Name]
+		row.Name = m.Member.Name
 		row.Email = person.Email
 		row.DisplayName = person.DisplayName
-		if row.DisplayName == "" {
-			row.DisplayName = got.Member.DisplayName
-		}
-	case got.GroupMember != nil:
+	case m.GroupMember != nil:
 		row.Kind = KindGroup
-		row.Name = got.GroupMember.Name
-		row.DisplayName = got.GroupMember.Name
+		row.Name = m.GroupMember.Name
+	default:
+		return row, false
 	}
-	return &row, nil
+	return row, true
 }
 
 // UpdateMemberRoleInput names a membership and the role it should hold.

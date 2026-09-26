@@ -31,15 +31,16 @@ upgrading are marked **Breaking:** and say what to do.
   someone Chat sends no address for.
 - Addresses Chat names are remembered in the directory cache, so
   `remove_reaction` by `user_email` can match someone outside your
-  organization this server has already seen in a listing.
+  organization this server has already seen in a listing. A search does
+  not add to the cache.
 
 ### Fixed
 
 - `get_member` reports `member_id` as `users/{id}` for a person and
   `groups/{id}` for a group, as the schema says and `list_members` does.
   It was the membership's own name, `spaces/{space}/members/{member}`.
-  Its `display_name` for a person now follows the `list_members` rule
-  too.
+  Its `display_name` follows the `list_members` rule too: for a group
+  it is empty, not a repeat of `member_id`.
 
 ## [2.2.2] - 2026-09-26
 

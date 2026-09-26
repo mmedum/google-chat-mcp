@@ -505,9 +505,6 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			row.SenderUserID = m.Sender.Name
 			row.SenderEmail = person.Email
 			row.SenderDisplayName = person.DisplayName
-			if row.SenderDisplayName == "" {
-				row.SenderDisplayName = m.Sender.DisplayName
-			}
 		}
 		rows = append(rows, row)
 	}
