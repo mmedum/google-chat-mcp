@@ -83,7 +83,7 @@ api-coverage: ## Every API method used on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-coverage
 
 .PHONY: api-fields
-api-fields: ## Every published field modelled on purpose or left out on purpose
+api-fields: ## Every published field modeled on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-fields
 
 # Not part of check: it fetches Google's discovery documents, and a gate

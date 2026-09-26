@@ -128,7 +128,7 @@ func TestAStalledTransferIsCut(t *testing.T) {
 }
 
 // No headers inside the timeout is its own failure, and the message
-// says so rather than reporting a cancelled context.
+// says so rather than reporting a canceled context.
 func TestATransferWithNoAnswerSaysSo(t *testing.T) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {

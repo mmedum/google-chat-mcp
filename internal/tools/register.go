@@ -205,7 +205,7 @@ func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refus
 //
 // Finding it by reflection rather than asking each tool to declare it
 // is the point: a tool that offers dry_run cannot also have to remember
-// to honour it. The flag puts the call on a context internal/gchat
+// to honor it. The flag puts the call on a context internal/gchat
 // refuses to write under, so a handler that forgets its own preview
 // branch fails loudly instead of posting.
 func dryRunField[In any]() int {

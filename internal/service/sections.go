@@ -23,7 +23,7 @@ var sectionTypes = []string{
 }
 
 // systemSectionLabels name the sections Google creates. It gives them
-// no display name of their own, and a parenthesised label is what keeps
+// no display name of their own, and a parenthesized label is what keeps
 // a custom section called "Spaces" apart from the system one.
 var systemSectionLabels = map[string]string{
 	"DEFAULT_DIRECT_MESSAGES": "(direct messages)",
@@ -497,7 +497,7 @@ func (s *Service) locateSectionItem(ctx context.Context, space string) (string, 
 	}
 	item := listed.SectionItems[0]
 	// This path trusts a server-side filter and what follows is a
-	// write. If Google ever stops honouring that filter the first row
+	// write. If Google ever stops honoring that filter the first row
 	// back is an arbitrary space, and this would move it.
 	if item.Space != space {
 		return "", Failf(ClassUpstream,

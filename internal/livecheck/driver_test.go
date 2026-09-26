@@ -6,7 +6,7 @@
 // It is not the stdio smoke test, which speaks the protocol with no
 // credentials, and it is not the evals, which score a model. This runs
 // the server's own tools against the live API and asserts the server's
-// behaviour — the only thing in this repository that can catch the class
+// behavior — the only thing in this repository that can catch the class
 // of bug the unit suite structurally cannot, because every fake here is
 // written from what we believe the API does. Seven rows of the evidence
 // log in docs/architecture.md were settled by a live call contradicting

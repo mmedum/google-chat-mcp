@@ -25,7 +25,7 @@ const statusSchemaVersion = 1
 // either as the lines a person reads or as the object a script parses.
 //
 // One collector, two renderers, because the alternative drifts. The text
-// answers "is this authorised" with a label, and a label is free to be
+// answers "is this authorized" with a label, and a label is free to be
 // reworded in any release; the object below is the part that is promised
 // not to move.
 //
@@ -79,7 +79,7 @@ type statusSettings struct {
 }
 
 // newStatusReport collects the state. The error it returns is a real
-// failure to read the configuration, not an unauthorised account: not
+// failure to read the configuration, not an unauthorized account: not
 // being signed in is a state this reports, not a reason to stop.
 func newStatusReport(cfg config.Config) (statusReport, error) {
 	r := statusReport{
@@ -183,7 +183,7 @@ func (r statusReport) writeJSON(w io.Writer) error {
 
 // orNil turns an unset string into the JSON null that says so: an empty
 // string is a value, and a caller cannot tell a value it does not
-// recognise from one that is not there.
+// recognize from one that is not there.
 func orNil(s string) *string {
 	if s == "" {
 		return nil

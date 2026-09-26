@@ -25,7 +25,7 @@ app with your name on it.
 That also puts the user-scoped half of Chat in reach, which an app
 identity cannot get to at all: your sidebar sections, how far you have
 read in a space or a thread, your availability and custom status, and
-your organisation's custom emoji. Fifty-five tools cover it, every write
+your organization's custom emoji. Fifty-five tools cover it, every write
 takes `dry_run`, and nothing is requested at login beyond the scopes the
 tools you are actually using need.
 
@@ -102,7 +102,7 @@ deletes the local copy.
 
 `google-chat-mcp status --json` prints the same state as one JSON object
 on stdout, for a script that needs to know whether this server is
-authorised before starting it. `credentials.resolved` is the field to
+authorized before starting it. `credentials.resolved` is the field to
 branch on, `credentials.signed_in` distinguishes "no profile yet" from
 "profile but no token", `schema_version` changes only when a field is
 removed or its meaning changes, and the account is masked to its domain
@@ -190,7 +190,7 @@ and the three tools that move them say so.
 | `get_availability` | Your own presence and custom status | `chat.users.availability.readonly` |
 | `set_availability` | Active, away, or do not disturb until a time | `chat.users.availability` |
 | `set_custom_status` | Set or clear the text and emoji beside your name | `chat.users.availability` |
-| `list_custom_emojis` | Your organisation's own emoji | `chat.customemojis.readonly` |
+| `list_custom_emojis` | Your organization's own emoji | `chat.customemojis.readonly` |
 | `get_custom_emoji` | One of them by resource name | `chat.customemojis.readonly` |
 | `create_custom_emoji` | Add one from a local image | `chat.customemojis` |
 | `delete_custom_emoji` | Remove one, for everyone | `chat.customemojis` |
@@ -300,7 +300,7 @@ make check     # everything CI runs
 
 `make check` is the definition of done: formatting, `go vet`,
 golangci-lint, race tests with a per-package coverage floor,
-`govulncheck`, a licence check, a stdio smoke test, a schema diff against
+`govulncheck`, a license check, a stdio smoke test, a schema diff against
 the released tool surface, an API-coverage gate that fails when a Google
 API method has no verdict on it or a call this server makes has no row,
 and a staleness gate that fails when this README, the docs or the

@@ -141,7 +141,7 @@ func TestWhichHalfTheClientForwards(t *testing.T) {
 	s.post(space, "A message for the harness to read back.", "")
 
 	tr := runClaude(t, fmt.Sprintf("Call get_messages for the Google Chat space %s. "+
-		"Then repeat, word for word, the first 200 characters the tool gave back. Do not summarise it.",
+		"Then repeat, word for word, the first 200 characters the tool gave back. Do not summarize it.",
 		space), map[string]string{"GCM_LOCAL_DIR": s.dir, "GCM_INTERACTION_HINT": "false"})
 
 	calls := tr.callsTo("get_messages")
@@ -181,7 +181,7 @@ func TestWhichHalfTheClientForwards(t *testing.T) {
 }
 
 // writeReport rebuilds report.md from whatever ran, so a filtered run
-// still leaves a readable artefact.
+// still leaves a readable artifact.
 func writeReport(t *testing.T) {
 	t.Helper()
 	if len(results) == 0 {

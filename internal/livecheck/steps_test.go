@@ -14,7 +14,7 @@ import (
 // in Google's error text to "…@domain" before it ever reaches the
 // driver, and a pattern needing a local part stops matching it — so the
 // upstream mask would hide the address from this redactor rather than
-// from the reader, and the organisation domain would land in the
+// from the reader, and the organization domain would land in the
 // transcript. That happened in two sibling servers before it was caught.
 var emailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-…]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
 
@@ -191,7 +191,7 @@ var steps = []step{
 		d.into(d.must("get_message", map[string]any{"message_name": d.linked}), &out)
 		if len(out.Links) == 0 {
 			// Not a failure. It says Chat made no chip for a link
-			// posted through the API, which is Google's behaviour
+			// posted through the API, which is Google's behavior
 			// rather than this server's, and is worth knowing either
 			// way. A link pasted in the Chat client is still carried.
 			d.t.Log("Chat attached no rich link to a link posted through the API")
@@ -282,7 +282,7 @@ var steps = []step{
 
 	// Upload, post, then read back — three exchanges, because the token
 	// is spent by the post and the file only exists on the message
-	// afterwards.
+	// afterward.
 	{"a file uploads", "upload_attachment", func(d *driver) {
 		path := d.writeLocal("livecheck.txt", "livecheck wrote this file and will delete it\n")
 		var out struct {
@@ -497,7 +497,7 @@ var steps = []step{
 				"so the token is not reaching them", len(seen))
 		}
 		if empties == 0 {
-			d.t.Log("no empty page this run; the behaviour is Google's and it is not guaranteed " +
+			d.t.Log("no empty page this run; the behavior is Google's and it is not guaranteed " +
 				"to show every time")
 		}
 	}},
@@ -505,7 +505,7 @@ var steps = []step{
 	// The claim the tool description makes, tested where it is made.
 	// Repeating a send with the same client id must land on the message
 	// that already exists rather than posting a second one — and until
-	// this step, that behaviour was asserted only by a fake written from
+	// this step, that behavior was asserted only by a fake written from
 	// the same belief as the code.
 	{"a repeated send with the same id posts once", "send_message", func(d *driver) {
 		id := "client-" + strings.ToLower(strings.NewReplacer("spaces/", "", "-", "", "_", "").

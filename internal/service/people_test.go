@@ -121,7 +121,7 @@ func TestSearchPeopleDeduplicates(t *testing.T) {
 	}
 }
 
-func TestSearchPeopleHonoursOneSource(t *testing.T) {
+func TestSearchPeopleHonorsOneSource(t *testing.T) {
 	s := newService(t, peoplePaths(ok(directoryHit), func(http.ResponseWriter, *http.Request) {
 		t.Error("contacts should not be asked")
 	}))

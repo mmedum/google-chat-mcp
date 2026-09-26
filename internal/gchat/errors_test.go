@@ -208,7 +208,7 @@ func TestIsMissingScopeKnowsBothOfGooglesSpellings(t *testing.T) {
 // if it had been, and the defaulted Status of "Forbidden" stopped the
 // message fallback from ever running. A missed scope error is reported
 // as a plain refusal, so the person is never told to grant and re-login.
-func TestTheLegacyForbiddenShapeIsRecognised(t *testing.T) {
+func TestTheLegacyForbiddenShapeIsRecognized(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		body string
@@ -232,7 +232,7 @@ func TestTheLegacyForbiddenShapeIsRecognised(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := parseAPIError(http.StatusForbidden, []byte(tc.body), "DELETE", "spaces/AAAAspace1/messages/AAAAmsg1")
 			if !IsMissingScope(err) {
-				t.Errorf("not recognised as a missing scope: %v", err)
+				t.Errorf("not recognized as a missing scope: %v", err)
 			}
 			if IsAlreadyGone(err) {
 				t.Error("a missing scope must never read as already gone")

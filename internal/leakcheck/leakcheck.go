@@ -18,7 +18,7 @@
 // fixture leaks who somebody works with rather than a password.
 //
 // Every rule below is an allow-list. A deny-list naming the
-// organisation, domain or account to watch for would itself be the leak
+// organization, domain or account to watch for would itself be the leak
 // it is meant to prevent.
 package leakcheck
 

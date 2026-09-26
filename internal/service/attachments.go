@@ -58,7 +58,7 @@ func (s *Service) DownloadAttachment(ctx context.Context, in DownloadAttachmentI
 
 	// The file is made before the transfer starts. Everything it needs
 	// is known by now, and a name collision or an unwritable directory
-	// found afterwards would abandon a download already part way down
+	// found afterward would abandon a download already part way down
 	// the wire.
 	file, path, err := files.Create(attachmentFileName(att))
 	if err != nil {

@@ -37,7 +37,7 @@ make check
 That is gofmt, `go vet` including every tagged suite, golangci-lint, race
 tests with a coverage floor per package — 80% for everything except
 `cmd/`, which has a lower one of its own printed on every run —
-`govulncheck`, a licence allow-list, a stdio smoke test, a schema diff
+`govulncheck`, a license allow-list, a stdio smoke test, a schema diff
 against the released tool surface, an API-coverage gate, the live
 driver's surface gate, and a staleness gate that fails when the README,
 `docs/` or the CHANGELOG drift from the code. CI runs the same set on
@@ -187,7 +187,7 @@ pins goreleaser, and `scripts/gates` packs the bundle.
 Signing, attestation and the registry entry are the three steps no
 rehearsal reaches: each needs an OIDC token only a workflow run has. So
 they are checked after the tag, from outside, against the published
-artefacts rather than the build's own copies.
+artifacts rather than the build's own copies.
 
 Check the attestation against a deliberately corrupted copy as well as
 the genuine bundle. A check that passes on anything is not a check, and

@@ -13,11 +13,11 @@
 #                implements it, and the gate checks the binding — the
 #                HTTP verb and the custom-method suffix that method
 #                builds have to be the ones Google publishes.
-#   out          a judgement: the method is reachable with the scopes
+#   out          a judgment: the method is reachable with the scopes
 #                this server asks for, and is deliberately not called.
 #                The reason is the argument, and there are seven.
-#   unreachable  not a judgement at all: no scope this server asks for
-#                authorises it, so leaving it out was never a choice.
+#   unreachable  not a judgment at all: no scope this server asks for
+#                authorizes it, so leaving it out was never a choice.
 #                The reason names one scope Google does accept, and the
 #                gate checks that too. Widen scopes.All and every row
 #                that comes into reach fails until somebody judges it.

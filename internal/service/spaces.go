@@ -16,7 +16,7 @@ import (
 type SpaceKind string
 
 // Space kinds. Unknown is Google's own name for "not one of the above",
-// and it is what an unrecognised value degrades to.
+// and it is what an unrecognized value degrades to.
 const (
 	KindSpace         SpaceKind = gchat.SpaceTypeSpace
 	KindGroupChat     SpaceKind = gchat.SpaceTypeGroupChat
@@ -24,7 +24,7 @@ const (
 	KindUnknown       SpaceKind = "SPACE_TYPE_UNSPECIFIED"
 )
 
-// spaceKinds recognises both the current spaceType field and the
+// spaceKinds recognizes both the current spaceType field and the
 // deprecated type field, which spells two of them differently.
 var spaceKinds = map[string]SpaceKind{
 	"SPACE":          KindSpace,
@@ -151,11 +151,11 @@ const (
 // SearchSpacesInput narrows a space search.
 type SearchSpacesInput struct {
 	// DisplayName matches whole words by prefix, not substrings:
-	// Google's HAS operator tokenises the name. Empty searches every
+	// Google's HAS operator tokenizes the name. Empty searches every
 	// named space the query otherwise allows.
 	DisplayName string
 	// ExternalUserAllowed narrows to spaces that do or do not admit
-	// people outside the organisation. Nil leaves both in.
+	// people outside the organization. Nil leaves both in.
 	ExternalUserAllowed *bool
 	Limit               int
 	PageToken           string

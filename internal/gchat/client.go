@@ -249,7 +249,7 @@ var ErrHostNotAllowed = errors.New("chat api: refusing to send credentials off t
 // and validates after.
 func (c *Client) allowURL(u *url.URL) bool { return c.allowed[originKey(u)] }
 
-// originKey normalises a URL down to what the allowlist compares:
+// originKey normalizes a URL down to what the allowlist compares:
 // scheme, hostname and port.
 //
 // The hostname is lowercased and a trailing dot trimmed, because
@@ -273,7 +273,7 @@ func (c *Client) DriftCount() int64 { return c.driftSeen.Load() }
 
 // DriftPaths is every unknown field path seen so far, sorted. The
 // doctor command prints them; a person comparing them against Google's
-// release notes is how a new field becomes a modelled one.
+// release notes is how a new field becomes a modeled one.
 func (c *Client) DriftPaths() []string {
 	var out []string
 	c.driftOnce.Range(func(k, _ any) bool {
@@ -347,7 +347,7 @@ type request struct {
 	verb string
 	// query is appended as the query string.
 	query url.Values
-	// body is marshalled as JSON when not nil.
+	// body is marshaled as JSON when not nil.
 	body any
 	// accept overrides the Accept header. Empty asks for JSON, which is
 	// every call but a media download.
@@ -785,7 +785,7 @@ func (c *Client) attempt(ctx context.Context, r request, endpoint, path string, 
 // maxResponseBytes bounds one JSON response body.
 const maxResponseBytes = 32 << 20
 
-// backoff is exponential with full jitter, honouring a Retry-After that
+// backoff is exponential with full jitter, honoring a Retry-After that
 // Google sent but bounding it on both sides.
 //
 // Jitter matters more than it looks: without it, every tool call that a
@@ -796,10 +796,10 @@ func (c *Client) backoff(attempt int, last error) time.Duration {
 	if base > maxBackoff {
 		base = maxBackoff
 	}
-	// A Retry-After is a minimum, not a target, so it is honoured as sent
+	// A Retry-After is a minimum, not a target, so it is honored as sent
 	// rather than jittered. Taking it as a base and jittering downward —
 	// which this did — turned "wait 10 seconds" into a wait of five, and
-	// three early retries fail a call that honouring the header would
+	// three early retries fail a call that honoring the header would
 	// have completed. Both sibling servers had this right.
 	var hint *retryHint
 	if errors.As(last, &hint) && hint.after > 0 {

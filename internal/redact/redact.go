@@ -21,7 +21,7 @@ var address = regexp.MustCompile(`[A-Za-z0-9._%+\-…]+@[A-Za-z0-9.\-]+\.[A-Za-z
 //
 // The domain is the half a diagnosis uses: shared drives are a Workspace
 // feature and a personal account cannot create one, so @gmail.com and a
-// Workspace domain are two different sets of behaviour to explain. The
+// Workspace domain are two different sets of behavior to explain. The
 // local part answers nothing — it is never an input to any command here.
 func Account(addr string) string {
 	local, domain, ok := strings.Cut(addr, "@")

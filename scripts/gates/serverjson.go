@@ -84,7 +84,7 @@ func githubRepo(module string) (owner, name string, err error) {
 	return parts[1], parts[2], nil
 }
 
-// majorVersion matches the /vN a module path carries from v2 onwards.
+// majorVersion matches the /vN a module path carries from v2 onward.
 var majorVersion = regexp.MustCompile(`^v[1-9][0-9]*$`)
 
 func moduleRepo() (owner, name string, err error) {

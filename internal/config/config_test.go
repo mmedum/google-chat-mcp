@@ -204,7 +204,7 @@ func TestLogLevelSlog(t *testing.T) {
 	}
 }
 
-func TestNewLoggerHonoursFormatAndLevel(t *testing.T) {
+func TestNewLoggerHonorsFormatAndLevel(t *testing.T) {
 	var buf bytes.Buffer
 	NewLogger(Config{LogLevel: LogInfo, LogFormat: LogJSON}, &buf).Info("hello", "k", "v")
 	if !strings.HasPrefix(strings.TrimSpace(buf.String()), "{") {

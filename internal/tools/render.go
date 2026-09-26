@@ -91,8 +91,8 @@ func deref(s *string) string {
 	return *s
 }
 
-// labelled is "label value" when there is a value.
-func labelled(label, v string) string {
+// labeled is "label value" when there is a value.
+func labeled(label, v string) string {
 	if v == "" {
 		return ""
 	}
@@ -213,7 +213,7 @@ func person(id string, name, email *string) string {
 
 // Render says who the stored credentials belong to.
 func (o WhoamiOutput) Render() string {
-	return meta("Signed in as "+person(o.UserSub, &o.DisplayName, &o.Email), labelled("picture", o.PictureURL))
+	return meta("Signed in as "+person(o.UserSub, &o.DisplayName, &o.Email), labeled("picture", o.PictureURL))
 }
 
 // Render is one row of a space listing.
@@ -285,11 +285,11 @@ func (o CreateSpaceOutput) Render() string {
 
 // Render says what changed about a space.
 func (o UpdateSpaceOutput) Render() string {
-	changed := meta(labelled("name", deref(o.DisplayName)), labelled("description", deref(o.Description)))
+	changed := meta(labeled("name", deref(o.DisplayName)), labeled("description", deref(o.Description)))
 	if o.DryRun {
 		return previewBody(meta("update "+o.SpaceID, changed))
 	}
-	return meta("Updated "+o.SpaceID, changed, labelled("mask", deref(o.UpdateMask)))
+	return meta("Updated "+o.SpaceID, changed, labeled("mask", deref(o.UpdateMask)))
 }
 
 // --- messages ---
@@ -300,7 +300,7 @@ func (o MessageOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
-			labelled("thread", o.ThreadID)),
+			labeled("thread", o.ThreadID)),
 		o.Text,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
@@ -323,13 +323,13 @@ func (o MessageLinkOutput) Render() string {
 	// it beside them is the same id three times on one line.
 	space := ""
 	if o.MessageID == nil && o.ThreadID == nil {
-		space = labelled("space", deref(o.SpaceID))
+		space = labeled("space", deref(o.SpaceID))
 	}
 	return meta(o.LinkType, o.URI,
-		labelled("message", deref(o.MessageID)),
-		labelled("thread", deref(o.ThreadID)),
+		labeled("message", deref(o.MessageID)),
+		labeled("thread", deref(o.ThreadID)),
 		space,
-		labelled("drive file", deref(o.DriveFileID)),
+		labeled("drive file", deref(o.DriveFileID)),
 		deref(o.MimeType), span)
 }
 
@@ -373,13 +373,13 @@ func (o MessageQuoteOutput) Render() string {
 	return block(
 		meta("quoting "+o.MessageID, kind,
 			o.Sender,
-			labelled("forwarded from", deref(o.SpaceDisplayName)),
+			labeled("forwarded from", deref(o.SpaceDisplayName)),
 			// The space is in the quoted message's own name already,
 			// so it is printed only when there is no name.
-			labelled("in", quoteSpace(o)),
+			labeled("in", quoteSpace(o)),
 			stamp("quoted at", o.LastUpdateTime)),
 		quoted(o.Text),
-		labelled("quoted markup:", deref(o.FormattedText)),
+		labeled("quoted markup:", deref(o.FormattedText)),
 		// Named "quoted", because a message's own links and files
 		// render the same way and the two blocks sit on one record.
 		optionalListing(o.Links, "quoted link", "quoted links"),
@@ -428,10 +428,10 @@ func (o MessageDetailOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
-			labelled("space", o.SpaceID), labelled("thread", o.ThreadID),
+			labeled("space", o.SpaceID), labeled("thread", o.ThreadID),
 			stamp("edited", o.LastUpdateTime)),
 		o.Text,
-		labelled("markup:", deref(o.FormattedText)),
+		labeled("markup:", deref(o.FormattedText)),
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
 		reactions,
@@ -448,13 +448,13 @@ func (o AttachmentOutput) Render() string {
 		downloadable = "not downloadable through Chat"
 	}
 	return meta(o.FileName, o.ContentType, o.Source, downloadable,
-		labelled("drive file", deref(o.DriveFileID)), o.AttachmentName)
+		labeled("drive file", deref(o.DriveFileID)), o.AttachmentName)
 }
 
 // Render is one search hit.
 func (o SearchMatchOutput) Render() string {
 	return block(
-		meta(o.MessageID, utc(o.Timestamp), o.SenderUserID, labelled("thread", o.ThreadID)),
+		meta(o.MessageID, utc(o.Timestamp), o.SenderUserID, labeled("thread", o.ThreadID)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
@@ -487,7 +487,7 @@ func (o SendMessageOutput) Render() string {
 	if o.DryRun {
 		return previewBody("post to " + o.SpaceID)
 	}
-	return meta("Posted "+deref(o.MessageID), labelled("in thread", deref(o.ThreadID)))
+	return meta("Posted "+deref(o.MessageID), labeled("in thread", deref(o.ThreadID)))
 }
 
 // Render says what a message now reads.
@@ -555,7 +555,7 @@ func (o SetCustomStatusOutput) Render() string {
 // Render is one custom emoji.
 func (o CustomEmojiOutput) Render() string { return meta(o.EmojiName, o.Name) }
 
-// Render lists the organisation's emoji.
+// Render lists the organization's emoji.
 func (o ListCustomEmojisOutput) Render() string {
 	out := listing(count(len(o.Result), "custom emoji", "custom emoji"), rows(o.Result))
 	if o.NextPageToken != "" {
@@ -572,7 +572,7 @@ func (o CreateCustomEmojiOutput) Render() string {
 		return preview("create " + o.EmojiName + " from an image of " + size)
 	}
 	return "Created " + o.EmojiName + " (" + o.Name + ") from " + size +
-		". Everyone in the organisation can use it."
+		". Everyone in the organization can use it."
 }
 
 // Render says whether an emoji went.
@@ -657,8 +657,8 @@ func (o MarkReadOutput) Render() string {
 // after it.
 func (o NotificationSettingOutput) Render() string {
 	return meta(
-		labelled("notifications:", o.NotificationSetting),
-		labelled("mute:", o.MuteSetting),
+		labeled("notifications:", o.NotificationSetting),
+		labeled("mute:", o.MuteSetting),
 	)
 }
 
@@ -757,7 +757,7 @@ func (o ListSectionsOutput) Render() string {
 
 // Render is one space filed in a section.
 func (o SectionItemOutput) Render() string {
-	return meta(o.ItemName, labelled("space", deref(o.SpaceID)), labelled("in", o.SectionName))
+	return meta(o.ItemName, labeled("space", deref(o.SpaceID)), labeled("in", o.SectionName))
 }
 
 // Render lists what a section holds.
@@ -810,7 +810,7 @@ func (o MoveSpaceToSectionOutput) Render() string {
 	if !o.Moved {
 		return o.SpaceID + " is already in " + o.SectionName + "; nothing was moved."
 	}
-	return meta("Moved "+o.SpaceID+" to "+o.SectionName, labelled("from", o.FromSection), labelled("item", o.ItemName))
+	return meta("Moved "+o.SpaceID+" to "+o.SectionName, labeled("from", o.FromSection), labeled("item", o.ItemName))
 }
 
 // --- people ---

@@ -244,7 +244,7 @@ func TestLogoutWithNothingStoredIsNotAnError(t *testing.T) {
 // Declining the prompt has to leave the token where it is. The opposite
 // bug — revoking on a stray keypress — is unrecoverable without a fresh
 // login, and the person said no.
-func TestLogoutCancelledKeepsTheToken(t *testing.T) {
+func TestLogoutCanceledKeepsTheToken(t *testing.T) {
 	tempProfile(t)
 	keyring.MockInit()
 	store, err := credentialStore(loadedConfig(t), nil)
@@ -262,7 +262,7 @@ func TestLogoutCancelledKeepsTheToken(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("logout exited %d: %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "Cancelled") {
+	if !strings.Contains(stdout, "Canceled") {
 		t.Errorf("stdout = %q, want it to report the cancellation", stdout)
 	}
 	if _, _, err := store.ResolveStored(); err != nil {

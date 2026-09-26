@@ -28,16 +28,16 @@ var excused = map[string]string{
 	"create_group_chat": "creates a chat with other people in it",
 	"find_group_chats":  "reads chats with other people in them",
 
-	// Account-wide or organisation-wide state, outside the scratch
+	// Account-wide or organization-wide state, outside the scratch
 	// space. A live run must be undoable by deleting one space, and
 	// none of these are.
 	"set_availability":    "sets this account's presence, which nothing here can restore",
 	"set_custom_status":   "sets this account's status, which nothing here can restore",
 	"get_availability":    "reads presence, which only has an answer once set_availability has run",
-	"create_custom_emoji": "custom emoji are visible to the whole organisation",
-	"delete_custom_emoji": "would delete an organisation's emoji",
+	"create_custom_emoji": "custom emoji are visible to the whole organization",
+	"delete_custom_emoji": "would delete an organization's emoji",
 	"get_custom_emoji":    "needs an emoji this run may not create",
-	"list_custom_emojis":  "lists the organisation's emoji, which a report may not carry",
+	"list_custom_emojis":  "lists the organization's emoji, which a report may not carry",
 	"create_section":      "sidebar sections are account-wide, not inside the scratch space",
 	"delete_section":      "sidebar sections are account-wide, not inside the scratch space",
 	"rename_section":      "sidebar sections are account-wide, not inside the scratch space",

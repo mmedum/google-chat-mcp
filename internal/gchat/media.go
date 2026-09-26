@@ -96,7 +96,7 @@ func (c *Client) transfer(ctx context.Context, r request, endpoint, path string,
 	//
 	// answered closes the other half of it. Stopping a time.AfterFunc
 	// does not un-fire one that has already gone off, so a response
-	// arriving a hair inside the deadline could be cancelled after it
+	// arriving a hair inside the deadline could be canceled after it
 	// had succeeded — the caller then sees a download that failed
 	// partway through, for a transfer that was fine.
 	var mu sync.Mutex
@@ -185,7 +185,7 @@ func mimeOnly(v string) string {
 // difference between the two ends of a transfer. A response body owns
 // the request, so closing it releases the request. A request body does
 // not: the transport closes it as soon as the last byte is written,
-// which is before the response has been read — cancelling there would
+// which is before the response has been read — canceling there would
 // kill the call that was about to succeed.
 type stallGuard struct {
 	rc      io.ReadCloser

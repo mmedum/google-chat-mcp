@@ -97,7 +97,7 @@ func TestAPageOfMissesWritesNothing(t *testing.T) {
 	}
 }
 
-// A cache is an optimisation. Anything wrong with the file costs a
+// A cache is an optimization. Anything wrong with the file costs a
 // round trip, never a result.
 func TestCacheSurvivesABrokenFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "directory-cache.json")
