@@ -153,7 +153,7 @@ func (c *Client) GetSpaceEvent(ctx context.Context, name string) (*SpaceEvent, e
 // as unsettled until the live run.
 //
 // Only OR joins event types, and only AND joins a time bound to them,
-// which is why the types are parenthesised.
+// which is why the types are parenthesized.
 func spaceEventFilter(types []string, start, end string) string {
 	clauses := make([]string, 0, len(types))
 	for _, t := range types {

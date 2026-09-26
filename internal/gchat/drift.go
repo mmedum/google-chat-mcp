@@ -125,7 +125,7 @@ func reportUnknown(path string, t reflect.Type, value any, drift DriftFunc) {
 	}
 }
 
-// fieldCache memoises jsonFields. A search scanning fifty pages walks
+// fieldCache memoizes jsonFields. A search scanning fifty pages walks
 // five thousand messages, and the field map of a type never changes.
 var fieldCache sync.Map
 

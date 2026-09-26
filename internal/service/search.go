@@ -78,7 +78,7 @@ type SearchMatch struct {
 	Links []MessageLink
 }
 
-// searchMatch shapes one hit, with the snippet centred on at.
+// searchMatch shapes one hit, with the snippet centered on at.
 //
 // Both searches read the same messages and differ only in where the
 // snippet starts, so they shape a hit here rather than each in its own
@@ -258,7 +258,7 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 	orderBy := "createTime desc"
 	if in.ByRelevance {
 		// Google has this in Developer Preview. A project outside the
-		// programme is answered with a 400, which reaches the caller as
+		// program is answered with a 400, which reaches the caller as
 		// an [invalid] error carrying Google's own words.
 		orderBy = "relevance desc"
 	}
@@ -294,7 +294,7 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 			continue
 		}
 		// Google matches whole words wherever they are, so there is no
-		// single offset to centre on. The first line stands in, which
+		// single offset to center on. The first line stands in, which
 		// is what a person scanning results reads anyway.
 		out.Matches = append(out.Matches, searchMatch(*m, 0))
 	}

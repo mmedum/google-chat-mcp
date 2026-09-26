@@ -28,7 +28,7 @@ import (
 // Requiring a letter or a digit refuses it. The rule is asserted in
 // names_test.go rather than left to be inferred from the pattern; a
 // sibling server found the same class of bug where an id could spell a
-// neighbouring endpoint, protected only by a lookup three layers away
+// neighboring endpoint, protected only by a lookup three layers away
 // that happened to fail first.
 var (
 	idPattern     = `[A-Za-z0-9._-]*[A-Za-z0-9][A-Za-z0-9._-]*`

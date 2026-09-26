@@ -7,7 +7,7 @@ func TestAccountKeepsTheDomainAndDropsTheRest(t *testing.T) {
 		{"ann.petersen@example.com", "…@example.com"},
 		{"a@b.example.com", "…@b.example.com"},
 		// Already masked: idempotent, which is what lets a redactor
-		// downstream of this one still recognise it.
+		// downstream of this one still recognize it.
 		{"…@example.com", "…@example.com"},
 		// Not an address: left alone rather than mangled.
 		{"", ""},

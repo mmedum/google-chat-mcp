@@ -14,7 +14,7 @@
 //     tool.
 //  3. The client calls it with `{tool_name, input, tool_use_id}`, where
 //     `tool_use_id` is a **sibling** of `input`. The first version of
-//     this file modelled the payload as a struct, whose inferred schema
+//     this file modeled the payload as a struct, whose inferred schema
 //     refuses unknown properties, so the approval call itself failed
 //     validation — and the client then merged the whole payload into the
 //     target tool's arguments, where it failed as

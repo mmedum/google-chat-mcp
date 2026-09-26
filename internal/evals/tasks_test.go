@@ -107,7 +107,7 @@ var tasks = []task{
 			return []check{
 				{"the space holds the text exactly as asked", ok, detail},
 				{"posted once", len(sends) == 1, fmt.Sprintf("%d send_message calls", len(sends))},
-				{"did not edit it afterwards", len(tr.callsTo("update_message")) == 0, ""},
+				{"did not edit it afterward", len(tr.callsTo("update_message")) == 0, ""},
 			}
 		},
 	},

@@ -29,10 +29,10 @@ var (
 	// All three of Google's roles. ROLE_ASSISTANT_MANAGER was missing,
 	// so an assistant manager's row reported no role at all — read as
 	// "Google sent something we do not model" when in fact it was
-	// modelled everywhere but here.
+	// modeled everywhere but here.
 	memberRoles  = []string{gchat.RoleMember, gchat.RoleManager, gchat.RoleAssistantManager}
 	memberStates = []string{"JOINED", "INVITED", "NOT_A_MEMBER"}
-	// How someone relates to the organisation. Output only, and the
+	// How someone relates to the organization. Output only, and the
 	// reason it is here: a space with EXTERNAL members is one to think
 	// about before posting in.
 	affiliations = []string{"INTERNAL", "EXTERNAL", "MANAGED_EXTERNAL"}
@@ -75,7 +75,7 @@ type ListMembersInput struct {
 type MembersResult struct {
 	Members       []Member
 	NextPageToken string
-	// Unparsed is how many memberships were dropped as unmodellable. A
+	// Unparsed is how many memberships were dropped as unmodelable. A
 	// short list reads as a small space, which is what the count is for.
 	Unparsed int
 }

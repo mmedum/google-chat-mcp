@@ -8,7 +8,7 @@ import (
 )
 
 // SectionsParent addresses the caller's own sidebar. Google accepts
-// "me" alongside an email or a numeric id and canonicalises it in the
+// "me" alongside an email or a numeric id and canonicalizes it in the
 // response, so nothing here has to know the caller's id.
 const SectionsParent = "users/me/sections"
 

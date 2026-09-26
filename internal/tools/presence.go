@@ -12,7 +12,7 @@ import (
 
 // AvailabilityOutput is your own presence.
 type AvailabilityOutput struct {
-	State             string     `json:"state" jsonschema:"ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set"`
+	State             string     `json:"state" jsonschema:"ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognize. IDLE is Google's to report, not yours to set"`
 	StatusText        string     `json:"status_text,omitempty" jsonschema:"the custom status beside your name, if you have one"`
 	StatusEmoji       string     `json:"status_emoji,omitempty" jsonschema:"the emoji beside that status"`
 	StatusExpires     *time.Time `json:"status_expires" jsonschema:"when the custom status lapses, RFC 3339 in UTC; null when it does not"`
@@ -36,7 +36,7 @@ type SetAvailabilityOutput struct {
 // SetCustomStatusInput is the text and emoji beside your name.
 type SetCustomStatusInput struct {
 	Text    string `json:"text,omitempty" jsonschema:"what the status says, up to 64 characters. Required unless clear is set"`
-	Emoji   string `json:"emoji,omitempty" jsonschema:"one Unicode emoji beside the text. Google requires it alongside the text and refuses one of your organisation's custom emoji here. Required unless clear is set"`
+	Emoji   string `json:"emoji,omitempty" jsonschema:"one Unicode emoji beside the text. Google requires it alongside the text and refuses one of your organization's custom emoji here. Required unless clear is set"`
 	Minutes int    `json:"minutes,omitempty" jsonschema:"how long the status should last. Pass this or until; leave both out and it stays until you change it"`
 	Until   string `json:"until,omitempty" jsonschema:"when the status should lapse, RFC 3339. Pass this or minutes"`
 	Clear   bool   `json:"clear,omitempty" jsonschema:"remove the status you have instead of setting one. Takes no other argument"`
@@ -51,7 +51,7 @@ type SetCustomStatusOutput struct {
 	RenderedPayload *RenderedPayload `json:"rendered_payload" jsonschema:"on a dry run, the exact body that would have been sent; null otherwise"`
 }
 
-// CustomEmojiOutput is one of your organisation's own emoji.
+// CustomEmojiOutput is one of your organization's own emoji.
 type CustomEmojiOutput struct {
 	Name         string `json:"name" jsonschema:"the resource name, customEmojis/{emoji}; get_custom_emoji and delete_custom_emoji take this"`
 	EmojiName    string `json:"emoji_name" jsonschema:"the :shortcode: form, which is what you type in a message"`
@@ -67,7 +67,7 @@ type ListCustomEmojisInput struct {
 
 // ListCustomEmojisOutput wraps the rows.
 type ListCustomEmojisOutput struct {
-	Result        []CustomEmojiOutput `json:"result" jsonschema:"the organisation's custom emoji"`
+	Result        []CustomEmojiOutput `json:"result" jsonschema:"the organization's custom emoji"`
 	NextPageToken string              `json:"next_page_token,omitempty" jsonschema:"pass back as page_token for the next page"`
 }
 
@@ -178,7 +178,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "list_custom_emojis",
-		Description: "List your organisation's own emoji, the ones people type as :shortcodes:. Custom emoji " +
+		Description: "List your organization's own emoji, the ones people type as :shortcodes:. Custom emoji " +
 			"exist only on Google Workspace accounts and only when an administrator has turned them on.",
 		Kind:    Read,
 		Toolset: config.ToolsetEmoji,
@@ -214,8 +214,8 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "create_custom_emoji",
-		Description: "Add a custom emoji to your organisation from an image on this machine. Everyone in the " +
-			"organisation can then use it, so the name is worth agreeing first. The image must be a square " +
+		Description: "Add a custom emoji to your organization from an image on this machine. Everyone in the " +
+			"organization can then use it, so the name is worth agreeing first. The image must be a square " +
 			"PNG, JPEG or GIF, 64 to 500 pixels, under 256 KB.",
 		Kind:    Write,
 		Toolset: config.ToolsetEmoji,
@@ -235,7 +235,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_custom_emoji",
-		Description: "Remove a custom emoji from your organisation. It goes for everyone, and messages that " +
+		Description: "Remove a custom emoji from your organization. It goes for everyone, and messages that " +
 			"already use it lose the image.",
 		Kind:    Destructive,
 		Toolset: config.ToolsetEmoji,

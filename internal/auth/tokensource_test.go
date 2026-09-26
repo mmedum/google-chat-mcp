@@ -38,7 +38,7 @@ func TestAccessTokensRefreshes(t *testing.T) {
 }
 
 // A revoked or superseded refresh token is the one failure that signing
-// in again fixes, so it has to be recognisable rather than generic.
+// in again fixes, so it has to be recognizable rather than generic.
 func TestARevokedRefreshTokenAsksForANewLogin(t *testing.T) {
 	cfg := tokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

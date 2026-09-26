@@ -42,7 +42,7 @@ func (a *AccessTokens) Token(context.Context) (string, error) {
 	return tok.AccessToken, nil
 }
 
-// isInvalidGrant recognises the one refusal that re-signing in fixes: a
+// isInvalidGrant recognizes the one refusal that re-signing in fixes: a
 // revoked, expired or superseded refresh token. Google reports it as
 // invalid_grant, and no amount of retrying changes the answer.
 func isInvalidGrant(err error) bool {

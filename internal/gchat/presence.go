@@ -104,7 +104,7 @@ type ListCustomEmojisOptions struct {
 	Filter string
 }
 
-// ListCustomEmojis returns one page of the organisation's own emoji.
+// ListCustomEmojis returns one page of the organization's own emoji.
 func (c *Client) ListCustomEmojis(ctx context.Context, o ListCustomEmojisOptions) (*ListCustomEmojisResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)
 	if o.Filter != "" {
@@ -131,7 +131,7 @@ func (c *Client) GetCustomEmoji(ctx context.Context, name string) (*CustomEmoji,
 	return &out, err
 }
 
-// CreateCustomEmoji adds one to the organisation. The image travels
+// CreateCustomEmoji adds one to the organization. The image travels
 // base64-encoded inside the JSON body, which is why the size cap
 // matters: there is no resumable upload here.
 func (c *Client) CreateCustomEmoji(ctx context.Context, body *CustomEmoji) (*CustomEmoji, error) {

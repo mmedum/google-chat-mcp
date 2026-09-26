@@ -124,7 +124,7 @@ Each of these is enforced, not documented — the tests named in
     say so rather than falling back to anywhere else.
 
 The gate has one limit worth stating plainly: it matches shapes, and
-the payload has none. A credential or an id can be recognised; a
+the payload has none. A credential or an id can be recognized; a
 sentence out of a real conversation cannot be told from invented prose
 by any pattern. So the rule that keeps conversations out of this
 repository is a habit rather than a check — fixtures are generated and

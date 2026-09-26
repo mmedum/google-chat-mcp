@@ -13,7 +13,7 @@ import (
 //
 // sender_email and sender_display_name are null when the People API
 // could not say who the sender is, which is normal for someone outside
-// the caller's organisation. The message is still here: an enrichment
+// the caller's organization. The message is still here: an enrichment
 // failure never costs a row.
 type MessageOutput struct {
 	MessageID         string              `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
@@ -138,7 +138,7 @@ type SearchMessagesInput struct {
 	HasAttachment bool   `json:"has_attachment,omitempty" jsonschema:"only messages carrying an attachment. Google's search only"`
 	HasLink       bool   `json:"has_link,omitempty" jsonschema:"only messages containing a hyperlink. Google's search only"`
 	UnreadOnly    bool   `json:"unread_only,omitempty" jsonschema:"only messages you have not read. Google's search only, and it needs the read-state scope as well as the message one"`
-	ByRelevance   bool   `json:"by_relevance,omitempty" jsonschema:"order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that programme"`
+	ByRelevance   bool   `json:"by_relevance,omitempty" jsonschema:"order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that program"`
 	Limit         int    `json:"limit,omitempty" jsonschema:"how many matches to return, 1 to 100; default 50"`
 	MaxPages      int    `json:"max_pages,omitempty" jsonschema:"how many pages of history a regex scan may read, 1 to 50; default 10"`
 	PageToken     string `json:"page_token,omitempty" jsonschema:"continue Google's search from a previous next_page_token"`

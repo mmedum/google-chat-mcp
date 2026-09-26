@@ -58,7 +58,7 @@ func TestSearchMatchesAPattern(t *testing.T) {
 }
 
 // The snippet is what the caller reads to see why a message matched, so
-// it has to be centred on the match and cut at a character boundary.
+// it has to be centered on the match and cut at a character boundary.
 func TestSnippetSurroundsTheMatch(t *testing.T) {
 	body := strings.Repeat("é", 200) + "needle" + strings.Repeat("ü", 200)
 	s := newService(t, ok(searchPage(message("1", body))))

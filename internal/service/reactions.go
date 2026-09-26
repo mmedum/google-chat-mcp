@@ -148,7 +148,7 @@ func (s *Service) AddReaction(ctx context.Context, in AddReactionInput) (*AddedR
 //
 // Chat's filter takes the numeric account id, so this needs to know who
 // the caller is. That costs a request the first time and nothing
-// afterwards, and any earlier whoami has already paid it.
+// afterward, and any earlier whoami has already paid it.
 func (s *Service) existingReaction(ctx context.Context, msg, emoji string) (*AddedReaction, error) {
 	me, err := s.callerID(ctx)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 // SectionOutput is one group in the caller's sidebar.
 type SectionOutput struct {
 	SectionName string `json:"section_name" jsonschema:"the section's resource name, users/{user}/sections/{section}"`
-	DisplayName string `json:"display_name" jsonschema:"what to call it. Google names only custom sections, so a system one gets a parenthesised label here"`
+	DisplayName string `json:"display_name" jsonschema:"what to call it. Google names only custom sections, so a system one gets a parenthesized label here"`
 	Type        string `json:"type" jsonschema:"CUSTOM_SECTION, DEFAULT_DIRECT_MESSAGES, DEFAULT_SPACES, DEFAULT_APPS, or SECTION_TYPE_UNSPECIFIED"`
 	SortOrder   *int   `json:"sort_order" jsonschema:"where it sits in the sidebar; set by position_section and null when Google gave no rank"`
 }
