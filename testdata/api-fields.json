@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-09-13",
+  "fetched": "2026-09-26",
   "apis": [
     {
       "api": "chat",
@@ -15,7 +15,8 @@
           "name": "AccessPermissionSettings",
           "properties": [
             "discoverSpaceSetting",
-            "joinSpaceSetting"
+            "joinSpaceSetting",
+            "viewSpaceMembershipSetting"
           ]
         },
         {
@@ -1156,7 +1157,8 @@
             "postMessages",
             "replyMessages",
             "toggleHistory",
-            "useAtMentionAll"
+            "useAtMentionAll",
+            "viewSpaceMembership"
           ]
         },
         {
@@ -1495,8 +1497,10 @@
         {
           "name": "User",
           "properties": [
+            "avatarUrl",
             "displayName",
             "domainId",
+            "email",
             "isAnonymous",
             "name",
             "type"
