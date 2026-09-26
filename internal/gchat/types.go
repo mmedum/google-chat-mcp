@@ -136,6 +136,10 @@ type User struct {
 	DomainID    string `json:"domainId,omitempty"`
 	Type        string `json:"type,omitempty"`
 	IsAnonymous bool   `json:"isAnonymous,omitempty"`
+	// Email is filled under user auth for a message's sender and a
+	// membership's member, external people included. It is empty for
+	// apps and for some people, such as an account that is gone.
+	Email string `json:"email,omitempty"`
 }
 
 // Membership is a person's or group's place in a space.

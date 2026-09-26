@@ -20,9 +20,10 @@ const (
 
 // MessageRow is one message in a listing.
 //
-// SenderEmail is empty when the People API could not say who the sender
-// is, which is normal for someone outside the caller's organization. It
-// is never a reason to leave the message out.
+// SenderEmail is the address Chat sent, or the People API's when Chat
+// sent none. It is empty when neither named one, which is normal for an
+// app or an account that is gone. It is never a reason to leave the
+// message out.
 type MessageRow struct {
 	Name              string
 	SenderUserID      string
@@ -473,11 +474,9 @@ func summarizeReactions(raw []gchat.ReactionSummary) ([]ReactionCount, bool) {
 //
 // A failed People lookup is not drift and never costs a row either.
 func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRow, int) {
-	senders := make([]string, 0, len(msgs))
+	senders := make([]*gchat.User, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Sender != nil {
-			senders = append(senders, m.Sender.Name)
-		}
+		senders = append(senders, m.Sender)
 	}
 	people := s.resolvePeople(ctx, senders)
 
@@ -506,9 +505,6 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			row.SenderUserID = m.Sender.Name
 			row.SenderEmail = person.Email
 			row.SenderDisplayName = person.DisplayName
-			if row.SenderDisplayName == "" {
-				row.SenderDisplayName = m.Sender.DisplayName
-			}
 		}
 		rows = append(rows, row)
 	}

@@ -16,7 +16,7 @@ type MemberOutput struct {
 	MembershipName string  `json:"membership_name" jsonschema:"the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id"`
 	MemberID       string  `json:"member_id" jsonschema:"who the membership is for: users/{id} for a person, groups/{id} for a group"`
 	DisplayName    *string `json:"display_name" jsonschema:"what to call them, or null when Google gave no name"`
-	Email          *string `json:"email" jsonschema:"the person's email address; null for a group and for anyone the People API could not resolve"`
+	Email          *string `json:"email" jsonschema:"the person's email address; null for a group and for anyone neither Chat nor the People API named one for"`
 	Role           string  `json:"role" jsonschema:"ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize"`
 	State          string  `json:"state" jsonschema:"JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED"`
 	Affiliation    string  `json:"affiliation,omitempty" jsonschema:"INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in"`
@@ -56,8 +56,8 @@ func registerMembers(s *mcp.Server, d Deps) {
 		Name: "list_members",
 		Description: "List the members of a Google Chat space: people, Google Groups, and anyone invited who has " +
 			"not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so " +
-			"check state before reporting someone as present. People come back with their email resolved through " +
-			"the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default " +
+			"check state before reporting someone as present. People come back with the email Chat sends, or one " +
+			"looked up through the People API when Chat sends none; a Google Group has neither an email nor a name of its own, only groups/{id}. Default " +
 			"50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null " +
 			"next_page_token means the space has more members than came back, so do not report the result as the " +
 			"whole membership.",

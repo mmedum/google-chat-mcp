@@ -53,7 +53,7 @@ internal/tools         decode the input, call the service, shape both halves of 
    ▼
 internal/service       the rules worth testing, and the only place that
    │                   turns a Google failure into a [class] tool error
-   ├──► internal/directory   resolve user ids to names and addresses, cached
+   ├──► internal/directory   resolve the user ids Chat sent no address for, cached
    ▼
 internal/gchat         one request: rate limiter, retry with backoff, drift-reporting decode
    │
@@ -203,6 +203,15 @@ a 404. Found by a live smoke test after every unit test passed.
 
 ### A People failure costs one field, never a row
 
+Chat sends a sender's or a member's address itself, and that answer
+wins. Its display name wins too: when Chat names an address, the name
+beside it is used over the People profile name. Only a user Chat sent
+no address for is looked up in People, and there the People name wins
+over Chat's. A user Chat sent an address but no name for is looked up
+for the name alone. What Chat names is written to the directory cache,
+so a later payload with no address, such as a reaction's user, still
+resolves someone this server has seen.
+
 Enrichment is best effort. When a directory lookup fails, the rows come
 back without email addresses; a list is never emptied and a row is never
 dropped because a name could not be resolved.
@@ -312,6 +321,7 @@ contradicted a document, which won.
 | A quote's snapshot is filled differently for a reply and a forward | A REPLY carries `sender` and `text` only; `formattedText`, `annotations` and `attachments` are documented as populated for FORWARD alone, and `forwardedMetadata` only for a forward. Reference, 2026-09-17. So an empty link list on a reply-quote is Google saying nothing, not the quoted message having no links, and the tool schemas say which is which. For a forward the snapshot is the only copy a caller can reach: the source space is usually one they are not in |
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
 | A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
+| `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
 | An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
 | `markupSyntax` is output only | So a user-authenticated caller cannot ask for Markdown, whatever the release note implies. REST reference, 2026-09-05 |

@@ -184,13 +184,71 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 	}
 }
 
-// resolvePeople is Resolve with a nil resolver allowed, so a Service
-// built without one still answers.
-func (s *Service) resolvePeople(ctx context.Context, ids []string) map[string]directory.Person {
-	if s.people == nil {
-		return map[string]directory.Person{}
+// resolvePeople turns Chat users into people.
+//
+// Chat names the address itself on a sender or a member, external
+// people included, and that answer wins, display name too. Only a user
+// Chat named no address for anywhere in the batch is looked up in the
+// directory, which costs a People request and cannot see outside the
+// caller's organization. A user Chat named an address for but no name
+// is looked up for the name alone.
+//
+// What Chat named is remembered, so a later call where Chat sends no
+// address, such as a reaction's user, still resolves someone this
+// server has seen. A nil resolver is allowed, so a Service built
+// without one still answers.
+func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[string]directory.Person {
+	fromChat := make(map[string]directory.Person, len(users))
+	for _, u := range users {
+		if userOf(u) == "" || u.Email == "" {
+			continue
+		}
+		if _, seen := fromChat[u.Name]; !seen {
+			fromChat[u.Name] = directory.Person{Email: u.Email, DisplayName: u.DisplayName}
+		}
 	}
-	return s.people.Resolve(ctx, ids)
+
+	var out map[string]directory.Person
+	if s.people == nil {
+		out = make(map[string]directory.Person, len(users))
+	} else {
+		// A second pass, so a user named with an address on one row
+		// and without on another is not looked up only for the answer
+		// to be thrown away. Resolve drops empty and repeated ids.
+		lookups := make([]string, 0, len(users))
+		for _, u := range users {
+			if p, ok := fromChat[userOf(u)]; ok && p.DisplayName != "" {
+				continue
+			}
+			lookups = append(lookups, userOf(u))
+		}
+		out = s.people.Resolve(ctx, lookups)
+	}
+	learned := make(map[string]directory.Person, len(fromChat))
+	for id, p := range fromChat {
+		if p.DisplayName == "" {
+			p.DisplayName = out[id].DisplayName
+		}
+		out[id] = p
+		// An entry with no name is left out: remembering it would cost
+		// the name on every later call until the entry expired.
+		if p.DisplayName != "" {
+			learned[id] = p
+		}
+	}
+	if s.people != nil {
+		s.people.Learn(learned)
+	}
+	// The name Chat sent with the row is the last resort, so a caller
+	// reads one answer rather than falling back on its own.
+	for _, u := range users {
+		id := userOf(u)
+		if p := out[id]; id != "" && p.DisplayName == "" && u.DisplayName != "" {
+			p.DisplayName = u.DisplayName
+			out[id] = p
+		}
+	}
+	return out
 }
 
 // narrowEnum keeps a value Google sent only when this server knows it,

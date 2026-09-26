@@ -82,10 +82,10 @@ func (c *Cache) Get(ids []string) map[string]Person {
 	defer c.mu.Unlock()
 	c.loadLocked()
 	out := make(map[string]Person, len(ids))
-	cutoff := c.now().Add(-c.ttl)
+	now := c.now()
 	for _, id := range ids {
 		e, ok := c.entries[id]
-		if !ok || e.FetchedAt.Before(cutoff) {
+		if !ok || c.expired(e, now) {
 			continue
 		}
 		out[id] = Person{Email: e.Email, DisplayName: e.DisplayName}
@@ -105,17 +105,29 @@ func (c *Cache) Put(people map[string]Person) {
 	defer c.mu.Unlock()
 	c.loadLocked()
 	now := c.now()
-	var resolved int
+	// Only a new, changed or expired answer is worth a write. Every
+	// listing feeds what Chat named back in here, and rewriting the file
+	// with the same answers on each call is churn. An unchanged entry
+	// keeps its time too, so memory and the file agree on when it expires.
+	var changed bool
 	for id, p := range people {
+		old, had := c.entries[id]
+		if had && !c.expired(old, now) && old.Email == p.Email && old.DisplayName == p.DisplayName {
+			continue
+		}
 		c.entries[id] = entry{Email: p.Email, DisplayName: p.DisplayName, FetchedAt: now}
 		if p.Email != "" {
-			resolved++
+			changed = true
 		}
 	}
-	if resolved == 0 {
-		return
+	if changed {
+		c.saveLocked()
 	}
-	c.saveLocked()
+}
+
+// expired says whether an entry is past its time to live.
+func (c *Cache) expired(e entry, now time.Time) bool {
+	return e.FetchedAt.Before(now.Add(-c.ttl))
 }
 
 // loadLocked reads the file once. A missing, unreadable or corrupt file
@@ -151,10 +163,10 @@ func (c *Cache) saveLocked() {
 	if c.path == "" {
 		return
 	}
-	cutoff := c.now().Add(-c.ttl)
+	now := c.now()
 	live := make(map[string]entry, len(c.entries))
 	for id, e := range c.entries {
-		if e.FetchedAt.Before(cutoff) {
+		if c.expired(e, now) {
 			delete(c.entries, id)
 			continue
 		}
