@@ -231,6 +231,28 @@ func TestLearnFillsTheCache(t *testing.T) {
 	r.Learn(nil)
 }
 
+// Known answers from the cache and never asks People, which is what
+// lets a search name a sender without a request per stranger.
+func TestKnownReadsTheCacheAndAsksNobody(t *testing.T) {
+	var calls atomic.Int64
+	r := newResolver(t, tempCache(t, time.Hour), func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		fmt.Fprint(w, `{"responses":[]}`)
+	})
+	r.Learn(map[string]Person{"users/1": {Email: "janedoe@example.com", DisplayName: "Jane Doe"}})
+
+	got := r.Known([]string{"users/1", "users/2"})
+	if got["users/1"].Email != "janedoe@example.com" || got["users/2"] != (Person{}) {
+		t.Errorf("known = %+v, want users/1 from the cache and users/2 unknown", got)
+	}
+	if n := calls.Load(); n != 0 {
+		t.Errorf("%d requests, want none", n)
+	}
+	if got := newResolver(t, nil, nil).Known([]string{"users/1"}); len(got) != 0 {
+		t.Errorf("known without a cache = %+v, want nothing", got)
+	}
+}
+
 func TestResolveAsksThePeopleAPIForTheRightResource(t *testing.T) {
 	var path, fields string
 	var names []string

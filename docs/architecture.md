@@ -210,7 +210,9 @@ no address for is looked up in People, and there the People name wins
 over Chat's. A user Chat sent an address but no name for is looked up
 for the name alone. What Chat names is written to the directory cache,
 so a later payload with no address, such as a reaction's user, still
-resolves someone this server has seen.
+resolves someone this server has seen. That covers a message's
+mentions and a search's results as well as listings. A search reads the
+cache but never asks People: it can match hundreds of messages.
 
 Enrichment is best effort. When a directory lookup fails, the rows come
 back without email addresses; a list is never emptied and a row is never

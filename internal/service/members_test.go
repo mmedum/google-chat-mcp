@@ -663,3 +663,103 @@ func TestGetMemberReportsWhoTheMembershipIsFor(t *testing.T) {
 		}
 	}
 }
+
+// A search names a sender from what the server has already seen, and
+// asks People nothing: here the listing named the address, and the
+// matched message did not.
+func TestASearchNamesASenderTheServerHasSeen(t *testing.T) {
+	members := `{"memberships":[
+	  {"name":"spaces/AAAAspace1/members/AAAAmember9","state":"JOINED","member":{"name":"users/AAAAuser9","displayName":"John Doe","type":"HUMAN","email":"john.doe@example.org"}}
+	]}`
+	page := `{"messages":[{"name":"spaces/AAAAspace1/messages/AAAAmsg1","sender":{"name":"users/AAAAuser9","type":"HUMAN"},"text":"the needle"}]}`
+	var peopleCalls int
+	s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/members") {
+			fmt.Fprint(w, members)
+			return
+		}
+		fmt.Fprint(w, page)
+	}, func(w http.ResponseWriter, r *http.Request) {
+		peopleCalls++
+		nobody()(w, r)
+	}))
+
+	if _, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/AAAAspace1"}); err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Space: "spaces/AAAAspace1", Regex: "needle"})
+	if err != nil {
+		t.Fatalf("SearchMessages: %v", err)
+	}
+	if len(got.Matches) != 1 || got.Matches[0].SenderEmail != "john.doe@example.org" {
+		t.Errorf("matches = %+v, want the sender the listing named", got.Matches)
+	}
+	if peopleCalls != 0 {
+		t.Errorf("People was called %d times, want none", peopleCalls)
+	}
+}
+
+// What Chat names in a search result or a mention is remembered, the way
+// a listing's senders are, so remove_reaction can match that person by
+// address later. A mention with no address is not looked up.
+func TestSearchResultsAndMentionsAreRemembered(t *testing.T) {
+	for name, tc := range map[string]struct {
+		call func(*Service) error
+		page string
+	}{
+		"search": {
+			call: func(s *Service) error {
+				_, err := s.SearchMessages(context.Background(), SearchMessagesInput{Space: "spaces/AAAAspace1", Regex: "needle"})
+				return err
+			},
+			page: `{"messages":[{"name":"spaces/AAAAspace1/messages/AAAAmsg2","sender":{"name":"users/AAAAuser9","displayName":"John Doe","type":"HUMAN","email":"john.doe@example.org"},"text":"the needle"}]}`,
+		},
+		"mention": {
+			call: func(s *Service) error {
+				_, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/AAAAspace1"})
+				return err
+			},
+			page: `{"messages":[{"name":"spaces/AAAAspace1/messages/AAAAmsg2","sender":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"},"text":"@John Doe @Someone",
+			  "annotations":[
+			    {"type":"USER_MENTION","userMention":{"type":"MENTION","user":{"name":"users/AAAAuser9","displayName":"John Doe","type":"HUMAN","email":"john.doe@example.org"}}},
+			    {"type":"USER_MENTION","userMention":{"type":"MENTION","user":{"name":"users/AAAAuser8","displayName":"Someone","type":"HUMAN"}}}
+			  ]}]}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reactions := `{"reactions":[{"name":"spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreaction1","emoji":{"unicode":"👍"},"user":{"name":"users/AAAAuser9"}}]}`
+			var deleted string
+			var peopleCalls int
+			s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodDelete:
+					deleted = r.URL.Path
+					fmt.Fprint(w, `{}`)
+				case strings.Contains(r.URL.Path, "/reactions"):
+					fmt.Fprint(w, reactions)
+				default:
+					fmt.Fprint(w, tc.page)
+				}
+			}, func(w http.ResponseWriter, r *http.Request) {
+				peopleCalls++
+				nobody()(w, r)
+			}))
+
+			if err := tc.call(s); err != nil {
+				t.Fatalf("first call: %v", err)
+			}
+			if peopleCalls != 0 {
+				t.Errorf("People was called %d times before the reaction, want none", peopleCalls)
+			}
+			got, err := s.RemoveReaction(context.Background(), RemoveReactionInput{
+				Message: "spaces/AAAAspace1/messages/AAAAmsg1", Emoji: "👍", Email: "john.doe@example.org",
+			})
+			if err != nil {
+				t.Fatalf("RemoveReaction: %v", err)
+			}
+			if !got.Removed || !strings.HasSuffix(deleted, "/reactions/AAAAreaction1") {
+				t.Errorf("result = %+v, deleted %q; want the reaction of the person Chat named", got, deleted)
+			}
+		})
+	}
+}
