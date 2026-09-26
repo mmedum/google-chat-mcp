@@ -109,13 +109,16 @@ dropped count. Do not paste message content.
 
 ## Names and email addresses come back null
 
-`get_messages`, `get_thread`, `get_message` and `list_members` resolve
-people through the People API, and that lookup can come back empty
+`get_messages`, `get_thread`, `get_message` and `list_members` take the
+address Chat sends with the sender or member. Chat sends one for
+people inside and outside your organization. When it sends none, the
+server asks the People API, and that lookup can come back empty
 without failing.
 
-- **Someone outside your directory.** An external or guest user has no
-  entry the People API will return to you. This is permanent, not a
-  misconfiguration.
+- **An app, or an account that is gone.** Chat sends no address for a
+  Chat app, and sends none for some people, such as an account that no
+  longer exists. The People API cannot fill those in either. This is
+  permanent, not a misconfiguration.
 - **`directory.readonly` not granted.** Same-domain colleagues resolve
   once it is; without it, close to nothing does.
 - **The lookup failed.** A 403, 429 or 5xx from the People API costs the

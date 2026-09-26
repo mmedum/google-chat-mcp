@@ -473,11 +473,9 @@ func summarizeReactions(raw []gchat.ReactionSummary) ([]ReactionCount, bool) {
 //
 // A failed People lookup is not drift and never costs a row either.
 func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRow, int) {
-	senders := make([]string, 0, len(msgs))
+	senders := make([]*gchat.User, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Sender != nil {
-			senders = append(senders, m.Sender.Name)
-		}
+		senders = append(senders, m.Sender)
 	}
 	people := s.resolvePeople(ctx, senders)
 

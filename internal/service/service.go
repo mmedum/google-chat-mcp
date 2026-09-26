@@ -184,13 +184,35 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 	}
 }
 
-// resolvePeople is Resolve with a nil resolver allowed, so a Service
-// built without one still answers.
-func (s *Service) resolvePeople(ctx context.Context, ids []string) map[string]directory.Person {
-	if s.people == nil {
-		return map[string]directory.Person{}
+// resolvePeople turns Chat users into people.
+//
+// Chat names the address itself on a sender or a member, external
+// people included, and that answer wins. Only a user it left empty is
+// looked up in the directory, which costs a People request and cannot
+// see outside the caller's organization. A nil resolver is allowed, so
+// a Service built without one still answers.
+func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[string]directory.Person {
+	out := make(map[string]directory.Person, len(users))
+	misses := make([]string, 0, len(users))
+	for _, u := range users {
+		if u == nil || u.Name == "" {
+			continue
+		}
+		if u.Email != "" {
+			out[u.Name] = directory.Person{Email: u.Email, DisplayName: u.DisplayName}
+			continue
+		}
+		misses = append(misses, u.Name)
 	}
-	return s.people.Resolve(ctx, ids)
+	if s.people == nil {
+		return out
+	}
+	for id, p := range s.people.Resolve(ctx, misses) {
+		if _, known := out[id]; !known {
+			out[id] = p
+		}
+	}
+	return out
 }
 
 // narrowEnum keeps a value Google sent only when this server knows it,

@@ -88,8 +88,9 @@ func TestGetMessagesResolvesSenders(t *testing.T) {
 	if got[0].SenderEmail != "janedoe@example.com" {
 		t.Errorf("email = %q", got[0].SenderEmail)
 	}
-	// The People name wins over the one on the message: it is the
-	// person's own profile rather than what Chat cached.
+	// When Chat sent no address, the People name wins over the one on
+	// the message: it is the person's own profile rather than what Chat
+	// cached.
 	if got[0].SenderDisplayName != "Jane D." {
 		t.Errorf("display name = %q", got[0].SenderDisplayName)
 	}
@@ -1088,4 +1089,32 @@ func mustTime(v string) time.Time {
 		panic(err)
 	}
 	return t
+}
+
+// A sender Chat named an address for is not looked up, which is the
+// only way an external sender gets one: People cannot see them.
+func TestGetMessagesPrefersTheAddressChatSent(t *testing.T) {
+	page := `{"messages":[
+	  {"name":"spaces/AAAAspace1/messages/AAAAmsg1","sender":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"},"text":"first"},
+	  {"name":"spaces/AAAAspace1/messages/AAAAmsg2","sender":{"name":"users/AAAAuser2","displayName":"John Doe","type":"HUMAN"},"text":"second"}
+	]}`
+	var asked []string
+	s := newService(t, route(ok(page), func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Query()["resourceNames"]...)
+		nobody()(w, r)
+	}))
+	res, err := s.GetMessages(context.Background(), GetMessagesInput{Space: "spaces/AAAAspace1"})
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	got := res.Messages
+	if got[0].SenderEmail != "jane.doe@example.com" || got[0].SenderDisplayName != "Jane Doe" {
+		t.Errorf("first = %+v, want what Chat sent", got[0])
+	}
+	if got[1].SenderEmail != "" || got[1].SenderDisplayName != "John Doe" {
+		t.Errorf("second = %+v, want no address and Chat's name", got[1])
+	}
+	if len(asked) != 1 || asked[0] != "people/AAAAuser2" {
+		t.Errorf("People was asked about %v, want only the sender Chat left empty", asked)
+	}
 }

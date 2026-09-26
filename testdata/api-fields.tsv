@@ -52,7 +52,6 @@ chat	Message	silent	out	no tool sends a message without notifying; send_message 
 chat	Space	importModeExpireTime	out	import mode is a migration state no tool enters or reports
 chat	PermissionSettings	viewSpaceMembership	out	published 2026-09; no tool sets or reports who may see the member list yet
 chat	User	avatarUrl	out	published 2026-09; no tool shows a picture
-chat	User	email	out	published 2026-09 and not yet checked live for which scope fills it; the directory resolver still turns a user id into an address
 #
 # People API, read for one purpose.
 people	Person	addresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for

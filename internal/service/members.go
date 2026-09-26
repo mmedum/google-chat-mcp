@@ -110,13 +110,11 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 		return nil, Classify(err)
 	}
 
-	ids := make([]string, 0, len(resp.Memberships))
+	users := make([]*gchat.User, 0, len(resp.Memberships))
 	for _, m := range resp.Memberships {
-		if m.Member != nil {
-			ids = append(ids, m.Member.Name)
-		}
+		users = append(users, m.Member)
 	}
-	people := s.resolvePeople(ctx, ids)
+	people := s.resolvePeople(ctx, users)
 
 	out := make([]Member, 0, len(resp.Memberships))
 	var unparsed int
@@ -202,7 +200,7 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 		row.DisplayName = got.Member.DisplayName
 		// One lookup, and a failure costs the address and nothing
 		// else, which is the rule everywhere a person is resolved.
-		if people := s.resolvePeople(ctx, []string{got.Member.Name}); len(people) > 0 {
+		if people := s.resolvePeople(ctx, []*gchat.User{got.Member}); len(people) > 0 {
 			row.Email = people[got.Member.Name].Email
 			if row.DisplayName == "" {
 				row.DisplayName = people[got.Member.Name].DisplayName

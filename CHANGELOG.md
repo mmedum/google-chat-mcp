@@ -11,6 +11,14 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- Sender and member email addresses come from Chat itself, which names
+  people outside your organization too. The People API is asked only
+  when Chat sends no address, so external members and senders now come
+  back with an email instead of null, and a listing costs fewer People
+  requests. Output fields are unchanged.
+
 ## [2.2.2] - 2026-09-26
 
 ### Changed
