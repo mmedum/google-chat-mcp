@@ -341,7 +341,7 @@ func TestUpstreamSearchRefusesGrammarInAKeyword(t *testing.T) {
 func TestUpstreamSearchReportsAFurtherPage(t *testing.T) {
 	s := newService(t, ok(`{"results":[{"message":{"name":"spaces/AAAAspace1/messages/AAAAmsg1",
 	  "text":"deploy went out","createTime":"2026-01-02T03:04:05Z",
-	  "sender":{"name":"users/1"},"thread":{"name":"spaces/AAAAspace1/threads/AAAAthread1"}}}],
+	  "sender":{"name":"users/1","email":"janedoe@example.com"},"thread":{"name":"spaces/AAAAspace1/threads/AAAAthread1"}}}],
 	  "nextPageToken":"tok"}`))
 	got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Query: "deploy"})
 	if err != nil {
@@ -356,6 +356,11 @@ func TestUpstreamSearchReportsAFurtherPage(t *testing.T) {
 	}
 	if len(got.Matches) != 1 || got.Matches[0].SenderUserID != "users/1" {
 		t.Errorf("matches = %+v", got.Matches)
+	}
+	// The address Chat named on the sender is passed through; a search
+	// looks nobody up.
+	if len(got.Matches) == 1 && got.Matches[0].SenderEmail != "janedoe@example.com" {
+		t.Errorf("sender email = %q, want the one Chat named", got.Matches[0].SenderEmail)
 	}
 }
 

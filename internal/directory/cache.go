@@ -105,14 +105,22 @@ func (c *Cache) Put(people map[string]Person) {
 	defer c.mu.Unlock()
 	c.loadLocked()
 	now := c.now()
-	var resolved int
+	cutoff := now.Add(-c.ttl)
+	// Only a new or changed address is worth a write. Every listing
+	// feeds what Chat named back in here, and rewriting the file with
+	// the same answers on each call is churn.
+	var changed int
 	for id, p := range people {
+		old, had := c.entries[id]
 		c.entries[id] = entry{Email: p.Email, DisplayName: p.DisplayName, FetchedAt: now}
-		if p.Email != "" {
-			resolved++
+		if p.Email == "" {
+			continue
+		}
+		if !had || old.FetchedAt.Before(cutoff) || old.Email != p.Email || old.DisplayName != p.DisplayName {
+			changed++
 		}
 	}
-	if resolved == 0 {
+	if changed == 0 {
 		return
 	}
 	c.saveLocked()

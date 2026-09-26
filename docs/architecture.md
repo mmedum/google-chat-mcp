@@ -204,7 +204,13 @@ a 404. Found by a live smoke test after every unit test passed.
 ### A People failure costs one field, never a row
 
 Chat sends a sender's or a member's address itself, and that answer
-wins. Only a user it sent none for is looked up in People.
+wins. Its display name wins too: when Chat names an address, the name
+beside it is used over the People profile name. Only a user Chat sent
+no address for is looked up in People, and there the People name wins
+over Chat's. A user Chat sent an address but no name for is looked up
+for the name alone. What Chat names is written to the directory cache,
+so a later payload with no address, such as a reaction's user, still
+resolves someone this server has seen.
 
 Enrichment is best effort. When a directory lookup fails, the rows come
 back without email addresses; a list is never emptied and a row is never

@@ -235,6 +235,14 @@ func TestRenderings(t *testing.T) {
 			want: []string{"0 matches in 240 messages scanned here.", "There is more than this"},
 		},
 		{
+			name: "a search hit names the sender's address when Chat named it",
+			out: SearchMatchOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", Timestamp: at("2026-01-02T03:04:05Z"),
+				SenderUserID: "users/1", SenderEmail: ptr("janedoe@example.com"), Snippet: "deploy went out",
+			},
+			want: []string{"janedoe@example.com (users/1)", "deploy went out"},
+		},
+		{
 			name: "a partial listing admits it",
 			out:  ListSectionsOutput{Unparsed: 2, NextPageToken: ptr("tok")},
 			want: []string{"0 sections.", "2 rows were not understood", "incomplete", "More to come"},

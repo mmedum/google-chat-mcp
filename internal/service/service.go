@@ -187,30 +187,58 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 // resolvePeople turns Chat users into people.
 //
 // Chat names the address itself on a sender or a member, external
-// people included, and that answer wins. Only a user it left empty is
-// looked up in the directory, which costs a People request and cannot
-// see outside the caller's organization. A nil resolver is allowed, so
-// a Service built without one still answers.
+// people included, and that answer wins, display name too. Only a user
+// Chat named no address for anywhere in the batch is looked up in the
+// directory, which costs a People request and cannot see outside the
+// caller's organization. A user Chat named an address for but no name
+// is looked up for the name alone.
+//
+// What Chat named is remembered, so a later call where Chat sends no
+// address, such as a reaction's user, still resolves someone this
+// server has seen. A nil resolver is allowed, so a Service built
+// without one still answers.
 func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[string]directory.Person {
-	out := make(map[string]directory.Person, len(users))
-	misses := make([]string, 0, len(users))
+	fromChat := make(map[string]directory.Person, len(users))
+	for _, u := range users {
+		if u == nil || u.Name == "" || u.Email == "" {
+			continue
+		}
+		if _, seen := fromChat[u.Name]; !seen {
+			fromChat[u.Name] = directory.Person{Email: u.Email, DisplayName: u.DisplayName}
+		}
+	}
+	// A second pass, so a user named with an address on one row and
+	// without on another is not looked up only for the answer to be
+	// thrown away.
+	lookups := make([]string, 0, len(users))
 	for _, u := range users {
 		if u == nil || u.Name == "" {
 			continue
 		}
-		if u.Email != "" {
-			out[u.Name] = directory.Person{Email: u.Email, DisplayName: u.DisplayName}
+		if p, ok := fromChat[u.Name]; ok && p.DisplayName != "" {
 			continue
 		}
-		misses = append(misses, u.Name)
+		lookups = append(lookups, u.Name)
 	}
-	if s.people == nil {
-		return out
+
+	out := make(map[string]directory.Person, len(users))
+	if s.people != nil {
+		out = s.people.Resolve(ctx, lookups)
 	}
-	for id, p := range s.people.Resolve(ctx, misses) {
-		if _, known := out[id]; !known {
-			out[id] = p
+	learned := make(map[string]directory.Person, len(fromChat))
+	for id, p := range fromChat {
+		if p.DisplayName == "" {
+			p.DisplayName = out[id].DisplayName
 		}
+		out[id] = p
+		// An entry with no name is left out: remembering it would cost
+		// the name on every later call until the entry expired.
+		if p.DisplayName != "" {
+			learned[id] = p
+		}
+	}
+	if s.people != nil {
+		s.people.Learn(learned)
 	}
 	return out
 }
