@@ -267,9 +267,9 @@ func TestChatUserIDAcceptsOnlyAWorkspaceProfile(t *testing.T) {
 	}
 }
 
-// A cancelled context must not turn into a dropped row either: the
+// A canceled context must not turn into a dropped row either: the
 // caller still gets an entry for every id it asked about.
-func TestResolveOnACancelledContext(t *testing.T) {
+func TestResolveOnACanceledContext(t *testing.T) {
 	r := newResolver(t, nil, func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"responses":[]}`)
 	})
@@ -277,10 +277,10 @@ func TestResolveOnACancelledContext(t *testing.T) {
 	cancel()
 	got := r.Resolve(ctx, []string{"users/1"})
 	if _, ok := got["users/1"]; !ok {
-		t.Error("a cancelled lookup must still leave an entry")
+		t.Error("a canceled lookup must still leave an entry")
 	}
 	if !errors.Is(ctx.Err(), context.Canceled) {
-		t.Fatal("context should be cancelled")
+		t.Fatal("context should be canceled")
 	}
 }
 

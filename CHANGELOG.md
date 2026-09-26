@@ -11,6 +11,13 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- Tool descriptions, error messages and docs use American spelling:
+  "organization", "recognize", "canceled", "program". Tool names, input
+  and output fields and enum values are unchanged, so no caller needs to
+  act.
+
 ## [2.2.1] - 2026-09-18
 
 ### Added
@@ -115,7 +122,7 @@ upgrading are marked **Breaking:** and say what to do.
   rehearse with a bare `goreleaser release --snapshot`, which runs
   whatever is on their PATH — 2.14.0 on the machine this was found on,
   four minor releases behind the tag. This repository has already had to
-  read goreleaser's behaviour "at v2.18.0 and again at v2.18.1", so the
+  read goreleaser's behavior "at v2.18.0 and again at v2.18.1", so the
   difference is not academic.
 
   The fix deletes the copy rather than gating the prose: `make
@@ -181,7 +188,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 - `status --json` prints the same state as one JSON object on stdout, so
-  a script can read whether this server is authorised instead of parsing
+  a script can read whether this server is authorized instead of parsing
   output written for a person. `credentials.resolved` is the field to
   branch on; `schema_version` changes only when a field is removed or its
   meaning changes.
@@ -213,7 +220,7 @@ upgrading are marked **Breaking:** and say what to do.
   absolute path, existing, and being a directory, and each failure names
   the setting. Unset is still allowed and still means the feature is off;
   that is a decision, not a mistake.
-- `status` prints the local directory. It was honoured but invisible, so
+- `status` prints the local directory. It was honored but invisible, so
   the one command whose job is to say how this server is configured could
   not tell you whether attachments would work — while the Docs and Drive
   servers both print theirs. It reads `(unset)` when off, as Drive's
@@ -279,7 +286,7 @@ upgrading are marked **Breaking:** and say what to do.
   carrying a reason per entry.
 
   It found two things. The eval harness logged the whole tool response on
-  a failure, unredacted, while every neighbouring line went through
+  a failure, unredacted, while every neighboring line went through
   `clip` — the same line, in the same function, as a sibling server. And
   `clip` did not redact at all: it truncated, which reads as safe and is
   not, because the first 300 characters of a tool response are where an
@@ -324,7 +331,7 @@ upgrading are marked **Breaking:** and say what to do.
   collapsed to the footer. Every release page this project has published
   carries a footer and nothing above it, and the step that built the
   notes passed green each time — the failure was only visible by reading
-  the page afterwards, which nobody did.
+  the page afterward, which nobody did.
 
   The block is deleted rather than set to false. `release.footer` is
   untouched and still applies: `internal/pipe/release/body.go` renders
@@ -334,7 +341,7 @@ upgrading are marked **Breaking:** and say what to do.
   the other direction.
 
   The README said the changelog "is also what the release notes are made
-  from", which was the intent and not the behaviour. It is true now.
+  from", which was the intent and not the behavior. It is true now.
 
 
 ## [2.0.3] - 2026-09-13
@@ -344,7 +351,7 @@ upgrading are marked **Breaking:** and say what to do.
   removed, the domain kept. The domain is the half a diagnosis uses —
   shared drives are a Workspace feature and a personal account cannot
   create one, so `@gmail.com` and a Workspace domain are two different
-  sets of behaviour to explain — while the local part answers nothing.
+  sets of behavior to explain — while the local part answers nothing.
   It is never an input to any command here, and this output is what the
   issue form asks people to paste. One server showed it in full, one
   masked the domain as well (which hid the useful half), and two sat in
@@ -361,7 +368,7 @@ upgrading are marked **Breaking:** and say what to do.
   five servers side by side.
   The release stamp now carries the tag itself rather than goreleaser's
   v-stripped form, so the two sources agree at the source; the
-  normalisation stays for a version passed by hand to `make`.
+  normalization stays for a version passed by hand to `make`.
 - `status` prints the same lines, in the same order, with the same
   labels as the three sibling servers, once a profile is configured (the
   not-yet-signed-in message still differs between them). They had drifted into four shapes
@@ -387,7 +394,7 @@ upgrading are marked **Breaking:** and say what to do.
   schema happens to share. It compared the name matches and skipped the
   rest in silence, with a floor of 20 under the number matched standing in
   for a check — which against a real 49 left 29 renames of headroom. A repo-wide
-  rename of a modelled struct took its properties out of the comparison
+  rename of a modeled struct took its properties out of the comparison
   and the gate still printed ok. It now runs a third direction over the
   wire package: every struct carrying a JSON tag must match a published
   schema, be named by an `alias` row, or carry a new `local` row saying it
@@ -398,7 +405,7 @@ upgrading are marked **Breaking:** and say what to do.
 - **An API-fields gate.** `make api-fields` is the coverage gate one
   level down: `testdata/api-fields.json` is every schema and property
   the Chat and People discovery documents publish, `testdata/api-fields.tsv`
-  is one hand-written row per exception, and the modelled side is read
+  is one hand-written row per exception, and the modeled side is read
   out of `internal/gchat` with `go/ast`, promoting embedded structs'
   tags. Both directions fail — a field Google adds to a type this server
   models, and a field this server carries that nothing publishes — and
@@ -444,7 +451,7 @@ upgrading are marked **Breaking:** and say what to do.
   and a forwarded message came back with nothing in it. Found by the new
   third direction of the api-fields gate.
 - A space permission granted to assistant managers is reported. The
-  permission-setting type modelled `managersAllowed` and `membersAllowed`
+  permission-setting type modeled `managersAllowed` and `membersAllowed`
   and not `assistantManagersAllowed`, so a ROLE_ASSISTANT_MANAGER grant
   decoded as granted to nobody.
 - **A quoted message's attachments never decoded.** Chat spells the
@@ -457,7 +464,7 @@ upgrading are marked **Breaking:** and say what to do.
   `MessagePin.createTime` and `.creator`, and `Membership.membershipId`,
   are not published by the API and were read by nothing. The
   `Affiliation` field beside the last of them carries a comment saying a
-  live doctor run reported it as drift twice before anything modelled
+  live doctor run reported it as drift twice before anything modeled
   it; that is the same class of problem, now caught by a gate rather
   than by someone noticing.
 
@@ -466,7 +473,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Fixed
 - **`go install` works again.** The module path is now
   `github.com/mmedum/google-chat-mcp/v2`, which Go requires from v2
-  onwards. Without it `go install ...@v2.0.0` failed outright and
+  onward. Without it `go install ...@v2.0.0` failed outright and
   `@latest` silently installed v1.0.0 — deletes ungated, none of the 2.0.0
   fixes, and no warning. Install with:
   `go install github.com/mmedum/google-chat-mcp/v2/cmd/google-chat-mcp@latest`.
@@ -498,7 +505,7 @@ upgrading are marked **Breaking:** and say what to do.
 - `get_messages`, `get_thread` and `list_members` report `unparsed`, so a
   listing that dropped rows says so instead of only logging it.
 - Quoted messages carry their content: `quotedMessageSnapshot` is
-  modelled, so a reply can be read together with what it replied to.
+  modeled, so a reply can be read together with what it replied to.
 - **The Claude Desktop bundle now covers Linux.** It shipped macOS and
   Windows only, on the belief that Linux would need two bundles or a
   broken one. Claude Desktop for Linux exists and supports both x64 and
@@ -534,7 +541,7 @@ subprocess of your client, and talks to Google Chat as you.
   attachments may be read from or written to, and unset — the default — means
   no file transfer at all.
 - **`GCM_INTERACTION_HINT`** marks every write as needing a person, which
-  clients that read the mark honour by asking first. Default on. Turn it off
+  clients that read the mark honor by asking first. Default on. Turn it off
   for a deployment with nobody at the keyboard: in Claude Code the mark is
   absolute, and headless every write is refused before it reaches Google.
 - **Unknown response fields are counted and named, never fatal.** Google adds

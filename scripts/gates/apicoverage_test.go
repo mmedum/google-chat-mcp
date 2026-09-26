@@ -528,13 +528,13 @@ func TestCheckReachableDerivesTheVerdictRatherThanTrustingIt(t *testing.T) {
 			name:   "arguing in prose for something that was never a choice",
 			row:    row("chat", "spaces.list", "out", "we would rather not"),
 			method: published(scopeUnheld),
-			want:   "no scope this server asks for authorises it",
+			want:   "no scope this server asks for authorizes it",
 		},
 		{
-			name:   "calling something no scope authorises",
+			name:   "calling something no scope authorizes",
 			row:    row("chat", "spaces.list", "used", "Client.ListSpaces"),
 			method: published(scopeUnheld),
-			want:   "no scope this server asks for authorises it",
+			want:   "no scope this server asks for authorizes it",
 		},
 		{
 			name:   "out of scope when it is in reach",

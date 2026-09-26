@@ -258,7 +258,7 @@ var emojiNameShape = regexp.MustCompile(`^:[a-z0-9_-]+:$`)
 // emojiImageTypes are the file types Google accepts.
 var emojiImageTypes = []string{".png", ".jpg", ".jpeg", ".gif"}
 
-// CustomEmoji is one of an organisation's own emoji.
+// CustomEmoji is one of an organization's own emoji.
 type CustomEmoji struct {
 	Name string
 	// EmojiName is the :shortcode: form.
@@ -288,7 +288,7 @@ const (
 	maxEmojiLimit     = 200
 )
 
-// ListCustomEmojis returns the organisation's own emoji.
+// ListCustomEmojis returns the organization's own emoji.
 func (s *Service) ListCustomEmojis(ctx context.Context, in ListCustomEmojisInput) (*ListCustomEmojisResult, error) {
 	limit, err := clampLimit("limit", in.Limit, defaultEmojiLimit, maxEmojiLimit)
 	if err != nil {
@@ -344,7 +344,7 @@ type CreateCustomEmojiResult struct {
 	DryRun bool
 }
 
-// CreateCustomEmoji adds an emoji to the organisation from a local
+// CreateCustomEmoji adds an emoji to the organization from a local
 // image.
 //
 // The image is read here and travels base64-encoded inside the JSON
@@ -368,10 +368,10 @@ func (s *Service) CreateCustomEmoji(ctx context.Context, in CreateCustomEmojiInp
 	// The same local-file door the attachment tools go through: inside
 	// GCM_LOCAL_DIR, symlinks resolved. This used to read any path the
 	// caller named, which made one tool able to send any file on the
-	// machine to Google while its neighbours could not.
+	// machine to Google while its neighbors could not.
 	//
 	// The size is checked from the stat, so an enormous file is refused
-	// rather than pulled into memory to be refused afterwards.
+	// rather than pulled into memory to be refused afterward.
 	files, err := s.files()
 	if err != nil {
 		return nil, err
@@ -427,7 +427,7 @@ type DeleteCustomEmojiResult struct {
 	DryRun  bool
 }
 
-// DeleteCustomEmoji removes one from the organisation.
+// DeleteCustomEmoji removes one from the organization.
 //
 // It is gone for everyone, and any message already carrying it loses
 // the image. The tool says so; this only reports what happened.

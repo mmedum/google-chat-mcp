@@ -404,7 +404,7 @@ func TestDirectoryCachePath(t *testing.T) {
 // holds the email address and display name of every person the server
 // has resolved. `logout` deletes the token and calls Remove, so if
 // Remove leaves the cache behind, the command reports "Signed out" while
-// an extract of the organisation's directory stays on disk — outliving
+// an extract of the organization's directory stays on disk — outliving
 // the credential it was fetched with, and inherited by a login as a
 // different account.
 //

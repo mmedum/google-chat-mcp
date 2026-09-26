@@ -106,7 +106,7 @@ const (
 // whole package exists to answer — and `runsIn: manual` is what says so.
 //
 // Filled in init rather than as a literal, because a command may read
-// this map and Go sees that as an initialisation cycle.
+// this map and Go sees that as an initialization cycle.
 var commands map[string]command
 
 func init() {
@@ -168,7 +168,7 @@ func init() {
 		"api-fields": {
 			run:   apiFields,
 			arity: 1, runsIn: inCheck,
-			doc: "every published field modelled on purpose or left out on purpose",
+			doc: "every published field modeled on purpose or left out on purpose",
 		},
 		"api-diff": {
 			run:   apiDiff,
@@ -447,7 +447,7 @@ func binaryArg(args []string) string {
 const baselinePath = "testdata/schemas-baseline.json"
 
 // dumpPath is where the built binary's surface is written. It is a build
-// artefact and gitignored; the staleness gate reads it too.
+// artifact and gitignored; the staleness gate reads it too.
 const dumpPath = "schemas.json"
 
 // schemaDiffBinary dumps the binary's tool surface and compares it with

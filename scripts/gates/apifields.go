@@ -39,7 +39,7 @@ import (
 //   - testdata/api-fields.tsv is the record: one verdict per exception.
 //     `out` is a published property this server deliberately does not
 //     model, `extra` a field it models that public discovery does not
-//     publish, `alias` a schema modelled by a struct of another name,
+//     publish, `alias` a schema modeled by a struct of another name,
 //     `owner` which API a struct models when two of them publish a
 //     schema of the same name, and `unrelated` that a struct sharing a
 //     schema's name is about something else entirely.
@@ -93,12 +93,12 @@ func apiFields(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
-	modelled, err := fieldsWireStructs(fieldsWireDir)
+	modeled, err := fieldsWireStructs(fieldsWireDir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
-	problems, matched, off := fieldsProblems(snap, rows, modelled)
+	problems, matched, off := fieldsProblems(snap, rows, modeled)
 	// No floor on the number of schemas matched. There was one, at 20
 	// against a real 49, which is another way of saying whole families of
 	// types could leave the comparison before it complained.
@@ -119,7 +119,7 @@ func apiFields(_ []string, stdout, stderr io.Writer) int {
 // its own, then the record against the snapshot and the package. It
 // returns the problems, how many schemas were compared, and how many
 // properties are deliberately out.
-func fieldsProblems(snap fieldsSnapshot, rows []fieldsRow, modelled map[string]map[string]bool) ([]string, int, int) {
+func fieldsProblems(snap fieldsSnapshot, rows []fieldsRow, modeled map[string]map[string]bool) ([]string, int, int) {
 	// published is keyed by API and schema, because two of the APIs this
 	// server reaches publish schemas of the same name — merging them
 	// invents both missing fields and unpublished ones.
@@ -135,10 +135,10 @@ func fieldsProblems(snap fieldsSnapshot, rows []fieldsRow, modelled map[string]m
 	if len(published) == 0 {
 		return []string{fieldsSnapshotFile + " lists no schemas; that is not a reading of the discovery documents"}, 0, 0
 	}
-	rec, problems := readDecisions(published, names, rows, modelled)
-	compared, matched := compareFields(published, names, rec, modelled)
+	rec, problems := readDecisions(published, names, rows, modeled)
+	compared, matched := compareFields(published, names, rec, modeled)
 	problems = append(problems, compared...)
-	problems = append(problems, unmatchedStructs(published, rec, modelled)...)
+	problems = append(problems, unmatchedStructs(published, rec, modeled)...)
 	return problems, matched, rec.out
 }
 
@@ -170,7 +170,7 @@ func (d decisions) has(key, prop, kind string) bool {
 // readDecisions validates every row against the snapshot and collects
 // what the rows decide.
 func readDecisions(published map[string][]string, names map[string][]string, rows []fieldsRow,
-	modelled map[string]map[string]bool) (decisions, []string) {
+	modeled map[string]map[string]bool) (decisions, []string) {
 	d := decisions{
 		alias: map[string]string{}, owner: map[string]string{}, unrelated: map[string]bool{},
 		accountedFor: map[string]bool{},
@@ -196,7 +196,7 @@ func readDecisions(published map[string][]string, names map[string][]string, row
 			problems = append(problems, fmt.Sprintf("%s is %s with no reason given", r.where(), r.Verdict))
 			continue
 		}
-		if p := rowProblem(r, names, modelled); p != "" {
+		if p := rowProblem(r, names, modeled); p != "" {
 			problems = append(problems, p)
 			continue
 		}
@@ -230,17 +230,17 @@ func readDecisions(published map[string][]string, names map[string][]string, row
 // fields simply stop being compared and the gate reports success. A
 // floor under the number of schemas matched was standing in for this and
 // could not do the job — it sat at 20 against a real 49. Verified by
-// renaming a modelled struct: the count fell by one and the gate still
+// renaming a modeled struct: the count fell by one and the gate still
 // said ok.
-func unmatchedStructs(published map[string][]string, d decisions, modelled map[string]map[string]bool) []string {
+func unmatchedStructs(published map[string][]string, d decisions, modeled map[string]map[string]bool) []string {
 	names := map[string]bool{}
 	for key := range published {
 		_, name, _ := strings.Cut(key, ":")
 		names[name] = true
 	}
 	var problems []string
-	for _, name := range slices.Sorted(maps.Keys(modelled)) {
-		if len(modelled[name]) == 0 {
+	for _, name := range slices.Sorted(maps.Keys(modeled)) {
+		if len(modeled[name]) == 0 {
 			// No JSON tag on any field: not a wire type at all.
 			continue
 		}
@@ -253,14 +253,14 @@ func unmatchedStructs(published map[string][]string, d decisions, modelled map[s
 	}
 	return problems
 }
-func rowProblem(r fieldsRow, names map[string][]string, modelled map[string]map[string]bool) string {
+func rowProblem(r fieldsRow, names map[string][]string, modeled map[string]map[string]bool) string {
 	if r.Verdict == "local" {
 		switch {
 		case r.Property != "*":
 			return r.where() + " is local as a whole type, so its property must be *"
 		case len(names[r.Schema]) > 0:
 			return r.where() + " names a published schema, so it is not local; drop the row"
-		case modelled[r.Schema] == nil:
+		case modeled[r.Schema] == nil:
 			return fmt.Sprintf("%s is written off as local and is not a struct in %s; drop the row", r.where(), fieldsWireDir)
 		}
 		return ""
@@ -274,7 +274,7 @@ func rowProblem(r fieldsRow, names map[string][]string, modelled map[string]map[
 		case r.Verdict == "owner" && len(names[r.Schema]) < 2:
 			return fmt.Sprintf("%s claims ownership of a schema name only %s publishes; an owner row is for a name two APIs share",
 				r.where(), r.API)
-		case r.Verdict == "alias" && modelled[r.Reason] == nil:
+		case r.Verdict == "alias" && modeled[r.Reason] == nil:
 			// An alias's reason is a struct name, the way a used row's
 			// reason in the coverage record is a method name.
 			return fmt.Sprintf("%s is aliased to %q, which is not a struct in %s", r.where(), r.Reason, fieldsWireDir)
@@ -289,9 +289,9 @@ func rowProblem(r fieldsRow, names map[string][]string, modelled map[string]map[
 	return fmt.Sprintf("%s: verdict %q is none of out, extra, alias, local, owner or unrelated", r.where(), r.Verdict)
 }
 
-// structFor is the struct modelling one published schema, and whether
+// structFor is the struct modeling one published schema, and whether
 // there is one to compare at all.
-func structFor(key, schema string, names map[string][]string, d decisions, modelled map[string]map[string]bool) (string, string, bool) {
+func structFor(key, schema string, names map[string][]string, d decisions, modeled map[string]map[string]bool) (string, string, bool) {
 	if a, ok := d.alias[key]; ok {
 		return a, "", true
 	}
@@ -300,7 +300,7 @@ func structFor(key, schema string, names map[string][]string, d decisions, model
 		// Two APIs publish this name. Which one the struct models is a
 		// fact only a person knows, and guessing it is how a gate comes
 		// to report a field as missing from a type never about that API.
-		if _, ok := modelled[schema]; !ok {
+		if _, ok := modeled[schema]; !ok {
 			return "", "", false
 		}
 		if d.owner[schema] == "" {
@@ -317,7 +317,7 @@ func structFor(key, schema string, names map[string][]string, d decisions, model
 
 // compareFields holds every schema this package models to what its API
 // publishes, in both directions.
-func compareFields(published map[string][]string, names map[string][]string, d decisions, modelled map[string]map[string]bool) ([]string, int) {
+func compareFields(published map[string][]string, names map[string][]string, d decisions, modeled map[string]map[string]bool) ([]string, int) {
 	var problems []string
 	matched := 0
 	for _, key := range slices.Sorted(mapKeys(published)) {
@@ -325,15 +325,15 @@ func compareFields(published map[string][]string, names map[string][]string, d d
 			continue
 		}
 		api, schema, _ := strings.Cut(key, ":")
-		name, problem, ok := structFor(key, schema, names, d, modelled)
+		name, problem, ok := structFor(key, schema, names, d, modeled)
 		if problem != "" {
 			problems = append(problems, problem)
 		}
 		if !ok {
 			continue
 		}
-		tags, isModelled := modelled[name]
-		if !isModelled {
+		tags, isModeled := modeled[name]
+		if !isModeled {
 			// A schema this package does not model at all is a question
 			// about capability, which the coverage gate answers.
 			continue
@@ -353,7 +353,7 @@ func compareFields(published map[string][]string, names map[string][]string, d d
 		for _, tag := range slices.Sorted(mapKeys(tags)) {
 			if !pub[tag] && !d.has(key, tag, "extra") {
 				problems = append(problems, fmt.Sprintf(
-					"%s: %s.%s is modelled and %s %s does not publish it; add a row saying why it is there",
+					"%s: %s.%s is modeled and %s %s does not publish it; add a row saying why it is there",
 					fieldsRecordFile, name, tag, api, schema))
 			}
 		}
@@ -598,7 +598,7 @@ type discoverySchema struct {
 // v3 does this today — it declares File.capabilities and twenty others as
 // anonymous objects rather than as a $ref. Reading only the top level
 // recorded each as a single property name, so its 166 sub-properties
-// collapsed to 21 and the types modelling them matched no schema at all.
+// collapsed to 21 and the types modeling them matched no schema at all.
 // The descent is here in every server because the omission is invisible
 // until an API starts doing it, which is the same way the last one bit.
 //

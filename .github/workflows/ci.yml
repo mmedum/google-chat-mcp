@@ -70,7 +70,7 @@ jobs:
           go-version-file: go.mod
       - run: git fetch --no-tags origin main:refs/remotes/origin/main
       - run: LEAKCHECK_HISTORY=1 go test ./internal/leakcheck/ -run TestTheHistoryIsClean -v
-      # The tree scan and the compiled-artefact rule, named so they show
+      # The tree scan and the compiled-artifact rule, named so they show
       # up here rather than only inside `go test ./...`.
       - name: leaks
         run: go test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoBuildOutputInTheTree' -count=1
@@ -173,7 +173,7 @@ jobs:
         run: go run ./scripts/gates transcript
       - name: every API method is used or left out on purpose
         run: go run ./scripts/gates api-coverage
-      - name: every published field is modelled or left out on purpose
+      - name: every published field is modeled or left out on purpose
         run: go run ./scripts/gates api-fields
       - name: stdio smoke
         run: go run ./scripts/gates smoke ./google-chat-mcp

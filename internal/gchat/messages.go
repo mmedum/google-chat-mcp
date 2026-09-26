@@ -209,7 +209,7 @@ func ValidMessageID(id string) bool {
 // A reply carries messageReplyOption. The default is the strict one, so
 // a thread that has since gone fails rather than quietly starting a new
 // one elsewhere in the space; replyFallback asks for the other
-// behaviour, which is Google's REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD.
+// behavior, which is Google's REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD.
 func (c *Client) SendMessage(ctx context.Context, space string, body *SendMessageRequest, replyFallback bool, clientID string) (*Message, error) {
 	id := clientID
 	if id == "" {

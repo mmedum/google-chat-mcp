@@ -17,7 +17,7 @@ const sectionPage = `{"sections":[
   {"name":"users/me/sections/S4","type":"DEFAULT_APPS"}
 ],"nextPageToken":"more"}`
 
-// Google names only custom sections. The parenthesised label is what
+// Google names only custom sections. The parenthesized label is what
 // keeps a custom section called "Spaces" apart from the system one.
 func TestListSectionsLabelsTheSystemOnes(t *testing.T) {
 	s := newService(t, ok(sectionPage))
@@ -173,7 +173,7 @@ func TestListSectionItemsKeepsAnItemWithNoSpace(t *testing.T) {
 		t.Fatalf("ListSectionItems: %v", err)
 	}
 	if len(got.Items) != 1 || got.Items[0].Space != "" {
-		t.Errorf("items = %+v, want the unmodelled item kept with no space", got.Items)
+		t.Errorf("items = %+v, want the unmodeled item kept with no space", got.Items)
 	}
 	if got.Unparsed != 1 {
 		t.Errorf("unparsed = %d, want the nameless row counted", got.Unparsed)
@@ -214,7 +214,7 @@ func TestRenameSectionRenames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenameSection: %v", err)
 	}
-	// Google canonicalises users/me to the numeric id, and the name it
+	// Google canonicalizes users/me to the numeric id, and the name it
 	// returns is the one a caller should use next.
 	if got.Name != "users/123/sections/S" {
 		t.Errorf("name = %q", got.Name)
@@ -455,7 +455,7 @@ func TestMoveSpaceToSectionDerivesTheNewNameWhenGoogleGivesNone(t *testing.T) {
 }
 
 // A space already where it is wanted is not moved again. Google
-// canonicalises users/me to a numeric id, so comparing the whole name
+// canonicalizes users/me to a numeric id, so comparing the whole name
 // would call every already-filed space a move and write to all of them.
 func TestMoveSpaceToSectionIsANoOpWhenTheSpaceIsAlreadyFiled(t *testing.T) {
 	c := &calls{}
@@ -515,7 +515,7 @@ func TestMoveSpaceToSectionTrustsTheItemHint(t *testing.T) {
 }
 
 // The lookup trusts a server-side filter and what follows is a write.
-// If Google ever stops honouring the filter, the first row back is an
+// If Google ever stops honoring the filter, the first row back is an
 // arbitrary space and this would file it somewhere new.
 func TestMoveSpaceToSectionRefusesAnItemForTheWrongSpace(t *testing.T) {
 	c := &calls{}

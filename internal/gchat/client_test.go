@@ -369,8 +369,8 @@ func TestTheReadLimiterIsApplied(t *testing.T) {
 	}
 }
 
-// A cancelled context stops the work rather than finishing the retries.
-func TestACancelledContextStopsRetrying(t *testing.T) {
+// A canceled context stops the work rather than finishing the retries.
+func TestACanceledContextStopsRetrying(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
@@ -439,8 +439,8 @@ func TestATransportErrorDoesNotCarryTheURL(t *testing.T) {
 
 // Retry-After is a minimum, not a target. Jittering it downward — which
 // this did — turns "wait 10 seconds" into a wait of five, so three early
-// retries fail a call that honouring the header would have completed.
-func TestRetryAfterIsHonouredNotJittered(t *testing.T) {
+// retries fail a call that honoring the header would have completed.
+func TestRetryAfterIsHonoredNotJittered(t *testing.T) {
 	c := newTestClient(t, httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {})))
 	hint := &retryHint{err: errors.New("429"), after: 10 * time.Second}

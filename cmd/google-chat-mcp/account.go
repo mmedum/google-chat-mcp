@@ -134,7 +134,7 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 
 	if !assumeYes && !confirm(stderr, fmt.Sprintf(
 		"Revoke this app's access and delete the refresh token from the %s? [y/N] ", source)) {
-		_, _ = fmt.Fprintln(stdout, "Cancelled.")
+		_, _ = fmt.Fprintln(stdout, "Canceled.")
 		return 0
 	}
 

@@ -2,8 +2,8 @@
 # testdata/api-fields.json, is not — `gates api-diff` writes that.
 #
 # out		the property is published and this server deliberately does not model it
-# extra		the field is modelled and public discovery does not publish it
-# alias		the schema is modelled by the struct the reason names (property *)
+# extra		the field is modeled and public discovery does not publish it
+# alias		the schema is modeled by the struct the reason names (property *)
 # owner		which API a struct of a shared name models (property *)
 # unrelated	a struct sharing this schema's name is about something else (property *)
 # local		a struct in internal/gchat that models no published schema at all (property *)
@@ -17,7 +17,7 @@
 # The rule an out row is judged against: if a tool here WRITES a field,
 # the types must carry it, because a person should not be able to set
 # something no read will show them. Nothing below is written by a tool;
-# the one field that was — a quoted message's attachments, modelled under
+# the one field that was — a quoted message's attachments, modeled under
 # the singular tag a Message uses — was a bug this gate found, and it is
 # fixed rather than written off.
 #
@@ -52,39 +52,39 @@ chat	Message	silent	out	no tool sends a message without notifying; send_message 
 chat	Space	importModeExpireTime	out	import mode is a migration state no tool enters or reports
 #
 # People API, read for one purpose.
-people	Person	addresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	ageRange	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	ageRanges	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	biographies	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	birthdays	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	braggingRights	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	calendarUrls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	clientData	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	coverPhotos	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	etag	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	events	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	externalIds	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	fileAses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	genders	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	imClients	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	interests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	locales	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	locations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	memberships	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	metadata	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	miscKeywords	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	nicknames	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	occupations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	phoneNumbers	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	relations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	relationshipInterests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	relationshipStatuses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	residences	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	sipAddresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	skills	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	taglines	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	urls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
-people	Person	userDefined	out	this server reads People only to turn a name into an address: names, email addresses, photos and organisations, which is what the personFields mask asks for
+people	Person	addresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	ageRange	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	ageRanges	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	biographies	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	birthdays	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	braggingRights	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	calendarUrls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	clientData	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	coverPhotos	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	etag	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	events	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	externalIds	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	fileAses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	genders	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	imClients	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	interests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	locales	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	locations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	memberships	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	metadata	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	miscKeywords	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	nicknames	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	occupations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	phoneNumbers	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	relations	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	relationshipInterests	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	relationshipStatuses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	residences	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	sipAddresses	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	skills	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	taglines	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	urls	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
+people	Person	userDefined	out	this server reads People only to turn a name into an address: names, email addresses, photos and organizations, which is what the personFields mask asks for
 people	PersonResponse	httpStatusCode	out	a per-person status in a batch this server does not batch; a failed lookup is an error
 people	FieldMetadata	sourcePrimary	out	this server takes the first value of a field, not Google's notion of primary
 people	FieldMetadata	verified	out	no tool reports whether a directory value is verified
@@ -150,18 +150,18 @@ people	Name	phoneticHonorificSuffix	out	search_people reports the display name; 
 people	Name	phoneticMiddleName	out	search_people reports the display name; no tool reads a person`s name broken into parts
 people	Name	unstructuredName	out	search_people reports the display name; no tool reads a person`s name broken into parts
 people	Organization	*	alias	PersonOrg
-people	Organization	costCenter	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	current	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	domain	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	endDate	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	formattedType	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	fullTimeEquivalentMillipercent	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	jobDescription	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	location	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	phoneticName	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	startDate	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	symbol	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
-people	Organization	type	out	search_people reports the job title and department; nothing reads the rest of an organisation entry
+people	Organization	costCenter	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	current	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	domain	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	endDate	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	formattedType	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	fullTimeEquivalentMillipercent	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	jobDescription	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	location	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	phoneticName	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	startDate	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	symbol	out	search_people reports the job title and department; nothing reads the rest of an organization entry
+people	Organization	type	out	search_people reports the job title and department; nothing reads the rest of an organization entry
 people	Photo	*	alias	PersonPhoto
 people	Photo	default	out	search_people reports the picture url; nothing reads the rest
 chat	SetUpSpaceRequest	*	alias	SetupSpaceRequest

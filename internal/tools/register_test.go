@@ -211,7 +211,7 @@ type dryRunProbe struct {
 }
 
 // The wrapper finds the flag by reflection, so a tool cannot declare
-// dry_run and also have to remember to honour it.
+// dry_run and also have to remember to honor it.
 func TestTheDryRunFlagIsFoundOnTheInputType(t *testing.T) {
 	if got := dryRunField[dryRunProbe](); got != 1 {
 		t.Errorf("dry_run field = %d, want the second field", got)

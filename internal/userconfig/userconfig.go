@@ -216,7 +216,7 @@ func Save(profile string, c Config) error {
 // secret and is still somebody's data: it holds the email address and
 // display name of every person this server has resolved. Deleting the
 // token and leaving that behind reports "Signed out" while an extract of
-// the organisation's directory stays on disk, outliving the credential
+// the organization's directory stays on disk, outliving the credential
 // it was fetched with — and a login as a different account inherits it.
 //
 // The refresh token is not here. The credential store owns that, because
