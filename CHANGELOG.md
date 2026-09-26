@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-09-27
+
 ### Changed
 
 - `search_messages` fills `sender_email` from an address this server
@@ -602,7 +604,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.0...v2.2.1
