@@ -198,6 +198,27 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 // server has seen. A nil resolver is allowed, so a Service built
 // without one still answers.
 func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[string]directory.Person {
+	var lookup func([]string) map[string]directory.Person
+	if s.people != nil {
+		lookup = func(ids []string) map[string]directory.Person { return s.people.Resolve(ctx, ids) }
+	}
+	return s.mergePeople(users, lookup)
+}
+
+// knownPeople is resolvePeople without the People API: what Chat named
+// and what the cache already holds, and never a request. What Chat
+// named is still remembered.
+func (s *Service) knownPeople(users []*gchat.User) map[string]directory.Person {
+	var lookup func([]string) map[string]directory.Person
+	if s.people != nil {
+		lookup = s.people.Known
+	}
+	return s.mergePeople(users, lookup)
+}
+
+// mergePeople is the rule both share, with lookup answering for the
+// users Chat named no address for. A nil lookup answers nobody.
+func (s *Service) mergePeople(users []*gchat.User, lookup func([]string) map[string]directory.Person) map[string]directory.Person {
 	fromChat := make(map[string]directory.Person, len(users))
 	for _, u := range users {
 		if userOf(u) == "" || u.Email == "" {
@@ -209,7 +230,7 @@ func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[st
 	}
 
 	var out map[string]directory.Person
-	if s.people == nil {
+	if lookup == nil {
 		out = make(map[string]directory.Person, len(users))
 	} else {
 		// A second pass, so a user named with an address on one row
@@ -222,7 +243,7 @@ func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[st
 			}
 			lookups = append(lookups, userOf(u))
 		}
-		out = s.people.Resolve(ctx, lookups)
+		out = lookup(lookups)
 	}
 	learned := make(map[string]directory.Person, len(fromChat))
 	for id, p := range fromChat {

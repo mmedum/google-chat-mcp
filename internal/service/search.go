@@ -64,8 +64,9 @@ type SearchMatch struct {
 	Name         string
 	ThreadName   string
 	SenderUserID string
-	// SenderEmail is the address Chat named for the sender, and empty
-	// when it named none. A search looks nobody up in People.
+	// SenderEmail is the address Chat named for the sender, or one this
+	// server has already seen, and empty otherwise. A search looks nobody
+	// up in People.
 	SenderEmail string
 	Text        string
 	CreateTime  time.Time
@@ -79,6 +80,10 @@ type SearchMatch struct {
 	// Links is what the message's text links to; see MessageLink. A hit
 	// whose body is a link reads as a bare word without it.
 	Links []MessageLink
+
+	// users is the sender and the people the message mentions, as Chat
+	// named them, for withSenders.
+	users []*gchat.User
 }
 
 // searchMatch shapes one hit, with the snippet centered on at.
@@ -101,9 +106,28 @@ func searchMatch(m gchat.Message, at int) SearchMatch {
 	}
 	if m.Sender != nil {
 		match.SenderUserID = m.Sender.Name
-		match.SenderEmail = m.Sender.Email
 	}
+	match.users = append([]*gchat.User{m.Sender}, mentioned(m.Annotations)...)
 	return match
+}
+
+// withSenders names each match's sender from what Chat sent and what
+// the cache already holds, and remembers what Chat named, the way a
+// listing does. It asks People nothing: a search can match hundreds of
+// messages, and a request per stranger is not what a search is for.
+func (s *Service) withSenders(out *SearchMessagesResult, err error) (*SearchMessagesResult, error) {
+	if err != nil {
+		return nil, err
+	}
+	var users []*gchat.User
+	for _, m := range out.Matches {
+		users = append(users, m.users...)
+	}
+	known := s.knownPeople(users)
+	for i := range out.Matches {
+		out.Matches[i].SenderEmail = known[out.Matches[i].SenderUserID].Email
+	}
+	return out, nil
 }
 
 // SearchMessagesResult is what a search found and how much it left.
@@ -138,7 +162,7 @@ type SearchMessagesResult struct {
 // the caller can see rather than the ten pages a local scan affords.
 func (s *Service) SearchMessages(ctx context.Context, in SearchMessagesInput) (*SearchMessagesResult, error) {
 	if in.Regex == "" {
-		return s.searchUpstream(ctx, in)
+		return s.withSenders(s.searchUpstream(ctx, in))
 	}
 	if in.Query != "" {
 		return nil, Invalidf("pass query for Google's search or regex for a local scan, not both")
@@ -157,7 +181,7 @@ func (s *Service) SearchMessages(ctx context.Context, in SearchMessagesInput) (*
 				"which is scanned here over one space", field)
 		}
 	}
-	return s.scanSpace(ctx, in)
+	return s.withSenders(s.scanSpace(ctx, in))
 }
 
 // scanSpace reads one space's history and matches a pattern here.

@@ -166,6 +166,19 @@ func messageQuote(q *gchat.QuotedMessageMeta) *MessageQuote {
 	return out
 }
 
+// mentioned is the people a message mentions that Chat named an
+// address for. A mention without one is left out: resolving it would
+// cost a People request for someone the message only names.
+func mentioned(all []gchat.Annotation) []*gchat.User {
+	var out []*gchat.User
+	for _, a := range all {
+		if a.UserMention != nil && a.UserMention.User != nil && a.UserMention.User.Email != "" {
+			out = append(out, a.UserMention.User)
+		}
+	}
+	return out
+}
+
 // messageLinks shapes a message's rich-link annotations.
 //
 // Annotations of every other kind are skipped: a mention and a custom
@@ -474,11 +487,14 @@ func summarizeReactions(raw []gchat.ReactionSummary) ([]ReactionCount, bool) {
 //
 // A failed People lookup is not drift and never costs a row either.
 func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRow, int) {
-	senders := make([]*gchat.User, 0, len(msgs))
+	// The people a message mentions ride along, so an address Chat
+	// named for them is remembered in the same write.
+	users := make([]*gchat.User, 0, len(msgs))
 	for _, m := range msgs {
-		senders = append(senders, m.Sender)
+		users = append(users, m.Sender)
+		users = append(users, mentioned(m.Annotations)...)
 	}
-	people := s.resolvePeople(ctx, senders)
+	people := s.resolvePeople(ctx, users)
 
 	rows := make([]MessageRow, 0, len(msgs))
 	var unparsed int
