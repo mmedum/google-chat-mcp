@@ -11,6 +11,13 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- `search_messages` fills `sender_email` from an address this server
+  has already seen when Chat names none, still without asking the People
+  API. What a search result or a mention names is remembered too, so
+  `remove_reaction` by `user_email` can match that person later.
+
 ## [2.3.0] - 2026-09-27
 
 ### Added
