@@ -29,20 +29,20 @@ type WhoamiOutput struct {
 // SpaceSummaryOutput is one row of a space listing.
 type SpaceSummaryOutput struct {
 	SpaceID     string `json:"space_id" jsonschema:"the space's resource name, spaces/{id}; pass this to other tools"`
-	Type        string `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise"`
+	Type        string `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize"`
 	DisplayName string `json:"display_name" jsonschema:"what to call the space; a direct message or group chat has no name of its own, so a label is supplied"`
 }
 
 // SpaceDetailOutput is one space in full.
 type SpaceDetailOutput struct {
 	SpaceID     string `json:"space_id" jsonschema:"the space's resource name, spaces/{id}"`
-	Type        string `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise"`
+	Type        string `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize"`
 	DisplayName string `json:"display_name" jsonschema:"what to call the space; a direct message or group chat has no name of its own, so a label is supplied"`
 	// The two booleans are pointers because Google omits them far more
 	// often than it sends false, and reporting false would assert
 	// something it never said.
 	SingleUserBotDM     *bool      `json:"single_user_bot_dm" jsonschema:"true when the space is a direct message with a Chat app rather than a person; null when Google did not say"`
-	ExternalUserAllowed *bool      `json:"external_user_allowed" jsonschema:"true when people outside the organisation may join; null when Google did not say"`
+	ExternalUserAllowed *bool      `json:"external_user_allowed" jsonschema:"true when people outside the organization may join; null when Google did not say"`
 	CreateTime          *time.Time `json:"create_time" jsonschema:"when the space was created, RFC 3339 in UTC; null when Google did not say"`
 }
 
@@ -71,7 +71,7 @@ type ListSpacesOutput struct {
 // SearchSpacesInput narrows a space search.
 type SearchSpacesInput struct {
 	DisplayName         string `json:"display_name,omitempty" jsonschema:"match spaces whose name begins with these words; matching is by word prefix, not substring, so 'eng' finds 'Engineering' but 'ing' does not. Omit to list every named space the other filters allow"`
-	ExternalUserAllowed *bool  `json:"external_user_allowed,omitempty" jsonschema:"true for spaces that admit people outside the organisation, false for those that do not; omit for both"`
+	ExternalUserAllowed *bool  `json:"external_user_allowed,omitempty" jsonschema:"true for spaces that admit people outside the organization, false for those that do not; omit for both"`
 	UseAdminAccess      bool   `json:"use_admin_access,omitempty" jsonschema:"search every space in the Workspace rather than the ones you can see. Needs Workspace admin rights and the admin toolset, which is off unless GCM_TOOLSETS names it"`
 	Limit               int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 50"`
 	PageToken           string `json:"page_token,omitempty" jsonschema:"continue a previous search; Google returns a token only with admin access"`

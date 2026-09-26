@@ -117,7 +117,7 @@ func (s *Service) callerID(ctx context.Context) (string, error) {
 		return "", Classify(err)
 	}
 	if !numericID.MatchString(info.Sub) {
-		return "", Failf(ClassUpstream, "Google reported an account id this server does not recognise.")
+		return "", Failf(ClassUpstream, "Google reported an account id this server does not recognize.")
 	}
 	s.rememberCaller(info.Sub)
 	return "users/" + info.Sub, nil

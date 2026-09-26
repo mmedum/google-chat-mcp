@@ -41,7 +41,7 @@ func TestListSpaceEventsSendsGooglesFilter(t *testing.T) {
 	if want := "/v1/spaces/AAAAspace1/spaceEvents"; gotPath != want {
 		t.Errorf("path = %q, want %q", gotPath, want)
 	}
-	// Plural, parenthesised, joined by OR. Only OR joins event types.
+	// Plural, parenthesized, joined by OR. Only OR joins event types.
 	want := `(event_types:"google.workspace.chat.message.v1.created" OR ` +
 		`event_types:"google.workspace.chat.message.v1.deleted")`
 	if gotFilter != want {
@@ -79,7 +79,7 @@ func TestListSpaceEventsTimeBounds(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ListSpaceEvents: %v", err)
 	}
-	// A single type is not parenthesised, and the times are joined with
+	// A single type is not parenthesized, and the times are joined with
 	// AND, which is the only join Google accepts between them.
 	want := `start_time="` + since + `" AND event_types:"google.workspace.chat.space.v1.updated"` +
 		` AND end_time="` + until + `"`

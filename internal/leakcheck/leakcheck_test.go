@@ -90,7 +90,7 @@ func TestWhatIsAllowed(t *testing.T) {
 // It is a property of the convention rather than of this
 // implementation: google-sheets-mcp reached the same false clean
 // against its own gate, the same way, on the same day. A gate that
-// recognises made-up ids by a run of one letter is most permissive
+// recognizes made-up ids by a run of one letter is most permissive
 // toward exactly the fixture someone types when testing it in a hurry.
 func TestTheRepositoryIsClean(t *testing.T) {
 	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
@@ -161,7 +161,7 @@ func TestTheRepositoryIsClean(t *testing.T) {
 // scanned. Each needs the verdict written down, because an exemption
 // nobody can audit is the same as a rule nobody enforces.
 var reviewedBlobs = map[string]bool{
-	// internal/service/names_test.go, before c589a42 sanitised it. The
+	// internal/service/names_test.go, before c589a42 sanitized it. The
 	// value is "spaces/AAAQ_1-a.b", a fixture exercising the characters
 	// an id may contain — a dot, an underscore and a hyphen. It trips
 	// the rule because AAAQ is the shape of a real id, which is exactly
@@ -404,9 +404,9 @@ func TestNoBuildOutputInTheTree(t *testing.T) {
 	t.Logf("examined %d tracked and untracked files", examined)
 }
 
-// The rule has to fire on a real build artefact, not just on a fixture
+// The rule has to fire on a real build artifact, not just on a fixture
 // shaped like one, and it has to leave the PNG that legitimately ships.
-func TestBuildOutputIsRecognisedByItsMagic(t *testing.T) {
+func TestBuildOutputIsRecognizedByItsMagic(t *testing.T) {
 	tests := []struct {
 		name string
 		head []byte
@@ -430,7 +430,7 @@ func TestBuildOutputIsRecognisedByItsMagic(t *testing.T) {
 				}
 			}
 			if got != tt.want {
-				t.Errorf("recognised as build output = %v, want %v", got, tt.want)
+				t.Errorf("recognized as build output = %v, want %v", got, tt.want)
 			}
 		})
 	}

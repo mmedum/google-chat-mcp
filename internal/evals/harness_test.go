@@ -44,7 +44,7 @@ const mcpName = "gchat"
 const spacePrefix = "google-chat-mcp evals"
 
 // server is a client of our own binary, used to seed a space and to
-// score it afterwards — never by the model under test.
+// score it afterward — never by the model under test.
 type server struct {
 	t   *testing.T
 	cs  *mcp.ClientSession

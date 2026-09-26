@@ -180,7 +180,7 @@ func IsNotFound(err error) bool {
 
 // IsAlreadyExists reports whether err is Google rejecting a create whose
 // resource is already there. send_message relies on it: a retry carrying
-// the same message id must be recognised, not reported as a failure.
+// the same message id must be recognized, not reported as a failure.
 func IsAlreadyExists(err error) bool {
 	var e *APIError
 	if !errors.As(err, &e) {

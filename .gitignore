@@ -1,7 +1,7 @@
-# Go build artefacts
+# Go build artifacts
 /google-chat-mcp
 # `go build ./scripts/gates` leaves this at the root. It is a 10 MB
-# artefact and it was committed once by exactly that accident.
+# artifact and it was committed once by exactly that accident.
 /gates
 /dist/
 /schemas.json

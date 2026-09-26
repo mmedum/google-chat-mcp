@@ -53,7 +53,7 @@ func alwaysSubstituted(m bundleManifest) []string {
 }
 
 // repoRootPath is resolved while the package's variables are
-// initialised, which is before any test body can change the working
+// initialized, which is before any test body can change the working
 // directory. Resolving it on demand instead would answer relative to
 // wherever the last test left the process, and the pack tests run from
 // the repository root.
@@ -137,7 +137,7 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 	}
 
 	// Every variable the bundle sets has to be one the server reads. A
-	// misspelt name is silently ignored at runtime, so the bundle would
+	// misspelled name is silently ignored at runtime, so the bundle would
 	// start and behave as though nothing had been configured.
 	known := configVars()
 	env := m.Server.MCPConfig.Env

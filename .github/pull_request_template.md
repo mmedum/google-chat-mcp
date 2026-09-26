@@ -6,7 +6,7 @@
 
 <!-- Bulleted markdown checklist of what you ran to verify. -->
 - [ ] `make check`
-- [ ] Tests for the new behaviour
+- [ ] Tests for the new behavior
 - [ ] CHANGELOG entry under `[Unreleased]`, if this is user-visible
 - [ ]
 

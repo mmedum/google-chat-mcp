@@ -74,7 +74,7 @@ import (
 //     and the custom-method suffix in the client's request literal must
 //     be the ones Google publishes for that method;
 //  8. every `unreachable` row is derived rather than argued: no scope
-//     this server asks for authorises the method, and the reason names
+//     this server asks for authorizes the method, and the reason names
 //     one Google does accept.
 //
 // Rules 7 and 8 were written down as limits before they were built.
@@ -120,9 +120,9 @@ type coverageEntry struct {
 // The verdicts a row may carry.
 //
 // `unreachable` is derived rather than argued: no scope this server asks
-// for authorises the method, so leaving it out was never a choice. It is
+// for authorizes the method, so leaving it out was never a choice. It is
 // separate from `out` because the two rot differently — an `out` reason
-// is a judgement that stays true until somebody revisits it, while an
+// is a judgment that stays true until somebody revisits it, while an
 // `unreachable` one stops being true the moment `scopes.All` grows, and
 // then seventeen rows say something false with nothing objecting.
 const (
@@ -167,7 +167,7 @@ type apiMethod struct {
 	Scopes []string `json:"scopes,omitempty"`
 }
 
-// reachable reports whether any scope this server asks for authorises
+// reachable reports whether any scope this server asks for authorizes
 // this method.
 //
 // A plain intersection, not scopes.Satisfied: the question is whether
@@ -419,7 +419,7 @@ func checkPublished(entries []coverageEntry, published map[methodKey]apiMethod) 
 // publishes, in both directions.
 //
 // Seventeen rows used to argue in prose that a method needs a scope this
-// server does not ask for. That is not a judgement — it is a fact about
+// server does not ask for. That is not a judgment — it is a fact about
 // two lists that both already exist, and prose has no way to notice when
 // one of them changes. Add `contacts` to scopes.All and every one of
 // those sentences becomes false with nothing objecting; now they fail
@@ -443,7 +443,7 @@ func checkReachable(entries []coverageEntry, published map[methodKey]apiMethod) 
 				coverageFile, e.line, e.key, verdictUnreachable, reachableScope(m), verdictUsed, verdictOut))
 		case e.verdict != verdictUnreachable && !m.reachable():
 			problems = append(problems, fmt.Sprintf("%s:%d: %s is marked %s, and no scope this server "+
-				"asks for authorises it — Google accepts only %s. Mark it %s; the reason it was left "+
+				"asks for authorizes it — Google accepts only %s. Mark it %s; the reason it was left "+
 				"out is not a choice anybody made", coverageFile, e.line, e.key, e.verdict,
 				strings.Join(m.Scopes, " "), verdictUnreachable))
 		case e.verdict == verdictUnreachable && !slices.Contains(m.Scopes, e.reason):
@@ -519,7 +519,7 @@ func checkCalls(entries []coverageEntry, calls map[string]bool) []string {
 // The rule is safe to lean on because `internal/gchat`'s own
 // TestEveryCallNamesItsScope refuses any method that is neither a call
 // by this same rule nor one of those two, so nothing can reach Google
-// from a signature this does not recognise.
+// from a signature this does not recognize.
 func clientCalls() map[string]bool {
 	ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
 	errType := reflect.TypeOf((*error)(nil)).Elem()

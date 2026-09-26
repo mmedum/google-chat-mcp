@@ -108,7 +108,7 @@ func smoke(args []string, stdout, stderr io.Writer) int {
 	//
 	// Only the exit code is asserted here. A client that leaves mid-call
 	// can leave a response half-written, so holding this transcript to
-	// the same reading would fail on timing rather than on behaviour.
+	// the same reading would fail on timing rather than on behavior.
 	if _, err := runSmoke(bin, configDir, abruptRequests, nil); err != nil {
 		problems = append(problems, "a client that closes stdin mid-call must still exit 0: "+err.Error())
 	}

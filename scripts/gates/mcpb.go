@@ -350,7 +350,7 @@ func modeFor(name string) fs.FileMode {
 //
 // The edit itself is on the bytes rather than on the decoded value,
 // because re-encoding a map is not a neutral act. Go sorts map keys, so
-// the shipped manifest would come out alphabetised — unreviewable
+// the shipped manifest would come out alphabetized — unreviewable
 // against the source — and its encoder escapes `<`, `>` and `&`, so the
 // `<that file>` in the long description would ship as `\u003cthat
 // file\u003e`. Both are legal JSON and neither is what anyone wrote.

@@ -14,7 +14,7 @@ was checked, against which source, and which live call contradicted it.
 
 ## Hard rules
 
-1. **Nothing internal, ever.** No organisation names, space or message
+1. **Nothing internal, ever.** No organization names, space or message
    ids, account emails, Cloud project ids, OAuth client ids or secrets,
    and no content from real conversations — not in fixtures, not in
    commit messages, not in logs. Fixtures are synthetic, and a made-up
@@ -101,10 +101,10 @@ was checked, against which source, and which live call contradicted it.
 tagged suite, golangci-lint, race tests with an 80% floor per package —
 `cmd/` has its own lower floor, printed on every run, because the OAuth
 flow and the serve loop have no seam a unit test can reach — plus
-`govulncheck`, the licence allow-list, a stdio smoke test, the schema
+`govulncheck`, the license allow-list, a stdio smoke test, the schema
 diff, the API-coverage gate, the live driver's surface gate, and the
 staleness gate over README, `docs/` and CHANGELOG. Plus tests for new
-behaviour, `/simplify` and `/code-review high` with findings resolved or
+behavior, `/simplify` and `/code-review high` with findings resolved or
 written down, and a look at the schema diff for anything breaking.
 
 Before a release, `make live` as well. It drives the shipped binary
@@ -116,7 +116,7 @@ it. `make api-diff` too: it refetches Google's discovery documents into
 `api-coverage` until somebody judges it.
 
 Green gates are not done. A repeat-delete bug once went through every
-one of them, because a unit test asserts the behaviour the code was
+one of them, because a unit test asserts the behavior the code was
 written to have — Google answers a deleted message with a tombstone, and
 nothing local knew that. Anything touching the write path or an API
 response shape gets a live run before it counts.

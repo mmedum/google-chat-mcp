@@ -85,7 +85,7 @@ type MarkReadOutput struct {
 // NotificationSettingOutput is your notification choice for a space.
 type NotificationSettingOutput struct {
 	Name                string `json:"name" jsonschema:"the setting's own resource name"`
-	NotificationSetting string `json:"notification_setting" jsonschema:"ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognise"`
+	NotificationSetting string `json:"notification_setting" jsonschema:"ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognize"`
 	MuteSetting         string `json:"mute_setting" jsonschema:"MUTED silences the space whatever notification_setting says; UNMUTED respects it"`
 }
 

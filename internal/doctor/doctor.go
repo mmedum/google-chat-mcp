@@ -144,7 +144,7 @@ func (r *Report) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	if len(r.Drift) == 0 {
-		fmt.Fprint(&b, "\nno schema drift: every field Google returned is modelled.\n")
+		fmt.Fprint(&b, "\nno schema drift: every field Google returned is modeled.\n")
 		return b.WriteTo(w)
 	}
 	fmt.Fprintf(&b, "\n%d unknown response field(s). Google has added them and this server "+

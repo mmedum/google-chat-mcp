@@ -62,7 +62,7 @@ google-chat-mcp logout
 google-chat-mcp login --client-secret ./new_client_secret.json
 ```
 
-Delete the old secret in Google Cloud afterwards, not before —
+Delete the old secret in Google Cloud afterward, not before —
 `logout` needs the old one to revoke.
 
 ## Revoking access

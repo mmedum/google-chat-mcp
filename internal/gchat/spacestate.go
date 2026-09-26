@@ -12,7 +12,7 @@ import (
 // keeps about a space that are not its messages or its members.
 //
 // The read state and the notification setting are per person. Google
-// spells the caller "users/me" and canonicalises it in the response, so
+// spells the caller "users/me" and canonicalizes it in the response, so
 // nothing here has to know the caller's own id.
 
 // MeSpaces addresses the caller's own view of a space.

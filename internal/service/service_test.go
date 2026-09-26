@@ -258,8 +258,8 @@ func TestAMissingScopeErrorNamesTheScope(t *testing.T) {
 }
 
 // Not being signed in is the most common failure. It never reaches
-// Google, so it has to be recognised on its own.
-func TestClassifyRecognisesAMissingLogin(t *testing.T) {
+// Google, so it has to be recognized on its own.
+func TestClassifyRecognizesAMissingLogin(t *testing.T) {
 	err := Classify(fmt.Errorf("wrapped: %w", auth.ErrReauthorize))
 	var se *Error
 	if !errors.As(err, &se) || se.Class != ClassAuth {

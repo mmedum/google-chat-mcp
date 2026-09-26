@@ -26,7 +26,7 @@ import (
 // It is not hypothetical. Writing this found `s.t.Fatalf("harness step
 // %s failed: %s", name, b.String())`, where b held the tool response —
 // document text, logged whole, at exactly the moment somebody pastes the
-// log into an issue. Every neighbouring line went through clip. That is
+// log into an issue. Every neighboring line went through clip. That is
 // the shape the rule is for: not a rule anybody broke on purpose, but a
 // line added where the habit did not reach.
 const transcriptDirs = "internal/livecheck,internal/evals"

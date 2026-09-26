@@ -27,7 +27,7 @@ type DownloadAttachmentOutput struct {
 func (o DownloadAttachmentOutput) Render() string {
 	return block(
 		meta("saved "+o.FileName, o.Path),
-		meta(bytesOf(o.Bytes), o.ContentType, labelled("sha256", o.SHA256)),
+		meta(bytesOf(o.Bytes), o.ContentType, labeled("sha256", o.SHA256)),
 	)
 }
 

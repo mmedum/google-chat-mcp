@@ -237,7 +237,7 @@ A `used` row is **bound** to the method it names: the HTTP verb and the
 custom-method suffix in the client's request literal have to be the ones
 Google publishes, so swapping the reasons on `markAsActive` and
 `markAsAway` fails instead of passing. And a method no scope this server
-asks for authorises is **`unreachable`**, derived from the scopes in the
+asks for authorizes is **`unreachable`**, derived from the scopes in the
 snapshot rather than argued in prose — seventeen rows used to make that
 argument by hand, and adding `contacts` to `scopes.All` would have
 falsified thirteen of them with nothing objecting. It now fails those
@@ -261,7 +261,7 @@ fetch date is printed on every run.
 `checksums.txt` signed with a keyless Sigstore bundle, an SBOM per
 archive, and build provenance. The README says how to verify each.
 
-Two more artefacts come out of the same run. A `.mcpb` bundle for Claude
+Two more artifacts come out of the same run. A `.mcpb` bundle for Claude
 Desktop, packed from goreleaser's universal-binary post hook — the one
 point in the pipeline where every binary exists and the checksum file
 has not been written, so the bundle ships inside the signature rather
@@ -325,7 +325,7 @@ contradicted a document, which won.
 | What | Verdict |
 |---|---|
 | A tool's `outputSchema` has no slot in the Messages API | A custom tool there takes `name`, `description`, `input_schema` and `input_examples`; there is no output-schema field, and the pricing note counts "tool names, descriptions, and schemas" in the `tools` parameter. Docs, 2026-09-17. MCP's own spec gives `outputSchema` to the client — "Clients SHOULD validate structured results against this schema" — so output-schema bytes are protocol traffic and client-side validation, not a measured cost in the model's context. What the model reads, and what the guidance says to write in full, is the tool description |
-| The schema generator inlines a nested type everywhere it appears | `github.com/google/jsonschema-go` models `$defs` and `$ref` but `For[T]()` emits neither: it errors on a cycle and never de-duplicates. Read at v0.4.3, 2026-09-17. So a type used twice on one tool is serialised twice, and `quote` carrying links and attachments cost 16.5 KB across the four message tools. Hand-writing the schemas would buy that back at the price of schemas that can drift from the Go types they describe |
+| The schema generator inlines a nested type everywhere it appears | `github.com/google/jsonschema-go` models `$defs` and `$ref` but `For[T]()` emits neither: it errors on a cycle and never de-duplicates. Read at v0.4.3, 2026-09-17. So a type used twice on one tool is serialized twice, and `quote` carrying links and attachments cost 16.5 KB across the four message tools. Hand-writing the schemas would buy that back at the price of schemas that can drift from the Go types they describe |
 | A reply carries both halves | The spec asks a tool returning structured content to also return the serialized JSON in a text block. They are never the same bytes here: `content` is a compact rendering, `structuredContent` the machine one |
 | Claude Code forwards only `structuredContent` | Measured 2026-09-06 by asking the client through its own transcript, after google-docs-mcp found the same. So the rendering is invisible in that client — and claude.ai and ChatGPT show the text half, which is why both are still sent |
 | `anthropic/requiresUserInteraction` is a vendor key, and an absolute one | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". In Claude Code the mark refuses every headless route, including the documented `--permission-prompt-tool`. Interactive auto mode, by contrast, prompts for nothing. `GCM_INTERACTION_HINT` is the way out for a deployment with nobody at the keyboard |
@@ -347,7 +347,7 @@ contradicted a document, which won.
 `internal/evals`, behind a build tag and never in CI, scores whether a
 model can do the job through these tools: ten tasks, each against a
 scratch space the harness creates, each judged on the space read back
-afterwards rather than on what the model said.
+afterward rather than on what the model said.
 
 Two rules make the results mean anything. A task can declare itself
 **unreachable** — the world would not have permitted the end state —

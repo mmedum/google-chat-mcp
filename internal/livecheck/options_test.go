@@ -26,7 +26,7 @@ import (
 // every one of them would have shipped exercised by nothing: the name
 // gate was already satisfied, because the tools themselves have steps.
 //
-// An option nothing exercises is an option whose behaviour against the
+// An option nothing exercises is an option whose behavior against the
 // real API is a belief. That is the thing this whole package exists to
 // test, and CLAUDE.md is explicit that every fake in the unit suite is
 // written from the same belief.

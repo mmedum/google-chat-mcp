@@ -21,7 +21,7 @@ const (
 // MessageRow is one message in a listing.
 //
 // SenderEmail is empty when the People API could not say who the sender
-// is, which is normal for someone outside the caller's organisation. It
+// is, which is normal for someone outside the caller's organization. It
 // is never a reason to leave the message out.
 type MessageRow struct {
 	Name              string
@@ -46,7 +46,7 @@ type MessageRow struct {
 	FormattedText string
 }
 
-// MessageLink is a link Chat recognised in a message's text: to another
+// MessageLink is a link Chat recognized in a message's text: to another
 // message or space, a Drive file, a Gmail message, a Meet call or a
 // Calendar event.
 //

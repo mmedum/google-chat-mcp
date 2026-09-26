@@ -81,7 +81,7 @@ func TestMembershipEnumsDegrade(t *testing.T) {
 
 // All three of Google's roles reach the caller. The third was missing
 // from the allow-list, so an assistant manager's row said the server
-// did not recognise their role.
+// did not recognize their role.
 func TestEveryRealRoleSurvives(t *testing.T) {
 	for _, role := range []string{"ROLE_MEMBER", "ROLE_MANAGER", "ROLE_ASSISTANT_MANAGER"} {
 		t.Run(role, func(t *testing.T) {

@@ -87,7 +87,7 @@ func TestCanonicalRewritesOnlyTheAliases(t *testing.T) {
 }
 
 // Google reports email and profile back as URLs. Comparing a granted set
-// against All without canonicalising both sides reports them missing.
+// against All without canonicalizing both sides reports them missing.
 func TestMissingIgnoresTheOIDCAliasSpelling(t *testing.T) {
 	granted := Canonical(All)
 	if missing := Missing(granted, false); len(missing) != 0 {

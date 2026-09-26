@@ -168,7 +168,7 @@ func eventTypes(want []string) ([]string, error) {
 //
 // The parsing is parseArgTime's, so a bare date works here exactly as
 // it does on search_messages; a tool that accepted "2026-01-01" and its
-// neighbour that refused it would be one surface with two rules. What
+// neighbor that refused it would be one surface with two rules. What
 // is added is the window: Google keeps 28 days of events, and an older
 // start time comes back empty, which reads as "nothing happened"
 // rather than "you asked past the end".

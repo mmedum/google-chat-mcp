@@ -16,7 +16,7 @@ package gchat
 // Space is a Chat space, group chat or direct message.
 type Space struct {
 	Name          string         `json:"name"`
-	Type          string         `json:"type,omitempty"` // deprecated by Google in favour of SpaceType
+	Type          string         `json:"type,omitempty"` // deprecated by Google in favor of SpaceType
 	SpaceType     string         `json:"spaceType,omitempty"`
 	SingleUserBot *bool          `json:"singleUserBotDm,omitempty"`
 	Threaded      bool           `json:"threaded,omitempty"`
@@ -89,7 +89,7 @@ type ListSpacesResponse struct {
 // SearchSpacesResponse is spaces.search.
 //
 // The rows arrive in Results. Spaces is the field Google deprecated in
-// favour of it and still sends, so it is modelled to keep it out of the
+// favor of it and still sends, so it is modeled to keep it out of the
 // drift log and read only when Results is empty.
 //
 // NextPageToken and TotalSize come back only under admin access. A
@@ -147,10 +147,10 @@ type Membership struct {
 	GroupMember *Group `json:"groupMember,omitempty"`
 	CreateTime  string `json:"createTime,omitempty"`
 	DeleteTime  string `json:"deleteTime,omitempty"`
-	// Affiliation is how the person relates to the organisation:
+	// Affiliation is how the person relates to the organization:
 	// INTERNAL, EXTERNAL or MANAGED_EXTERNAL, output only. It is the
 	// field a live doctor run reported as drift twice before anything
-	// modelled it, and it is worth reading — it says whether someone in
+	// modeled it, and it is worth reading — it says whether someone in
 	// a space is a colleague or a guest.
 	Affiliation string `json:"affiliation,omitempty"`
 }
@@ -286,7 +286,7 @@ type Annotation struct {
 	CustomEmojiMeta *CustomEmojiMeta  `json:"customEmojiMetadata,omitempty"`
 }
 
-// RichLinkMetadata is a link Chat recognised in a message: to another
+// RichLinkMetadata is a link Chat recognized in a message: to another
 // message or space, a Drive file, a Gmail message, a Meet call or a
 // Calendar event.
 //
@@ -385,7 +385,7 @@ type Emoji struct {
 	CustomEmoji *CustomEmoji `json:"customEmoji,omitempty"`
 }
 
-// CustomEmoji is an organisation's own emoji.
+// CustomEmoji is an organization's own emoji.
 type CustomEmoji struct {
 	Name         string        `json:"name,omitempty"`
 	UID          string        `json:"uid,omitempty"`
@@ -620,8 +620,8 @@ type SearchContactsResponse struct {
 //
 // The payload is a union — exactly one of the fields below is set, and
 // which one is what eventType says. Google returns a batch form of
-// every type without being asked for it, so both forms are modelled;
-// an unmodelled one would report drift on every listing.
+// every type without being asked for it, so both forms are modeled;
+// an unmodeled one would report drift on every listing.
 type SpaceEvent struct {
 	Name      string `json:"name,omitempty"`
 	EventTime string `json:"eventTime,omitempty"`

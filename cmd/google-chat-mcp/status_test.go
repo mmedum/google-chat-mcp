@@ -9,7 +9,7 @@ import (
 
 // Not being signed in is a state to report, not a reason to stop. The
 // text output says so and returns early; the object must still be whole,
-// or a caller cannot tell "unauthorised" from "failed to parse".
+// or a caller cannot tell "unauthorized" from "failed to parse".
 func TestTheNotSignedInStateIsAWholeObject(t *testing.T) {
 	r := statusReport{
 		SchemaVersion: statusSchemaVersion,
@@ -35,7 +35,7 @@ func TestTheNotSignedInStateIsAWholeObject(t *testing.T) {
 	}
 	for _, k := range []string{"settings", "scopes", "schema_version"} {
 		if _, ok := back[k]; !ok {
-			t.Errorf("%s is absent from the unauthorised object", k)
+			t.Errorf("%s is absent from the unauthorized object", k)
 		}
 	}
 }
