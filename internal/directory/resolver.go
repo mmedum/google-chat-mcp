@@ -100,6 +100,16 @@ func (r *Resolver) Resolve(ctx context.Context, ids []string) map[string]Person 
 	return out
 }
 
+// Known answers from the cache alone and asks Google nothing, for a
+// caller that must not spend a People request. As with Resolve, an id
+// the cache does not hold maps to a zero Person.
+func (r *Resolver) Known(ids []string) map[string]Person {
+	if r.cache == nil {
+		return map[string]Person{}
+	}
+	return r.cache.Get(ids)
+}
+
 // ResolveOne is Resolve for a single id.
 func (r *Resolver) ResolveOne(ctx context.Context, id string) Person {
 	return r.Resolve(ctx, []string{id})[id]

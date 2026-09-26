@@ -149,7 +149,7 @@ type SearchMatchOutput struct {
 	MessageID    string              `json:"message_id" jsonschema:"the message's resource name"`
 	ThreadID     string              `json:"thread_id" jsonschema:"the thread it belongs to"`
 	SenderUserID string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	SenderEmail  *string             `json:"sender_email" jsonschema:"the sender's email address when Chat names it, or null. A search does not look anyone up in the People API"`
+	SenderEmail  *string             `json:"sender_email" jsonschema:"the sender's email address when Chat names it or this server has already seen it, or null. A search does not look anyone up in the People API"`
 	Text         string              `json:"text" jsonschema:"the whole message body"`
 	Timestamp    time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	Snippet      string              `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
