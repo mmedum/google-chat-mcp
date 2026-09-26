@@ -200,29 +200,28 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[string]directory.Person {
 	fromChat := make(map[string]directory.Person, len(users))
 	for _, u := range users {
-		if u == nil || u.Name == "" || u.Email == "" {
+		if userOf(u) == "" || u.Email == "" {
 			continue
 		}
 		if _, seen := fromChat[u.Name]; !seen {
 			fromChat[u.Name] = directory.Person{Email: u.Email, DisplayName: u.DisplayName}
 		}
 	}
-	// A second pass, so a user named with an address on one row and
-	// without on another is not looked up only for the answer to be
-	// thrown away.
-	lookups := make([]string, 0, len(users))
-	for _, u := range users {
-		if u == nil || u.Name == "" {
-			continue
-		}
-		if p, ok := fromChat[u.Name]; ok && p.DisplayName != "" {
-			continue
-		}
-		lookups = append(lookups, u.Name)
-	}
 
-	out := make(map[string]directory.Person, len(users))
-	if s.people != nil {
+	var out map[string]directory.Person
+	if s.people == nil {
+		out = make(map[string]directory.Person, len(users))
+	} else {
+		// A second pass, so a user named with an address on one row
+		// and without on another is not looked up only for the answer
+		// to be thrown away. Resolve drops empty and repeated ids.
+		lookups := make([]string, 0, len(users))
+		for _, u := range users {
+			if p, ok := fromChat[userOf(u)]; ok && p.DisplayName != "" {
+				continue
+			}
+			lookups = append(lookups, userOf(u))
+		}
 		out = s.people.Resolve(ctx, lookups)
 	}
 	learned := make(map[string]directory.Person, len(fromChat))
@@ -239,6 +238,15 @@ func (s *Service) resolvePeople(ctx context.Context, users []*gchat.User) map[st
 	}
 	if s.people != nil {
 		s.people.Learn(learned)
+	}
+	// The name Chat sent with the row is the last resort, so a caller
+	// reads one answer rather than falling back on its own.
+	for _, u := range users {
+		id := userOf(u)
+		if p := out[id]; id != "" && p.DisplayName == "" && u.DisplayName != "" {
+			p.DisplayName = u.DisplayName
+			out[id] = p
+		}
 	}
 	return out
 }
