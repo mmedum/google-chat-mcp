@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v2.2.0",
+  "version": "v2.3.0",
   "sdk": "v1.7.0",
   "tools": [
     {
@@ -13,7 +13,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterwards to make someone a manager. Set dry_run to see the request body without inviting anyone.",
+      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterward to make someone a manager. Set dry_run to see the request body without inviting anyone.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -150,7 +150,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Add a custom emoji to your organisation from an image on this machine. Everyone in the organisation can then use it, so the name is worth agreeing first. The image must be a square PNG, JPEG or GIF, 64 to 500 pixels, under 256 KB.",
+      "description": "Add a custom emoji to your organization from an image on this machine. Everyone in the organization can then use it, so the name is worth agreeing first. The image must be a square PNG, JPEG or GIF, 64 to 500 pixels, under 256 KB.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -433,7 +433,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Remove a custom emoji from your organisation. It goes for everyone, and messages that already use it lose the image.",
+      "description": "Remove a custom emoji from your organization. It goes for everyone, and messages that already use it lose the image.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -801,7 +801,7 @@
                   "type": "string"
                 },
                 "type": {
-                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
                   "type": "string"
                 }
               },
@@ -848,7 +848,7 @@
             ]
           },
           "state": {
-            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognize. IDLE is Google's to report, not yours to set",
             "type": "string"
           },
           "status_emoji": {
@@ -945,7 +945,7 @@
         "additionalProperties": false,
         "properties": {
           "affiliation": {
-            "description": "INTERNAL for someone in your organisation, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organisation manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+            "description": "INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
             "type": "string"
           },
           "display_name": {
@@ -956,7 +956,7 @@
             ]
           },
           "email": {
-            "description": "the person's email address; null for a group and for anyone the People API could not resolve",
+            "description": "the person's email address; null for a group and for anyone neither Chat nor the People API named one for",
             "type": [
               "null",
               "string"
@@ -975,7 +975,7 @@
             "type": "string"
           },
           "role": {
-            "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognise",
+            "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize",
             "type": "string"
           },
           "state": {
@@ -1442,7 +1442,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is resolved through the People API and is null when that fails. Each message carries links: what its text links to, which Chat keeps out of the body, so a message reading as a bare word may be a link to something. quote is what a message replies to or forwards, which Chat also keeps out of the body.",
+      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is the one Chat sends, or a People API lookup when Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a message reading as a bare word may be a link to something. quote is what a message replies to or forwards, which Chat also keeps out of the body.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1852,7 +1852,7 @@
             "type": "string"
           },
           "external_user_allowed": {
-            "description": "true when people outside the organisation may join; null when Google did not say",
+            "description": "true when people outside the organization may join; null when Google did not say",
             "type": [
               "null",
               "boolean"
@@ -1870,7 +1870,7 @@
             "type": "string"
           },
           "type": {
-            "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+            "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
             "type": "string"
           }
         },
@@ -1985,7 +1985,7 @@
             "type": "string"
           },
           "notification_setting": {
-            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognise",
+            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognize",
             "type": "string"
           }
         },
@@ -2476,7 +2476,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List your organisation's own emoji, the ones people type as :shortcodes:. Custom emoji exist only on Google Workspace accounts and only when an administrator has turned them on.",
+      "description": "List your organization's own emoji, the ones people type as :shortcodes:. Custom emoji exist only on Google Workspace accounts and only when an administrator has turned them on.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2504,7 +2504,7 @@
             "type": "string"
           },
           "result": {
-            "description": "the organisation's custom emoji",
+            "description": "the organization's custom emoji",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -2545,7 +2545,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with their email resolved through the People API; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null next_page_token means the space has more members than came back, so do not report the result as the whole membership.",
+      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with the email Chat sends, or one looked up through the People API when Chat sends none; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null next_page_token means the space has more members than came back, so do not report the result as the whole membership.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2584,7 +2584,7 @@
               "additionalProperties": false,
               "properties": {
                 "affiliation": {
-                  "description": "INTERNAL for someone in your organisation, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organisation manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+                  "description": "INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
                   "type": "string"
                 },
                 "display_name": {
@@ -2595,7 +2595,7 @@
                   ]
                 },
                 "email": {
-                  "description": "the person's email address; null for a group and for anyone the People API could not resolve",
+                  "description": "the person's email address; null for a group and for anyone neither Chat nor the People API named one for",
                   "type": [
                     "null",
                     "string"
@@ -2614,7 +2614,7 @@
                   "type": "string"
                 },
                 "role": {
-                  "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognise",
+                  "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize",
                   "type": "string"
                 },
                 "state": {
@@ -2919,7 +2919,7 @@
               "additionalProperties": false,
               "properties": {
                 "display_name": {
-                  "description": "what to call it. Google names only custom sections, so a system one gets a parenthesised label here",
+                  "description": "what to call it. Google names only custom sections, so a system one gets a parenthesized label here",
                   "type": "string"
                 },
                 "section_name": {
@@ -3133,7 +3133,7 @@
                   "type": "string"
                 },
                 "type": {
-                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
                   "type": "string"
                 }
               },
@@ -3685,7 +3685,7 @@
         "additionalProperties": false,
         "properties": {
           "by_relevance": {
-            "description": "order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that programme",
+            "description": "order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that program",
             "type": "boolean"
           },
           "created_after": {
@@ -4025,6 +4025,13 @@
                     "object"
                   ]
                 },
+                "sender_email": {
+                  "description": "the sender's email address when Chat names it, or null. A search does not look anyone up in the People API",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "sender_user_id": {
                   "description": "who sent it, users/{id}",
                   "type": "string"
@@ -4051,6 +4058,7 @@
                 "message_id",
                 "thread_id",
                 "sender_user_id",
+                "sender_email",
                 "text",
                 "timestamp",
                 "snippet",
@@ -4222,7 +4230,7 @@
             "type": "string"
           },
           "external_user_allowed": {
-            "description": "true for spaces that admit people outside the organisation, false for those that do not; omit for both",
+            "description": "true for spaces that admit people outside the organization, false for those that do not; omit for both",
             "type": [
               "null",
               "boolean"
@@ -4265,7 +4273,7 @@
                   "type": "string"
                 },
                 "type": {
-                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognise",
+                  "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
                   "type": "string"
                 }
               },
@@ -4439,7 +4447,7 @@
             "type": "boolean"
           },
           "state": {
-            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognize. IDLE is Google's to report, not yours to set",
             "type": "string"
           },
           "status_emoji": {
@@ -4491,7 +4499,7 @@
             "type": "boolean"
           },
           "emoji": {
-            "description": "one Unicode emoji beside the text. Google requires it alongside the text and refuses one of your organisation's custom emoji here. Required unless clear is set",
+            "description": "one Unicode emoji beside the text. Google requires it alongside the text and refuses one of your organization's custom emoji here. Required unless clear is set",
             "type": "string"
           },
           "minutes": {
@@ -4538,7 +4546,7 @@
             ]
           },
           "state": {
-            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognise. IDLE is Google's to report, not yours to set",
+            "description": "ACTIVE, IDLE, AWAY, DO_NOT_DISTURB, or STATE_UNSPECIFIED for a state this server does not recognize. IDLE is Google's to report, not yours to set",
             "type": "string"
           },
           "status_emoji": {
@@ -4914,7 +4922,7 @@
             "type": "string"
           },
           "notification_setting": {
-            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognise",
+            "description": "ALL for every new thread and mention, MAIN_CONVERSATIONS for the main conversation only, FOR_YOU for mentions and followed threads, OFF for none, or NOTIFICATION_SETTING_UNSPECIFIED for a value this server does not recognize",
             "type": "string"
           },
           "rendered_payload": {
