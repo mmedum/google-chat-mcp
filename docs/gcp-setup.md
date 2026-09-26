@@ -18,8 +18,9 @@ project picker → **New project**. Call it whatever you like.
 APIs & Services → Library. Enable both:
 
 - **Google Chat API**
-- **People API** — this is what turns a user id into a name and an email
-  address in `get_messages` and `list_members`.
+- **People API** — this is what `search_people` searches, and what fills
+  in a name and an email address in `get_messages` and `list_members`
+  when Chat sends none.
 
 The OpenID userinfo endpoint behind `whoami` needs no enabling.
 

@@ -97,6 +97,28 @@ func TestAPageOfMissesWritesNothing(t *testing.T) {
 	}
 }
 
+// Every listing feeds what Chat named back in, so an answer the file
+// already holds must not rewrite it. A changed one must.
+func TestAnUnchangedAnswerDoesNotRewriteTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory-cache.json")
+	c := NewCache(path, time.Hour, nil)
+	jane := map[string]Person{"users/1": {Email: "janedoe@example.com", DisplayName: "Jane Doe"}}
+	c.Put(jane)
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	c.Put(jane)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("stat = %v, want the same answer to write nothing", err)
+	}
+
+	c.Put(map[string]Person{"users/1": {Email: "janedoe@example.com", DisplayName: "Jane D."}})
+	if got := NewCache(path, time.Hour, nil).Get([]string{"users/1"}); got["users/1"].DisplayName != "Jane D." {
+		t.Errorf("file = %+v, want the changed name written down", got)
+	}
+}
+
 // A cache is an optimization. Anything wrong with the file costs a
 // round trip, never a result.
 func TestCacheSurvivesABrokenFile(t *testing.T) {

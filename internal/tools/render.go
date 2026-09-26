@@ -454,7 +454,7 @@ func (o AttachmentOutput) Render() string {
 // Render is one search hit.
 func (o SearchMatchOutput) Render() string {
 	return block(
-		meta(o.MessageID, utc(o.Timestamp), o.SenderUserID, labeled("thread", o.ThreadID)),
+		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
