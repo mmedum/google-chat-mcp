@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v3/internal/gchat"
 )
 
 // Message limits. These are this server's, not Google's: the tool

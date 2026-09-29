@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
 )
 
 // The three calls here name the sensitive-tier reactions scope, not the

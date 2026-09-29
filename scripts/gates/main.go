@@ -37,10 +37,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/config"
-	"github.com/mmedum/google-chat-mcp/v2/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v2/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v3/internal/userconfig"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

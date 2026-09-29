@@ -4,8 +4,8 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v3/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v3/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's

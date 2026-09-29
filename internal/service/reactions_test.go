@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
 )
 
 func TestListReactionsReadsWhoReacted(t *testing.T) {
