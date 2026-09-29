@@ -132,6 +132,7 @@ func TestConfigVars(t *testing.T) {
 	got := configVars()
 	want := []string{
 		"GCM_ALLOW_DESTRUCTIVE",
+		"GCM_ASK_BEFORE_SEND",
 		"GCM_CHAT_API_BASE",
 		"GCM_CLIENT_SECRET",
 		"GCM_CONFIG_DIR",
@@ -147,6 +148,7 @@ func TestConfigVars(t *testing.T) {
 		"GCM_PROFILE",
 		"GCM_READ_ONLY",
 		"GCM_REFRESH_TOKEN",
+		"GCM_REQUIRE_PROMPT",
 		"GCM_SEARCH_MAX_PAGES",
 		"GCM_TOOLSETS",
 	}

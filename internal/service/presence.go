@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v3/internal/gchat"
 )
 
 // Availability, custom emoji and deleting a space.
@@ -440,6 +440,18 @@ func (s *Service) DeleteCustomEmoji(ctx context.Context, in DeleteCustomEmojiInp
 	if in.DryRun {
 		return out, nil
 	}
+	if asks(ctx) {
+		e, err := s.client.GetCustomEmoji(ctx, name)
+		switch {
+		case gchat.IsNotFound(err):
+		case err != nil:
+			return nil, Classify(err)
+		default:
+			if err := ask(ctx, askDeleteCustomEmoji(name, e.EmojiName)); err != nil {
+				return nil, err
+			}
+		}
+	}
 	deleted, err := deleteIdempotent(ctx, name, s.client.DeleteCustomEmoji, nil)
 	if err != nil {
 		return nil, err
@@ -480,6 +492,18 @@ func (s *Service) DeleteSpace(ctx context.Context, in DeleteSpaceInput) (*Delete
 	out := &DeleteSpaceResult{Space: space, DryRun: in.DryRun}
 	if in.DryRun {
 		return out, nil
+	}
+	if asks(ctx) {
+		sp, err := s.client.GetSpace(ctx, space)
+		switch {
+		case gchat.IsNotFound(err):
+		case err != nil:
+			return nil, Classify(err)
+		default:
+			if err := ask(ctx, askDeleteSpace(space, sp.DisplayName)); err != nil {
+				return nil, err
+			}
+		}
 	}
 	deleted, err := deleteIdempotent(ctx, space, s.client.DeleteSpace, nil)
 	if err != nil {

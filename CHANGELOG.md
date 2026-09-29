@@ -11,6 +11,19 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-29
+
+### Added
+
+- **Breaking:** Before `delete_message`, `delete_space`, `delete_custom_emoji`, `add_member`, and a `send_message` or `update_message` whose text mentions everyone with `<users/all>`, the server asks you through the MCP client (form elicitation) when the client supports it; only an accept writes, so a client that declares elicitation and answers with nobody there can no longer make these writes.
+- `GCM_ASK_BEFORE_SEND` (`--ask-before-send`) asks before every `send_message` and `update_message`, not only one that mentions everyone.
+- `GCM_REQUIRE_PROMPT` (`--require-prompt`) refuses those writes as `[blocked]` when the client cannot ask you.
+- The error classes `blocked` and `ambiguous_outcome`.
+
+### Changed
+
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v3`, as Go requires from v3 on; install with `go install github.com/mmedum/google-chat-mcp/v3/cmd/google-chat-mcp@latest`.
+
 ## [2.3.1] - 2026-09-27
 
 ### Changed
@@ -604,7 +617,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...v3.0.0
 [2.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.1...v2.2.2

@@ -177,7 +177,7 @@ func TestDeleteSpaceAsksTwice(t *testing.T) {
 		{Space: "spaces/AAAAspace1", Confirm: "yes"},
 		{Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace2"},
 	} {
-		_, err := s.DeleteSpace(context.Background(), in)
+		_, err := s.DeleteSpace(writeCtx(), in)
 		assertClass(t, err, ClassInvalid)
 	}
 
@@ -186,7 +186,7 @@ func TestDeleteSpaceAsksTwice(t *testing.T) {
 		method, path = r.Method, r.URL.Path
 		fmt.Fprint(w, `{}`)
 	})
-	got, err := live.DeleteSpace(context.Background(), DeleteSpaceInput{
+	got, err := live.DeleteSpace(writeCtx(), DeleteSpaceInput{
 		Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace1",
 	})
 	if err != nil {

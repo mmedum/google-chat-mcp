@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v2.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v3.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v3)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -32,7 +32,7 @@ tools you are actually using need.
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v2/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v3/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -244,6 +244,12 @@ client that includes resources in its context:
   automating with nobody at the keyboard, `GCM_INTERACTION_HINT=false`
   is the way to use the write tools at all, and it is a decision to make
   on purpose.
+- **The server asks you before what cannot be taken back.** When your
+  MCP client supports elicitation, it asks before deleting a message, a
+  space or a custom emoji, adding a member, and a post or an edit that
+  mentions everyone in a space; only your accept writes.
+  `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
+  a client that cannot ask.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no
   "sent by an assistant" footer.
 - **A retried post cannot land twice.** Each message carries a

@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v2/internal/config"
-	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v3/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v3/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
 )
 
 type staticToken string
@@ -728,3 +728,14 @@ func TestSpaceWritesNameTheirScopes(t *testing.T) {
 		t.Run(tc.label, func(t *testing.T) { assertScope(t, tc.run(), tc.want) })
 	}
 }
+
+// passing is the asker of a client that cannot ask: every write goes
+// ahead unasked, as it does there. The asking itself is held by the
+// tools layer's tests, over a real session.
+type passing struct{}
+
+func (passing) Ask(context.Context, Question) error { return nil }
+func (passing) Asks() bool                          { return false }
+
+// writeCtx is a context a write may be made under.
+func writeCtx() context.Context { return WithAsker(context.Background(), passing{}) }

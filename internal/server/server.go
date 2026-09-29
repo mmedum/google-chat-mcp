@@ -12,9 +12,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/config"
-	"github.com/mmedum/google-chat-mcp/v2/internal/service"
-	"github.com/mmedum/google-chat-mcp/v2/internal/tools"
+	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/service"
+	"github.com/mmedum/google-chat-mcp/v3/internal/tools"
 )
 
 // Name is the MCP server name.
@@ -84,6 +84,7 @@ func New(d Deps) *mcp.Server {
 		opts.Logger = d.Logger
 	}
 	s := mcp.NewServer(&mcp.Implementation{Name: Name, Version: d.Version}, opts)
+	s.AddReceivingMiddleware(tools.AskFailures())
 	tools.Register(s, tools.Deps{Service: d.Service, Config: d.Config, Logger: d.Logger})
 	return s
 }

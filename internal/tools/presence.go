@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/config"
-	"github.com/mmedum/google-chat-mcp/v2/internal/service"
+	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/service"
 )
 
 // AvailabilityOutput is your own presence.
@@ -235,6 +235,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_custom_emoji",
+		Asks: "before it deletes",
 		Description: "Remove a custom emoji from your organization. It goes for everyone, and messages that " +
 			"already use it lose the image.",
 		Kind:    Destructive,
@@ -251,6 +252,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_space",
+		Asks: "before it deletes",
 		Description: "Delete a space, and with it every message and membership in it, for everyone. Google " +
 			"always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. " +
 			"This is the most destructive call in this server: read the space first, and ask the person " +

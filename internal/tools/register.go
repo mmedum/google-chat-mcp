@@ -9,8 +9,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/config"
-	"github.com/mmedum/google-chat-mcp/v2/internal/service"
+	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a
@@ -59,6 +59,10 @@ type spec struct {
 	// Toolset is the group this tool belongs to. The zero value is
 	// ToolsetCore, which is always registered.
 	Toolset config.Toolset
+	// Asks, when set, says when the tool asks the person before it
+	// writes, as the end of a sentence: "before it deletes". The service
+	// asks at its write; a tool without it that reaches one is refused.
+	Asks string
 }
 
 // annotations returns what a client shows for this kind.
@@ -101,9 +105,14 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	if d.Config.ReadOnly && sp.Kind != Read && sp.Kind != ReadWritesLocally {
 		return
 	}
+	description := sp.Description
+	if sp.Asks != "" {
+		description += " When the client can ask, the server also asks the person " + sp.Asks + "; a call they do not " +
+			"confirm is [blocked], changes nothing, and is not to be made again unless they ask."
+	}
 	tool := &mcp.Tool{
 		Name:         sp.Name,
-		Description:  sp.Description,
+		Description:  description,
 		Annotations:  sp.Kind.annotations(),
 		OutputSchema: outputSchema[Out](),
 	}
@@ -160,7 +169,11 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	if sp.Kind == Destructive && d.Config.RefuseDeletes {
 		refuse = sp.Name
 	}
-	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse))
+	var a *asking
+	if sp.Asks != "" {
+		a = d.asking
+	}
+	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse, sp.Name, a, d.Config.RequirePrompt))
 }
 
 // wrap is what every handler gets for free.
@@ -170,7 +183,9 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 // reply carries its readable half as well as its structured one. All
 // belong here for the same reason the annotations do — a rule kept by
 // hand at fifty call sites is a rule that will be missed at one.
-func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse string) mcp.ToolHandlerFor[In, Out] {
+func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse, name string, a *asking,
+	requirePrompt bool,
+) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		if refuse != "" {
 			var zero Out
@@ -183,7 +198,33 @@ func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refus
 		if dryRun >= 0 && reflect.ValueOf(in).Field(dryRun).Bool() {
 			ctx = service.Preview(ctx)
 		}
+		// The person is asked before a write whose tool asks, when the
+		// client can ask (docs/architecture.md, "The person confirms what
+		// cannot be taken back").
+		var p *askee
+		switch {
+		case a != nil:
+			var err error
+			if p, err = a.personFor(req, name, in, requirePrompt); err != nil {
+				var zero Out
+				return nil, zero, fail(err)
+			}
+			ctx = service.WithAsker(ctx, p)
+		case req != nil && req.Params != nil && (req.Params.RequestState != "" || len(req.Params.InputResponses) > 0):
+			var zero Out
+			return nil, zero, fail(service.Failf(service.ClassBlocked,
+				"%s asks the person nothing, and the call came with an answer; nothing was done. Call it again without one", name))
+		}
 		res, out, err := h(ctx, req, in)
+		if p != nil && p.asked != nil {
+			// The service stopped before its write; the question goes out.
+			setStage(ctx, stageWaiting)
+			var zero Out
+			return p.inputRequest(), zero, nil
+		}
+		if err == nil && stageOf(ctx) == stageWriting {
+			setStage(ctx, stageWritten)
+		}
 		if err != nil {
 			return res, out, fail(err)
 		}

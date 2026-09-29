@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v2/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v3/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v3/internal/gchat"
 )
 
 // People search limits, as the tool schema documents them.
