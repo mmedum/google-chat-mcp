@@ -186,6 +186,55 @@ Each message carries a client-chosen id, so a retry after a timeout
 cannot post twice: Google answers `ALREADY_EXISTS`, and the server
 fetches what landed and returns that.
 
+### The person confirms what cannot be taken back
+
+The interaction hint asks a client to put a person in the loop, and
+whether it does is the client's decision. So when the client supports
+MCP form elicitation, the server asks the person itself before six
+writes: `delete_message`, `delete_space`, `delete_custom_emoji`,
+`add_member`, a `send_message` whose text mentions everyone in the
+space, `<users/all>`, and an `update_message` that edits such a mention
+in, since an edit notifies whoever it newly mentions. The mention is
+matched regardless of case. `GCM_ASK_BEFORE_SEND=true` makes every post
+and every edit ask.
+The set is the rare, irreversible or wide-reaching writes, chosen by the
+maintainer on 2026-09-29; an ordinary post asks nothing by default,
+because a question asked dozens of times a day is answered without
+reading, and the rare ones need the attention.
+
+- **A second gate, not a replacement.** `GCM_ALLOW_DESTRUCTIVE`,
+  `confirm_space_id` and every other check come first; a call they
+  refuse asks nothing. The question comes after the reads, just before
+  the write, so it shows what the write would do: the message's sender
+  and the start of its text, the space by name, the person added, the
+  post's text.
+- **Accepting is the confirmation.** The form has no fields. Anything
+  but an accept — decline, cancel, an error, an answer after its
+  question expired — is `[blocked]`, refused before anything runs, and
+  nothing is changed. The refusal never says the person declined: a
+  client can answer without showing anyone anything. Two clients accept
+  an empty form without a person choosing to, Codex under approval
+  policy `never` with full access and VS Code when the question is
+  skipped; a required choice would stop both, and was found slower and
+  less clear than Accept in Claude Code, so the form stays empty.
+- **No question possible.** A client that declares no form elicitation
+  gets no question, as before. `GCM_REQUIRE_PROMPT=true` refuses those
+  writes there instead. A dry run never asks.
+- **What the question quotes** stands in a code span, on one line:
+  format and control characters removed, backticks, grave and acute
+  marks and quote marks folded to a plain single quote, links broken,
+  cut at 120 characters and a post at 300. A client that draws the
+  question as Markdown, as VS Code does, shows a code span literally,
+  and a blank line between lines keeps them apart.
+- **The answer is bound to its question.** A signed, single-use state
+  carries the tool, a hash of the arguments and of the question, a nonce
+  and, where it travels through the client, a 5-minute expiry. The retry
+  reads again and is refused if what it would do changed.
+- **A failure after the answer is never "nothing changed".** A call the
+  person confirmed that then ends without a result is
+  `[ambiguous_outcome]`: it may have posted or deleted, and is not to be
+  made again.
+
 ### Idempotency is checked, not assumed
 
 `delete_message` and `remove_member` treat a 404 as success. A 403 is
@@ -342,6 +391,9 @@ contradicted a document, which won.
 | Claude Code forwards only `structuredContent` | Measured 2026-09-06 by asking the client through its own transcript, after google-docs-mcp found the same. So the rendering is invisible in that client — and claude.ai and ChatGPT show the text half, which is why both are still sent |
 | `anthropic/requiresUserInteraction` is a vendor key, and an absolute one | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". In Claude Code the mark refuses every headless route, including the documented `--permission-prompt-tool`. Interactive auto mode, by contrast, prompts for nothing. `GCM_INTERACTION_HINT` is the way out for a deployment with nobody at the keyboard |
 | Strict inputs: a struct's schema refuses unknown properties | Which is right for a tool and wrong for a permission hook — a hook that refuses a payload it does not model fails in a place that implicates a different tool entirely |
+| A server can ask the person to confirm a write through form elicitation, on every protocol | The `ElicitRequestFormParams` type in the specification's `schema.ts` for 2025-06-18, 2025-11-25 and 2026-07-28, the 2026-07-28 multi-round-trip pattern, and the MCP Go SDK v1.8.0's `mcp/server.go`, read 2026-09-28. A result may carry `inputRequests` with a signed `requestState`; before 2026-07-28 the SDK sends `elicitation/create` itself and calls the handler again. `requestedSchema` may have no properties. The client answers "from the user or other sources", so an accept is never proof a person read anything. Held by tests on all three protocols |
+| A client draws an elicitation question as plain text | Refuted. VS Code builds it as `new MarkdownString(elicitation.message)`, untrusted, so emphasis, link text and HTML-like text draw and single line breaks join (`mcpElicitationService.ts`, `main` at 251bcf5f, 2026-09-29). Quoted text is a code span, and lines stand apart |
+| A required choice confirms better than an empty form | Declined for now. Codex accepts a form with no properties by itself under approval policy `never` with full access, and VS Code resolves a skipped question as `accept` (`codex-rs/codex-mcp/src/elicitation.rs` at c248f6d4; `mcpElicitationService.ts`). But in Claude Code 2.1.284 a choice list took the maintainer 60 seconds against 8 for the empty form, and read as confusing |
 | Stdout carries JSON-RPC frames only | Spec, transports/stdio. One stray `fmt.Println` corrupts the protocol, which is what the smoke test guards |
 
 ### Releasing

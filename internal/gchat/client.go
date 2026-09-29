@@ -492,8 +492,8 @@ func WithoutWrites(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noWritesKey{}, true)
 }
 
-// writesForbidden reports whether ctx refuses writes.
-func writesForbidden(ctx context.Context) bool {
+// WritesForbidden reports whether ctx refuses writes: a dry run's.
+func WritesForbidden(ctx context.Context) bool {
 	forbidden, _ := ctx.Value(noWritesKey{}).(bool)
 	return forbidden
 }
@@ -642,7 +642,7 @@ func send[T any](c *Client, ctx context.Context, r request, retries bool,
 ) (T, error) {
 	var zero T
 	endpoint, path := c.endpointFor(r)
-	if r.isWrite() && writesForbidden(ctx) {
+	if r.isWrite() && WritesForbidden(ctx) {
 		return zero, fmt.Errorf("%w: %s %s", ErrWriteForbidden, r.method, path)
 	}
 	token, err := c.tokens.Token(ctx)

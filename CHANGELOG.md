@@ -11,6 +11,13 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- **Breaking:** Before `delete_message`, `delete_space`, `delete_custom_emoji`, `add_member`, and a `send_message` or `update_message` whose text mentions everyone with `<users/all>`, the server asks you through the MCP client (form elicitation) when the client supports it; only an accept writes, so a client that declares elicitation and answers with nobody there can no longer make these writes.
+- `GCM_ASK_BEFORE_SEND` (`--ask-before-send`) asks before every `send_message` and `update_message`, not only one that mentions everyone.
+- `GCM_REQUIRE_PROMPT` (`--require-prompt`) refuses those writes as `[blocked]` when the client cannot ask you.
+- The error classes `blocked` and `ambiguous_outcome`.
+
 ## [2.3.1] - 2026-09-27
 
 ### Changed

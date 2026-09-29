@@ -136,6 +136,7 @@ type RemoveMemberOutput struct {
 func registerMemberWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "add_member",
+		Asks: "before it adds someone",
 		Description: "Invite someone into a space by email address, or add a Google Group. Someone already in " +
 			"the space is reported as an error rather than as a success, because the membership that exists " +
 			"belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role " +

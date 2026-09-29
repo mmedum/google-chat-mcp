@@ -64,6 +64,17 @@ func sessionWithConfig(t *testing.T, handler http.HandlerFunc, cfg config.Config
 // logging test needs them; everything else discards.
 func sessionWithLogger(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger) *mcp.ClientSession {
 	t.Helper()
+	return connectClient(t, handler, cfg, log, nil, "")
+}
+
+// connectClient is the wiring under every session: a stub Google, the
+// service wired to it, and a client connected with co on protocol (the
+// SDK's newest when empty), the server carrying middleware after
+// AskFailures.
+func connectClient(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger, co *mcp.ClientOptions,
+	protocol string, middleware ...mcp.Middleware,
+) *mcp.ClientSession {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
@@ -82,6 +93,7 @@ func sessionWithLogger(t *testing.T, handler http.HandlerFunc, cfg config.Config
 		WriteLimiter:  rate.NewLimiter(rate.Inf, 1),
 	})
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	s.AddReceivingMiddleware(append([]mcp.Middleware{AskFailures()}, middleware...)...)
 	Register(s, Deps{
 		Service: service.New(client, directory.NewResolver(client, directory.NewCache("", time.Hour, log), log), cfg, log),
 		Config:  cfg,
@@ -95,8 +107,8 @@ func sessionWithLogger(t *testing.T, handler http.HandlerFunc, cfg config.Config
 	}
 	t.Cleanup(func() { _ = ss.Close() })
 
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).
-		Connect(context.Background(), ct, nil)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, co).
+		Connect(context.Background(), ct, &mcp.ClientSessionOptions{ProtocolVersion: protocol})
 	if err != nil {
 		t.Fatalf("connect client: %v", err)
 	}
@@ -156,13 +168,7 @@ func errorText(t *testing.T, res *mcp.CallToolResult) string {
 	if !res.IsError {
 		t.Fatal("expected a tool error")
 	}
-	var b strings.Builder
-	for _, c := range res.Content {
-		if tc, ok := c.(*mcp.TextContent); ok {
-			b.WriteString(tc.Text)
-		}
-	}
-	return b.String()
+	return textOf(res)
 }
 
 func TestWhoamiThroughASession(t *testing.T) {
