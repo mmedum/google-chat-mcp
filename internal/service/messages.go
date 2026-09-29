@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"strings"
 	"time"
@@ -604,6 +605,9 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		return &SendMessageResult{Space: space, DryRun: true, Rendered: rendered}, nil
 	}
 
+	if err := s.askSend(ctx, space, text, strings.TrimSpace(in.UploadToken) != ""); err != nil {
+		return nil, err
+	}
 	msg, err := s.client.SendMessage(ctx, space, body, in.ReplyFallback, in.ClientMessageID)
 	if err != nil {
 		return nil, Classify(err)
@@ -613,6 +617,46 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		out.Thread = msg.Thread.Name
 	}
 	return out, nil
+}
+
+// askSend asks before a post that mentions everyone in the space, or
+// before every post when the configuration says so. The space is read
+// for its name only when a question could go out.
+func (s *Service) askSend(ctx context.Context, space, text string, attached bool) error {
+	everyone := mentionsEveryone(text)
+	if !everyone && !s.cfg.AskBeforeSend || !asks(ctx) {
+		return nil
+	}
+	sp, err := s.client.GetSpace(ctx, space)
+	if err != nil {
+		return Classify(err)
+	}
+	return ask(ctx, askSend(space, sp.DisplayName, text, everyone, attached))
+}
+
+// askEdit asks before an edit that newly mentions everyone in the
+// space, or before every edit when the configuration asks before every
+// post. An edit notifies only whom it newly mentions, so a message that
+// already mentioned everyone is read and compared, only when a question
+// could go out.
+func (s *Service) askEdit(ctx context.Context, name, text string) error {
+	newly := mentionsEveryone(text)
+	if !newly && !s.cfg.AskBeforeSend || !asks(ctx) {
+		return nil
+	}
+	if newly {
+		old, err := s.client.GetMessage(ctx, name)
+		if err != nil && !gchat.IsNotFound(err) {
+			return Classify(err)
+		}
+		if err == nil && mentionsEveryone(old.Text) {
+			newly = false
+		}
+	}
+	if !newly && !s.cfg.AskBeforeSend {
+		return nil
+	}
+	return ask(ctx, askEdit(name, spaceOfMessage(name), text, newly))
 }
 
 // UpdateMessageInput is a text edit of a message the caller sent.
@@ -652,6 +696,9 @@ func (s *Service) UpdateMessage(ctx context.Context, in UpdateMessageInput) (*Up
 			return nil, err
 		}
 		return &UpdateMessageResult{Name: name, Text: text, DryRun: true, Rendered: rendered}, nil
+	}
+	if err := s.askEdit(ctx, name, text); err != nil {
+		return nil, err
 	}
 
 	msg, err := s.client.UpdateMessage(ctx, name, body)
@@ -717,6 +764,27 @@ func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*De
 	}
 	if in.DryRun {
 		return &DeleteMessageResult{Name: name, Forced: in.Force, DryRun: true}, nil
+	}
+	if asks(ctx) {
+		// The question shows the message, so it is read first. One already
+		// gone asks nothing: the delete changes nothing.
+		// A 403 is a message gone from a space that keeps no history, or
+		// one the account may not delete: the delete is a no-op or
+		// refused, so nothing is asked either way.
+		msg, err := s.client.GetMessage(ctx, name)
+		switch {
+		case err == nil && messageDeleted(msg), gchat.IsNotFound(err), gchat.IsForbidden(err):
+		case err != nil:
+			return nil, Classify(err)
+		default:
+			sender := ""
+			if msg.Sender != nil {
+				sender = cmp.Or(msg.Sender.DisplayName, msg.Sender.Name)
+			}
+			if err := ask(ctx, askDeleteMessage(spaceOfMessage(name), sender, msg.Text, in.Force)); err != nil {
+				return nil, err
+			}
+		}
 	}
 	deleted, err := deleteIdempotent(ctx, name,
 		func(ctx context.Context, name string) error {

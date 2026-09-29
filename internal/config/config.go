@@ -128,14 +128,20 @@ type Config struct {
 	// RefuseDeletes: the zero value has to be the ordinary server, which
 	// asks a client to put a person in front of a write.
 	SuppressInteractionHint bool
-	Toolsets                []Toolset
-	HTTPTimeout             time.Duration
-	HTTPMaxRetries          int
-	SearchMaxPages          int
-	DirectoryCacheTTL       time.Duration
-	ChatAPIBase             string
-	PeopleAPIBase           string
-	ClientSecretPath        string
+	// RequirePrompt refuses the writes that ask the person when the
+	// client cannot ask them.
+	RequirePrompt bool
+	// AskBeforeSend asks before every send_message and update_message,
+	// not only one whose text mentions everyone in the space.
+	AskBeforeSend     bool
+	Toolsets          []Toolset
+	HTTPTimeout       time.Duration
+	HTTPMaxRetries    int
+	SearchMaxPages    int
+	DirectoryCacheTTL time.Duration
+	ChatAPIBase       string
+	PeopleAPIBase     string
+	ClientSecretPath  string
 	// LocalDir is the one directory an attachment is written to and
 	// read from. Unset means no file transfer at all, which is the
 	// default: a server that can read and write anywhere on the machine
@@ -155,6 +161,8 @@ type Settings struct {
 	ReadOnly          string
 	AllowDestructive  string
 	InteractionHint   string
+	RequirePrompt     string
+	AskBeforeSend     string
 	Toolsets          string
 	HTTPTimeout       string
 	HTTPMaxRetries    string
@@ -192,6 +200,10 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 		"allow the tools that delete things to actually delete; they stay registered either way")
 	def(&s.InteractionHint, "interaction-hint", "INTERACTION_HINT", "true",
 		"ask the client to put a person in front of every write")
+	def(&s.RequirePrompt, "require-prompt", "REQUIRE_PROMPT", "false",
+		"refuse the writes that ask the person when the client cannot ask them")
+	def(&s.AskBeforeSend, "ask-before-send", "ASK_BEFORE_SEND", "false",
+		"ask the person before every send_message and update_message, not only one that mentions everyone")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
@@ -275,6 +287,13 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, err)
 	}
 	c.SuppressInteractionHint = !hint
+
+	if c.RequirePrompt, err = parseBool("require-prompt", s.RequirePrompt); err != nil {
+		errs = append(errs, err)
+	}
+	if c.AskBeforeSend, err = parseBool("ask-before-send", s.AskBeforeSend); err != nil {
+		errs = append(errs, err)
+	}
 
 	if c.Toolsets, err = parseToolsets(s.Toolsets); err != nil {
 		errs = append(errs, err)

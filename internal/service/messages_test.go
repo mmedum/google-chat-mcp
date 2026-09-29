@@ -387,7 +387,7 @@ func assertClass(t *testing.T, err error, want Class) {
 func TestSendMessagePostsTheTextVerbatim(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`))
 	body := "  hello\n\nworld  "
-	got, err := s.SendMessage(context.Background(), SendMessageInput{Space: "spaces/A", Text: body})
+	got, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/A", Text: body})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestSendMessagePostsTheTextVerbatim(t *testing.T) {
 
 func TestSendMessageRepliesInAThread(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`))
-	if _, err := s.SendMessage(context.Background(), SendMessageInput{
+	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/A", Text: "hi", Thread: "spaces/A/threads/T",
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
@@ -428,7 +428,7 @@ func TestSendMessageRepliesInAThread(t *testing.T) {
 // shows has to be the body a real post would send.
 func TestSendMessageDryRunPostsNothing(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
-	got, err := s.SendMessage(context.Background(), SendMessageInput{
+	got, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/A", Text: "hello", Thread: "spaces/A/threads/T", DryRun: true,
 	})
 	if err != nil {
@@ -462,7 +462,7 @@ func TestSendMessageRejectsBadInput(t *testing.T) {
 		{"thread that is not a thread", SendMessageInput{Space: "spaces/A", Text: "hi", Thread: "spaces/A/messages/1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.SendMessage(context.Background(), tc.in)
+			_, err := s.SendMessage(writeCtx(), tc.in)
 			assertClass(t, err, ClassInvalid)
 		})
 	}
@@ -477,7 +477,7 @@ func TestMessageLengthIsCountedInCharacters(t *testing.T) {
 	s, _ := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
 	// Four bytes each, so a byte count would reject this at a quarter
 	// of the documented limit.
-	if _, err := s.SendMessage(context.Background(), SendMessageInput{
+	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/A", Text: strings.Repeat("😀", maxMessageText),
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
@@ -486,7 +486,7 @@ func TestMessageLengthIsCountedInCharacters(t *testing.T) {
 
 func TestUpdateMessageEditsTheText(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","text":"edited"}`))
-	got, err := s.UpdateMessage(context.Background(), UpdateMessageInput{
+	got, err := s.UpdateMessage(writeCtx(), UpdateMessageInput{
 		Message: "spaces/A/messages/1", Text: "edited",
 	})
 	if err != nil {
@@ -504,7 +504,7 @@ func TestUpdateMessageEditsTheText(t *testing.T) {
 // the field, not that the message is now empty.
 func TestUpdateMessageEchoesWhatItAskedForWhenGoogleSaysNothing(t *testing.T) {
 	s, _ := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
-	got, err := s.UpdateMessage(context.Background(), UpdateMessageInput{
+	got, err := s.UpdateMessage(writeCtx(), UpdateMessageInput{
 		Message: "spaces/A/messages/1", Text: "edited",
 	})
 	if err != nil {
@@ -517,7 +517,7 @@ func TestUpdateMessageEchoesWhatItAskedForWhenGoogleSaysNothing(t *testing.T) {
 
 func TestUpdateMessageDryRunChangesNothing(t *testing.T) {
 	s, rec := recorded(t, ok(`{}`))
-	got, err := s.UpdateMessage(context.Background(), UpdateMessageInput{
+	got, err := s.UpdateMessage(writeCtx(), UpdateMessageInput{
 		Message: "spaces/A/messages/1", Text: "edited", DryRun: true,
 	})
 	if err != nil {
@@ -538,7 +538,7 @@ func TestUpdateMessageRejectsBadInput(t *testing.T) {
 		{Message: "spaces/A", Text: "hi"},
 		{Message: "spaces/A/messages/1"},
 	} {
-		_, err := s.UpdateMessage(context.Background(), in)
+		_, err := s.UpdateMessage(writeCtx(), in)
 		assertClass(t, err, ClassInvalid)
 	}
 }
@@ -547,7 +547,7 @@ func TestUpdateMessageRejectsBadInput(t *testing.T) {
 // a repeat is a success that changed nothing.
 func TestDeleteMessageIsIdempotent(t *testing.T) {
 	s := newService(t, status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`))
-	got, err := s.DeleteMessage(context.Background(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
 	if err != nil {
 		t.Fatalf("a second delete is not a failure: %v", err)
 	}
@@ -606,7 +606,7 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 				}
 				tc.read(w, r)
 			})
-			got, err := s.DeleteMessage(context.Background(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
 			if tc.wantErr != "" {
 				assertClass(t, err, tc.wantErr)
 				return
@@ -627,13 +627,13 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 func TestDeleteMessageDoesNotSwallowAMissingScope(t *testing.T) {
 	s := newService(t, status(403,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
-	_, err := s.DeleteMessage(context.Background(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+	_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
 	assertClass(t, err, ClassScope)
 }
 
 func TestDeleteMessageDeletes(t *testing.T) {
 	s, rec := recorded(t, ok(`{}`))
-	got, err := s.DeleteMessage(context.Background(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
 	if err != nil {
 		t.Fatalf("DeleteMessage: %v", err)
 	}
@@ -647,7 +647,7 @@ func TestDeleteMessageDeletes(t *testing.T) {
 
 func TestDeleteMessageDryRunDeletesNothing(t *testing.T) {
 	s, rec := recorded(t, ok(`{}`))
-	got, err := s.DeleteMessage(context.Background(), DeleteMessageInput{
+	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
 		Message: "spaces/A/messages/1", DryRun: true,
 	})
 	if err != nil {
@@ -672,15 +672,15 @@ func TestMessageWritesNameTheirScopes(t *testing.T) {
 		want string
 	}{
 		{"send", func() error {
-			_, err := s.SendMessage(context.Background(), SendMessageInput{Space: "spaces/A", Text: "hi"})
+			_, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/A", Text: "hi"})
 			return err
 		}, scopes.MessagesCreate},
 		{"update", func() error {
-			_, err := s.UpdateMessage(context.Background(), UpdateMessageInput{Message: "spaces/A/messages/1", Text: "hi"})
+			_, err := s.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/A/messages/1", Text: "hi"})
 			return err
 		}, scopes.Messages},
 		{"delete", func() error {
-			_, err := s.DeleteMessage(context.Background(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
 			return err
 		}, scopes.Messages},
 	} {
@@ -693,7 +693,7 @@ func TestMessageWritesNameTheirScopes(t *testing.T) {
 // non-empty value is checked.
 func TestSendMessageRefusesABlankThreadRatherThanStartingANewOne(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
-	_, err := s.SendMessage(context.Background(), SendMessageInput{
+	_, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/A", Text: "hi", Thread: "   ",
 	})
 	assertClass(t, err, ClassInvalid)
@@ -722,11 +722,11 @@ func TestDeletingTwiceIsNotAnError(t *testing.T) {
 	})
 	in := DeleteMessageInput{Message: "spaces/A/messages/1"}
 
-	first, err := s.DeleteMessage(context.Background(), in)
+	first, err := s.DeleteMessage(writeCtx(), in)
 	if err != nil || !first.Deleted {
 		t.Fatalf("first delete = %+v, %v", first, err)
 	}
-	second, err := s.DeleteMessage(context.Background(), in)
+	second, err := s.DeleteMessage(writeCtx(), in)
 	if err != nil {
 		t.Fatalf("a repeat delete must not fail: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestDeleteMessageCarriesForce(t *testing.T) {
 				got = r.URL.Query().Get("force")
 				fmt.Fprint(w, `{}`)
 			})
-			out, err := s.DeleteMessage(context.Background(), DeleteMessageInput{
+			out, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
 				Message: "spaces/AAAAspace1/messages/AAAAmsg1", Force: force,
 			})
 			if err != nil {
@@ -772,7 +772,7 @@ func TestADryRunDeleteRepeatsForce(t *testing.T) {
 	s := newService(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("a dry run must not reach Google")
 	})
-	out, err := s.DeleteMessage(context.Background(), DeleteMessageInput{
+	out, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
 		Message: "spaces/AAAAspace1/messages/AAAAmsg1", Force: true, DryRun: true,
 	})
 	if err != nil {
@@ -800,7 +800,7 @@ func TestAReplyChoosesItsFallback(t *testing.T) {
 				got = r.URL.Query().Get("messageReplyOption")
 				fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1"}`)
 			})
-			if _, err := s.SendMessage(context.Background(), SendMessageInput{
+			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
 				Space:         "spaces/AAAAspace1",
 				Text:          "hello",
 				Thread:        "spaces/AAAAspace1/threads/AAAAthread1",
@@ -831,7 +831,7 @@ func TestAMentionIsPostedVerbatim(t *testing.T) {
 		sent = body.Text
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1"}`)
 	})
-	if _, err := s.SendMessage(context.Background(), SendMessageInput{
+	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/AAAAspace1", Text: text,
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)

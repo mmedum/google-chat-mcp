@@ -244,6 +244,12 @@ client that includes resources in its context:
   automating with nobody at the keyboard, `GCM_INTERACTION_HINT=false`
   is the way to use the write tools at all, and it is a decision to make
   on purpose.
+- **The server asks you before what cannot be taken back.** When your
+  MCP client supports elicitation, it asks before deleting a message, a
+  space or a custom emoji, adding a member, and a post or an edit that
+  mentions everyone in a space; only your accept writes.
+  `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
+  a client that cannot ask.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no
   "sent by an assistant" footer.
 - **A retried post cannot land twice.** Each message carries a

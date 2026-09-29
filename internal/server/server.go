@@ -84,6 +84,7 @@ func New(d Deps) *mcp.Server {
 		opts.Logger = d.Logger
 	}
 	s := mcp.NewServer(&mcp.Implementation{Name: Name, Version: d.Version}, opts)
+	s.AddReceivingMiddleware(tools.AskFailures())
 	tools.Register(s, tools.Deps{Service: d.Service, Config: d.Config, Logger: d.Logger})
 	return s
 }

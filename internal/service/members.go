@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/mmedum/google-chat-mcp/v2/internal/directory"
@@ -329,6 +330,16 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 		return out, nil
 	}
 
+	if asks(ctx) {
+		sp, err := s.client.GetSpace(ctx, space)
+		if err != nil {
+			return nil, Classify(err)
+		}
+		who := cmp.Or(out.Email, out.Group)
+		if err := ask(ctx, askAddMember(space, sp.DisplayName, who, out.Group != "")); err != nil {
+			return nil, err
+		}
+	}
 	membership, err := s.client.AddMember(ctx, space, body)
 	if err != nil {
 		subject := out.Email

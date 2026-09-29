@@ -203,7 +203,7 @@ func TestListMembersNamesItsScope(t *testing.T) {
 
 func TestAddMemberInvitesByEmail(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/members/M"}`))
-	got, err := s.AddMember(context.Background(), AddMemberInput{
+	got, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com",
 	})
 	if err != nil {
@@ -225,7 +225,7 @@ func TestAddMemberInvitesByEmail(t *testing.T) {
 // first. Returning it would say this call added them when it did not.
 func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
 	s := newService(t, status(409, `{"error":{"status":"ALREADY_EXISTS","message":"already a member"}}`))
-	_, err := s.AddMember(context.Background(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
+	_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
 	assertClass(t, err, ClassInvalid)
 	if !strings.Contains(err.Error(), "janedoe@example.com") {
 		t.Errorf("error = %q, want it to name the person", err)
@@ -234,7 +234,7 @@ func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
 
 func TestAddMemberDryRunInvitesNobody(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/members/M"}`))
-	got, err := s.AddMember(context.Background(), AddMemberInput{
+	got, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com", DryRun: true,
 	})
 	if err != nil {
@@ -259,11 +259,11 @@ func TestMemberWritesRejectBadInput(t *testing.T) {
 		run  func() error
 	}{
 		{"no space", func() error {
-			_, err := s.AddMember(context.Background(), AddMemberInput{Email: "janedoe@example.com"})
+			_, err := s.AddMember(writeCtx(), AddMemberInput{Email: "janedoe@example.com"})
 			return err
 		}},
 		{"no address", func() error {
-			_, err := s.AddMember(context.Background(), AddMemberInput{Space: "spaces/A"})
+			_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A"})
 			return err
 		}},
 		{"a space instead of a membership", func() error {
@@ -371,7 +371,7 @@ func TestMemberWritesNameTheirScope(t *testing.T) {
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	for _, run := range []func() error{
 		func() error {
-			_, err := s.AddMember(context.Background(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
+			_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
 			return err
 		},
 		func() error {
@@ -387,7 +387,7 @@ func TestMemberWritesNameTheirScope(t *testing.T) {
 // check, because the address is nearly always what Google objected to.
 func TestAddMemberExplainsAnAddressGoogleWillNotTake(t *testing.T) {
 	s := newService(t, status(400, `{"error":{"status":"INVALID_ARGUMENT","message":"invalid member"}}`))
-	_, err := s.AddMember(context.Background(), AddMemberInput{
+	_, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com",
 	})
 	assertClass(t, err, ClassInvalid)
@@ -463,7 +463,7 @@ func TestAddMemberTakesAGroupOrAPerson(t *testing.T) {
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MANAGER"}`)
 	})
 
-	got, err := s.AddMember(context.Background(), AddMemberInput{
+	got, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/AAAAspace1", Group: "groups/AAAAgroup1",
 	})
 	if err != nil {
@@ -483,7 +483,7 @@ func TestAddMemberTakesAGroupOrAPerson(t *testing.T) {
 		t.Errorf("result = %+v", got)
 	}
 
-	_, err = s.AddMember(context.Background(), AddMemberInput{
+	_, err = s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/AAAAspace1", Email: "janedoe@example.com", Group: "groups/AAAAgroup1",
 	})
 	assertClass(t, err, ClassInvalid)

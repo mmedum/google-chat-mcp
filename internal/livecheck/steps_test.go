@@ -33,12 +33,20 @@ type step struct {
 // it, and a check that reads its own write passes for the wrong reason.
 var steps = []step{
 	{"the account is named", "whoami", func(d *driver) {
-		var out struct{ Email string }
+		var out struct {
+			Email       string
+			DisplayName string `json:"display_name"`
+		}
 		d.into(d.must("whoami", nil), &out)
 		if out.Email == "" {
 			d.t.Error("whoami named no account")
 		}
 		d.email = out.Email
+		if out.DisplayName != "" {
+			d.person.mu.Lock()
+			d.person.names = append(d.person.names, out.DisplayName)
+			d.person.mu.Unlock()
+		}
 	}},
 
 	// Reads the directory and writes nothing. The account's own address
@@ -535,11 +543,29 @@ var steps = []step{
 	// message with 200 and a tombstone rather than 404, so a repeat
 	// delete that reads the status instead of the answer reports success
 	// twice. Every gate passed while it was broken.
+	// The server asks the person before a delete it cannot take back. A
+	// decline writes nothing and says so without claiming the person
+	// declined, since a client can answer by itself.
+	{"a declined delete deletes nothing", "delete_message", func(d *driver) {
+		asked := d.person.expect(true)
+		res := d.call("delete_message", map[string]any{"message_name": d.posted})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") || len(asked()) != 1 {
+			d.t.Fatalf("a declined delete: %s; %d questions", d.redact(res.Text), len(asked()))
+		}
+		if q := asked()[0]; !strings.Contains(q, "delete_message: delete a message by") || !strings.Contains(q, searchTerm) {
+			d.t.Errorf("the question does not show the message: %s", d.redact(q))
+		}
+	}},
+
 	{"the message deletes", "delete_message", func(d *driver) {
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
+		asked := d.person.expect(false)
 		d.into(d.must("delete_message", map[string]any{"message_name": d.posted}), &out)
+		if len(asked()) != 1 {
+			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
+		}
 		if !out.Deleted {
 			d.t.Error("the first delete reported that it deleted nothing")
 		}
@@ -556,7 +582,11 @@ var steps = []step{
 	// That is precisely what happened, and only a live call can tell the
 	// two apart.
 	{"a repeat delete reports that it deleted nothing", "delete_message", func(d *driver) {
+		asked := d.person.expect(false)
 		res := d.call("delete_message", map[string]any{"message_name": d.posted})
+		if len(asked()) != 0 {
+			d.t.Errorf("deleting a message already gone asked the person %d times", len(asked()))
+		}
 		if res.IsError {
 			d.t.Fatalf("a repeat delete failed rather than being idempotent: %s", d.redact(res.Text))
 		}
@@ -567,6 +597,21 @@ var steps = []step{
 		if out.Deleted {
 			d.t.Error("deleting an already-deleted message reported deleting it again; " +
 				"Google answers 200 with a tombstone, so the answer has to be read, not the status")
+		}
+	}},
+
+	// A post that notifies everyone in the space asks first; an ordinary
+	// one does not. The scratch space holds only this account.
+	{"a post that mentions everyone asks first", "send_message", func(d *driver) {
+		asked := d.person.expect(false)
+		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
+		if qs := asked(); len(qs) != 1 || !strings.Contains(qs[0], "mentioning everyone in it") {
+			d.t.Errorf("a post to everyone put %d questions: %s", len(qs), d.redact(strings.Join(qs, " | ")))
+		}
+		asked = d.person.expect(false)
+		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck posts a plain line and will delete it"})
+		if len(asked()) != 0 {
+			d.t.Errorf("an ordinary post asked the person %d times", len(asked()))
 		}
 	}},
 
