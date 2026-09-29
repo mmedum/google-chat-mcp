@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v2/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
 )
 
 // ListMessagesOptions narrows spaces.messages.list.

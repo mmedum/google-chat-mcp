@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mmedum/google-chat-mcp/v2/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v3/internal/redact"
 	"net/http"
 	"strings"
 )
