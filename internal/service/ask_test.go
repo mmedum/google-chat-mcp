@@ -28,10 +28,29 @@ func TestQuotedIsOneInertLine(t *testing.T) {
 		{" \u200b\t", "invisible characters only"},
 		{"empty", span("empty")},
 		{"*Approved* by [IT](x) <b>now</b> &#x202e; \\_ ~~x~~", span("*Approved* by [IT](x) <b>now</b> &#x202e; \\_ ~~x~~")},
+		{strings.Repeat("a", 120), span(strings.Repeat("a", 120))},
+		{strings.Repeat("a", 121), span(strings.Repeat("a", 120) + "…")},
 		{strings.Repeat("a", 200), span(strings.Repeat("a", 120) + "…")},
 	} {
 		if got := quoted(tc.in, 120); got != tc.want {
 			t.Errorf("quoted(%q) = %s; want %s", tc.in, got, tc.want)
+		}
+	}
+}
+
+// A question shows the first 300 characters of a post and says how many
+// it left out, and says nothing about a post that fits.
+func TestTheTextLineSaysHowMuchWasCut(t *testing.T) {
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{
+		{300, "text: `" + strings.Repeat("a", 300) + "`"},
+		{301, "text: `" + strings.Repeat("a", 300) + "` (1 more characters)"},
+		{350, "text: `" + strings.Repeat("a", 300) + "` (50 more characters)"},
+	} {
+		if got := textLine(strings.Repeat("a", tc.n)); got != tc.want {
+			t.Errorf("%d characters: got %q, want %q", tc.n, got, tc.want)
 		}
 	}
 }

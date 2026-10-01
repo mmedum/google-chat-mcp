@@ -37,7 +37,7 @@ func TestParseClientSecret(t *testing.T) {
 		t.Fatal("bad json should fail")
 	}
 	cfg, err = ParseClientSecret([]byte(`{"installed":{"client_id":"a","client_secret":"b"}}`), nil)
-	if err != nil || cfg.Endpoint.AuthURL != GoogleAuthURL {
+	if err != nil || cfg.Endpoint.AuthURL != GoogleAuthURL || cfg.Endpoint.TokenURL != GoogleTokenURL {
 		t.Fatalf("defaults not applied: %+v %v", cfg, err)
 	}
 	if _, err := LoadClientSecret("/nonexistent/client.json", nil); err == nil {

@@ -169,7 +169,35 @@ func TestCorruptFile(t *testing.T) {
 	if err := os.WriteFile(s.FilePath, []byte("nope"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Resolve(); err == nil {
+	_, _, err := s.Resolve()
+	if err == nil {
 		t.Fatal("corrupt token file should error")
+	}
+	// Corrupt is not absent: "not signed in" would send someone to log
+	// in again over a file that still holds a token.
+	if errors.Is(err, ErrNotFound) {
+		t.Errorf("a corrupt token file read as no token: %v", err)
+	}
+}
+
+// Logout removes the plaintext file, and says so when it cannot.
+func TestDeleteRemovesTheFileOrSaysWhyNot(t *testing.T) {
+	s, _ := newStore(t, nil)
+	if err := os.WriteFile(s.FilePath, []byte(`{"refresh_token":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := os.Stat(s.FilePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the token file is still there: %v", err)
+	}
+
+	// A directory with something in it cannot be removed as a file.
+	if err := os.MkdirAll(filepath.Join(s.FilePath, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(); err == nil {
+		t.Error("Delete reported success with the token path still in place")
 	}
 }

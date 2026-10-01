@@ -321,27 +321,38 @@ func TestGetMessageInlinesReactions(t *testing.T) {
 // A message with more distinct emoji than fit inline says so, rather
 // than returning a truncated list the caller would read as complete.
 func TestGetMessageReportsTooManyReactions(t *testing.T) {
-	var b strings.Builder
-	b.WriteString(`{"name":"spaces/A/messages/1","sender":{"name":"users/1"},"createTime":"2026-01-02T03:04:05Z",
-	  "thread":{"name":"spaces/A/threads/T1"},"emojiReactionSummaries":[`)
-	for i := range 30 {
-		if i > 0 {
-			b.WriteString(",")
-		}
-		fmt.Fprintf(&b, `{"emoji":{"unicode":"%c"},"reactionCount":1}`, rune('a'+i))
-	}
-	b.WriteString("]}")
+	// Twenty-five distinct emoji go inline; the twenty-sixth sends the
+	// caller to list_reactions instead.
+	for _, tc := range []struct {
+		emoji      int
+		wantInline int
+		wantPaged  bool
+	}{
+		{25, 25, false},
+		{26, 0, true},
+	} {
+		t.Run(fmt.Sprintf("%d emoji", tc.emoji), func(t *testing.T) {
+			var b strings.Builder
+			b.WriteString(`{"name":"spaces/A/messages/1","sender":{"name":"users/1"},"createTime":"2026-01-02T03:04:05Z",
+			  "thread":{"name":"spaces/A/threads/T1"},"emojiReactionSummaries":[`)
+			for i := range tc.emoji {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				fmt.Fprintf(&b, `{"emoji":{"unicode":"%c"},"reactionCount":1}`, rune('a'+i))
+			}
+			b.WriteString("]}")
 
-	s := newService(t, route(ok(b.String()), nobody()))
-	got, err := s.GetMessage(context.Background(), "spaces/A/messages/1")
-	if err != nil {
-		t.Fatalf("GetMessage: %v", err)
-	}
-	if !got.ReactionsPaged {
-		t.Error("reactions_paged should be set when the summaries were left out")
-	}
-	if len(got.Reactions) != 0 {
-		t.Errorf("reactions = %+v, want none inline", got.Reactions)
+			s := newService(t, route(ok(b.String()), nobody()))
+			got, err := s.GetMessage(context.Background(), "spaces/A/messages/1")
+			if err != nil {
+				t.Fatalf("GetMessage: %v", err)
+			}
+			if got.ReactionsPaged != tc.wantPaged || len(got.Reactions) != tc.wantInline {
+				t.Errorf("paged = %v with %d inline, want %v with %d",
+					got.ReactionsPaged, len(got.Reactions), tc.wantPaged, tc.wantInline)
+			}
+		})
 	}
 }
 

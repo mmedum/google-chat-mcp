@@ -56,6 +56,7 @@ func TestSendMessageThroughASession(t *testing.T) {
 // One test per tool, because a tool that quietly posted anyway is the
 // failure this flag exists to rule out.
 func TestEveryDryRunReachesNothing(t *testing.T) {
+	covered := map[string]bool{}
 	for _, tc := range []struct {
 		tool string
 		args map[string]any
@@ -72,7 +73,20 @@ func TestEveryDryRunReachesNothing(t *testing.T) {
 		{"rename_section", map[string]any{"section_name": "users/me/sections/S", "display_name": "Clients"}},
 		{"delete_section", map[string]any{"section_name": "users/me/sections/S"}},
 		{"position_section", map[string]any{"section_name": "users/me/sections/S", "relative_position": "START"}},
+		{"update_member_role", map[string]any{"membership_name": "spaces/A/members/M", "role": "MANAGER"}},
+		{"delete_space", map[string]any{"space_id": "spaces/A", "confirm_space_id": "spaces/A"}},
+		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
+		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
+		{"mark_space_read", map[string]any{"space_id": "spaces/A"}},
+		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "from_time": "2026-01-02T03:04:05Z"}},
+		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "mute_setting": "MUTED"}},
+		{"set_availability", map[string]any{"state": "AWAY"}},
+		{"set_custom_status", map[string]any{"text": "in a workshop", "emoji": "🎉"}},
+		{"create_custom_emoji", map[string]any{"emoji_name": ":team-flag:", "image_path": "emoji.png"}},
+		{"delete_custom_emoji", map[string]any{"name": "customEmojis/AAAAemoji1"}},
+		{"upload_attachment", map[string]any{"space_id": "spaces/A", "local_path": "emoji.png"}},
 	} {
+		covered[tc.tool] = true
 		t.Run(tc.tool, func(t *testing.T) {
 			c := &counter{}
 			cs := session(t, c.wrap(func(w http.ResponseWriter, _ *http.Request) {
@@ -103,6 +117,16 @@ func TestEveryDryRunReachesNothing(t *testing.T) {
 				t.Error("dry_run is false in the result of a dry run")
 			}
 		})
+	}
+	// The list above is checked against what is registered, so a write
+	// tool added tomorrow cannot go without a row. The move reads the
+	// space's current section to show what it would do, and
+	// TestTheMoveDryRunReadsButDoesNotWrite holds it instead.
+	covered["move_space_to_section"] = true
+	for _, name := range dryRunTools(t) {
+		if !covered[name] {
+			t.Errorf("%s takes dry_run and has no row here", name)
+		}
 	}
 }
 
@@ -276,4 +300,34 @@ func TestTheOutwardFacingToolsAskForAPerson(t *testing.T) {
 			t.Errorf("%q demands an interaction it does not need", name)
 		}
 	}
+}
+
+// dryRunTools is every registered tool whose input takes dry_run.
+func dryRunTools(t *testing.T) []string {
+	t.Helper()
+	cs := session(t, body(`{}`))
+	list, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var out []string
+	for _, tool := range list.Tools {
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", tool.Name, err)
+		}
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("decode %s: %v", tool.Name, err)
+		}
+		if _, ok := schema.Properties["dry_run"]; ok {
+			out = append(out, tool.Name)
+		}
+	}
+	if len(out) < 20 {
+		t.Fatalf("found %d tools taking dry_run, below the floor of 20: %v", len(out), out)
+	}
+	return out
 }

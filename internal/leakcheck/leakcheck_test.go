@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,6 +52,64 @@ func TestARealIDHiddenInBase64IsFound(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Value, "spaces/") {
 		t.Errorf("value = %q, want the decoded id", got[0].Value)
+	}
+}
+
+// Every rule reports every match on a line, not just the first, and
+// names the line it was on. The second line of each input carries two
+// matches, so a rule that stops at one, or counts lines from zero, says
+// so here.
+func TestEveryMatchIsReportedWithItsLine(t *testing.T) {
+	for _, tc := range []struct {
+		rule string
+		line string
+		want []string
+	}{
+		{"email", `a@acmecorp.example.io and b@othercorp.example.io`,
+			[]string{"a@acmecorp.example.io", "b@othercorp.example.io"}},
+		{"account id", `104857306291748362915 and 209384756102938475610`,
+			[]string{"104857306291748362915", "209384756102938475610"}},
+		{"Google identifier", `lh3.googleusercontent.com and lh5.googleusercontent.com`,
+			[]string{"lh3.googleusercontent.com", "lh5.googleusercontent.com"}},
+		{"space id", `spaces/AAQAk7Rf2Xw and spaces/AAQAz9Pq4Lm`,
+			[]string{"spaces/AAQAk7Rf2Xw", "spaces/AAQAz9Pq4Lm"}},
+		// Unpadded, as Google writes base64url: 26 and 27 characters, so
+		// the decoder has to put back two "=" and then one.
+		{"base64 space id", `items/c3BhY2VzL0FBUUFrN1JmMlh3cQ and items/c3BhY2VzL0FBUUF6OVBxNExtclQ`,
+			[]string{"spaces/AAQAk7Rf2Xwq", "spaces/AAQAz9Pq4LmrT"}},
+	} {
+		t.Run(tc.rule, func(t *testing.T) {
+			got := Text("doc.md", "nothing on the first line\n"+tc.line)
+			var values []string
+			for _, f := range got {
+				if f.Line != 2 {
+					t.Errorf("%q reported on line %d, want 2", f.Value, f.Line)
+				}
+				values = append(values, f.Value)
+			}
+			if !slices.Equal(values, tc.want) {
+				t.Errorf("reported %q, want %q", values, tc.want)
+			}
+		})
+	}
+}
+
+// Where "made up" ends. A space id of eight characters is a fixture and
+// one of nine is not; a 21-digit run of three distinct digits is a
+// placeholder and one of four is not.
+func TestTheEdgeOfLookingInvented(t *testing.T) {
+	for _, tc := range []struct {
+		line   string
+		caught bool
+	}{
+		{`spaces/AAQAk7Rf`, false},
+		{`spaces/AAQAk7Rf2`, true},
+		{`111222333111222333111`, false},
+		{`111222333444111222333`, true},
+	} {
+		if got := len(Text("doc.md", tc.line)) > 0; got != tc.caught {
+			t.Errorf("%q: caught = %v, want %v", tc.line, got, tc.caught)
+		}
 	}
 }
 
@@ -140,6 +199,12 @@ func TestTheRepositoryIsClean(t *testing.T) {
 	t.Logf("scanned %d of %d tracked files, %d binary", scanned, tracked, binary)
 	if tracked > 0 && scanned == 0 {
 		t.Fatalf("%d tracked files and none read: the scan is looking at nothing", tracked)
+	}
+	// A stated floor rather than one read back from the scan: the tree
+	// holds over 170 text files, and a scan that reads far fewer has
+	// lost most of them somewhere.
+	if scanned < 150 {
+		t.Errorf("scanned %d files, below the floor of 150", scanned)
 	}
 	// A file git tracks that this cannot open is a file nobody is
 	// checking. Binary is a reason; anything else is a hole.

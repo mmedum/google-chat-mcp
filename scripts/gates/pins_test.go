@@ -74,6 +74,17 @@ func TestPinProblems(t *testing.T) {
 			want: "pinned to :latest, which is not a pin",
 		},
 		{
+			// Every match on a line is judged, not only the first.
+			name: "a second go run on the same line",
+			line: "\tgo run golang.org/x/one/cmd/one@v1.2.3 ./... && go run golang.org/x/two/cmd/two@latest ./...",
+			want: "go run golang.org/x/two/cmd/two@latest is not an exact version",
+		},
+		{
+			name: "a second image on the same line",
+			line: "          docker run --rm example.org/one:1.2.3 a && docker run --rm example.org/two:latest b",
+			want: "the image example.org/two is pinned to :latest",
+		},
+		{
 			name: "an image with no tag at all",
 			line: "          docker run --rm zricethezav/gitleaks detect",
 			want: "has no tag",
@@ -178,6 +189,19 @@ func TestUnpinnedTools(t *testing.T) {
 		{
 			"an unknown action is not quietly trusted",
 			"jobs:\n  a:\n    steps:\n      - uses: some-vendor/tool-installer@" + sha + "\n        with:\n          version: v1.2.3\n",
+			true,
+		},
+		{
+			// Every action in the file is judged, not only the first.
+			"an unpinned installer after an action that installs nothing",
+			"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@" + sha + "\n      - uses: sigstore/cosign-installer@" + sha + "\n",
+			true,
+		},
+		{
+			// The step below names the very key this one is missing, so
+			// reading past the step boundary would pass it.
+			"a pinned twin in the next step does not cover this one",
+			"jobs:\n  a:\n    steps:\n      - uses: sigstore/cosign-installer@" + sha + "\n      - uses: sigstore/cosign-installer@" + sha + "\n        with:\n          cosign-release: v3.1.3\n",
 			true,
 		},
 		{

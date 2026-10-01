@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -103,5 +105,22 @@ func TestPromoteHeadingsLeavesFencedCodeAlone(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("promoteHeadings dropped or mangled %q:\n%s", want, got)
 		}
+	}
+}
+
+// release.yml passes the tag alone and leaves the file to its default,
+// CHANGELOG.md in the directory the gate runs from.
+func TestReleaseNotesReadsTheDefaultChangelog(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte(changelogFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	var out, errOut bytes.Buffer
+	if code := releaseNotes([]string{"release-notes", "v1.0.0"}, &out, &errOut); code != 0 {
+		t.Fatalf("releaseNotes exited %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "The first thing") {
+		t.Errorf("stdout = %q, want the 1.0.0 section", out.String())
 	}
 }

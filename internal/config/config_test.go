@@ -254,6 +254,32 @@ func TestSearchMaxPagesIsValidated(t *testing.T) {
 	}
 }
 
+// The numeric settings take their bounds and refuse one step past them.
+func TestNumericSettingsTakeTheirExactBounds(t *testing.T) {
+	for _, tc := range []struct {
+		env, value string
+		ok         bool
+	}{
+		{"GCM_HTTP_MAX_RETRIES", "0", true},
+		{"GCM_HTTP_MAX_RETRIES", "10", true},
+		{"GCM_HTTP_MAX_RETRIES", "-1", false},
+		{"GCM_HTTP_MAX_RETRIES", "11", false},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "1", true},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "600", true},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "0.5", false},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "601", false},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "60", true},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "31536000", true},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "59", false},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "31536001", false},
+	} {
+		_, err := define(t, map[string]string{tc.env: tc.value}).Build()
+		if (err == nil) != tc.ok {
+			t.Errorf("%s=%s: err = %v, want accepted %v", tc.env, tc.value, err, tc.ok)
+		}
+	}
+}
+
 // A directory that does not exist used to be accepted, because only a
 // relative path was refused. The typo then surfaced at the moment
 // somebody tried to move a file, a long way from the setting that caused
