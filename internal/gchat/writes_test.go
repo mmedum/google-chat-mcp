@@ -550,7 +550,7 @@ func TestANonIdempotentWriteIsNotRetriedOnAnAmbiguous5xx(t *testing.T) {
 		{http.StatusBadGateway, 1, "a 502 comes from a gateway that saw no outcome"},
 		{http.StatusGatewayTimeout, 1, "a 504 is the classic post-commit timeout"},
 		{http.StatusTooManyRequests, 4, "a 429 is a refusal to start"},
-		{http.StatusServiceUnavailable, 4, "a 503 means Google is not serving this"},
+		{http.StatusServiceUnavailable, 1, "Google says a 503 is not always safe to retry on a non-idempotent write"},
 	} {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {
 			var calls int

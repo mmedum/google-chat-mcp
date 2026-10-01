@@ -188,6 +188,14 @@ func Classify(err error) error {
 				"will not help.", apiErr.Message),
 			err: err,
 		}
+	case apiErr.StatusCode >= 500 && apiErr.MayHaveApplied:
+		return &Error{
+			Class: ClassServer,
+			Message: fmt.Sprintf("Google failed after this write was sent: %d %s. It may have been applied, "+
+				"so read what it would have changed before trying again; repeating it could do it twice.",
+				apiErr.StatusCode, apiErr.Status),
+			err: err,
+		}
 	case apiErr.StatusCode >= 500:
 		return &Error{
 			Class: ClassServer,

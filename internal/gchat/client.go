@@ -671,7 +671,7 @@ func send[T any](c *Client, ctx context.Context, r request, retries bool,
 		case err == nil:
 			return got, nil
 		case !c.shouldRetry(err, r):
-			return zero, err
+			return zero, markUnsafeWrite(err, r)
 		}
 		lastErr = &retryHint{err: err, after: retryAfter}
 		c.log.Debug("upstream_retry",
@@ -741,6 +741,16 @@ func (c *Client) shouldRetry(err error, r request) bool {
 		return retryable(apiErr.StatusCode)
 	}
 	return r.safeToRepeat()
+}
+
+// markUnsafeWrite flags a server failure of a write that is not safe to
+// repeat, which Google may have applied before failing.
+func markUnsafeWrite(err error, r request) error {
+	var apiErr *APIError
+	if !r.safeToRepeat() && errors.As(err, &apiErr) && apiErr.StatusCode >= 500 {
+		apiErr.MayHaveApplied = true
+	}
+	return err
 }
 
 // attempt makes one HTTP call. path is the resolved path, which the

@@ -3,9 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -157,4 +160,39 @@ func TestASpaceCanBeMadeWithNobodyElseInIt(t *testing.T) {
 	// and Google has a different call for that.
 	_, err = s.CreateGroupChat(context.Background(), CreateSpaceInput{})
 	assertClass(t, err, ClassInvalid)
+}
+
+// A write with no idempotency key that fails on Google's side is sent
+// once, and the caller is told to read before trying it again: a 503
+// can follow a commit as well as a 500 can. A read that fails is still
+// worth repeating.
+func TestAServerFailureOfAnUnkeyedWriteSaysItMayHaveApplied(t *testing.T) {
+	for _, code := range []int{http.StatusInternalServerError, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			var calls atomic.Int32
+			s := newService(t, func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				w.WriteHeader(code)
+				fmt.Fprint(w, `{"error":{"status":"UNAVAILABLE"}}`)
+			})
+			_, err := s.CreateSpace(context.Background(), CreateSpaceInput{
+				DisplayName: "Team", MemberEmails: []string{"robin@example.com"}})
+			var e *Error
+			if !errors.As(err, &e) || e.Class != ClassServer || !strings.Contains(e.Message, "may have been applied") {
+				t.Fatalf("err = %v, want [server] saying the write may have been applied", err)
+			}
+			if strings.Contains(e.Message, "trying again shortly is reasonable") {
+				t.Errorf("the message invites a repeat: %s", e.Message)
+			}
+			if got := calls.Load(); got != 1 {
+				t.Errorf("the create was sent %d times, want 1", got)
+			}
+		})
+	}
+	s := newService(t, status(http.StatusInternalServerError, `{"error":{"status":"INTERNAL"}}`))
+	_, err := s.GetSpace(context.Background(), "spaces/A")
+	var e *Error
+	if !errors.As(err, &e) || e.Class != ClassServer || !strings.Contains(e.Message, "trying again shortly is reasonable") {
+		t.Errorf("a failed read: err = %v, want [server] saying a retry is reasonable", err)
+	}
 }

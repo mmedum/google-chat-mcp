@@ -11,6 +11,11 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Fixed
+
+- A write with no idempotency key, such as `create_space`, `create_section` or `add_member`, is no longer repeated after a 503: Google does not promise the write did not land, so a repeat could do it twice. A 429 is still retried.
+- When such a write fails on Google's side, the error now says it may have been applied and to read before trying again. It used to say trying again was reasonable.
+
 ## [3.0.0] - 2026-09-29
 
 ### Added

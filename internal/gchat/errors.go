@@ -34,6 +34,10 @@ type APIError struct {
 	Method string
 	// Path is the request path, without query, for the log line.
 	Path string
+	// MayHaveApplied is set on a server failure of a write that is not
+	// safe to repeat: Google may have applied it before failing, so the
+	// caller is to read before trying again.
+	MayHaveApplied bool
 }
 
 func (e *APIError) Error() string {
@@ -284,10 +288,11 @@ func retryable(statusCode int) bool {
 // rather than failed partway through applying it. It is what a write
 // carrying no idempotency key may be retried on.
 //
-// 429 is a refusal to start. 503 is Google saying it is not serving
-// this. Everything else in the 5xx range is ambiguous: a 500 can follow
-// a commit, and a 502 or 504 comes from a gateway that never learned
-// what the backend did.
+// Only 429 qualifies: it is a refusal to start. The whole 5xx range is
+// ambiguous. A 500 can follow a commit, a 502 or 504 comes from a
+// gateway that never learned what the backend did, and Google's own
+// definition of UNAVAILABLE, the 503, says "it is not always safe to
+// retry non-idempotent operations" (google/rpc/code.proto).
 func turnedAway(statusCode int) bool {
-	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusServiceUnavailable
+	return statusCode == http.StatusTooManyRequests
 }
