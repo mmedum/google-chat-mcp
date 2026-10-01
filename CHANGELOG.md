@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-01
+
 ### Fixed
 
 - A write with no idempotency key, such as `create_space`, `create_section` or `add_member`, is no longer repeated after a 503: Google does not promise the write did not land, so a repeat could do it twice. A 429 is still retried.
@@ -623,7 +625,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...v3.0.0
 [2.3.1]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.2.2...v2.3.0
