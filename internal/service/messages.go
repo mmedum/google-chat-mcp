@@ -3,6 +3,8 @@ package service
 import (
 	"cmp"
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -608,9 +610,15 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	if err := s.askSend(ctx, space, text, strings.TrimSpace(in.UploadToken) != ""); err != nil {
 		return nil, err
 	}
-	msg, err := s.client.SendMessage(ctx, space, body, in.ReplyFallback, in.ClientMessageID)
+	// Minted here rather than in the client, so a failure can name it:
+	// sending again with the same id is what makes a repeat safe.
+	id := in.ClientMessageID
+	if id == "" {
+		id = gchat.NewMessageID()
+	}
+	msg, err := s.client.SendMessage(ctx, space, body, in.ReplyFallback, id)
 	if err != nil {
-		return nil, Classify(err)
+		return nil, sendFailure(err, id)
 	}
 	out := &SendMessageResult{Name: msg.Name, Space: space}
 	if msg.Thread != nil {
@@ -795,4 +803,23 @@ func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*De
 		return nil, err
 	}
 	return &DeleteMessageResult{Name: name, Deleted: deleted, Forced: in.Force}, nil
+}
+
+// sendFailure classifies a failed send. When Google did not confirm the
+// outcome, a server failure or a broken connection, the message may
+// have been posted, so the error says how to find out and how to repeat
+// it without a second copy.
+func sendFailure(err error, id string) error {
+	classified := Classify(err)
+	var e *Error
+	if !errors.As(classified, &e) || (e.Class != ClassServer && e.Class != ClassUnexpected) {
+		return classified
+	}
+	if errors.Is(err, context.Canceled) {
+		return classified
+	}
+	e.Message = fmt.Sprintf("Google did not confirm the message (%s). It may have been posted. Read the space's "+
+		"recent messages before sending again, or send again with client_message_id %q so Google refuses "+
+		"a second copy.", e.Message, id)
+	return e
 }

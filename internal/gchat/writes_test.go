@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -673,6 +674,32 @@ func TestValidMessageIDFollowsGooglesRules(t *testing.T) {
 	} {
 		if got := ValidMessageID(tc.id); got != tc.want {
 			t.Errorf("ValidMessageID(%q) = %v, want %v", tc.id, got, tc.want)
+		}
+	}
+}
+
+// A transport failure marks a write only when the request may have
+// left: a failed dial sent nothing, and a request safe to repeat or an
+// upload is never called uncertain.
+func TestOnlyAWriteThatMayHaveLeftIsUncertain(t *testing.T) {
+	dial := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+	reset := &net.OpError{Op: "read", Net: "tcp", Err: errors.New("connection reset by peer")}
+	unkeyed := request{method: http.MethodPost}
+	for _, tc := range []struct {
+		name string
+		err  error
+		r    request
+		want bool
+	}{
+		{"unkeyed write, reset", reset, unkeyed, true},
+		{"unkeyed write, end of body", io.ErrUnexpectedEOF, unkeyed, true},
+		{"unkeyed write, failed dial", dial, unkeyed, false},
+		{"keyed write, reset", reset, request{method: http.MethodPost, idempotent: true}, false},
+		{"read, reset", reset, request{method: http.MethodGet}, false},
+		{"upload, reset", reset, request{method: http.MethodPost, repeatHarmless: true}, false},
+	} {
+		if got := MayHaveApplied(uncertain(tc.err, tc.r)); got != tc.want {
+			t.Errorf("%s: MayHaveApplied = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

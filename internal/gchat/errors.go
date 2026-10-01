@@ -40,6 +40,25 @@ type APIError struct {
 	MayHaveApplied bool
 }
 
+// uncertainWrite is a transport failure of a write that is not safe to
+// repeat, after the request may have reached Google.
+type uncertainWrite struct{ err error }
+
+func (e *uncertainWrite) Error() string { return e.err.Error() }
+func (e *uncertainWrite) Unwrap() error { return e.err }
+
+// MayHaveApplied reports whether err is the failure of a write that
+// Google may have applied before it failed, so the caller is to read
+// before trying again.
+func MayHaveApplied(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.MayHaveApplied
+	}
+	var u *uncertainWrite
+	return errors.As(err, &u)
+}
+
 func (e *APIError) Error() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "chat api: %s %s: %d", e.Method, e.Path, e.StatusCode)

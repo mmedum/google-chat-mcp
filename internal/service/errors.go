@@ -36,8 +36,10 @@ const (
 	// are there; the permission is not. Retrying changes nothing, and
 	// the answer is to ask a person for access.
 	ClassForbidden Class = "forbidden"
-	// ClassServer means Google failed rather than refused. Retrying is
-	// reasonable; the request was not wrong.
+	// ClassServer means Google failed rather than refused. The request
+	// was not wrong. A read is worth retrying; a write that is not safe
+	// to repeat may have been applied, and its message says to read
+	// first.
 	ClassServer Class = "server"
 	// ClassUpstream is any other refusal from Google.
 	ClassUpstream Class = "upstream"
@@ -149,6 +151,14 @@ func Classify(err error) error {
 
 	var apiErr *gchat.APIError
 	if !errors.As(err, &apiErr) {
+		if gchat.MayHaveApplied(err) {
+			return &Error{
+				Class: ClassUnexpected,
+				Message: fmt.Sprintf("The connection failed after this write was sent: %v. It may have been "+
+					"applied, so read what it would have changed before trying again; repeating it could do it twice.", err),
+				err: err,
+			}
+		}
 		return &Error{Class: ClassUnexpected, Message: err.Error(), err: err}
 	}
 
