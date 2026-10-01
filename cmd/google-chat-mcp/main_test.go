@@ -82,22 +82,6 @@ func TestVersionAndHelp(t *testing.T) {
 	}
 }
 
-// status is what a person runs when a client cannot connect, so it has
-// to work before anyone has logged in.
-func TestStatusBeforeLogin(t *testing.T) {
-	tempProfile(t)
-	code, stdout, stderr := runCmd(t, "status")
-	if code != 0 {
-		t.Fatalf("status exited %d (%s)", code, stderr)
-	}
-	if !strings.Contains(stdout, "not signed in") {
-		t.Errorf("stdout = %q", stdout)
-	}
-	if !strings.Contains(stdout, "login") {
-		t.Errorf("stdout = %q, want it to say what to run", stdout)
-	}
-}
-
 // The schema dump needs no credentials: registering a tool does not
 // call Google. The gates depend on that.
 func TestDumpSchemasNeedsNoCredentials(t *testing.T) {

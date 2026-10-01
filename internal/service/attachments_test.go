@@ -72,6 +72,67 @@ func messageWithAttachment(body, contentName string) http.HandlerFunc {
 	}
 }
 
+// Google may send a download without a Content-Length. The length is
+// then unknown rather than zero, and the file is kept whole.
+func TestADownloadOfUnstatedLengthIsKept(t *testing.T) {
+	dir := localDir(t)
+	attachment := messageWithAttachment("", "notes.txt")
+	s := newTransferService(t, dir, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v1/media/") {
+			attachment(w, r)
+			return
+		}
+		// Flushing before the body sends it chunked, with no length.
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "the standup notes")
+	})
+	got, err := s.DownloadAttachment(context.Background(), DownloadAttachmentInput{
+		Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+	})
+	if err != nil {
+		t.Fatalf("DownloadAttachment: %v", err)
+	}
+	on, err := os.ReadFile(got.Path)
+	if err != nil || string(on) != "the standup notes" {
+		t.Errorf("wrote %q (%v), want the whole body", on, err)
+	}
+}
+
+// Google's limit is 200 MB. A file of exactly that size is taken and
+// one byte more is refused, before anything is read. The files are
+// sparse, so neither costs the disk space it reports.
+func TestUploadAttachmentTakesUpToGooglesLimit(t *testing.T) {
+	dir := localDir(t)
+	s := newTransferService(t, dir, func(http.ResponseWriter, *http.Request) {
+		t.Error("a dry run must not reach Google")
+	})
+	for _, tc := range []struct {
+		size    int64
+		refused bool
+	}{
+		{200 << 20, false},
+		{200<<20 + 1, true},
+	} {
+		path := filepath.Join(dir, fmt.Sprintf("big-%d.bin", tc.size))
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Truncate(tc.size); err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close()
+		_, err = s.UploadAttachment(context.Background(), UploadAttachmentInput{
+			Space: "spaces/AAAAspace1", Path: path, DryRun: true,
+		})
+		if tc.refused {
+			assertClass(t, err, ClassInvalid)
+		} else if err != nil {
+			t.Errorf("%d bytes refused: %v", tc.size, err)
+		}
+	}
+}
+
 func TestDownloadAttachmentWritesTheFile(t *testing.T) {
 	dir := localDir(t)
 	s := newTransferService(t, dir, messageWithAttachment("the standup notes", "notes.txt"))

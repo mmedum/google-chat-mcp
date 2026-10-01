@@ -53,6 +53,9 @@ func TestDefaults(t *testing.T) {
 	if c.DirectoryCacheTTL != 24*time.Hour {
 		t.Errorf("cache ttl = %s", c.DirectoryCacheTTL)
 	}
+	if c.SearchMaxPages != 10 {
+		t.Errorf("search max pages = %d, want the default 10", c.SearchMaxPages)
+	}
 	if c.ChatAPIBase != DefaultChatAPIBase || c.PeopleAPIBase != DefaultPeopleAPIBase {
 		t.Errorf("api bases = %s / %s", c.ChatAPIBase, c.PeopleAPIBase)
 	}
@@ -251,13 +254,29 @@ func TestSearchMaxPagesIsValidated(t *testing.T) {
 	}
 }
 
-func TestSearchMaxPagesDefaults(t *testing.T) {
-	cfg, err := define(t, nil).Build()
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if cfg.SearchMaxPages != 10 {
-		t.Errorf("search max pages = %d, want the default 10", cfg.SearchMaxPages)
+// The numeric settings take their bounds and refuse one step past them.
+func TestNumericSettingsTakeTheirExactBounds(t *testing.T) {
+	for _, tc := range []struct {
+		env, value string
+		ok         bool
+	}{
+		{"GCM_HTTP_MAX_RETRIES", "0", true},
+		{"GCM_HTTP_MAX_RETRIES", "10", true},
+		{"GCM_HTTP_MAX_RETRIES", "-1", false},
+		{"GCM_HTTP_MAX_RETRIES", "11", false},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "1", true},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "600", true},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "0.5", false},
+		{"GCM_HTTP_TIMEOUT_SECONDS", "601", false},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "60", true},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "31536000", true},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "59", false},
+		{"GCM_DIRECTORY_CACHE_TTL_SECONDS", "31536001", false},
+	} {
+		_, err := define(t, map[string]string{tc.env: tc.value}).Build()
+		if (err == nil) != tc.ok {
+			t.Errorf("%s=%s: err = %v, want accepted %v", tc.env, tc.value, err, tc.ok)
+		}
 	}
 }
 

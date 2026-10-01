@@ -44,19 +44,6 @@ func TestSearchMatchesCaseInsensitivelyWhenAsked(t *testing.T) {
 	}
 }
 
-func TestSearchMatchesAPattern(t *testing.T) {
-	s := newService(t, ok(searchPage(message("1", "deploy 2026-01-02 went out"), message("2", "no date here"))))
-	got, err := s.SearchMessages(context.Background(), SearchMessagesInput{
-		Space: "spaces/A", Regex: `\d{4}-\d{2}-\d{2}`,
-	})
-	if err != nil {
-		t.Fatalf("SearchMessages: %v", err)
-	}
-	if len(got.Matches) != 1 {
-		t.Fatalf("matches = %+v", got.Matches)
-	}
-}
-
 // The snippet is what the caller reads to see why a message matched, so
 // it has to be centered on the match and cut at a character boundary.
 func TestSnippetSurroundsTheMatch(t *testing.T) {

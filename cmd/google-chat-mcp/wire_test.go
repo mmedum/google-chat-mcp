@@ -128,8 +128,10 @@ func TestLoadTokenSourceWithoutAClientFails(t *testing.T) {
 // --client-secret is correcting the stored one, and silently preferring
 // the stored path would ignore the correction.
 func TestClientConfigPrefersTheFlagOverTheStoredPath(t *testing.T) {
-	dir := tempProfile(t)
-	path := writeClientSecret(t, dir)
+	tempProfile(t)
+	// Outside the profile directory, so the default location cannot
+	// stand in for the path the flag named.
+	path := writeClientSecret(t, t.TempDir())
 
 	cfg := loadedConfig(t)
 	cfg.ClientSecretPath = path
@@ -139,5 +141,19 @@ func TestClientConfigPrefersTheFlagOverTheStoredPath(t *testing.T) {
 	}
 	if got.ClientID == "" {
 		t.Error("no client id read from the file the flag named")
+	}
+}
+
+// With no flag and nothing stored, the client secret is read from its
+// default place in the profile directory.
+func TestClientConfigFallsBackToTheProfileDirectory(t *testing.T) {
+	dir := tempProfile(t)
+	writeClientSecret(t, dir)
+	got, err := clientConfig(loadedConfig(t), userconfig.Config{})
+	if err != nil {
+		t.Fatalf("clientConfig: %v", err)
+	}
+	if got == nil || got.ClientID != "example-client-id.apps.googleusercontent.com" {
+		t.Errorf("config = %+v, want the client in the profile directory", got)
 	}
 }

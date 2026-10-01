@@ -286,6 +286,9 @@ func (c *Client) UploadAttachment(ctx context.Context, space, filename, contentT
 		query:       url.Values{"uploadType": []string{"multipart"}},
 		contentType: "multipart/related; boundary=" + boundary,
 		scope:       scopes.MessagesCreate,
+		// A repeated upload leaves an unreferenced copy and nothing to
+		// read back, so the caller simply sends the file again.
+		repeatHarmless: true,
 	}
 	body := io.MultiReader(strings.NewReader(head), file, strings.NewReader(tail))
 	length := int64(len(head)) + size + int64(len(tail))

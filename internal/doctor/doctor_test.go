@@ -232,3 +232,34 @@ func TestRunClampsAWideSample(t *testing.T) {
 		t.Errorf("report = %+v", got)
 	}
 }
+
+// Rows that could not be read and checks that could not run are named
+// when there are some, and not mentioned at all when there are none.
+func TestReportNamesWhatItCouldNotDoOnlyWhenThereIsSome(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		r     Report
+		want  []string
+		avoid []string
+	}{
+		{"a clean walk", Report{}, nil, []string{"could not"}},
+		{"two rows dropped", Report{Dropped: 2}, []string{"2 row(s) could not be read and were skipped"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			if _, err := tc.r.WriteTo(&out); err != nil {
+				t.Fatalf("WriteTo: %v", err)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out.String(), w) {
+					t.Errorf("report lacks %q:\n%s", w, out.String())
+				}
+			}
+			for _, a := range tc.avoid {
+				if strings.Contains(out.String(), a) {
+					t.Errorf("report says %q:\n%s", a, out.String())
+				}
+			}
+		})
+	}
+}

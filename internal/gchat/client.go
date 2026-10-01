@@ -19,6 +19,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -367,6 +368,10 @@ type request struct {
 	// spelled out, and TestNoPathIsBuiltByHand allows it only on a
 	// method whose name says it searches.
 	readOnly bool
+	// repeatHarmless marks a write whose repeat leaves only an
+	// unreferenced copy, a media upload, so a failure of it does not
+	// warn that it may have been applied.
+	repeatHarmless bool
 	// scope is the OAuth scope Google documents for this endpoint. It
 	// leaves on *APIError, so a refusal for want of consent names the
 	// scope without every caller restating it. Where two scopes both
@@ -671,7 +676,7 @@ func send[T any](c *Client, ctx context.Context, r request, retries bool,
 		case err == nil:
 			return got, nil
 		case !c.shouldRetry(err, r):
-			return zero, err
+			return zero, markUnsafeWrite(err, r)
 		}
 		lastErr = &retryHint{err: err, after: retryAfter}
 		c.log.Debug("upstream_retry",
@@ -743,6 +748,28 @@ func (c *Client) shouldRetry(err error, r request) bool {
 	return r.safeToRepeat()
 }
 
+// markUnsafeWrite flags a server failure of a write that is not safe to
+// repeat, which Google may have applied before failing. A transport
+// failure of such a write was marked where it happened, in attempt.
+func markUnsafeWrite(err error, r request) error {
+	var apiErr *APIError
+	if !r.safeToRepeat() && !r.repeatHarmless && errors.As(err, &apiErr) && apiErr.StatusCode >= 500 {
+		apiErr.MayHaveApplied = true
+	}
+	return err
+}
+
+// uncertain marks a transport failure of a write that is not safe to
+// repeat. Once the connection was open, the request may have reached
+// Google before it broke; a failed dial sent nothing.
+func uncertain(err error, r request) error {
+	var opErr *net.OpError
+	if r.safeToRepeat() || r.repeatHarmless || (errors.As(err, &opErr) && opErr.Op == "dial") {
+		return err
+	}
+	return &uncertainWrite{err: err}
+}
+
 // attempt makes one HTTP call. path is the resolved path, which the
 // error messages carry: it names the resource, never the query, where
 // a People search would put the caller's search term.
@@ -758,7 +785,7 @@ func (c *Client) attempt(ctx context.Context, r request, endpoint, path string, 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("chat api: %s %s: %w", r.method, path, withoutURL(err))
+		return nil, 0, uncertain(fmt.Errorf("chat api: %s %s: %w", r.method, path, withoutURL(err)), r)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -770,7 +797,7 @@ func (c *Client) attempt(ctx context.Context, r request, endpoint, path string, 
 	// on a JSON envelope that is normally kilobytes.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return nil, 0, fmt.Errorf("chat api: read %s %s: %w", r.method, path, err)
+		return nil, 0, uncertain(fmt.Errorf("chat api: read %s %s: %w", r.method, path, err), r)
 	}
 	if int64(len(body)) > maxResponseBytes {
 		return nil, 0, fmt.Errorf("chat api: %s %s: response is larger than %d bytes",

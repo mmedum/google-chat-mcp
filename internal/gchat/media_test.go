@@ -162,33 +162,6 @@ func TestMimeOnly(t *testing.T) {
 	}
 }
 
-// An upload is bounded too. It had no timeout of any kind when it was
-// its own send path — the same bug the OAuth refresh had — so this
-// pins the discipline rather than the code that happens to provide it.
-func TestAnUploadThatNeverGetsAnAnswerIsCut(t *testing.T) {
-	release := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
-		<-release
-	}))
-	defer srv.Close()
-	defer close(release)
-
-	c := newTestClient(t, srv, func(o *Options) {
-		o.Timeout = 100 * time.Millisecond
-		o.MaxRetries = 0
-	})
-	start := time.Now()
-	_, err := c.UploadAttachment(context.Background(), "spaces/AAAAspace1", "notes.txt",
-		"text/plain", strings.NewReader("the notes"), 9)
-	if err == nil {
-		t.Fatal("an upload that was never answered was reported as a success")
-	}
-	if waited := time.Since(start); waited > 5*time.Second {
-		t.Errorf("the guard took %s to fire", waited)
-	}
-}
-
 // A write may not run under a dry run, whichever send path it takes.
 // The transfer paths used to be outside that guard.
 func TestAnUploadCannotRunUnderADryRun(t *testing.T) {

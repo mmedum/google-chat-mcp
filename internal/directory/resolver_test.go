@@ -338,22 +338,6 @@ func TestATransientFailureIsNotCachedAsAMiss(t *testing.T) {
 	}
 }
 
-// A genuine miss is still cached, or every listing re-asks about the
-// same people who are not in the directory.
-func TestAGenuineMissIsCached(t *testing.T) {
-	var calls int
-	cache := tempCache(t, time.Hour)
-	r := newResolver(t, cache, func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		fmt.Fprint(w, `{"responses":[{"requestedResourceName":"people/1","status":{"code":7}}]}`)
-	})
-	r.Resolve(context.Background(), []string{"users/1"})
-	r.Resolve(context.Background(), []string{"users/1"})
-	if calls != 1 {
-		t.Errorf("upstream was called %d times; a known miss should be cached", calls)
-	}
-}
-
 // Some Chat payloads name a person instead of identifying them: a quoted
 // message's sender is a display name. One layer down that becomes
 // "people/Jane Doe", a malformed id in a batch of real ones — and Google

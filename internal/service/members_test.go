@@ -33,8 +33,10 @@ func TestListMembersSeparatesPeopleFromGroups(t *testing.T) {
 	if got[1].Kind != KindGroup || got[1].Name != "groups/G1" {
 		t.Errorf("group = %+v", got[1])
 	}
-	if got[1].Email != "" {
-		t.Errorf("a group has no email, got %q", got[1].Email)
+	// Google's Group has no display name, so the row is honest about
+	// that rather than inventing one.
+	if got[1].Email != "" || got[1].DisplayName != "" {
+		t.Errorf("group = %+v, want no name or email invented for it", got[1])
 	}
 	if got[1].State != "INVITED" {
 		t.Errorf("state = %q", got[1].State)
@@ -135,36 +137,6 @@ func TestListMembersAsksForGroupsAndInvitedPeople(t *testing.T) {
 	}
 	if query.Get("showInvited") != "true" {
 		t.Errorf("showInvited = %q, want it asked for", query.Get("showInvited"))
-	}
-}
-
-// A Google Group carries only its resource name — Google's Group has
-// no display name — so the row has to be honest about that rather than
-// inventing one.
-func TestAGroupMemberIsReportedAsItArrives(t *testing.T) {
-	page := `{"memberships":[
-	  {"name":"spaces/A/members/1","state":"JOINED","role":"ROLE_MEMBER","groupMember":{"name":"groups/G1"}},
-	  {"name":"spaces/A/members/2","state":"INVITED","role":"ROLE_MEMBER","member":{"name":"users/2","displayName":"John Doe"}}
-	]}`
-	s := newService(t, route(ok(page), nobody()))
-	res, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A"})
-	got := res.Members
-	if err != nil {
-		t.Fatalf("ListMembers: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("members = %+v, want the group and the invited person", got)
-	}
-	if got[0].Kind != KindGroup || got[0].Name != "groups/G1" {
-		t.Errorf("group = %+v", got[0])
-	}
-	if got[0].DisplayName != "" || got[0].Email != "" {
-		t.Errorf("group = %+v, want no name or email invented for it", got[0])
-	}
-	// State is how a caller tells someone who is here from someone who
-	// was only asked.
-	if got[1].State != "INVITED" {
-		t.Errorf("invited member = %+v", got[1])
 	}
 }
 

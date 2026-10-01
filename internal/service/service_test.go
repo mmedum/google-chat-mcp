@@ -594,6 +594,59 @@ func TestSpaceCreatesBoundTheirMemberLists(t *testing.T) {
 	}
 }
 
+// Each argument limit takes its maximum and refuses one more. The
+// numbers are Google's or this server's, written out here rather than
+// read from the constants.
+func TestEachLimitTakesItsMaximumAndRefusesOneMore(t *testing.T) {
+	s := newService(t, ok(`{}`))
+	ctx := writeCtx()
+	members := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = fmt.Sprintf("person%d@example.com", i)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name string
+		run  func(n int) error
+		max  int
+	}{
+		{"people query characters", func(n int) error {
+			_, err := s.SearchPeople(ctx, SearchPeopleInput{Query: strings.Repeat("a", n)})
+			return err
+		}, 200},
+		{"message search keyword characters", func(n int) error {
+			_, err := s.SearchMessages(ctx, SearchMessagesInput{Space: "spaces/A", Query: strings.Repeat("a", n)})
+			return err
+		}, 500},
+		{"emoji characters", func(n int) error {
+			_, err := s.AddReaction(ctx, AddReactionInput{Message: "spaces/A/messages/1", Emoji: strings.Repeat("a", n)})
+			return err
+		}, 16},
+		{"do-not-disturb minutes, a year", func(n int) error {
+			_, err := s.SetAvailability(ctx, SetAvailabilityInput{State: "DO_NOT_DISTURB", Minutes: n, DryRun: true})
+			return err
+		}, 525600},
+		{"space search display name characters", func(n int) error {
+			_, err := s.SearchSpaces(ctx, SearchSpacesInput{DisplayName: strings.Repeat("a", n)})
+			return err
+		}, 200},
+		{"members of a new space", func(n int) error {
+			_, err := s.CreateSpace(ctx, CreateSpaceInput{DisplayName: "Team", MemberEmails: members(n), DryRun: true})
+			return err
+		}, 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var se *Error
+			if err := tc.run(tc.max); errors.As(err, &se) && se.Class == ClassInvalid {
+				t.Errorf("%d refused: %v", tc.max, err)
+			}
+			assertClass(t, tc.run(tc.max+1), ClassInvalid)
+		})
+	}
+}
+
 func TestSpaceCreateDryRunCreatesNothing(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/NEW"}`))
 	got, err := s.CreateSpace(context.Background(), CreateSpaceInput{

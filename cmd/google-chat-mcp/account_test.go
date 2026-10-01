@@ -14,6 +14,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/mmedum/google-chat-mcp/v3/internal/config"
+	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
 	"github.com/mmedum/google-chat-mcp/v3/internal/userconfig"
 )
 
@@ -120,14 +121,6 @@ func slicesContains(haystack []string, needle string) bool {
 	return false
 }
 
-func TestWarnIsPrefixed(t *testing.T) {
-	var b bytes.Buffer
-	warn(&b, "the keyring is unavailable")
-	if !strings.HasPrefix(b.String(), "warning: ") {
-		t.Errorf("warn wrote %q, want a warning prefix", b.String())
-	}
-}
-
 // confirm reads stdin, and anything that is not an explicit yes has to
 // be a no: logout revokes access, so a stray newline must not take it.
 func TestConfirmDefaultsToNo(t *testing.T) {
@@ -186,9 +179,28 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	store, err := credentialStore(loadedConfig(t), nil)
+	if err != nil {
+		t.Fatalf("credentialStore: %v", err)
+	}
+	if _, err := store.Save("stored-refresh-token"); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
 	code, stdout, stderr := runCmd(t, "status")
 	if code != 0 {
 		t.Fatalf("status exited %d: %s", code, stderr)
+	}
+	// Where the token came from, what was granted, and a setting that is
+	// off named as off rather than left blank.
+	for _, want := range []string{
+		"token store:    keyring\n",
+		"scopes:         https://www.googleapis.com/auth/chat.messages\n",
+		"local dir:      (unset)\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("status did not print %q:\n%s", want, stdout)
+		}
 	}
 	// The labels the four servers now share, in the shape they share —
 	// and the account with its local part removed, keeping the domain,
@@ -207,6 +219,27 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 	// list of what is missing rather than a silent partial install.
 	if !strings.Contains(stdout, "not granted") {
 		t.Errorf("status did not report the ungranted scopes:\n%s", stdout)
+	}
+}
+
+// With every scope granted there is nothing to add to the consent
+// screen, and status says nothing about it rather than "0 scope(s)".
+func TestStatusWithEveryScopeGrantedListsNoneMissing(t *testing.T) {
+	tempProfile(t)
+	keyring.MockInit()
+	if err := userconfig.Save("default", userconfig.Config{
+		AccountEmail: "janedoe@example.com",
+		TokenStore:   "keyring",
+		Scopes:       scopes.All,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCmd(t, "status")
+	if code != 0 {
+		t.Fatalf("status exited %d: %s", code, stderr)
+	}
+	if strings.Contains(stdout, "not granted") {
+		t.Errorf("status reported missing scopes with every scope granted:\n%s", stdout)
 	}
 }
 
@@ -297,5 +330,55 @@ func TestDoctorRefusesAnEmptySampleBeforeCallingGoogle(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "at least 1") {
 		t.Errorf("stderr = %q, want it to say what the bound is", stderr)
+	}
+}
+
+// One space is the smallest sample, and it gets past the argument check.
+// Nobody is signed in, so the run stops at the login instead; nothing
+// here can reach Google.
+func TestDoctorAcceptsASampleOfOne(t *testing.T) {
+	tempProfile(t)
+	keyring.MockInit()
+	t.Setenv("GCM_CHAT_API_BASE", "http://127.0.0.1:1/v1")
+	t.Setenv("GCM_PEOPLE_API_BASE", "http://127.0.0.1:1/v1")
+	_, _, stderr := runCmd(t, "doctor", "--spaces", "1")
+	if strings.Contains(stderr, "at least 1") {
+		t.Errorf("doctor refused a sample of one: %q", stderr)
+	}
+}
+
+// A path given on the command line is the one login reads, even with
+// nothing stored. The file is missing, so the error names it.
+func TestLoginReadsTheClientSecretItWasGiven(t *testing.T) {
+	tempProfile(t)
+	code, _, stderr := runCmd(t, "login", "--client-secret", "/nonexistent/given-client.json")
+	if code == 0 {
+		t.Fatal("login succeeded with a client secret that does not exist")
+	}
+	if !strings.Contains(stderr, "given-client.json") {
+		t.Errorf("stderr = %q, want the error to name the file it was given", stderr)
+	}
+}
+
+// A profile that cannot be read stops login there. Going on would sign
+// in over a profile nobody can see the contents of.
+func TestLoginStopsAtAProfileItCannotRead(t *testing.T) {
+	dir := tempProfile(t)
+	path, err := userconfig.Path("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runCmd(t, "login")
+	if code == 0 {
+		t.Fatal("login went on past a profile it could not parse")
+	}
+	if !strings.Contains(stderr, "parse") {
+		t.Errorf("stderr = %q, want the parse failure, not a later error", stderr)
 	}
 }

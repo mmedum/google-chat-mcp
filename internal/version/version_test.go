@@ -9,9 +9,10 @@ import (
 // TestStringFallsBackToBuildInfo covers the path a `go install` binary
 // takes: no ldflags, so the module version Go recorded is the answer.
 func TestStringFallsBackToBuildInfo(t *testing.T) {
-	Version = "v1.2.3"
+	// goreleaser stamps the version without its v.
+	Version = "1.2.3"
 	if String() != "v1.2.3" {
-		t.Fatalf("ldflags win: %s", String())
+		t.Fatalf("ldflags win, spelled as the tag: %s", String())
 	}
 	Version = "dev"
 	got := String()
@@ -39,6 +40,8 @@ func TestOneSpellingWhicheverWayItWasBuilt(t *testing.T) {
 		{"1.1.0", "v1.1.0"},  // goreleaser's stamping
 		{"v1.1.0", "v1.1.0"}, // the build-info fallback
 		{"1.1.0-rc.1", "v1.1.0-rc.1"},
+		{"0.1.0", "v0.1.0"},
+		{"9.0.0", "v9.0.0"},
 		{"dev", "dev"}, // an untagged build says so
 		{"", ""},
 	} {
