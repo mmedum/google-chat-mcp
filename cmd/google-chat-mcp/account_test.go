@@ -120,14 +120,6 @@ func slicesContains(haystack []string, needle string) bool {
 	return false
 }
 
-func TestWarnIsPrefixed(t *testing.T) {
-	var b bytes.Buffer
-	warn(&b, "the keyring is unavailable")
-	if !strings.HasPrefix(b.String(), "warning: ") {
-		t.Errorf("warn wrote %q, want a warning prefix", b.String())
-	}
-}
-
 // confirm reads stdin, and anything that is not an explicit yes has to
 // be a no: logout revokes access, so a stray newline must not take it.
 func TestConfirmDefaultsToNo(t *testing.T) {

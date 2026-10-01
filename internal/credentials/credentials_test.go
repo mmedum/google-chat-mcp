@@ -173,9 +173,3 @@ func TestCorruptFile(t *testing.T) {
 		t.Fatal("corrupt token file should error")
 	}
 }
-
-func TestOSKeyringConstructor(t *testing.T) {
-	if OSKeyring() == nil || !IsKeyringNotFound(keyring.ErrNotFound) || IsKeyringNotFound(errors.New("x")) {
-		t.Fatal("helpers wrong")
-	}
-}

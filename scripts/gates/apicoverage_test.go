@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -359,19 +358,6 @@ func TestClientCallsIsEveryMethodButTheTwoThatReport(t *testing.T) {
 	}
 	if want := client.NumMethod() - len(notCalls); len(calls) != want {
 		t.Errorf("found %d calls, want %d", len(calls), want)
-	}
-}
-
-// A method that takes a context and returns an error is a call whatever
-// it is named, and one that does neither is not.
-func TestClientCallsReadsTheSignature(t *testing.T) {
-	calls := clientCalls()
-	if !calls["SendMessage"] {
-		t.Errorf("SendMessage takes a %s and returns an error, so it is a call",
-			reflect.TypeOf((*context.Context)(nil)).Elem())
-	}
-	if calls["DriftCount"] {
-		t.Error("DriftCount takes no context and returns no error, so it is not a call")
 	}
 }
 

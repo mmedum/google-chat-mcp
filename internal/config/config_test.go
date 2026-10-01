@@ -53,6 +53,9 @@ func TestDefaults(t *testing.T) {
 	if c.DirectoryCacheTTL != 24*time.Hour {
 		t.Errorf("cache ttl = %s", c.DirectoryCacheTTL)
 	}
+	if c.SearchMaxPages != 10 {
+		t.Errorf("search max pages = %d, want the default 10", c.SearchMaxPages)
+	}
 	if c.ChatAPIBase != DefaultChatAPIBase || c.PeopleAPIBase != DefaultPeopleAPIBase {
 		t.Errorf("api bases = %s / %s", c.ChatAPIBase, c.PeopleAPIBase)
 	}
@@ -248,16 +251,6 @@ func TestSearchMaxPagesIsValidated(t *testing.T) {
 		if err == nil {
 			t.Errorf("search-max-pages %q was accepted", tc.value)
 		}
-	}
-}
-
-func TestSearchMaxPagesDefaults(t *testing.T) {
-	cfg, err := define(t, nil).Build()
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if cfg.SearchMaxPages != 10 {
-		t.Errorf("search max pages = %d, want the default 10", cfg.SearchMaxPages)
 	}
 }
 

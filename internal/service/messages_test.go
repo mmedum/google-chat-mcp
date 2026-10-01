@@ -645,19 +645,26 @@ func TestDeleteMessageDeletes(t *testing.T) {
 	}
 }
 
+// A dry run deletes nothing, and says whether it would have taken the
+// replies too, because that is the difference between one message and a
+// conversation.
 func TestDeleteMessageDryRunDeletesNothing(t *testing.T) {
-	s, rec := recorded(t, ok(`{}`))
-	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
-		Message: "spaces/A/messages/1", DryRun: true,
-	})
-	if err != nil {
-		t.Fatalf("DeleteMessage: %v", err)
-	}
-	if rec.len() != 0 {
-		t.Errorf("a dry run made %d requests", rec.len())
-	}
-	if got.Deleted || !got.DryRun {
-		t.Errorf("result = %+v", got)
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
+			s, rec := recorded(t, ok(`{}`))
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
+				Message: "spaces/A/messages/1", Force: force, DryRun: true,
+			})
+			if err != nil {
+				t.Fatalf("DeleteMessage: %v", err)
+			}
+			if rec.len() != 0 {
+				t.Errorf("a dry run made %d requests", rec.len())
+			}
+			if got.Deleted || !got.DryRun || got.Forced != force {
+				t.Errorf("result = %+v, want a dry run with forced %v", got, force)
+			}
+		})
 	}
 }
 
@@ -763,23 +770,6 @@ func TestDeleteMessageCarriesForce(t *testing.T) {
 				t.Errorf("forced = %v, want %v", out.Forced, force)
 			}
 		})
-	}
-}
-
-// A dry run says whether it would have taken the replies too, because
-// that is the difference between one message and a conversation.
-func TestADryRunDeleteRepeatsForce(t *testing.T) {
-	s := newService(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("a dry run must not reach Google")
-	})
-	out, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
-		Message: "spaces/AAAAspace1/messages/AAAAmsg1", Force: true, DryRun: true,
-	})
-	if err != nil {
-		t.Fatalf("DeleteMessage: %v", err)
-	}
-	if !out.DryRun || out.Deleted || !out.Forced {
-		t.Errorf("dry run = %+v", out)
 	}
 }
 
