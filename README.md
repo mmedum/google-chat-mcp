@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v3.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v3)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v4.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v4)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -32,7 +32,7 @@ tools you are actually using need.
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v3/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v4/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
 )
 
 // Space event types, as Google spells them. These ten are what a filter

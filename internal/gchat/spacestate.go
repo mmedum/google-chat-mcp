@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
 )
 
 // Pins, read state and notification settings: the three things Chat
