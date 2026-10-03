@@ -79,17 +79,19 @@ func connectClient(t *testing.T, handler http.HandlerFunc, cfg config.Config, lo
 	t.Cleanup(srv.Close)
 
 	client := gchat.New(gchat.Options{
-		HTTP:       srv.Client(),
-		ChatBase:   srv.URL + "/v1",
-		PeopleBase: srv.URL + "/people",
-		OIDCBase:   srv.URL + "/oidc",
-		Tokens:     staticToken(canaryToken),
-		Logger:     log,
+		HTTP:              srv.Client(),
+		ChatBase:          srv.URL + "/v1",
+		PeopleBase:        srv.URL + "/people",
+		OIDCBase:          srv.URL + "/oidc",
+		CloudIdentityBase: srv.URL + "/cloudidentity",
+		Tokens:            staticToken(canaryToken),
+		Logger:            log,
 		// Unthrottled. The per-user limits are gchat's concern and are
 		// tested there; here they would only make a suite that drives
 		// every write tool wait out the one-per-second write rate.
 		ReadLimiter:   rate.NewLimiter(rate.Inf, 1),
 		PeopleLimiter: rate.NewLimiter(rate.Inf, 1),
+		GroupsLimiter: rate.NewLimiter(rate.Inf, 1),
 		WriteLimiter:  rate.NewLimiter(rate.Inf, 1),
 	})
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
@@ -291,6 +293,7 @@ var toolArgs = map[string]map[string]any{
 	"update_space_notification_setting": {"space_id": "spaces/AAAAspace1", "mute_setting": "MUTED", "dry_run": true},
 	"update_member_role":                {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MANAGER", "dry_run": true},
 	"find_group_chats":                  {"member_emails": []any{"janedoe@example.com"}},
+	"find_group":                        {"email": "team@example.com"},
 	"get_space":                         {"space_id": "spaces/AAAAspace1"},
 	"find_direct_message":               {"user_email": "janedoe@example.com"},
 	"get_messages":                      {"space_id": "spaces/AAAAspace1"},

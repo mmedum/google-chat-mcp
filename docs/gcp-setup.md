@@ -21,6 +21,9 @@ APIs & Services → Library. Enable both:
 - **People API** — this is what `search_people` searches, and what fills
   in a name and an email address in `get_messages` and `list_members`
   when Chat sends none.
+- **Cloud Identity API** — this is what `find_group` asks to turn a
+  Google Group's address into the id `add_member` takes, and what names
+  a group in `list_members`. Chat names a group only by that id.
 
 The OpenID userinfo endpoint behind `whoami` needs no enabling.
 
@@ -72,6 +75,7 @@ https://www.googleapis.com/auth/chat.users.availability.readonly
 https://www.googleapis.com/auth/chat.users.availability
 https://www.googleapis.com/auth/directory.readonly
 https://www.googleapis.com/auth/contacts.readonly
+https://www.googleapis.com/auth/cloud-identity.groups.readonly
 ```
 
 You do not have to grant them all when you log in. Google's granular

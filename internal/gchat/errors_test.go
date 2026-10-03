@@ -201,6 +201,32 @@ func TestIsMissingScopeKnowsBothOfGooglesSpellings(t *testing.T) {
 	}
 }
 
+// An API the project has not enabled is its own refusal, not a missing
+// scope and not a plain permission one: the fix is in the Cloud console.
+func TestIsServiceDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"typed reason", `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Cloud Identity API has not been used",
+		  "details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SERVICE_DISABLED"}]}}`, true},
+		{"older reason", `{"error":{"code":403,"message":"Access Not Configured",
+		  "errors":[{"reason":"accessNotConfigured"}]}}`, true},
+		{"a plain refusal", `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"You are not a member"}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := parseAPIError(403, []byte(tc.body), "GET", "groups:lookup")
+			if got := IsServiceDisabled(err); got != tc.want {
+				t.Errorf("IsServiceDisabled = %v, want %v", got, tc.want)
+			}
+			if tc.want && IsForbidden(err) {
+				t.Error("a disabled API was also reported as a plain refusal")
+			}
+		})
+	}
+}
+
 // Google's older frontend sends a 403 with no `status`, the reason under
 // `errors[]` rather than `details[]`, and camelCase where an ErrorInfo
 // detail is UPPER_SNAKE. That shape used to defeat all three checks at

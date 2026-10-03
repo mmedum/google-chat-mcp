@@ -66,7 +66,7 @@ Four of those are worth knowing about before they fail on you:
   run reads back only what it wrote. When a smoke record is written up,
   every id, address and name in it is a placeholder.
 - **The API-coverage gate** works over two files. `testdata/api-methods.json`
-  is every method of the Chat and People APIs as Google published them,
+  is every method of the Chat, People and Cloud Identity APIs as Google published them,
   written by `make api-diff` and never edited by hand.
   `testdata/api-coverage.tsv` is one verdict per method, written by hand:
   a `used` row names the `gchat.Client` method that implements it, an
@@ -150,6 +150,12 @@ Release cutting is maintainer-only:
    `live-surface`, which fails if a tool is neither exercised by the
    driver nor excused with a reason, so the gap is visible on every
    build rather than at a release.
+
+   Set `LIVE_GROUP_EMAIL` to a Google Group the account can see first.
+   `find_group` needs a real one, and none may be named in this
+   repository; the run only looks it up and adds it nowhere. Without it
+   that step fails and says so. `LIVE_KEEP=1` keeps the scratch space
+   after a run.
 
    Run `make api-diff` at the same time. It is the only thing here that
    reaches Google's own documentation, and a manual target nobody runs is

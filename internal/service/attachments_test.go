@@ -44,11 +44,12 @@ func newTransferService(t *testing.T, dir string, handler http.HandlerFunc) *Ser
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	client := gchat.New(gchat.Options{
-		HTTP:       srv.Client(),
-		ChatBase:   srv.URL + "/v1",
-		PeopleBase: srv.URL + "/people",
-		OIDCBase:   srv.URL + "/oidc",
-		Tokens:     staticToken("test"),
+		HTTP:              srv.Client(),
+		ChatBase:          srv.URL + "/v1",
+		PeopleBase:        srv.URL + "/people",
+		OIDCBase:          srv.URL + "/oidc",
+		CloudIdentityBase: srv.URL + "/cloudidentity",
+		Tokens:            staticToken("test"),
 	})
 	cache := directory.NewCache("", time.Hour, nil)
 	cfg := config.Config{LocalDir: dir}

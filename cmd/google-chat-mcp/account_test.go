@@ -341,6 +341,7 @@ func TestDoctorAcceptsASampleOfOne(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("GCM_CHAT_API_BASE", "http://127.0.0.1:1/v1")
 	t.Setenv("GCM_PEOPLE_API_BASE", "http://127.0.0.1:1/v1")
+	t.Setenv("GCM_CLOUD_IDENTITY_API_BASE", "http://127.0.0.1:1/v1")
 	_, _, stderr := runCmd(t, "doctor", "--spaces", "1")
 	if strings.Contains(stderr, "at least 1") {
 		t.Errorf("doctor refused a sample of one: %q", stderr)

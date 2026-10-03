@@ -4,6 +4,7 @@ package livecheck
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -59,6 +60,42 @@ var steps = []step{
 		d.into(d.must("search_people", map[string]any{"query": d.email, "limit": 5}), &out)
 		if out.TotalReturned == 0 {
 			d.t.Error("search_people found nobody for this account's own address")
+		}
+	}},
+
+	// A group cannot be named in this repository, so the person running
+	// the suite names one this account can see. Nothing is added to it:
+	// a live run involves nobody else.
+	{"a group's address turns into its id", "find_group", func(d *driver) {
+		email := os.Getenv("LIVE_GROUP_EMAIL")
+		if email == "" {
+			d.t.Error("set LIVE_GROUP_EMAIL to a Google Group this account can see; find_group needs one")
+			return
+		}
+		var out struct {
+			GroupName string  `json:"group_name"`
+			Email     string  `json:"email"`
+			Name      *string `json:"display_name"`
+		}
+		d.into(d.must("find_group", map[string]any{"email": email}), &out)
+		if !strings.HasPrefix(out.GroupName, "groups/") || out.Email != email {
+			d.t.Errorf("find_group answered %s for the address it was given", d.redact(out.GroupName))
+		}
+		if out.Name == nil {
+			d.t.Error("find_group read no display name: the second read failed or Cloud Identity sent none")
+		}
+	}},
+
+	// The claim the documents could not settle: what an address no group
+	// has answers. Settled live 2026-10-03: 403, the same as a group the
+	// account may not see, so the refusal says it cannot tell which.
+	{"an unknown group address is refused as not visible", "find_group", func(d *driver) {
+		domain := d.email[strings.LastIndex(d.email, "@")+1:]
+		res := d.call("find_group", map[string]any{
+			"email": fmt.Sprintf("%s-no-such-group-%d@%s", spacePrefix, time.Now().Unix(), domain),
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[forbidden]") || !strings.Contains(res.Text, "is visible to this account") {
+			d.t.Errorf("an address no group has answered: %s", d.redact(res.Text))
 		}
 	}},
 

@@ -37,15 +37,16 @@ func (f failingToken) Token(context.Context) (string, error) { return "", f.err 
 func newTestClient(t *testing.T, srv *httptest.Server, opts ...func(*Options)) *Client {
 	t.Helper()
 	o := Options{
-		HTTP:         srv.Client(),
-		ChatBase:     srv.URL + "/v1",
-		PeopleBase:   srv.URL + "/people",
-		OIDCBase:     srv.URL + "/oidc",
-		Tokens:       staticToken("test-token"),
-		MaxRetries:   3,
-		ReadLimiter:  rate.NewLimiter(rate.Inf, 1),
-		WriteLimiter: rate.NewLimiter(rate.Inf, 1),
-		Sleep:        func(context.Context, time.Duration) error { return nil },
+		HTTP:              srv.Client(),
+		ChatBase:          srv.URL + "/v1",
+		PeopleBase:        srv.URL + "/people",
+		OIDCBase:          srv.URL + "/oidc",
+		CloudIdentityBase: srv.URL + "/cloudidentity",
+		Tokens:            staticToken("test-token"),
+		MaxRetries:        3,
+		ReadLimiter:       rate.NewLimiter(rate.Inf, 1),
+		WriteLimiter:      rate.NewLimiter(rate.Inf, 1),
+		Sleep:             func(context.Context, time.Duration) error { return nil },
 	}
 	for _, f := range opts {
 		f(&o)

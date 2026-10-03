@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-01",
+  "fetched": "2026-10-03",
   "apis": [
     {
       "api": "chat",
@@ -1527,6 +1527,870 @@
           "properties": [
             "includeVariables",
             "type"
+          ]
+        }
+      ]
+    },
+    {
+      "api": "cloudidentity",
+      "discovery": "https://cloudidentity.googleapis.com/$discovery/rest?version=v1",
+      "schemas": [
+        {
+          "name": "AddIdpCredentialOperationMetadata",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "AddIdpCredentialRequest",
+          "properties": [
+            "pemData"
+          ]
+        },
+        {
+          "name": "AllowlistedDomain",
+          "properties": [
+            "domain",
+            "name"
+          ]
+        },
+        {
+          "name": "CancelUserInvitationRequest",
+          "properties": null
+        },
+        {
+          "name": "CheckTransitiveMembershipResponse",
+          "properties": [
+            "hasMembership"
+          ]
+        },
+        {
+          "name": "CreateGroupMetadata",
+          "properties": null
+        },
+        {
+          "name": "CreateInboundOidcSsoProfileOperationMetadata",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "CreateInboundSamlSsoProfileOperationMetadata",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "CreateInboundSsoAssignmentOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "CreateMembershipMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteGroupMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteIdpCredentialOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteInboundOidcSsoProfileOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteInboundSamlSsoProfileOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteInboundSsoAssignmentOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "DeleteMembershipMetadata",
+          "properties": null
+        },
+        {
+          "name": "DsaPublicKeyInfo",
+          "properties": [
+            "keySize"
+          ]
+        },
+        {
+          "name": "DynamicGroupMetadata",
+          "properties": [
+            "queries",
+            "status"
+          ]
+        },
+        {
+          "name": "DynamicGroupQuery",
+          "properties": [
+            "query",
+            "resourceType"
+          ]
+        },
+        {
+          "name": "DynamicGroupStatus",
+          "properties": [
+            "status",
+            "statusTime"
+          ]
+        },
+        {
+          "name": "EntityKey",
+          "properties": [
+            "id",
+            "namespace"
+          ]
+        },
+        {
+          "name": "ExpiryDetail",
+          "properties": [
+            "expireTime"
+          ]
+        },
+        {
+          "name": "ExternalId",
+          "properties": [
+            "id",
+            "namespace"
+          ]
+        },
+        {
+          "name": "GetMembershipGraphMetadata",
+          "properties": null
+        },
+        {
+          "name": "GetMembershipGraphResponse",
+          "properties": [
+            "adjacencyList",
+            "groups"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1AndroidAttributes",
+          "properties": [
+            "ctsProfileMatch",
+            "enabledUnknownSources",
+            "hasPotentiallyHarmfulApps",
+            "ownerProfileAccount",
+            "ownershipPrivilege",
+            "supportsWorkProfile",
+            "verifiedBoot",
+            "verifyAppsEnabled"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ApproveDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ApproveDeviceUserRequest",
+          "properties": [
+            "customer"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ApproveDeviceUserResponse",
+          "properties": [
+            "deviceUser"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1BlockDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1BlockDeviceUserRequest",
+          "properties": [
+            "customer"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1BlockDeviceUserResponse",
+          "properties": [
+            "deviceUser"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1BrowserAttributes",
+          "properties": [
+            "chromeBrowserInfo",
+            "chromeProfileId",
+            "lastProfileSyncTime"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1BrowserInfo",
+          "properties": [
+            "browserManagementState",
+            "browserVersion",
+            "isBuiltInDnsClientEnabled",
+            "isBulkDataEntryAnalysisEnabled",
+            "isChromeCleanupEnabled",
+            "isChromeRemoteDesktopAppBlocked",
+            "isFileDownloadAnalysisEnabled",
+            "isFileUploadAnalysisEnabled",
+            "isRealtimeUrlCheckEnabled",
+            "isSecurityEventAnalysisEnabled",
+            "isSiteIsolationEnabled",
+            "isThirdPartyBlockingEnabled",
+            "passwordProtectionWarningTrigger",
+            "safeBrowsingProtectionLevel"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceRequest",
+          "properties": [
+            "customer"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceResponse",
+          "properties": [
+            "device"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceUserRequest",
+          "properties": [
+            "customer"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CancelWipeDeviceUserResponse",
+          "properties": [
+            "deviceUser"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CertificateAttributes",
+          "properties": [
+            "certificateTemplate",
+            "fingerprint",
+            "issuer",
+            "serialNumber",
+            "subject",
+            "thumbprint",
+            "validationState",
+            "validityExpirationTime",
+            "validityStartTime"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CertificateTemplate",
+          "properties": [
+            "id",
+            "majorVersion",
+            "minorVersion"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ClientState",
+          "properties": [
+            "assetTags",
+            "complianceState",
+            "createTime",
+            "customId",
+            "etag",
+            "healthScore",
+            "keyValuePairs",
+            "lastUpdateTime",
+            "managed",
+            "name",
+            "ownerType",
+            "scoreReason"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CreateDeviceMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1CustomAttributeValue",
+          "properties": [
+            "boolValue",
+            "numberValue",
+            "stringValue"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1DeleteDeviceMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1DeleteDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1Device",
+          "properties": [
+            "androidSpecificAttributes",
+            "assetTag",
+            "basebandVersion",
+            "bootloaderVersion",
+            "brand",
+            "buildNumber",
+            "compromisedState",
+            "createTime",
+            "deviceId",
+            "deviceType",
+            "enabledDeveloperOptions",
+            "enabledUsbDebugging",
+            "encryptionState",
+            "endpointVerificationSpecificAttributes",
+            "hostname",
+            "imei",
+            "kernelVersion",
+            "lastSyncTime",
+            "managementState",
+            "manufacturer",
+            "meid",
+            "model",
+            "name",
+            "networkOperator",
+            "osVersion",
+            "otherAccounts",
+            "ownerType",
+            "releaseVersion",
+            "securityPatchTime",
+            "serialNumber",
+            "unifiedDeviceId",
+            "wifiMacAddresses"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1DeviceUser",
+          "properties": [
+            "compromisedState",
+            "createTime",
+            "firstSyncTime",
+            "languageCode",
+            "lastSyncTime",
+            "managementState",
+            "name",
+            "passwordState",
+            "userAgent",
+            "userEmail"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1EndpointVerificationSpecificAttributes",
+          "properties": [
+            "additionalSignals",
+            "browserAttributes",
+            "certificateAttributes"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ListClientStatesResponse",
+          "properties": [
+            "clientStates",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ListDeviceUsersResponse",
+          "properties": [
+            "deviceUsers",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ListDevicesResponse",
+          "properties": [
+            "devices",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1ListEndpointAppsMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1LookupSelfDeviceUsersResponse",
+          "properties": [
+            "customer",
+            "names",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1SignoutDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1UpdateClientStateMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1UpdateDeviceMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceRequest",
+          "properties": [
+            "customer",
+            "removeResetLock"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceResponse",
+          "properties": [
+            "device"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceUserMetadata",
+          "properties": null
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceUserRequest",
+          "properties": [
+            "customer"
+          ]
+        },
+        {
+          "name": "GoogleAppsCloudidentityDevicesV1WipeDeviceUserResponse",
+          "properties": [
+            "deviceUser"
+          ]
+        },
+        {
+          "name": "Group",
+          "properties": [
+            "additionalGroupKeys",
+            "createTime",
+            "description",
+            "displayName",
+            "dynamicGroupMetadata",
+            "externalIds",
+            "groupKey",
+            "labels",
+            "name",
+            "parent",
+            "updateTime"
+          ]
+        },
+        {
+          "name": "GroupRelation",
+          "properties": [
+            "displayName",
+            "group",
+            "groupKey",
+            "labels",
+            "relationType",
+            "roles"
+          ]
+        },
+        {
+          "name": "IdpCredential",
+          "properties": [
+            "dsaKeyInfo",
+            "name",
+            "rsaKeyInfo",
+            "updateTime"
+          ]
+        },
+        {
+          "name": "InboundOidcSsoProfile",
+          "properties": [
+            "customer",
+            "displayName",
+            "idpConfig",
+            "name",
+            "rpConfig"
+          ]
+        },
+        {
+          "name": "InboundSamlSsoProfile",
+          "properties": [
+            "customer",
+            "displayName",
+            "idpConfig",
+            "name",
+            "spConfig"
+          ]
+        },
+        {
+          "name": "InboundSsoAssignment",
+          "properties": [
+            "customer",
+            "name",
+            "oidcSsoInfo",
+            "rank",
+            "samlSsoInfo",
+            "signInBehavior",
+            "ssoMode",
+            "targetGroup",
+            "targetOrgUnit"
+          ]
+        },
+        {
+          "name": "IsInvitableUserResponse",
+          "properties": [
+            "isInvitableUser"
+          ]
+        },
+        {
+          "name": "ListAllowlistedDomainsResponse",
+          "properties": [
+            "allowlistedDomains",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListGroupsResponse",
+          "properties": [
+            "groups",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListIdpCredentialsResponse",
+          "properties": [
+            "idpCredentials",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListInboundOidcSsoProfilesResponse",
+          "properties": [
+            "inboundOidcSsoProfiles",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListInboundSamlSsoProfilesResponse",
+          "properties": [
+            "inboundSamlSsoProfiles",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListInboundSsoAssignmentsResponse",
+          "properties": [
+            "inboundSsoAssignments",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListMembershipsResponse",
+          "properties": [
+            "memberships",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "ListPoliciesResponse",
+          "properties": [
+            "nextPageToken",
+            "policies"
+          ]
+        },
+        {
+          "name": "ListUserInvitationsResponse",
+          "properties": [
+            "nextPageToken",
+            "userInvitations"
+          ]
+        },
+        {
+          "name": "LookupGroupNameResponse",
+          "properties": [
+            "name"
+          ]
+        },
+        {
+          "name": "LookupMembershipNameResponse",
+          "properties": [
+            "name"
+          ]
+        },
+        {
+          "name": "MemberRelation",
+          "properties": [
+            "member",
+            "preferredMemberKey",
+            "relationType",
+            "roles"
+          ]
+        },
+        {
+          "name": "MemberRestriction",
+          "properties": [
+            "evaluation",
+            "query"
+          ]
+        },
+        {
+          "name": "Membership",
+          "properties": [
+            "createTime",
+            "deliverySetting",
+            "name",
+            "preferredMemberKey",
+            "roles",
+            "type",
+            "updateTime"
+          ]
+        },
+        {
+          "name": "MembershipAdjacencyList",
+          "properties": [
+            "edges",
+            "group"
+          ]
+        },
+        {
+          "name": "MembershipRelation",
+          "properties": [
+            "description",
+            "displayName",
+            "group",
+            "groupKey",
+            "labels",
+            "membership",
+            "roles"
+          ]
+        },
+        {
+          "name": "MembershipRole",
+          "properties": [
+            "expiryDetail",
+            "name",
+            "restrictionEvaluations"
+          ]
+        },
+        {
+          "name": "MembershipRoleRestrictionEvaluation",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "ModifyMembershipRolesRequest",
+          "properties": [
+            "addRoles",
+            "removeRoles",
+            "updateRolesParams"
+          ]
+        },
+        {
+          "name": "ModifyMembershipRolesResponse",
+          "properties": [
+            "membership"
+          ]
+        },
+        {
+          "name": "OidcIdpConfig",
+          "properties": [
+            "changePasswordUri",
+            "issuerUri"
+          ]
+        },
+        {
+          "name": "OidcRpConfig",
+          "properties": [
+            "clientId",
+            "clientSecret",
+            "redirectUris"
+          ]
+        },
+        {
+          "name": "OidcSsoInfo",
+          "properties": [
+            "inboundOidcSsoProfile"
+          ]
+        },
+        {
+          "name": "Operation",
+          "properties": [
+            "done",
+            "error",
+            "metadata",
+            "name",
+            "response"
+          ]
+        },
+        {
+          "name": "Policy",
+          "properties": [
+            "customer",
+            "name",
+            "policyQuery",
+            "setting",
+            "type"
+          ]
+        },
+        {
+          "name": "PolicyQuery",
+          "properties": [
+            "group",
+            "orgUnit",
+            "query",
+            "sortOrder"
+          ]
+        },
+        {
+          "name": "RestrictionEvaluation",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "RestrictionEvaluations",
+          "properties": [
+            "memberRestrictionEvaluation"
+          ]
+        },
+        {
+          "name": "RsaPublicKeyInfo",
+          "properties": [
+            "keySize"
+          ]
+        },
+        {
+          "name": "SamlIdpConfig",
+          "properties": [
+            "changePasswordUri",
+            "entityId",
+            "logoutRedirectUri",
+            "singleSignOnServiceUri"
+          ]
+        },
+        {
+          "name": "SamlSpConfig",
+          "properties": [
+            "assertionConsumerServiceUri",
+            "entityId"
+          ]
+        },
+        {
+          "name": "SamlSsoInfo",
+          "properties": [
+            "inboundSamlSsoProfile"
+          ]
+        },
+        {
+          "name": "SearchDirectGroupsResponse",
+          "properties": [
+            "memberships",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "SearchGroupsResponse",
+          "properties": [
+            "groups",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "SearchTransitiveGroupsResponse",
+          "properties": [
+            "memberships",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "SearchTransitiveMembershipsResponse",
+          "properties": [
+            "memberships",
+            "nextPageToken"
+          ]
+        },
+        {
+          "name": "SecuritySettings",
+          "properties": [
+            "memberRestriction",
+            "name"
+          ]
+        },
+        {
+          "name": "SendUserInvitationRequest",
+          "properties": null
+        },
+        {
+          "name": "Setting",
+          "properties": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "name": "SignInBehavior",
+          "properties": [
+            "redirectCondition"
+          ]
+        },
+        {
+          "name": "Status",
+          "properties": [
+            "code",
+            "details",
+            "message"
+          ]
+        },
+        {
+          "name": "TransitiveMembershipRole",
+          "properties": [
+            "role"
+          ]
+        },
+        {
+          "name": "UpdateGroupMetadata",
+          "properties": null
+        },
+        {
+          "name": "UpdateInboundOidcSsoProfileOperationMetadata",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "UpdateInboundSamlSsoProfileOperationMetadata",
+          "properties": [
+            "state"
+          ]
+        },
+        {
+          "name": "UpdateInboundSsoAssignmentOperationMetadata",
+          "properties": null
+        },
+        {
+          "name": "UpdateMembershipMetadata",
+          "properties": null
+        },
+        {
+          "name": "UpdateMembershipRolesParams",
+          "properties": [
+            "fieldMask",
+            "membershipRole"
+          ]
+        },
+        {
+          "name": "UserInvitation",
+          "properties": [
+            "mailsSentCount",
+            "name",
+            "state",
+            "updateTime"
           ]
         }
       ]

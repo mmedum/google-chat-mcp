@@ -141,6 +141,7 @@ type Config struct {
 	DirectoryCacheTTL time.Duration
 	ChatAPIBase       string
 	PeopleAPIBase     string
+	CloudIdentityBase string
 	ClientSecretPath  string
 	// LocalDir is the one directory an attachment is written to and
 	// read from. Unset means no file transfer at all, which is the
@@ -170,6 +171,7 @@ type Settings struct {
 	DirectoryCacheTTL string
 	ChatAPIBase       string
 	PeopleAPIBase     string
+	CloudIdentityBase string
 	ClientSecretPath  string
 	LocalDir          string
 }
@@ -179,6 +181,8 @@ type Settings struct {
 const (
 	DefaultChatAPIBase   = "https://chat.googleapis.com/v1"
 	DefaultPeopleAPIBase = "https://people.googleapis.com/v1"
+	// DefaultCloudIdentityBase is where a group's id is looked up.
+	DefaultCloudIdentityBase = "https://cloudidentity.googleapis.com/v1"
 )
 
 // Define registers one flag per setting on fs, defaulting to the
@@ -211,6 +215,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.DirectoryCacheTTL, "directory-cache-ttl", "DIRECTORY_CACHE_TTL_SECONDS", "24h", "how long a resolved email stays cached")
 	def(&s.ChatAPIBase, "chat-api-base", "CHAT_API_BASE", DefaultChatAPIBase, "Chat API base URL")
 	def(&s.PeopleAPIBase, "people-api-base", "PEOPLE_API_BASE", DefaultPeopleAPIBase, "People API base URL")
+	def(&s.CloudIdentityBase, "cloud-identity-api-base", "CLOUD_IDENTITY_API_BASE", DefaultCloudIdentityBase, "Cloud Identity API base URL")
 	def(&s.ClientSecretPath, "client-secret", "CLIENT_SECRET", "", "path to the OAuth Desktop client JSON (overrides the stored profile setting)")
 	def(&s.LocalDir, "local-dir", "LOCAL_DIR", "", "the one directory attachments are downloaded to and uploaded from (unset turns file transfer off)")
 	return s
@@ -318,11 +323,18 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, fmt.Errorf("%w: search max pages %d must be between 1 and 50", ErrInvalid, c.SearchMaxPages))
 	}
 
-	if c.ChatAPIBase, err = parseBase("chat-api-base", s.ChatAPIBase); err != nil {
-		errs = append(errs, err)
-	}
-	if c.PeopleAPIBase, err = parseBase("people-api-base", s.PeopleAPIBase); err != nil {
-		errs = append(errs, err)
+	for _, b := range []struct {
+		name string
+		in   string
+		out  *string
+	}{
+		{"chat-api-base", s.ChatAPIBase, &c.ChatAPIBase},
+		{"people-api-base", s.PeopleAPIBase, &c.PeopleAPIBase},
+		{"cloud-identity-api-base", s.CloudIdentityBase, &c.CloudIdentityBase},
+	} {
+		if *b.out, err = parseBase(b.name, b.in); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	c.ClientSecretPath = strings.TrimSpace(s.ClientSecretPath)

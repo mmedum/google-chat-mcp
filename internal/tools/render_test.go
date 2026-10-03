@@ -339,6 +339,8 @@ func everyEndpoint(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, peopleSearch("people/1", "janedoe@example.com", "Jane Doe"))
 	case strings.HasPrefix(path, "/people"):
 		personHit(w, r)
+	case strings.HasPrefix(path, "/cloudidentity"):
+		fmt.Fprint(w, `{"name":"groups/AAAAgroup1","groupKey":{"id":"team@example.com"},"displayName":"Team"}`)
 	case strings.HasPrefix(path, "/oidc"):
 		fmt.Fprint(w, `{"sub":"111111111111111111111","email":"janedoe@example.com","name":"Jane Doe"}`)
 	case strings.Contains(path, "/reactions"):

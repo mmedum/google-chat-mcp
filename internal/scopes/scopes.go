@@ -85,6 +85,11 @@ const (
 	ContactsReadonly  = "https://www.googleapis.com/auth/contacts.readonly"
 )
 
+// GroupsReadonly is the Cloud Identity scope that turns a group's email
+// address into the groups/{id} name Chat takes, and names a group in a
+// listing. The narrowest scope groups.lookup and groups.get accept.
+const GroupsReadonly = "https://www.googleapis.com/auth/cloud-identity.groups.readonly"
+
 // All is what login requests, in a stable order. Adding a scope here
 // makes every existing token incomplete until the person logs in again,
 // so a tool that needs it reports a [scope] error naming it.
@@ -121,6 +126,8 @@ var All = []string{
 
 	DirectoryReadonly,
 	ContactsReadonly,
+
+	GroupsReadonly,
 }
 
 // implies maps an umbrella scope to the narrower scopes it satisfies.

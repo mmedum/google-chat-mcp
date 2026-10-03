@@ -825,6 +825,11 @@ func (o PersonHitOutput) Render() string {
 	return meta(person(deref(o.UserID), o.DisplayName, o.Email), o.Source)
 }
 
+// Render names the group and the id add_member takes.
+func (o FindGroupOutput) Render() string {
+	return meta(o.GroupName, deref(o.DisplayName), o.Email)
+}
+
 // Render reports the matches and which sources answered, because a
 // source that failed is why a name may be missing.
 func (o SearchPeopleOutput) Render() string {

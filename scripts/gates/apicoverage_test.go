@@ -224,6 +224,7 @@ func TestCheckAPIsClosesTheAPIColumn(t *testing.T) {
 	// Every API the record really covers, so the only complaint is the
 	// one each case introduces.
 	all := row("chat", "spaces.list", "used", "Client.ListSpaces") +
+		row("cloudidentity", "groups.lookup", "used", "Client.LookupGroup") +
 		row("openid", "userinfo", "used", "Client.Userinfo") +
 		row("people", "people.get", "used", "Client.GetPerson")
 
@@ -529,6 +530,12 @@ func TestCheckReachableDerivesTheVerdictRatherThanTrustingIt(t *testing.T) {
 			want:   "which Google accepts for it. Judge it instead",
 		},
 		{
+			name:   "naming a scope for a method that publishes none",
+			row:    row("chat", "spaces.list", "unreachable", scopeUnheld),
+			method: apiMethod{Verb: "GET", Path: "v1/spaces"},
+			want:   `publishes no scope, so its reason must be "none published"`,
+		},
+		{
 			name:   "naming a scope Google does not accept for it",
 			row:    row("chat", "spaces.list", "unreachable", "https://www.googleapis.com/auth/chat.bot"),
 			method: published(scopeUnheld),
@@ -552,11 +559,13 @@ func TestCheckReachableDerivesTheVerdictRatherThanTrustingIt(t *testing.T) {
 // The row that is right stays quiet, or the table above proves nothing.
 func TestCheckReachableAcceptsAVerdictThatMatches(t *testing.T) {
 	rows := row("chat", "spaces.get", "unreachable", scopeUnheld) +
-		row("chat", "spaces.list", "used", "Client.ListSpaces")
+		row("chat", "spaces.list", "used", "Client.ListSpaces") +
+		row("chat", "spaces.search", "unreachable", "none published")
 	entries, _ := readCoverage(write(t, "api-coverage.tsv", rows))
 	got := checkReachable(entries, map[methodKey]apiMethod{
-		key("chat", "spaces.get"):  published(scopeUnheld),
-		key("chat", "spaces.list"): published(scopeAsked),
+		key("chat", "spaces.get"):    published(scopeUnheld),
+		key("chat", "spaces.list"):   published(scopeAsked),
+		key("chat", "spaces.search"): {Verb: "GET", Path: "v1/spaces:search"},
 	})
 	if len(got) > 0 {
 		t.Errorf("want no problems, got %v", got)

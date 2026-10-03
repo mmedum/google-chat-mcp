@@ -31,7 +31,38 @@ type SearchPeopleInput struct {
 	Sources []string `json:"sources,omitempty" jsonschema:"which upstreams to ask: DIRECTORY for the Workspace directory, CONTACTS for the caller's own contacts. Default asks both, which covers a Workspace account and a personal one"`
 }
 
+// FindGroupInput is a Google Group's email address.
+type FindGroupInput struct {
+	Email string `json:"email" jsonschema:"the group's email address, such as team@example.com"`
+}
+
+// FindGroupOutput is the group that address names.
+type FindGroupOutput struct {
+	GroupName   string  `json:"group_name" jsonschema:"the group's resource name, groups/{id}; pass it to add_member as group_name"`
+	Email       string  `json:"email" jsonschema:"the address that was looked up"`
+	DisplayName *string `json:"display_name" jsonschema:"the group's name, or null when Cloud Identity gave none"`
+}
+
 func registerPeople(s *mcp.Server, d Deps) {
+	register(s, d, spec{
+		Name: "find_group",
+		Description: "Turn a Google Group's email address into its groups/{id} name, which add_member takes as " +
+			"group_name. Chat names a group only by that id. Looked up through Cloud Identity, which shows only " +
+			"the groups this account can see. Google answers an address no group has the same way as a group kept " +
+			"to its own members, so a refusal cannot say which.",
+		Kind: Read,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in FindGroupInput) (*mcp.CallToolResult, FindGroupOutput, error) {
+		got, err := d.Service.FindGroup(ctx, in.Email)
+		if err != nil {
+			return nil, FindGroupOutput{}, err
+		}
+		return nil, FindGroupOutput{
+			GroupName:   got.Name,
+			Email:       got.Email,
+			DisplayName: nullable(got.DisplayName),
+		}, nil
+	})
+
 	register(s, d, spec{
 		Name: "search_people",
 		Description: "Look someone up across the caller's Workspace directory and their own contacts, and get their " +

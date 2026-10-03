@@ -39,11 +39,12 @@ func newServiceCached(t *testing.T, handler http.HandlerFunc) (*Service, *direct
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	client := gchat.New(gchat.Options{
-		HTTP:       srv.Client(),
-		ChatBase:   srv.URL + "/v1",
-		PeopleBase: srv.URL + "/people",
-		OIDCBase:   srv.URL + "/oidc",
-		Tokens:     staticToken("test"),
+		HTTP:              srv.Client(),
+		ChatBase:          srv.URL + "/v1",
+		PeopleBase:        srv.URL + "/people",
+		OIDCBase:          srv.URL + "/oidc",
+		CloudIdentityBase: srv.URL + "/cloudidentity",
+		Tokens:            staticToken("test"),
 	})
 	// An empty path keeps the cache in memory: no test in this package
 	// may write to the real profile directory.

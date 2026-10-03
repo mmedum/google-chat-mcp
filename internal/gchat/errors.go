@@ -230,11 +230,25 @@ func IsAlreadyGone(err error) bool {
 	return IsNotFound(err)
 }
 
+// serviceDisabledReasons are how Google says the API a call uses is not
+// enabled on the OAuth client's project: the AIP-193 reason, and the
+// older frontend's.
+var serviceDisabledReasons = []string{"SERVICE_DISABLED", "accessNotConfigured"}
+
+// IsServiceDisabled reports whether Google refused because the API is
+// not enabled on the project the OAuth client belongs to. The first
+// Cloud Identity call a person makes after upgrading answers this.
+func IsServiceDisabled(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && e.StatusCode == http.StatusForbidden && matchesReason(e.Reason, serviceDisabledReasons)
+}
+
 // IsForbidden reports whether Google refused the call outright, as
-// opposed to refusing it for want of a scope or a quota. Those two are
-// also 403s and mean something a caller can act on differently.
+// opposed to refusing it for want of a scope, a quota or an enabled
+// API. Those are also 403s and mean something a caller can act on
+// differently.
 func IsForbidden(err error) bool {
-	if IsMissingScope(err) || IsRateLimited(err) || IsQuotaExceeded(err) {
+	if IsMissingScope(err) || IsRateLimited(err) || IsQuotaExceeded(err) || IsServiceDisabled(err) {
 		return false
 	}
 	var e *APIError

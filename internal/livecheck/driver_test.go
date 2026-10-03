@@ -288,7 +288,7 @@ func (d *driver) drop() {
 // account's own address is replaced too — it is in every whoami answer.
 func (d *driver) redact(s string) string {
 	for _, pat := range []string{
-		`spaces/`, `users/`,
+		`spaces/`, `users/`, `groups/`,
 	} {
 		s = redactPrefixed(s, pat, d.made)
 	}
