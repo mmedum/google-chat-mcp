@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -319,6 +320,10 @@ type SpaceDetails struct {
 	SingleUserBotDM     *bool
 	ExternalUserAllowed *bool
 	CreateTime          time.Time
+	// AccessState and Audience are who can find and join a named space,
+	// as Google says; empty when it does not, as for a direct message.
+	AccessState string
+	Audience    string
 }
 
 // GetSpace returns one space by resource name.
@@ -331,15 +336,18 @@ func (s *Service) GetSpace(ctx context.Context, name string) (*SpaceDetails, err
 	if err != nil {
 		return nil, Classify(err)
 	}
-	created := parseTime(sp.CreateTime)
-	return &SpaceDetails{
+	out := &SpaceDetails{
 		Name:                sp.Name,
 		Kind:                kindOf(*sp),
 		DisplayName:         displayNameOf(*sp),
 		SingleUserBotDM:     sp.SingleUserBot,
 		ExternalUserAllowed: sp.ExternalUser,
-		CreateTime:          created,
-	}, nil
+		CreateTime:          parseTime(sp.CreateTime),
+	}
+	if sp.Access != nil {
+		out.AccessState, out.Audience = sp.Access.AccessState, sp.Access.Audience
+	}
+	return out, nil
 }
 
 // Space write limits. These are this server's: Google allows more
@@ -429,7 +437,10 @@ type CreateSpaceInput struct {
 	// MemberEmails never includes the caller: Google adds the
 	// authenticated user itself.
 	MemberEmails []string
-	DryRun       bool
+	// Audience opens a named space to a target audience; blank or
+	// Private leaves it private.
+	Audience string
+	DryRun   bool
 }
 
 // CreateSpaceResult is the space that was made, or what a dry run would
@@ -441,8 +452,11 @@ type CreateSpaceResult struct {
 	// MemberCount is how many people were asked for, not counting the
 	// caller Google adds.
 	MemberCount int
-	DryRun      bool
-	Rendered    map[string]any
+	// Audience is the target audience the space was opened to, empty
+	// for a private one.
+	Audience string
+	DryRun   bool
+	Rendered map[string]any
 }
 
 // CreateGroupChat creates an unnamed multi-person direct message.
@@ -458,7 +472,7 @@ func (s *Service) CreateGroupChat(ctx context.Context, in CreateSpaceInput) (*Cr
 	if err != nil {
 		return nil, err
 	}
-	return s.setupSpace(ctx, gchat.SpaceTypeGroupChat, "", emails, in.DryRun)
+	return s.setupSpace(ctx, gchat.SpaceTypeGroupChat, "", "", emails, in.DryRun)
 }
 
 // CreateSpace creates a named space.
@@ -475,13 +489,22 @@ func (s *Service) CreateSpace(ctx context.Context, in CreateSpaceInput) (*Create
 	if err != nil {
 		return nil, err
 	}
-	return s.setupSpace(ctx, gchat.SpaceTypeSpace, name, emails, in.DryRun)
+	audience := ""
+	if strings.TrimSpace(in.Audience) != "" {
+		if audience, err = requireAudienceOrPrivate(in.Audience); err != nil {
+			return nil, err
+		}
+	}
+	return s.setupSpace(ctx, gchat.SpaceTypeSpace, name, audience, emails, in.DryRun)
 }
 
 // setupSpace is the half the two creates share.
-func (s *Service) setupSpace(ctx context.Context, kind, displayName string, emails []string, dryRun bool) (*CreateSpaceResult, error) {
+func (s *Service) setupSpace(ctx context.Context, kind, displayName, audience string, emails []string, dryRun bool) (*CreateSpaceResult, error) {
 	body := gchat.BuildSetupSpace(kind, displayName, emails)
-	out := &CreateSpaceResult{DisplayName: displayName, MemberCount: len(emails), DryRun: dryRun}
+	if audience != "" {
+		body.Space.Access = &gchat.AudienceRequest{Audience: audience}
+	}
+	out := &CreateSpaceResult{DisplayName: displayName, MemberCount: len(emails), Audience: audience, DryRun: dryRun}
 	if dryRun {
 		rendered, err := renderBody(body)
 		if err != nil {
@@ -489,6 +512,11 @@ func (s *Service) setupSpace(ctx context.Context, kind, displayName string, emai
 		}
 		out.Rendered = rendered
 		return out, nil
+	}
+	if audience != "" {
+		if err := ask(ctx, askCreateOpenSpace(displayName, audience)); err != nil {
+			return nil, err
+		}
 	}
 
 	created, err := s.client.SetupSpace(ctx, body)
@@ -499,13 +527,16 @@ func (s *Service) setupSpace(ctx context.Context, kind, displayName string, emai
 	return out, nil
 }
 
-// UpdateSpaceInput is an edit of a space's name or description. A nil
-// field is one the caller did not ask to change.
+// UpdateSpaceInput is an edit of a space's name, description or
+// audience. A nil field is one the caller did not ask to change.
 type UpdateSpaceInput struct {
 	Space       string
 	DisplayName *string
 	Description *string
-	DryRun      bool
+	// Audience opens the space to a target audience, or with Private
+	// makes it private again; blank leaves it alone.
+	Audience string
+	DryRun   bool
 }
 
 // UpdateSpaceResult is what the patch asked for.
@@ -513,6 +544,9 @@ type UpdateSpaceResult struct {
 	Space       string
 	DisplayName *string
 	Description *string
+	// Audience is the target audience that was set, Private when the
+	// space was made private, nil when the call left it alone.
+	Audience *string
 	// UpdateMask is what was masked, so a caller can see which fields
 	// the patch touched without deriving it again.
 	UpdateMask string
@@ -520,44 +554,60 @@ type UpdateSpaceResult struct {
 	Rendered   map[string]any
 }
 
-// UpdateSpace renames a space or edits its description.
+// UpdateSpace renames a space, edits its description, or sets who can
+// find and join it.
 //
 // Editing the description clears the space's guidelines, if it has any.
 // Google's mask accepts only top-level paths, so there is no way to
 // patch one field of spaceDetails and leave the other; the tool
 // description says so.
+//
+// Opening a space to an audience asks the person first: whoever is in
+// it can read the space from then on, and making it private again does
+// not take back what they read. Making it private asks nothing.
 func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*UpdateSpaceResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
 		return nil, err
 	}
-	if in.DisplayName == nil && in.Description == nil {
-		return nil, Invalidf("pass display_name, description, or both; an empty patch is refused by Google")
-	}
-	displayName, description := in.DisplayName, in.Description
-	if displayName != nil {
-		name, err := requireDisplayName(*displayName, maxSpaceDisplayName)
+	out := &UpdateSpaceResult{Space: space, DryRun: in.DryRun}
+	var body *gchat.UpdateSpaceRequest
+	// opening is the audience a space is being opened to, which is the
+	// one change here the person is asked about.
+	opening := ""
+	if strings.TrimSpace(in.Audience) != "" {
+		if in.DisplayName != nil || in.Description != nil {
+			return nil, Invalidf("change audience in a call of its own; Google refuses it beside a name or description")
+		}
+		audience, err := requireAudienceOrPrivate(in.Audience)
 		if err != nil {
 			return nil, err
 		}
-		displayName = &name
-	}
-	if description != nil && *description != "" {
-		// An empty description is a deliberate clear, which requireText
-		// rejects; anything else is bounded the same way as every other
-		// text this server sends.
-		if _, err := requireText("description", *description, maxSpaceDescription); err != nil {
-			return nil, err
+		opening = audience
+		shown := cmp.Or(audience, Private)
+		out.Audience = &shown
+		body, out.UpdateMask = gchat.BuildUpdateSpaceAudience(audience)
+	} else {
+		if in.DisplayName == nil && in.Description == nil {
+			return nil, Invalidf("pass display_name, description or audience; an empty patch is refused by Google")
 		}
-	}
-
-	body, mask := gchat.BuildUpdateSpace(displayName, description)
-	out := &UpdateSpaceResult{
-		Space:       space,
-		DisplayName: displayName,
-		Description: description,
-		UpdateMask:  mask,
-		DryRun:      in.DryRun,
+		out.DisplayName, out.Description = in.DisplayName, in.Description
+		if out.DisplayName != nil {
+			name, err := requireDisplayName(*out.DisplayName, maxSpaceDisplayName)
+			if err != nil {
+				return nil, err
+			}
+			out.DisplayName = &name
+		}
+		if out.Description != nil && *out.Description != "" {
+			// An empty description is a deliberate clear, which requireText
+			// rejects; anything else is bounded the same way as every other
+			// text this server sends.
+			if _, err := requireText("description", *out.Description, maxSpaceDescription); err != nil {
+				return nil, err
+			}
+		}
+		body, out.UpdateMask = gchat.BuildUpdateSpace(out.DisplayName, out.Description)
 	}
 	if in.DryRun {
 		rendered, err := renderBody(body)
@@ -568,7 +618,16 @@ func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*Update
 		return out, nil
 	}
 
-	if _, err := s.client.UpdateSpace(ctx, space, body, mask); err != nil {
+	if opening != "" && asks(ctx) {
+		sp, err := s.client.GetSpace(ctx, space)
+		if err != nil {
+			return nil, Classify(err)
+		}
+		if err := ask(ctx, askOpenSpace(space, sp.DisplayName, opening)); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := s.client.UpdateSpace(ctx, space, body, out.UpdateMask); err != nil {
 		return nil, Classify(err)
 	}
 	// The values echoed back are what the caller asked for. A 2xx says

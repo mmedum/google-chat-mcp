@@ -15,8 +15,9 @@ import (
 
 // Asking the person (docs/architecture.md, "The person confirms what
 // cannot be taken back"). Before a write that deletes for good, adds
-// someone to a space or notifies everyone in one, the service asks the
-// person through the client, when the client can ask. The question is
+// someone to a space, opens one to a target audience or notifies
+// everyone in one, the service asks the person through the client, when
+// the client can ask. The question is
 // built here, after every read and every other check, so it says what
 // the write would do.
 
@@ -148,6 +149,37 @@ func askAddMember(space, displayName, who string, group bool) Question {
 		fmt.Sprintf("add_member: add %s %s to %s?", noun, quoted(who, quotedLen), spaceRef(space, displayName)),
 		"They can read the space from now on, and its earlier messages where it keeps history.",
 	)
+}
+
+// askOpenSpace asks before update_space opens a space to a target
+// audience.
+func askOpenSpace(space, displayName, audience string) Question {
+	return askText(
+		fmt.Sprintf("update_space: open %s to %s?", spaceRef(space, displayName), audienceRef(audience)),
+		openNotice,
+	)
+}
+
+// askCreateOpenSpace asks before create_space makes a space open to a
+// target audience.
+func askCreateOpenSpace(displayName, audience string) Question {
+	return askText(
+		fmt.Sprintf("create_space: create the space %s open to %s?", quoted(displayName, quotedLen), audienceRef(audience)),
+		openNotice,
+	)
+}
+
+// openNotice is what opening a space does, in the person's terms.
+const openNotice = "Anyone in it can find the space, read its messages and join without an invitation. " +
+	"Making it private again does not take back what they read."
+
+// audienceRef names a target audience. The default one is the
+// organization's, which an administrator sets up.
+func audienceRef(audience string) string {
+	if audience == "audiences/default" {
+		return "the organization's default target audience, " + quoted(audience, quotedLen)
+	}
+	return "the target audience " + quoted(audience, quotedLen)
 }
 
 // askSend asks before send_message, when the post mentions everyone in

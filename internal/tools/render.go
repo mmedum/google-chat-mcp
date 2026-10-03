@@ -230,6 +230,7 @@ func (o SpaceDetailOutput) Render() string {
 			flag("external users allowed", o.ExternalUserAllowed),
 			stamp("created", o.CreateTime),
 		),
+		meta(labeled("access", strings.ToLower(deref(o.AccessState))), labeled("audience", deref(o.Audience))),
 	)
 }
 
@@ -277,6 +278,9 @@ func (o CreateGroupChatOutput) Render() string {
 // Render says what space was created.
 func (o CreateSpaceOutput) Render() string {
 	who := count(o.MemberCount, "member", "members")
+	if o.Audience != nil {
+		who += ", open to " + *o.Audience
+	}
 	if o.DryRun {
 		return previewBody("create the space " + o.DisplayName + " with " + who)
 	}
@@ -285,7 +289,8 @@ func (o CreateSpaceOutput) Render() string {
 
 // Render says what changed about a space.
 func (o UpdateSpaceOutput) Render() string {
-	changed := meta(labeled("name", deref(o.DisplayName)), labeled("description", deref(o.Description)))
+	changed := meta(labeled("name", deref(o.DisplayName)), labeled("description", deref(o.Description)),
+		labeled("audience", deref(o.Audience)))
 	if o.DryRun {
 		return previewBody(meta("update "+o.SpaceID, changed))
 	}

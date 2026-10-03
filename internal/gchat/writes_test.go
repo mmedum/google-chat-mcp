@@ -348,6 +348,33 @@ func TestAnEmptyDescriptionIsStillSent(t *testing.T) {
 	}
 }
 
+// The audience is a patch of its own, and making a space private sends
+// the mask with no value, which is how Google spells removing it.
+func TestBuildUpdateSpaceAudienceMasksOnlyTheAudience(t *testing.T) {
+	for _, tc := range []struct {
+		label    string
+		audience string
+		wantBody string
+	}{
+		{"open", "audiences/default", `{"accessSettings":{"audience":"audiences/default"}}`},
+		{"private", "", `{"accessSettings":{}}`},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			body, mask := BuildUpdateSpaceAudience(tc.audience)
+			if mask != "accessSettings.audience" {
+				t.Errorf("mask = %q, want accessSettings.audience", mask)
+			}
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if string(raw) != tc.wantBody {
+				t.Errorf("body = %s, want %s", raw, tc.wantBody)
+			}
+		})
+	}
+}
+
 func TestAddMemberPostsTheEmailAsAResourceName(t *testing.T) {
 	srv, rec := recording(t, `{"name":"spaces/AAA/members/MMM"}`)
 	got, err := newTestClient(t, srv).AddMember(context.Background(), "spaces/AAA",

@@ -191,6 +191,19 @@ type SetupSpace struct {
 	// allowed is decided in internal/service, and dropping it here
 	// would hide the mistake rather than report it.
 	DisplayName string `json:"displayName,omitempty"`
+	// Access is set only when the space opens to a target audience; a
+	// space made without it is private.
+	Access *AudienceRequest `json:"accessSettings,omitempty"`
+}
+
+// AudienceRequest is the accessSettings half of a create or patch body:
+// the one field of it a caller sets. accessState is Google's to fill.
+//
+// Audience carries omitempty on purpose. A patch that masks
+// accessSettings.audience and sends no value removes the audience,
+// which is how Google spells making a space private again.
+type AudienceRequest struct {
+	Audience string `json:"audience,omitempty"`
 }
 
 // BuildSetupSpace renders the body that creates a space.
@@ -222,6 +235,7 @@ func (c *Client) SetupSpace(ctx context.Context, body *SetupSpaceRequest) (*Spac
 type UpdateSpaceRequest struct {
 	DisplayName *string             `json:"displayName,omitempty"`
 	Details     *UpdateSpaceDetails `json:"spaceDetails,omitempty"`
+	Access      *AudienceRequest    `json:"accessSettings,omitempty"`
 }
 
 // UpdateSpaceDetails is the spaceDetails half of a patch body.
@@ -252,6 +266,15 @@ func BuildUpdateSpace(displayName, description *string) (*UpdateSpaceRequest, st
 		mask = append(mask, "spaceDetails")
 	}
 	return body, strings.Join(mask, ",")
+}
+
+// BuildUpdateSpaceAudience renders the patch that sets who can find and
+// join a space. An empty audience makes the space private again.
+//
+// It is a patch of its own because Google refuses
+// accessSettings.audience beside any other mask.
+func BuildUpdateSpaceAudience(audience string) (*UpdateSpaceRequest, string) {
+	return &UpdateSpaceRequest{Access: &AudienceRequest{Audience: audience}}, "accessSettings.audience"
 }
 
 // UpdateSpace patches a space. name is "spaces/{id}".

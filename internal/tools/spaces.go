@@ -44,6 +44,8 @@ type SpaceDetailOutput struct {
 	SingleUserBotDM     *bool      `json:"single_user_bot_dm" jsonschema:"true when the space is a direct message with a Chat app rather than a person; null when Google did not say"`
 	ExternalUserAllowed *bool      `json:"external_user_allowed" jsonschema:"true when people outside the organization may join; null when Google did not say"`
 	CreateTime          *time.Time `json:"create_time" jsonschema:"when the space was created, RFC 3339 in UTC; null when Google did not say"`
+	AccessState         *string    `json:"access_state" jsonschema:"PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message"`
+	Audience            *string    `json:"audience" jsonschema:"the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join"`
 }
 
 // GetSpaceInput names one space.
@@ -232,6 +234,8 @@ func spaceDetail(got *service.SpaceDetails) SpaceDetailOutput {
 		SingleUserBotDM:     got.SingleUserBotDM,
 		ExternalUserAllowed: got.ExternalUserAllowed,
 		CreateTime:          nullableTime(got.CreateTime),
+		AccessState:         nullable(got.AccessState),
+		Audience:            nullable(got.Audience),
 	}
 }
 
@@ -255,6 +259,7 @@ type CreateGroupChatInput struct {
 type CreateSpaceInput struct {
 	DisplayName  string   `json:"display_name" jsonschema:"what to call the space, 1 to 128 characters"`
 	MemberEmails []string `json:"member_emails,omitempty" jsonschema:"up to 20 email addresses, not counting you; Google adds the signed-in account itself. Omit it for a space of your own, which you can invite people to later with add_member"`
+	Audience     string   `json:"audience,omitempty" jsonschema:"open the space to a target audience, who can then find it, read it and join without an invitation: default for the organization's default audience, or audiences/{id} for one an administrator set up. Omit it, or pass private, for a private space"`
 	DryRun       bool     `json:"dry_run,omitempty" jsonschema:"return the request body without creating anything"`
 }
 
@@ -275,15 +280,18 @@ type CreateSpaceOutput struct {
 	SpaceID         *string          `json:"space_id" jsonschema:"the new space's resource name; null after a dry run, because Google assigns it"`
 	DisplayName     string           `json:"display_name" jsonschema:"what it is called"`
 	MemberCount     int              `json:"member_count" jsonschema:"how many people were asked for, not counting you"`
+	Audience        *string          `json:"audience" jsonschema:"the target audience the space was opened to; null for a private space"`
 	DryRun          bool             `json:"dry_run" jsonschema:"true when nothing was created"`
 	RenderedPayload *RenderedPayload `json:"rendered_payload" jsonschema:"on a dry run, the exact body that would have been sent; null on a real create"`
 }
 
-// UpdateSpaceInput is an edit of a space's name or description.
+// UpdateSpaceInput is an edit of a space's name, description or
+// audience.
 type UpdateSpaceInput struct {
 	SpaceID     string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}"`
 	DisplayName *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
 	Description *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
+	Audience    string  `json:"audience,omitempty" jsonschema:"who can find the space, read it and join without an invitation: default for the organization's default target audience, audiences/{id} for one an administrator set up, or private to make the space private again. Omit it to leave access alone. Change it in a call of its own"`
 	DryRun      bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
 
@@ -292,6 +300,7 @@ type UpdateSpaceOutput struct {
 	SpaceID         string           `json:"space_id" jsonschema:"the space that was edited"`
 	DisplayName     *string          `json:"display_name" jsonschema:"the name that was set, or null when the call left it alone"`
 	Description     *string          `json:"description" jsonschema:"the description that was set, or null when the call left it alone"`
+	Audience        *string          `json:"audience" jsonschema:"the target audience that was set, private when the space was made private, or null when the call left it alone"`
 	UpdateMask      *string          `json:"update_mask" jsonschema:"which top-level fields the patch targeted"`
 	DryRun          bool             `json:"dry_run" jsonschema:"true when nothing was changed"`
 	RenderedPayload *RenderedPayload `json:"rendered_payload" jsonschema:"on a dry run, the exact patch body; null on a real edit"`
@@ -337,11 +346,13 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Name: "create_space",
 		Description: "Create a named space, with up to 20 initial members or none at all. Leave yourself out of " +
 			"member_emails: Google adds the signed-in account. A space of your own is fine — invite people later " +
-			"with add_member. Set dry_run to see the request body without creating anything.",
+			"with add_member. A space is private unless audience opens it to the organization or to a target " +
+			"audience. Set dry_run to see the request body without creating anything.",
 		Kind: Write,
+		Asks: "before it creates a space open to a target audience",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in CreateSpaceInput) (*mcp.CallToolResult, CreateSpaceOutput, error) {
 		got, err := d.Service.CreateSpace(ctx, service.CreateSpaceInput{
-			DisplayName: in.DisplayName, MemberEmails: in.MemberEmails, DryRun: in.DryRun,
+			DisplayName: in.DisplayName, MemberEmails: in.MemberEmails, Audience: in.Audience, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, CreateSpaceOutput{}, err
@@ -350,6 +361,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			SpaceID:         nullable(got.Name),
 			DisplayName:     got.DisplayName,
 			MemberCount:     got.MemberCount,
+			Audience:        nullable(got.Audience),
 			DryRun:          got.DryRun,
 			RenderedPayload: rendered(got.Rendered),
 		}, nil
@@ -357,14 +369,18 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "update_space",
-		Description: "Rename a space or change its description. Pass at least one of the two; an empty edit is " +
-			"refused. Editing the description clears the space's guidelines, because Google's mask covers both at " +
-			"once, so edit a space that has guidelines in the Chat interface instead. Set dry_run to see the patch " +
+		Description: "Rename a space, change its description, or set who can find and join it. Pass at least one; " +
+			"an empty edit is refused. Editing the description clears the space's guidelines, because Google's " +
+			"mask covers both at once, so edit a space that has guidelines in the Chat interface instead. " +
+			"audience opens a named space to the organization or a target audience, and private makes it " +
+			"private again; Google takes it only on its own, from a space manager. Set dry_run to see the patch " +
 			"body first. Needs the restricted-tier chat.spaces scope.",
 		Kind: Write,
+		Asks: "before it opens a space to a target audience",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
-			Space: in.SpaceID, DisplayName: in.DisplayName, Description: in.Description, DryRun: in.DryRun,
+			Space: in.SpaceID, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,
+			DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, UpdateSpaceOutput{}, err
@@ -373,6 +389,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			SpaceID:         got.Space,
 			DisplayName:     got.DisplayName,
 			Description:     got.Description,
+			Audience:        got.Audience,
 			UpdateMask:      nullable(got.UpdateMask),
 			DryRun:          got.DryRun,
 			RenderedPayload: rendered(got.Rendered),

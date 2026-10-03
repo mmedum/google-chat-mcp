@@ -3,6 +3,7 @@
 package livecheck
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -413,6 +414,71 @@ var steps = []step{
 		d.must("update_space", map[string]any{
 			"space_id": d.space, "display_name": spacePrefix + " renamed (safe to delete)",
 		})
+	}},
+
+	// Opening a space asks the person; get_space is what says Google
+	// applied it, since the tool echoes what it asked for. The space is
+	// made private again before either state is judged: a failed run
+	// keeps its scratch space, and it must not keep it open to the
+	// organization.
+	{"the space opens to the organization and closes again", "update_space", func(d *driver) {
+		asked := d.person.expect(false)
+		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); res.IsError {
+			d.t.Errorf("opening the space: %s", d.redact(res.Text))
+		}
+		if len(asked()) != 1 {
+			d.t.Errorf("opening the space put %d questions to the person, not 1", len(asked()))
+		}
+		opened := d.accessOf(d.space)
+
+		asked = d.person.expect(false)
+		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "private"}); res.IsError {
+			d.t.Errorf("the scratch space may still be open to the organization; make it private by hand: %s",
+				d.redact(res.Text))
+		}
+		if len(asked()) != 0 {
+			d.t.Errorf("making the space private asked the person %d times", len(asked()))
+		}
+		closed := d.accessOf(d.space)
+
+		if opened != "DISCOVERABLE" {
+			d.t.Errorf("after opening, access state = %q, want DISCOVERABLE", d.redact(opened))
+		}
+		if closed != "PRIVATE" {
+			d.t.Errorf("after closing, access state = %q, want PRIVATE", d.redact(closed))
+		}
+	}},
+
+	// create_space sends the audience through spaces.setup, whose own
+	// reference does not name accessSettings; only the target-audience
+	// guide says setup takes it. This is what settles it. The space is
+	// deleted before its access is judged, so a failure there leaves
+	// nothing open to the organization.
+	{"a space is created open", "create_space", func(d *driver) {
+		var out struct {
+			SpaceID string `json:"space_id"`
+		}
+		asked := d.person.expect(false)
+		d.into(d.must("create_space", map[string]any{
+			"display_name": fmt.Sprintf("%s open %d (safe to delete)", spacePrefix, time.Now().Unix()),
+			"audience":     "default",
+		}), &out)
+		if out.SpaceID == "" {
+			d.t.Fatal("create_space returned no space_id")
+		}
+		open := out.SpaceID
+		d.record(open)
+		if len(asked()) != 1 {
+			d.t.Errorf("creating an open space put %d questions to the person, not 1", len(asked()))
+		}
+		state := d.accessOf(open)
+		if res := d.call("delete_space", map[string]any{"space_id": open, "confirm_space_id": open}); res.IsError {
+			d.t.Errorf("the open space was left behind: %s", d.redact(res.Text))
+		}
+		if state != "DISCOVERABLE" {
+			d.t.Errorf("a space created with an audience reads back as %q, want DISCOVERABLE: "+
+				"spaces.setup may not take accessSettings", d.redact(state))
+		}
 	}},
 
 	// event_types is required, and it is the field the reference gets

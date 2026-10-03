@@ -204,8 +204,8 @@ and the three tools that move them say so.
 | `add_reaction` | React to a message with a Unicode emoji | `chat.messages.reactions` |
 | `remove_reaction` | Remove a reaction, by resource name or by message, emoji and person | `chat.messages.reactions` |
 | `create_group_chat` | Start an unnamed group chat with 2 to 20 people | `chat.spaces.create` |
-| `create_space` | Create a named space with up to 20 people | `chat.spaces.create` |
-| `update_space` | Rename a space or change its description | `chat.spaces` |
+| `create_space` | Create a named space with up to 20 people, private or open to a target audience | `chat.spaces.create` |
+| `update_space` | Rename a space, change its description, or open it to a target audience | `chat.spaces` |
 | `add_member` | Invite someone to a space by email | `chat.memberships` |
 | `remove_member` | Remove a membership. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
@@ -246,8 +246,9 @@ client that includes resources in its context:
   on purpose.
 - **The server asks you before what cannot be taken back.** When your
   MCP client supports elicitation, it asks before deleting a message, a
-  space or a custom emoji, adding a member, and a post or an edit that
-  mentions everyone in a space; only your accept writes.
+  space or a custom emoji, adding a member, opening a space to a target
+  audience, and a post or an edit that mentions everyone in a space;
+  only your accept writes.
   `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
   a client that cannot ask.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no

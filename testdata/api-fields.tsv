@@ -166,13 +166,16 @@ people	Organization	symbol	out	search_people reports the job title and departmen
 people	Organization	type	out	search_people reports the job title and department; nothing reads the rest of an organization entry
 people	Photo	*	alias	PersonPhoto
 people	Photo	default	out	search_people reports the picture url; nothing reads the rest
+chat	AccessSettings	*	alias	AccessSet
+chat	AccessPermissionSettings	*	alias	AccessPermissions
+chat	AccessPermissionSettings	viewSpaceMembershipSetting	out	nothing reads or sets who may see a space's member list
 chat	SetUpSpaceRequest	*	alias	SetupSpaceRequest
 chat	SetUpSpaceRequest	requestId	out	create_space builds the body itself and sends no idempotency token
 #
 # Request bodies and local shapes that model no published schema.
 # A request body is deliberately a few fields of the resource, so
 # aliasing it to that resource would claim it models the whole thing.
--	AccessSet	*	local	who may discover and join a space, as create_space asks for it, not as Chat returns it
+-	AudienceRequest	*	local	the accessSettings half of a create_space or update_space body: the one field a caller sets
 -	GroupRef	*	local	the Google Group half of a membership request body
 -	MemberRef	*	local	the member half of a membership request body
 -	MembershipRequest	*	local	the spaces.members.create body: the member or group being added

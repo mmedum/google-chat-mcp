@@ -138,6 +138,15 @@ var askCases = map[string]struct {
 		args:  map[string]any{"space_id": "spaces/AAAAspace1", "user_email": "janedoe@example.com"},
 		shows: []string{"add the person `janedoe@example.com` to the space `Team *room*`"},
 	},
+	"update_space": {
+		args: map[string]any{"space_id": "spaces/AAAAspace1", "audience": "default"},
+		shows: []string{"open the space `Team *room*`, `spaces/AAAAspace1` to the organization's default target audience, `audiences/default`?",
+			"Making it private again does not take back what they read."},
+	},
+	"create_space": {
+		args:  map[string]any{"display_name": "Launch", "audience": "audiences/AAAAaudience1"},
+		shows: []string{"create the space `Launch` open to the target audience `audiences/AAAAaudience1`?", "join without an invitation"},
+	},
 	"update_message": {
 		args:  map[string]any{"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text": "Now for <users/all>"},
 		shows: []string{"so it mentions everyone in the space?", "new text: `Now for <users/all>`"},
@@ -310,6 +319,11 @@ func TestNothingIsAskedThatWouldNotBeWritten(t *testing.T) {
 		}
 	}
 	callRaw(t, cs, &mcp.CallToolParams{Name: "send_message", Arguments: map[string]any{"space_id": "spaces/AAAAspace1", "text": "hello"}})
+	// Making a space private, renaming it, or creating one that stays
+	// private takes nothing from anyone.
+	callRaw(t, cs, &mcp.CallToolParams{Name: "update_space", Arguments: map[string]any{"space_id": "spaces/AAAAspace1", "audience": "private"}})
+	callRaw(t, cs, &mcp.CallToolParams{Name: "update_space", Arguments: map[string]any{"space_id": "spaces/AAAAspace1", "display_name": "Team"}})
+	callRaw(t, cs, &mcp.CallToolParams{Name: "create_space", Arguments: map[string]any{"display_name": "Launch"}})
 	if n := len(p.asked()); n != 0 {
 		t.Errorf("asked %d questions", n)
 	}
