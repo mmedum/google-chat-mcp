@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v3/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
 )
 
 // staticToken is a TokenSource that never calls Google.
