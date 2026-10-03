@@ -96,9 +96,8 @@ func requireCustomEmoji(field, value string) (string, error) {
 // requireGroup checks that an argument names a Google Group.
 //
 // No bare form: a group id is a Cloud Identity id with no shape of its
-// own, so "groups/" is the only thing that says what the value is. This
-// server cannot look one up — Chat has no group lookup and neither has
-// the People API — so the caller brings it.
+// own, so "groups/" is the only thing that says what the value is.
+// find_group turns a group's address into one.
 func requireGroup(value string) (string, error) {
 	return requireShape("group_name", value, groupName, "groups/{group}")
 }

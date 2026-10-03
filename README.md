@@ -77,7 +77,8 @@ command below.
 
 You need your own OAuth client. It takes about fifteen minutes once, and
 [`docs/gcp-setup.md`](docs/gcp-setup.md) walks through it. In short:
-create a project, enable the Google Chat API and the People API,
+create a project, enable the Google Chat API, the People API and the
+Cloud Identity API,
 configure the consent screen with the scopes this server asks for, and
 create an **OAuth 2.0 Client ID** of type **Desktop app**. Download the
 JSON.
@@ -172,8 +173,9 @@ and the three tools that move them say so.
 | `download_attachment` | Save a message's attachment into the server's local directory | `chat.messages.readonly` |
 | `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only` |
 | `search_people` | Turn a name into an email address, from the directory and your contacts | `directory.readonly`, `contacts.readonly` |
-| `list_members` | Who is in a space, resolved to names and addresses | `chat.memberships.readonly`, `directory.readonly` |
-| `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly` |
+| `find_group` | Turn a Google Group's email address into the id `add_member` takes | `cloud-identity.groups.readonly` |
+| `list_members` | Who is in a space, people and groups resolved to names and addresses | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
+| `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `update_member_role` | Make someone a member, manager or assistant manager | `chat.memberships` |
 | `list_reactions` | Reactions on a message | `chat.messages.reactions` |
 | `list_pinned_messages` | What a space has pinned | `chat.spaces.pins.readonly` |

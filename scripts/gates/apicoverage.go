@@ -129,6 +129,9 @@ const (
 	verdictUsed        = "used"
 	verdictOut         = "out"
 	verdictUnreachable = "unreachable"
+	// noScopePublished is the reason on an unreachable row whose method
+	// publishes no scope to name.
+	noScopePublished = "none published"
 )
 
 // clientDir holds the client whose request literals bind a row to a
@@ -152,8 +155,9 @@ type apiSource struct {
 
 // apis is every API this server can reach.
 var apis = map[string]apiSource{
-	"chat":   {discovery: "https://chat.googleapis.com/$discovery/rest?version=v1"},
-	"people": {discovery: "https://people.googleapis.com/$discovery/rest?version=v1"},
+	"chat":          {discovery: "https://chat.googleapis.com/$discovery/rest?version=v1"},
+	"people":        {discovery: "https://people.googleapis.com/$discovery/rest?version=v1"},
+	"cloudidentity": {discovery: "https://cloudidentity.googleapis.com/$discovery/rest?version=v1"},
 	"openid": {handListed: "one OpenID Connect endpoint, described by a provider " +
 		"configuration rather than a discovery document"},
 }
@@ -428,7 +432,9 @@ func checkPublished(entries []coverageEntry, published map[methodKey]apiMethod) 
 //
 // The reason on an `unreachable` row names the scope, and the gate holds
 // that too: a scope Google does not list for the method is a reason that
-// sounds checked and is not.
+// sounds checked and is not. A method that publishes no scope at all —
+// Cloud Identity's userinvitations, as of 2026-10 — has nothing to name,
+// so its row says noScopePublished, and that is held to the empty list.
 func checkReachable(entries []coverageEntry, published map[methodKey]apiMethod) []string {
 	var problems []string
 	for _, e := range entries {
@@ -446,7 +452,10 @@ func checkReachable(entries []coverageEntry, published map[methodKey]apiMethod) 
 				"asks for authorizes it — Google accepts only %s. Mark it %s; the reason it was left "+
 				"out is not a choice anybody made", coverageFile, e.line, e.key, e.verdict,
 				strings.Join(m.Scopes, " "), verdictUnreachable))
-		case e.verdict == verdictUnreachable && !slices.Contains(m.Scopes, e.reason):
+		case e.verdict == verdictUnreachable && len(m.Scopes) == 0 && e.reason != noScopePublished:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s publishes no scope, so its reason must be %q. Got %q",
+				coverageFile, e.line, e.key, noScopePublished, e.reason))
+		case e.verdict == verdictUnreachable && len(m.Scopes) > 0 && !slices.Contains(m.Scopes, e.reason):
 			problems = append(problems, fmt.Sprintf("%s:%d: %s is %s, so its reason must name one scope "+
 				"Google accepts for it — %s. Got %q", coverageFile, e.line, e.key, verdictUnreachable,
 				strings.Join(m.Scopes, " "), e.reason))

@@ -282,8 +282,8 @@ people who paid the most for consent.
 ### The gap to the API is written down
 
 Two files, and the split is which of them a person writes.
-`testdata/api-methods.json` is every method of the Chat and People APIs
-with its verb and path, as Google published them; `make api-diff` writes
+`testdata/api-methods.json` is every method of the Chat, People and
+Cloud Identity APIs with its verb and path, as Google published them; `make api-diff` writes
 it and nobody edits it. `testdata/api-coverage.tsv` is one verdict per
 method, by hand: `used` names the `gchat.Client` method that implements
 it, `out` gives the reason it is deliberately not called.
@@ -388,6 +388,18 @@ contradicted a document, which won.
 | No API lists target audiences | Their ids come from the Admin console URL, `admin.google.com/ac/targetaudiences/{id}`, per the same guide. `audiences/default` is the organization's default. So `audience` takes an id and cannot offer choices |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 | A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
+
+### Cloud Identity, for Google Groups
+
+| What | Verdict |
+|---|---|
+| Chat names a group by its Cloud Identity id | Chat discovery (revision 20260928): a group member's name is "a group in Cloud Identity Groups API. Format: groups/{group}", and `spaces.setup` says to find it with `groups.lookup`; a group's email is not accepted. So `find_group` asks Cloud Identity and hands the name to `add_member` unchanged |
+| `groups.lookup` turns an address into that name | Cloud Identity discovery (revision 20260930): `GET v1/groups:lookup?groupKey.id=<email>` answers `{"name": "groups/{id}"}`, and `groups.get` gives the group's `displayName` and its address in `groupKey.id` |
+| `cloud-identity.groups.readonly` is the narrowest scope that works | Both methods accept it, `cloud-identity.groups` and `cloud-platform`; the other two are wider. Google's scopes page gives it no tier. The setup guide says an ordinary user may call the API with their own OAuth sign-in |
+| Which groups a person can see is not documented per method | Google's help on group settings says a group's "Who can see group" decides who can find it, and lists "Group members" first. Live 2026-10-03: `groups.lookup` answers 403, not 404, for an address no group has, so a missing group and a hidden one look alike. `find_group` says it cannot tell which, rather than claiming either |
+| Five Cloud Identity methods publish no scope | `customers.userinvitations.*` lists none in discovery revision 20260930. The coverage gate marks such a method `unreachable` with the reason `none published`, since there is no scope to name |
+| A group read asks only for the fields it reads | `fields=name,groupKey,displayName`, the `fields` system parameter every Google API takes (cloud.google.com/apis/docs/system-parameters, the page `prettyPrint` cites). A group also carries its parent, labels and timestamps, and every field decoded but not modeled is logged as schema drift, so without it each read raised four false alarms |
+| A disabled API answers 403 `SERVICE_DISABLED` | The AIP-193 `ErrorInfo` reason; the older frontend says `accessNotConfigured`. It was reported as a plain permission refusal, which points the person at the wrong fix, so it has its own message naming the setup page |
 
 ### MCP, and the clients that read it
 

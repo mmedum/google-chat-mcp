@@ -26,6 +26,17 @@
 # Two APIs publish a Membership. This server's is Chat's: who is in a
 # space. People's is a contact group's membership, which it never reads.
 chat	Membership	*	owner	Chat's: who is in a space, which list_members and add_member work on
+chat	Group	*	owner	Chat's: a Google Group as a member of a space, named groups/{id}
+chat	ListMembershipsResponse	*	owner	Chat's: a page of a space's members
+cloudidentity	Group	*	alias	IdentityGroup
+cloudidentity	Group	additionalGroupKeys	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	createTime	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	description	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	dynamicGroupMetadata	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	externalIds	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	labels	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	parent	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Group	updateTime	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
 #
 # Names that collide with something else entirely. Chat publishes a
 # Section and a SectionItem of cards and widgets, for a message's card

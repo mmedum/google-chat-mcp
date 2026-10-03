@@ -52,8 +52,8 @@ type Member struct {
 	Name        string
 	DisplayName string
 	// Email is the address Chat sent, or the People API's when Chat
-	// sent none. It is empty for a group and for a person neither
-	// named.
+	// sent none; for a group, Cloud Identity's. It is empty for anyone
+	// none of them named.
 	Email string
 	Role  string
 	State string
@@ -114,15 +114,20 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 	}
 
 	users := make([]*gchat.User, 0, len(resp.Memberships))
+	var groupNames []string
 	for _, m := range resp.Memberships {
 		users = append(users, m.Member)
+		if m.GroupMember != nil {
+			groupNames = append(groupNames, m.GroupMember.Name)
+		}
 	}
 	people := s.resolvePeople(ctx, users)
+	groups := s.resolveGroups(ctx, groupNames)
 
 	out := make([]Member, 0, len(resp.Memberships))
 	var unparsed int
 	for _, m := range resp.Memberships {
-		row, known := memberRow(m, people)
+		row, known := memberRow(m, people, groups)
 		if !known {
 			// Neither a person nor a group: Google has added a third
 			// kind of member. Dropping the row is the only honest
@@ -173,8 +178,12 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 		return nil, Classify(err)
 	}
 	// One lookup, and a failure costs the address and nothing else,
-	// which is the rule everywhere a person is resolved.
-	row, _ := memberRow(*got, s.resolvePeople(ctx, []*gchat.User{got.Member}))
+	// which is the rule everywhere a person or a group is resolved.
+	var groups map[string]Group
+	if got.GroupMember != nil {
+		groups = s.resolveGroups(ctx, []string{got.GroupMember.Name})
+	}
+	row, _ := memberRow(*got, s.resolvePeople(ctx, []*gchat.User{got.Member}), groups)
 	return &row, nil
 }
 
@@ -183,7 +192,7 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 // membership is for, users/{id} or groups/{id}, not the membership's
 // own name, which the row carries separately. known is false for a
 // kind of member this server does not recognize.
-func memberRow(m gchat.Membership, people map[string]directory.Person) (row Member, known bool) {
+func memberRow(m gchat.Membership, people map[string]directory.Person, groups map[string]Group) (row Member, known bool) {
 	row = Member{
 		Membership:  m.Name,
 		Role:        narrowEnum(m.Role, memberRoles, "ROLE_UNSPECIFIED"),
@@ -198,8 +207,11 @@ func memberRow(m gchat.Membership, people map[string]directory.Person) (row Memb
 		row.Email = person.Email
 		row.DisplayName = person.DisplayName
 	case m.GroupMember != nil:
+		group := groups[m.GroupMember.Name]
 		row.Kind = KindGroup
 		row.Name = m.GroupMember.Name
+		row.Email = group.Email
+		row.DisplayName = group.DisplayName
 	default:
 		return row, false
 	}

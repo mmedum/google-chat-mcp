@@ -1,6 +1,6 @@
 package gchat
 
-// Wire types for the Chat and People APIs.
+// Wire types for the Chat and People APIs; the Cloud Identity ones are in groups.go.
 //
 // These mirror Google's JSON, not the tool surface. A field here is
 // named as Google names it. The tool-facing shapes live in

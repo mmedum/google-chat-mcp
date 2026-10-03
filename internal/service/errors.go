@@ -186,6 +186,16 @@ func Classify(err error) error {
 			Message: "Google is rate limiting this account. Wait a moment and try again.",
 			err:     err,
 		}
+	case gchat.IsServiceDisabled(err):
+		// Google's own message names the API and links to the page
+		// that enables it, which is the fix.
+		return &Error{
+			Class: ClassForbidden,
+			Message: fmt.Sprintf("Google refused this because the API it uses is not enabled on the Google "+
+				"Cloud project your OAuth client belongs to: %s. Enable it, wait a minute, and try again; "+
+				"docs/gcp-setup.md lists the APIs this server uses.", apiErr.Message),
+			err: err,
+		}
 	case gchat.IsForbidden(err):
 		// Not "this is a permission problem": Google answers a deleted
 		// space with this same 403, saying "or the resource doesn't

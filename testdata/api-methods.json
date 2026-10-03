@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-01",
+  "fetched": "2026-10-03",
   "apis": {
     "chat": {
       "customEmojis.create": {
@@ -494,6 +494,553 @@
         "path": "v1/{+name}",
         "scopes": [
           "https://www.googleapis.com/auth/chat.users.readstate"
+        ]
+      }
+    },
+    "cloudidentity": {
+      "allowlistedDomains.create": {
+        "verb": "POST",
+        "path": "v1/allowlistedDomains",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains"
+        ]
+      },
+      "allowlistedDomains.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains"
+        ]
+      },
+      "allowlistedDomains.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains",
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains.readonly"
+        ]
+      },
+      "allowlistedDomains.list": {
+        "verb": "GET",
+        "path": "v1/allowlistedDomains",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains",
+          "https://www.googleapis.com/auth/cloud-identity.allowlisteddomains.readonly"
+        ]
+      },
+      "customers.userinvitations.cancel": {
+        "verb": "POST",
+        "path": "v1/{+name}:cancel"
+      },
+      "customers.userinvitations.get": {
+        "verb": "GET",
+        "path": "v1/{+name}"
+      },
+      "customers.userinvitations.isInvitableUser": {
+        "verb": "GET",
+        "path": "v1/{+name}:isInvitableUser"
+      },
+      "customers.userinvitations.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/userinvitations"
+      },
+      "customers.userinvitations.send": {
+        "verb": "POST",
+        "path": "v1/{+name}:send"
+      },
+      "devices.cancelWipe": {
+        "verb": "POST",
+        "path": "v1/{+name}:cancelWipe",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.create": {
+        "verb": "POST",
+        "path": "v1/devices",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.approve": {
+        "verb": "POST",
+        "path": "v1/{+name}:approve",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.block": {
+        "verb": "POST",
+        "path": "v1/{+name}:block",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.cancelWipe": {
+        "verb": "POST",
+        "path": "v1/{+name}:cancelWipe",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.clientStates.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.deviceUsers.clientStates.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/clientStates",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.deviceUsers.clientStates.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.deviceUsers.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.deviceUsers.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/deviceUsers",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.deviceUsers.lookup": {
+        "verb": "GET",
+        "path": "v1/{+parent}:lookup",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices.lookup"
+        ]
+      },
+      "devices.deviceUsers.wipe": {
+        "verb": "POST",
+        "path": "v1/{+name}:wipe",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "devices.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.list": {
+        "verb": "GET",
+        "path": "v1/devices",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices",
+          "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+        ]
+      },
+      "devices.wipe": {
+        "verb": "POST",
+        "path": "v1/{+name}:wipe",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.devices"
+        ]
+      },
+      "groups.create": {
+        "verb": "POST",
+        "path": "v1/groups",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.getSecuritySettings": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.list": {
+        "verb": "GET",
+        "path": "v1/groups",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.lookup": {
+        "verb": "GET",
+        "path": "v1/groups:lookup",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.checkTransitiveMembership": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:checkTransitiveMembership",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.create": {
+        "verb": "POST",
+        "path": "v1/{+parent}/memberships",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.getMembershipGraph": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:getMembershipGraph",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.lookup": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:lookup",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.modifyMembershipRoles": {
+        "verb": "POST",
+        "path": "v1/{+name}:modifyMembershipRoles",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.searchDirectGroups": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:searchDirectGroups",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.searchTransitiveGroups": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:searchTransitiveGroups",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.memberships.searchTransitiveMemberships": {
+        "verb": "GET",
+        "path": "v1/{+parent}/memberships:searchTransitiveMemberships",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.search": {
+        "verb": "GET",
+        "path": "v1/groups:search",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-identity.groups.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "groups.updateSecuritySettings": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.groups",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundOidcSsoProfiles.create": {
+        "verb": "POST",
+        "path": "v1/inboundOidcSsoProfiles",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundOidcSsoProfiles.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundOidcSsoProfiles.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundOidcSsoProfiles.list": {
+        "verb": "GET",
+        "path": "v1/inboundOidcSsoProfiles",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundOidcSsoProfiles.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.create": {
+        "verb": "POST",
+        "path": "v1/inboundSamlSsoProfiles",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.idpCredentials.add": {
+        "verb": "POST",
+        "path": "v1/{+parent}/idpCredentials:add",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.idpCredentials.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.idpCredentials.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.idpCredentials.list": {
+        "verb": "GET",
+        "path": "v1/{+parent}/idpCredentials",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.list": {
+        "verb": "GET",
+        "path": "v1/inboundSamlSsoProfiles",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSamlSsoProfiles.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSsoAssignments.create": {
+        "verb": "POST",
+        "path": "v1/inboundSsoAssignments",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSsoAssignments.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSsoAssignments.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSsoAssignments.list": {
+        "verb": "GET",
+        "path": "v1/inboundSsoAssignments",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso.readonly",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "inboundSsoAssignments.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.inboundsso",
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "policies.create": {
+        "verb": "POST",
+        "path": "v1/policies",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.policies"
+        ]
+      },
+      "policies.delete": {
+        "verb": "DELETE",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.policies"
+        ]
+      },
+      "policies.get": {
+        "verb": "GET",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.policies",
+          "https://www.googleapis.com/auth/cloud-identity.policies.readonly"
+        ]
+      },
+      "policies.list": {
+        "verb": "GET",
+        "path": "v1/policies",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.policies",
+          "https://www.googleapis.com/auth/cloud-identity.policies.readonly"
+        ]
+      },
+      "policies.patch": {
+        "verb": "PATCH",
+        "path": "v1/{+name}",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-identity.policies"
         ]
       }
     },

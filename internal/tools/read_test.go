@@ -281,7 +281,7 @@ func TestListSectionItemsThroughASession(t *testing.T) {
 // than derived, because deriving it from the annotations would make the
 // test agree with whatever the code says.
 var readTools = []string{
-	"find_group_chats",
+	"find_group", "find_group_chats",
 	"get_availability", "get_custom_emoji", "get_member", "get_message", "get_messages", "get_space",
 	"get_space_event", "get_space_notification_setting", "get_space_read_state",
 	"get_thread", "get_thread_read_state",

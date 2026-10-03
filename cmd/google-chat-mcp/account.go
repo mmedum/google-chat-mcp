@@ -257,10 +257,11 @@ func grantedScopes(token *oauth2.Token, admin bool) []string {
 // worth failing a login over; the address is a convenience.
 func accountEmail(ctx context.Context, cfg config.Config, accessToken string) string {
 	client := gchat.New(gchat.Options{
-		ChatBase:   cfg.ChatAPIBase,
-		PeopleBase: cfg.PeopleAPIBase,
-		Timeout:    cfg.HTTPTimeout,
-		Tokens:     auth.StaticTokens(accessToken),
+		ChatBase:          cfg.ChatAPIBase,
+		PeopleBase:        cfg.PeopleAPIBase,
+		CloudIdentityBase: cfg.CloudIdentityBase,
+		Timeout:           cfg.HTTPTimeout,
+		Tokens:            auth.StaticTokens(accessToken),
 	})
 	info, err := client.Userinfo(ctx)
 	if err != nil {

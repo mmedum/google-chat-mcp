@@ -13,6 +13,9 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
+- **Breaking:** Enable the Cloud Identity API on your OAuth client's Google Cloud project, add `https://www.googleapis.com/auth/cloud-identity.groups.readonly` to its consent screen, and run `google-chat-mcp login` again. That turns on `find_group`, which turns a Google Group's email address into the `groups/{id}` that `add_member` takes, and gives a group its address and name in `list_members` and `get_member`. Until you do, only these lookups are affected: `find_group` says what is missing, and a group row shows `groups/{id}` alone, as before.
+- A call refused because its API is not enabled on your Google Cloud project now says so, instead of reporting a permission problem.
+
 - `update_space` and `create_space` take `audience`, which opens a named space to the organization's default target audience (`default`) or to one an administrator set up (`audiences/{id}`). Anyone in it can find the space, read it and join without an invitation. `audience: "private"` makes a space private again. The server asks you before opening a space, when your client can ask.
 
 ## [3.0.1] - 2026-10-01

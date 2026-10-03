@@ -202,6 +202,27 @@ internal one.
 Since almost everyone running this creates an internal app for
 themselves, this usually costs nothing at all.
 
+## `find_group` cannot find a group
+
+`find_group` asks Cloud Identity, which answers only for the groups the
+signed-in account can see.
+
+- **`[forbidden]` saying the API is not enabled.** The Cloud Identity
+  API is off on the project your OAuth client belongs to. Enable it
+  (`docs/gcp-setup.md`, section 2), wait a minute, and try again.
+- **`[scope]` naming `cloud-identity.groups.readonly`.** The token
+  predates the scope. Add it to the consent screen and run
+  `google-chat-mcp login` again.
+- **`[forbidden]` saying no group is visible.** No group has that
+  address, or its owner keeps it visible to its own members only.
+  Google answers both the same way, so check the spelling first. The
+  group's "Who can see group" setting decides the second; its owner can
+  change it or add the group for you.
+
+`list_members` names groups through the same lookup. Without it, a group
+row still arrives, with only `groups/{id}`, and a
+`group_lookup_degraded` warning goes to stderr.
+
 ## `add_member` succeeds on someone already in the space
 
 Google's `spaces.members.create` returns 200 with the existing

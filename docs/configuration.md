@@ -28,6 +28,7 @@ else.
 | `GCM_DIRECTORY_CACHE_TTL_SECONDS` | `--directory-cache-ttl` | `24h` | How long a resolved email address stays cached. Same formats as the timeout. Between 1 minute and 365 days. |
 | `GCM_CHAT_API_BASE` | `--chat-api-base` | `https://chat.googleapis.com/v1` | Chat API root. Exists so a test can point at a local server. |
 | `GCM_PEOPLE_API_BASE` | `--people-api-base` | `https://people.googleapis.com/v1` | People API root, same reason. |
+| `GCM_CLOUD_IDENTITY_API_BASE` | `--cloud-identity-api-base` | `https://cloudidentity.googleapis.com/v1` | Cloud Identity API root, same reason. |
 | `GCM_CLIENT_SECRET` | `--client-secret` | *(from the profile)* | Path to the OAuth Desktop client JSON. `login` records this in the profile, so it is normally only passed once. |
 | `GCM_LOCAL_DIR` | `--local-dir` | *(unset)* | The one directory attachments are downloaded to and uploaded from. Unset means no file transfer at all: `download_attachment` and `upload_attachment` refuse and say so. Must be an absolute path — a relative one would mean whatever directory the MCP client happened to launch the server from. A download never overwrites, and an upload outside this directory is refused with the symlinks resolved first. |
 

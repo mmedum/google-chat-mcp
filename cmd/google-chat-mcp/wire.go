@@ -60,13 +60,14 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*deps, err
 	d.TokenSource, d.CredentialSource = tokens, source
 
 	d.Client = gchat.New(gchat.Options{
-		ChatBase:   cfg.ChatAPIBase,
-		PeopleBase: cfg.PeopleAPIBase,
-		Timeout:    cfg.HTTPTimeout,
-		MaxRetries: cfg.HTTPMaxRetries,
-		Tokens:     d.TokenSource,
-		Logger:     log,
-		UserAgent:  "google-chat-mcp/" + version.String(),
+		ChatBase:          cfg.ChatAPIBase,
+		PeopleBase:        cfg.PeopleAPIBase,
+		CloudIdentityBase: cfg.CloudIdentityBase,
+		Timeout:           cfg.HTTPTimeout,
+		MaxRetries:        cfg.HTTPMaxRetries,
+		Tokens:            d.TokenSource,
+		Logger:            log,
+		UserAgent:         "google-chat-mcp/" + version.String(),
 	})
 	d.Service = service.New(d.Client, directoryResolver(cfg, d.Client, log), cfg, log)
 	return d, nil

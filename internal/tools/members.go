@@ -16,7 +16,7 @@ type MemberOutput struct {
 	MembershipName string  `json:"membership_name" jsonschema:"the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id"`
 	MemberID       string  `json:"member_id" jsonschema:"who the membership is for: users/{id} for a person, groups/{id} for a group"`
 	DisplayName    *string `json:"display_name" jsonschema:"what to call them, or null when Google gave no name"`
-	Email          *string `json:"email" jsonschema:"the person's email address; null for a group and for anyone neither Chat nor the People API named one for"`
+	Email          *string `json:"email" jsonschema:"the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one"`
 	Role           string  `json:"role" jsonschema:"ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize"`
 	State          string  `json:"state" jsonschema:"JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED"`
 	Affiliation    string  `json:"affiliation,omitempty" jsonschema:"INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in"`
@@ -57,7 +57,8 @@ func registerMembers(s *mcp.Server, d Deps) {
 		Description: "List the members of a Google Chat space: people, Google Groups, and anyone invited who has " +
 			"not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so " +
 			"check state before reporting someone as present. People come back with the email Chat sends, or one " +
-			"looked up through the People API when Chat sends none; a Google Group has neither an email nor a name of its own, only groups/{id}. Default " +
+			"looked up through the People API when Chat sends none; a Google Group comes back with the address and " +
+			"name Cloud Identity gives it, or with only groups/{id} when that lookup is not granted. Default " +
 			"50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null " +
 			"next_page_token means the space has more members than came back, so do not report the result as the " +
 			"whole membership.",
@@ -85,7 +86,7 @@ func registerMembers(s *mcp.Server, d Deps) {
 type AddMemberInput struct {
 	SpaceID   string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}"`
 	UserEmail string `json:"user_email,omitempty" jsonschema:"their email address; search_people turns a name into one. Pass this or group_name, not both"`
-	GroupName string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}. The id comes from the Cloud Identity API, which this server cannot query, so bring it with you. Google allows a group only in a named space, never a group chat or a direct message"`
+	GroupName string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message"`
 	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
 }
 

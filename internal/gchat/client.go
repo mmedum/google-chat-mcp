@@ -1,5 +1,5 @@
-// Package gchat is a raw REST client for the Google Chat and People
-// APIs, with its own wire types.
+// Package gchat is a raw REST client for the Google Chat, People and Cloud
+// Identity APIs, with its own wire types.
 //
 // It does not use google.golang.org/api: that package drags in gRPC and
 // telemetry for a handful of JSON calls, and its generated types accept
@@ -65,11 +65,12 @@ type Options struct {
 	// HTTP is the transport. Tests inject one that never leaves the
 	// process; the zero value builds a client with the timeout below.
 	HTTP *http.Client
-	// ChatBase, PeopleBase and OIDCBase are API roots without a
-	// trailing slash.
-	ChatBase   string
-	PeopleBase string
-	OIDCBase   string
+	// ChatBase, PeopleBase, OIDCBase and CloudIdentityBase are API
+	// roots without a trailing slash.
+	ChatBase          string
+	PeopleBase        string
+	OIDCBase          string
+	CloudIdentityBase string
 	// Timeout bounds one HTTP attempt.
 	Timeout time.Duration
 	// MaxRetries is the number of extra attempts after the first.
@@ -80,29 +81,31 @@ type Options struct {
 	Logger *slog.Logger
 	// UserAgent identifies this build to Google.
 	UserAgent string
-	// ReadLimiter, PeopleLimiter and WriteLimiter override the
-	// per-user defaults.
-	ReadLimiter, PeopleLimiter, WriteLimiter *rate.Limiter
+	// ReadLimiter, PeopleLimiter, GroupsLimiter and WriteLimiter
+	// override the per-user defaults.
+	ReadLimiter, PeopleLimiter, GroupsLimiter, WriteLimiter *rate.Limiter
 	// Sleep is time.Sleep in production and a stub in tests, so a
 	// backoff test does not actually wait.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
 
-// Client calls the Chat and People APIs.
+// Client calls the Chat, People and Cloud Identity APIs.
 type Client struct {
-	http       *http.Client
-	chatBase   string
-	peopleBase string
-	oidcBase   string
-	uploadBase string
-	maxRetries int
-	tokens     TokenSource
-	log        *slog.Logger
-	userAgent  string
-	readLim    *rate.Limiter
-	peopleLim  *rate.Limiter
-	writeLim   *rate.Limiter
-	sleep      func(ctx context.Context, d time.Duration) error
+	http         *http.Client
+	chatBase     string
+	peopleBase   string
+	oidcBase     string
+	identityBase string
+	uploadBase   string
+	maxRetries   int
+	tokens       TokenSource
+	log          *slog.Logger
+	userAgent    string
+	readLim      *rate.Limiter
+	peopleLim    *rate.Limiter
+	groupsLim    *rate.Limiter
+	writeLim     *rate.Limiter
+	sleep        func(ctx context.Context, d time.Duration) error
 	// timeout bounds one attempt: the whole call for a JSON request,
 	// and the response headers plus each individual Read for a
 	// transfer. See attemptStream.
@@ -127,18 +130,20 @@ type Client struct {
 // configuration problem caught in internal/config.
 func New(o Options) *Client {
 	c := &Client{
-		http:       o.HTTP,
-		chatBase:   strings.TrimRight(o.ChatBase, "/"),
-		peopleBase: strings.TrimRight(o.PeopleBase, "/"),
-		oidcBase:   strings.TrimRight(o.OIDCBase, "/"),
-		maxRetries: o.MaxRetries,
-		tokens:     o.Tokens,
-		log:        o.Logger,
-		userAgent:  o.UserAgent,
-		readLim:    o.ReadLimiter,
-		peopleLim:  o.PeopleLimiter,
-		writeLim:   o.WriteLimiter,
-		sleep:      o.Sleep,
+		http:         o.HTTP,
+		chatBase:     strings.TrimRight(o.ChatBase, "/"),
+		peopleBase:   strings.TrimRight(o.PeopleBase, "/"),
+		oidcBase:     strings.TrimRight(o.OIDCBase, "/"),
+		identityBase: strings.TrimRight(o.CloudIdentityBase, "/"),
+		maxRetries:   o.MaxRetries,
+		tokens:       o.Tokens,
+		log:          o.Logger,
+		userAgent:    o.UserAgent,
+		readLim:      o.ReadLimiter,
+		peopleLim:    o.PeopleLimiter,
+		groupsLim:    o.GroupsLimiter,
+		writeLim:     o.WriteLimiter,
+		sleep:        o.Sleep,
 	}
 	c.timeout = o.Timeout
 	if c.timeout <= 0 {
@@ -156,6 +161,9 @@ func New(o Options) *Client {
 	if c.oidcBase == "" {
 		c.oidcBase = DefaultOIDCBase
 	}
+	if c.identityBase == "" {
+		c.identityBase = DefaultCloudIdentityBase
+	}
 	if c.log == nil {
 		c.log = slog.New(slog.DiscardHandler)
 	}
@@ -168,6 +176,9 @@ func New(o Options) *Client {
 	if c.peopleLim == nil {
 		c.peopleLim = rate.NewLimiter(defaultReadRate, defaultReadBurst)
 	}
+	if c.groupsLim == nil {
+		c.groupsLim = rate.NewLimiter(defaultReadRate, defaultReadBurst)
+	}
 	if c.writeLim == nil {
 		c.writeLim = rate.NewLimiter(defaultWriteRate, defaultWriteBurst)
 	}
@@ -176,7 +187,7 @@ func New(o Options) *Client {
 	}
 	c.uploadBase = uploadBaseOf(c.chatBase)
 	c.allowed = map[string]bool{}
-	for _, base := range []string{c.chatBase, c.peopleBase, c.oidcBase, c.uploadBase} {
+	for _, base := range []string{c.chatBase, c.peopleBase, c.oidcBase, c.identityBase, c.uploadBase} {
 		if u, err := url.Parse(base); err == nil {
 			c.allowed[originKey(u)] = true
 		}
@@ -317,6 +328,7 @@ const (
 	chatAPI api = iota
 	peopleAPI
 	oidcAPI
+	cloudIdentityAPI
 	// uploadAPI is Chat again, at the /upload prefix Google serves
 	// media uploads from.
 	uploadAPI
@@ -527,6 +539,8 @@ func (c *Client) endpointFor(r request) (endpoint, path string) {
 		base = c.peopleBase
 	case oidcAPI:
 		base = c.oidcBase
+	case cloudIdentityAPI:
+		base = c.identityBase
 	case uploadAPI:
 		base = c.uploadBase
 	case chatAPI:
@@ -609,8 +623,9 @@ func (c *Client) newRequest(ctx context.Context, r request, endpoint, path strin
 
 // limiter is the one Google meters this call under.
 //
-// Chat and People are metered separately, so they get one each: a burst
-// of name lookups must not throttle the message read waiting behind it.
+// Chat, People and Cloud Identity are metered separately, so they get
+// one each: a burst of name lookups must not throttle the message read
+// waiting behind it.
 // It is chosen from the request rather than passed in, because a send
 // path that picks its own would sooner or later put a write on the read
 // limiter.
@@ -620,6 +635,8 @@ func (c *Client) limiter(r request) *rate.Limiter {
 		return c.writeLim
 	case r.api == peopleAPI:
 		return c.peopleLim
+	case r.api == cloudIdentityAPI:
+		return c.groupsLim
 	}
 	return c.readLim
 }
