@@ -13,8 +13,8 @@
 // Google's own reference; none of them could have been found by a test.
 //
 // Two rules make it safe to run against a real Workspace. Everything
-// happens inside one scratch space the run creates and deletes, so
-// nothing it touches belongs to anybody. And a step may print only an
+// happens inside scratch spaces the run creates and deletes, so nothing
+// it touches belongs to anybody. And a step may print only an
 // identifier this run made — see redact — because no pattern can tell an
 // invented space id from a real one.
 //
@@ -227,6 +227,30 @@ func (d *driver) seed() {
 	}
 	d.space = out.SpaceID
 	d.record(out.SpaceID)
+}
+
+// accessOf is a space's access state as get_space reports it, or ""
+// when it cannot be read. It never stops the step: the steps that call
+// it have a space to close or delete after it.
+func (d *driver) accessOf(space string) string {
+	d.t.Helper()
+	res := d.call("get_space", map[string]any{"space_id": space})
+	if res.IsError {
+		d.t.Errorf("get_space: %s", d.redact(res.Text))
+		return ""
+	}
+	var out struct {
+		AccessState *string `json:"access_state"`
+	}
+	raw, err := json.Marshal(res.Structured)
+	if err == nil {
+		err = json.Unmarshal(raw, &out)
+	}
+	if err != nil || out.AccessState == nil {
+		d.t.Error("get_space reported no access state")
+		return ""
+	}
+	return *out.AccessState
 }
 
 // record remembers a resource this run created, so redact will let it

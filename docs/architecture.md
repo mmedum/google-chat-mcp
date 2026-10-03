@@ -190,11 +190,14 @@ fetches what landed and returns that.
 
 The interaction hint asks a client to put a person in the loop, and
 whether it does is the client's decision. So when the client supports
-MCP form elicitation, the server asks the person itself before six
+MCP form elicitation, the server asks the person itself before eight
 writes: `delete_message`, `delete_space`, `delete_custom_emoji`,
 `add_member`, a `send_message` whose text mentions everyone in the
-space, `<users/all>`, and an `update_message` that edits such a mention
-in, since an edit notifies whoever it newly mentions. The mention is
+space, `<users/all>`, an `update_message` that edits such a mention
+in, since an edit notifies whoever it newly mentions, and an
+`update_space` or `create_space` that opens a space to a target
+audience, since whoever is in it can read the space and making it
+private again does not take that back. The mention is
 matched regardless of case. `GCM_ASK_BEFORE_SEND=true` makes every post
 and every edit ask.
 The set is the rare, irreversible or wide-reaching writes, chosen by the
@@ -379,6 +382,10 @@ contradicted a document, which won.
 | The media upload protocol is only in the discovery document | `media.upload` is a POST to a different base with a JSON metadata part; the guide does not say so. `downloadUri` is documented as not for downloading, and is never fetched |
 | The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. Two of the four left out are not choices: `spaces.completeImport` takes only `chat.import` and `spaces.messages.attachments.get` only `chat.bot`. The other two are — `spaces.create`, because `spaces.setup` does the same thing and adds the first members, and the PUT form of a message update, which would clear cards and attachments |
 | `chat.bot` cannot be granted to this server at all | Google: "This scope only supports app authentication with service accounts. You can't authenticate with user credentials or with domain-wide delegation using this scope." Checked 2026-09-08. It is the only scope `spaces.messages.attachments.get` accepts, so that method is out of reach for a per-user client and nothing is lost by it: a message already carries its `attachment` with the `attachmentDataRef`, and the bytes come from `media.download`, which accepts `chat.messages.readonly` |
+| A space's audience goes in a patch of its own | Discovery (revision 20260928), `spaces.patch`: `access_settings.audience` needs every other mask left out, a named space, a space manager, user authentication and no import mode. Masking it with no value removes the audience, which makes the space private. So `update_space` refuses an audience beside a name or description rather than sending two patches that could half land. Live 2026-10-03: the camelCase mask `accessSettings.audience` opened a space to `audiences/default` and the empty one made it private, each read back through `get_space` |
+| Who may set a space's audience is documented two ways | The guide "Make a space discoverable to a target audience" (updated 2026-09-23) asks for a super administrator; discovery asks only for a space manager. Not settled: the maintainer runs it as an administrator, and the tool description names only the space manager rule Google enforces in the reference |
+| `spaces.setup` takes `accessSettings.audience` | Its own reference never names it; only the target-audience guide says setup takes it. Live 2026-10-03: a space created with `audiences/default` read back `DISCOVERABLE`. So `create_space` keeps `audience` |
+| No API lists target audiences | Their ids come from the Admin console URL, `admin.google.com/ac/targetaudiences/{id}`, per the same guide. `audiences/default` is the organization's default. So `audience` takes an id and cannot offer choices |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 | A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
 

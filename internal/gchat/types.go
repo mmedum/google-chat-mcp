@@ -51,12 +51,15 @@ type MembershipCnt struct {
 
 // AccessSet says who can discover and join a space.
 type AccessSet struct {
-	AccessState string `json:"accessState,omitempty"`
-	Audience    string `json:"audience,omitempty"`
-	Permissions *struct {
-		Discover *PermSetting `json:"discoverSpaceSetting,omitempty"`
-		Join     *PermSetting `json:"joinSpaceSetting,omitempty"`
-	} `json:"accessPermissionSettings,omitempty"`
+	AccessState string             `json:"accessState,omitempty"`
+	Audience    string             `json:"audience,omitempty"`
+	Permissions *AccessPermissions `json:"accessPermissionSettings,omitempty"`
+}
+
+// AccessPermissions is who may discover and who may join a space.
+type AccessPermissions struct {
+	Discover *PermSetting `json:"discoverSpaceSetting,omitempty"`
+	Join     *PermSetting `json:"joinSpaceSetting,omitempty"`
 }
 
 // PermSettings is who may do what in a space.

@@ -38,6 +38,7 @@ var (
 	sectionName   = regexp.MustCompile(`^users/` + idPattern + `/sections/` + idPattern + `$`)
 	groupName     = regexp.MustCompile(`^groups/` + idPattern + `$`)
 	emojiName     = regexp.MustCompile(`^customEmojis/` + idPattern + `$`)
+	audienceName  = regexp.MustCompile(`^audiences/` + idPattern + `$`)
 	bareIDPattern = regexp.MustCompile(`^` + idPattern + `$`)
 )
 
@@ -100,6 +101,33 @@ func requireCustomEmoji(field, value string) (string, error) {
 // the People API — so the caller brings it.
 func requireGroup(value string) (string, error) {
 	return requireShape("group_name", value, groupName, "groups/{group}")
+}
+
+// requireAudience checks that an argument names a target audience.
+//
+// A bare id is accepted, so "default" is the organization's default
+// audience and an id copied from the Admin console works as it is.
+func requireAudience(value string) (string, error) {
+	v := strings.TrimSpace(value)
+	if bareIDPattern.MatchString(v) {
+		v = "audiences/" + v
+	}
+	return requireShape("audience", v, audienceName, "audiences/{audience}")
+}
+
+// Private is the audience argument that makes a space private. A blank
+// one means the caller left the argument alone: models fill unused
+// fields with "", and that must neither refuse a rename beside it nor
+// close a space nobody asked to close.
+const Private = "private"
+
+// requireAudienceOrPrivate reads a non-blank audience argument. Private
+// comes back as "", which is no audience.
+func requireAudienceOrPrivate(value string) (string, error) {
+	if strings.EqualFold(strings.TrimSpace(value), Private) {
+		return "", nil
+	}
+	return requireAudience(value)
 }
 
 // requireSection checks that an argument names a sidebar section.

@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `update_space` and `create_space` take `audience`, which opens a named space to the organization's default target audience (`default`) or to one an administrator set up (`audiences/{id}`). Anyone in it can find the space, read it and join without an invitation. `audience: "private"` makes a space private again. The server asks you before opening a space, when your client can ask.
+
 ## [3.0.1] - 2026-10-01
 
 ### Fixed

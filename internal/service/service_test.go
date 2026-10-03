@@ -307,6 +307,23 @@ func TestGetSpaceKeepsWhatGoogleDidNotSay(t *testing.T) {
 	if got.SingleUserBotDM != nil || got.ExternalUserAllowed != nil {
 		t.Errorf("flags = %v / %v, want them absent", got.SingleUserBotDM, got.ExternalUserAllowed)
 	}
+	if got.AccessState != "" || got.Audience != "" {
+		t.Errorf("access = %q / %q, want both absent", got.AccessState, got.Audience)
+	}
+}
+
+func TestGetSpaceReadsWhoCanFindIt(t *testing.T) {
+	s := newService(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","displayName":"Team",
+		  "accessSettings":{"accessState":"DISCOVERABLE","audience":"audiences/default"}}`)
+	})
+	got, err := s.GetSpace(context.Background(), "spaces/A")
+	if err != nil {
+		t.Fatalf("GetSpace: %v", err)
+	}
+	if got.AccessState != "DISCOVERABLE" || got.Audience != "audiences/default" {
+		t.Errorf("access = %q / %q", got.AccessState, got.Audience)
+	}
 }
 
 func TestGetSpaceReadsTheFlagsWhenGoogleSendsThem(t *testing.T) {
@@ -538,6 +555,9 @@ func TestCreateSpaceSendsWhatGoogleExpects(t *testing.T) {
 	if !strings.Contains(body, `"users/janedoe@example.com"`) {
 		t.Errorf("body = %s", body)
 	}
+	if strings.Contains(body, "accessSettings") {
+		t.Errorf("body = %s, want a private space to send no accessSettings", body)
+	}
 }
 
 // A group chat has no name, so asking for one is a mistake worth
@@ -738,6 +758,111 @@ func TestUpdateSpaceRejectsAnEmptyEdit(t *testing.T) {
 	}
 	if rec.len() != 0 {
 		t.Errorf("bad arguments reached Google %d times", rec.len())
+	}
+}
+
+// An audience is its own patch: a bare id is taken as an audience's, and
+// private masks it with no value, which is how Google removes it.
+func TestUpdateSpaceSetsTheAudienceAlone(t *testing.T) {
+	for _, tc := range []struct {
+		audience string
+		wantBody string
+		want     string
+	}{
+		{"default", `{"accessSettings":{"audience":"audiences/default"}}`, "audiences/default"},
+		{" audiences/AAAAaudience1 ", `{"accessSettings":{"audience":"audiences/AAAAaudience1"}}`, "audiences/AAAAaudience1"},
+		{"private", `{"accessSettings":{}}`, "private"},
+		{" Private ", `{"accessSettings":{}}`, "private"},
+	} {
+		t.Run(tc.audience, func(t *testing.T) {
+			s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+			got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: tc.audience})
+			if err != nil {
+				t.Fatalf("UpdateSpace: %v", err)
+			}
+			sent := rec.last(t)
+			if m := sent.mask(t); m != "accessSettings.audience" {
+				t.Errorf("mask = %q", m)
+			}
+			if sent.Body != tc.wantBody {
+				t.Errorf("body = %s, want %s", sent.Body, tc.wantBody)
+			}
+			if got.Audience == nil || *got.Audience != tc.want {
+				t.Errorf("reported audience = %v, want %q", got.Audience, tc.want)
+			}
+		})
+	}
+}
+
+// Google refuses the audience beside any other mask, so the call is
+// refused here, where the argument names are still known, rather than
+// split into two patches that could half land.
+func TestUpdateSpaceRefusesAnAudienceBesideOtherFields(t *testing.T) {
+	s, rec := recorded(t, ok(`{}`))
+	name := "Renamed"
+	for _, tc := range []struct {
+		label string
+		in    UpdateSpaceInput
+	}{
+		{"with a name", UpdateSpaceInput{Space: "spaces/A", DisplayName: &name, Audience: "default"}},
+		{"with a description", UpdateSpaceInput{Space: "spaces/A", Description: &name, Audience: "private"}},
+		{"misshapen", UpdateSpaceInput{Space: "spaces/A", Audience: "audiences/"}},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			_, err := s.UpdateSpace(writeCtx(), tc.in)
+			assertClass(t, err, ClassInvalid)
+		})
+	}
+	if rec.len() != 0 {
+		t.Errorf("refused edits reached Google %d times", rec.len())
+	}
+}
+
+// A model fills unused fields with "". Beside a rename that is no
+// audience at all: the rename goes through and access is not touched.
+func TestUpdateSpaceTakesABlankAudienceAsLeftAlone(t *testing.T) {
+	name := "Renamed"
+	s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", DisplayName: &name, Audience: " "})
+	if err != nil {
+		t.Fatalf("UpdateSpace: %v", err)
+	}
+	if m := rec.last(t).mask(t); m != "displayName" || got.Audience != nil {
+		t.Errorf("mask = %q, audience = %v; want a rename alone", m, got.Audience)
+	}
+
+	_, err = s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: ""})
+	assertClass(t, err, ClassInvalid)
+	if rec.len() != 1 {
+		t.Errorf("an empty edit reached Google")
+	}
+}
+
+func TestCreateSpaceOpensToAnAudience(t *testing.T) {
+	s, rec := recorded(t, ok(`{"name":"spaces/NEW","spaceType":"SPACE","displayName":"Team"}`))
+	got, err := s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: "default"})
+	if err != nil {
+		t.Fatalf("CreateSpace: %v", err)
+	}
+	if got.Audience != "audiences/default" {
+		t.Errorf("audience = %q", got.Audience)
+	}
+	if body := rec.last(t).Body; !strings.Contains(body, `"accessSettings":{"audience":"audiences/default"}`) {
+		t.Errorf("body = %s", body)
+	}
+
+	_, err = s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: "audiences/"})
+	assertClass(t, err, ClassInvalid)
+	if rec.len() != 1 {
+		t.Errorf("a misshapen audience reached Google")
+	}
+
+	// Blank and private both make a private space.
+	for _, audience := range []string{"  ", "private"} {
+		got, err = s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: audience})
+		if err != nil || got.Audience != "" || strings.Contains(rec.last(t).Body, "accessSettings") {
+			t.Errorf("audience %q: %v, %+v, body %s", audience, err, got, rec.last(t).Body)
+		}
 	}
 }
 
