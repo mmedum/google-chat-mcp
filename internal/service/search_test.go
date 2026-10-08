@@ -278,6 +278,18 @@ func TestUpstreamSearchBuildsGooglesFilter(t *testing.T) {
 			SearchMessagesInput{Space: "spaces/AAAAspace1", Query: "deploy"},
 			`space.name = "spaces/AAAAspace1" AND "deploy"`,
 		},
+		{
+			"a kind of space is a clause",
+			SearchMessagesInput{Query: "deploy", SpaceType: "DIRECT_MESSAGE"},
+			`"deploy" AND space.space_type = "DIRECT_MESSAGE"`,
+		},
+		{
+			// Every word must be in the name, so each is its own clause.
+			"each word of a space name is a clause",
+			SearchMessagesInput{Query: "deploy", SpaceName: " Project  Alpha "},
+			`"deploy" AND space.display_name:Project AND space.display_name:Alpha`,
+		},
+		{"a space name alone is a search", SearchMessagesInput{SpaceName: "Alpha"}, `space.display_name:Alpha`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var filter, method, path string
@@ -323,6 +335,60 @@ func TestUpstreamSearchRefusesGrammarInAKeyword(t *testing.T) {
 	}
 }
 
+// A space filter is refused rather than guessed at when it could change
+// what the expression means, or names a kind Google does not have.
+func TestUpstreamSearchRefusesABadSpaceFilter(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("a refused argument must not reach Google")
+	})
+	for _, in := range []SearchMessagesInput{
+		{SpaceType: "ROOM"},
+		{SpaceName: `Alpha"`},
+		{SpaceName: "Alpha OR(b)"},
+		{SpaceName: "a:b"},
+		{Space: "spaces/AAAAspace1", Regex: "x", SpaceType: "SPACE"},
+		{Space: "spaces/AAAAspace1", Regex: "x", SpaceName: "Alpha"},
+	} {
+		_, err := s.SearchMessages(context.Background(), in)
+		assertClass(t, err, ClassInvalid)
+	}
+}
+
+// Google's search reports each hit's read state and its space's mute
+// setting in the full view, which every search asks for. What Google
+// leaves out stays unknown rather than becoming false.
+func TestUpstreamSearchCarriesReadStateAndMute(t *testing.T) {
+	var view string
+	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+		view = r.URL.Query().Get("view")
+		fmt.Fprint(w, `{"results":[
+		  {"message":{"name":"spaces/A/messages/1","text":"a"},"read":false,"spaceMuteSetting":"MUTED"},
+		  {"message":{"name":"spaces/A/messages/2","text":"b"},"read":true,"spaceMuteSetting":"UNMUTED"},
+		  {"message":{"name":"spaces/A/messages/3","text":"c"}}]}`)
+	})
+	got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Query: "x"})
+	if err != nil {
+		t.Fatalf("SearchMessages: %v", err)
+	}
+	if view != "SEARCH_MESSAGES_VIEW_FULL" {
+		t.Errorf("view = %q, want SEARCH_MESSAGES_VIEW_FULL", view)
+	}
+	show := func(b *bool) string {
+		if b == nil {
+			return "unknown"
+		}
+		return fmt.Sprint(*b)
+	}
+	var states []string
+	for _, m := range got.Matches {
+		states = append(states, "read "+show(m.Read)+", muted "+show(m.SpaceMuted))
+	}
+	want := []string{"read false, muted true", "read true, muted false", "read unknown, muted unknown"}
+	if strings.Join(states, "; ") != strings.Join(want, "; ") {
+		t.Errorf("hits = %q, want %q", states, want)
+	}
+}
+
 // A page token is the only honest way to say there is more, and
 // cap_reached is what a caller reads to know the answer is partial.
 func TestUpstreamSearchReportsAFurtherPage(t *testing.T) {
@@ -361,6 +427,22 @@ func TestAnUnreadSearchNamesBothScopes(t *testing.T) {
 	for _, want := range []string{scopes.MessagesReadonly, scopes.ReadStateReadonly} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the message %q does not name %s", err, want)
+		}
+	}
+}
+
+// A space filter reads the spaces as well as the messages, and Google's
+// refusal does not say which scope was declined.
+func TestASpaceFilteredSearchNamesBothScopes(t *testing.T) {
+	s := newService(t, status(403,
+		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
+	for _, in := range []SearchMessagesInput{{SpaceType: "SPACE"}, {SpaceName: "Alpha"}} {
+		_, err := s.SearchMessages(context.Background(), in)
+		assertClass(t, err, ClassScope)
+		for _, want := range []string{scopes.MessagesReadonly, scopes.SpacesReadonly} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%+v: the message %q does not name %s", in, err, want)
+			}
 		}
 	}
 }

@@ -144,6 +144,8 @@ type SearchMessagesInput struct {
 	HasAttachment bool   `json:"has_attachment,omitempty" jsonschema:"only messages carrying an attachment. Google's search only"`
 	HasLink       bool   `json:"has_link,omitempty" jsonschema:"only messages containing a hyperlink. Google's search only"`
 	UnreadOnly    bool   `json:"unread_only,omitempty" jsonschema:"only messages you have not read. Google's search only, and it needs the read-state scope as well as the message one"`
+	SpaceType     string `json:"space_type,omitempty" jsonschema:"only messages in spaces of this kind: SPACE, GROUP_CHAT or DIRECT_MESSAGE. Google's search only"`
+	SpaceName     string `json:"space_name,omitempty" jsonschema:"only messages in spaces whose display name holds every one of these words, such as Project Alpha. Google searches its top five matching spaces. Google's search only"`
 	ByRelevance   bool   `json:"by_relevance,omitempty" jsonschema:"order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that program"`
 	Limit         int    `json:"limit,omitempty" jsonschema:"how many matches to return, 1 to 100; default 50"`
 	MaxPages      int    `json:"max_pages,omitempty" jsonschema:"how many pages of history a regex scan may read, 1 to 50; default 10"`
@@ -166,6 +168,8 @@ type SearchMatchOutput struct {
 	Reactions      []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
 	ReactionsPaged bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
 	Attachments    []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message; empty when it carries none. A message that is only a file has empty text and its file here"`
+	Read           *bool                   `json:"read" jsonschema:"whether you have read it; null when Google did not say, which it does not for a regex scan or without the read-state scope"`
+	SpaceMuted     *bool                   `json:"space_muted" jsonschema:"whether you have muted its space; null when Google did not say, which it does not for a regex scan or without the space-settings scope"`
 }
 
 // SearchMessagesOutput is what a scan found and how far it got.
@@ -266,6 +270,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			HasAttachment: in.HasAttachment,
 			HasLink:       in.HasLink,
 			UnreadOnly:    in.UnreadOnly,
+			SpaceType:     in.SpaceType,
+			SpaceName:     in.SpaceName,
 			ByRelevance:   in.ByRelevance,
 			Limit:         in.Limit,
 			MaxPages:      in.MaxPages,
@@ -382,6 +388,8 @@ func searchMatches(matches []service.SearchMatch) []SearchMatchOutput {
 			Reactions:      reactionOutputs(m.Reactions),
 			ReactionsPaged: m.ReactionsPaged,
 			Attachments:    attachmentOutputs(m.Attachments),
+			Read:           m.Read,
+			SpaceMuted:     m.SpaceMuted,
 		})
 	}
 	return out

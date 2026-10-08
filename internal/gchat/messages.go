@@ -82,6 +82,9 @@ type SearchMessagesOptions struct {
 	// OrderBy is "createTime desc" or "relevance desc". Empty takes
 	// Google's default, which is newest first.
 	OrderBy string
+	// BySpace says the filter names a space's type or display name,
+	// which Google reads with the spaces scope as well.
+	BySpace bool
 	// PageSize is capped by Google at MaxSearchMessagesPageSize.
 	PageSize int
 	// PageToken continues a previous search.
@@ -108,6 +111,10 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 	if o.OrderBy != "" {
 		q.Set("orderBy", o.OrderBy)
 	}
+	// The full view adds each hit's read state and the space's mute
+	// setting. Google sends each only when the token holds its scope,
+	// and leaves it out otherwise rather than refusing the search.
+	q.Set("view", "SEARCH_MESSAGES_VIEW_FULL")
 	r := request{
 		method:   "POST",
 		name:     parent,
@@ -118,7 +125,10 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 		scope:    scopes.MessagesReadonly,
 	}
 	if o.Unread {
-		r.alsoScopes = []string{scopes.ReadStateReadonly}
+		r.alsoScopes = append(r.alsoScopes, scopes.ReadStateReadonly)
+	}
+	if o.BySpace {
+		r.alsoScopes = append(r.alsoScopes, scopes.SpacesReadonly)
 	}
 	var out SearchMessagesResponse
 	err := c.do(ctx, r, &out)

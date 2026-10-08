@@ -48,6 +48,11 @@ type SearchMessagesInput struct {
 	HasAttachment bool
 	HasLink       bool
 	UnreadOnly    bool
+	// SpaceType and SpaceName narrow Google's search to spaces of one
+	// kind, or to spaces whose display names hold every one of the
+	// words.
+	SpaceType string
+	SpaceName string
 	// ByRelevance orders Google's search by relevance rather than by
 	// time.
 	ByRelevance bool
@@ -81,6 +86,11 @@ type SearchMatch struct {
 	// whose body is a link reads as a bare word without it.
 	Links []MessageLink
 	MessageExtras
+	// Read and SpaceMuted are the caller's read state for the hit and
+	// mute setting for its space, from Google's search alone. Nil when
+	// Google did not say, which it does not without the scope for each.
+	Read       *bool
+	SpaceMuted *bool
 
 	// users is the sender and the people the message mentions, as Chat
 	// named them, for withSenders.
@@ -176,6 +186,8 @@ func (s *Service) SearchMessages(ctx context.Context, in SearchMessagesInput) (*
 		"has_attachment": in.HasAttachment,
 		"has_link":       in.HasLink,
 		"unread_only":    in.UnreadOnly,
+		"space_type":     in.SpaceType != "",
+		"space_name":     in.SpaceName != "",
 		"by_relevance":   in.ByRelevance,
 		"page_token":     in.PageToken != "",
 	} {
@@ -304,6 +316,7 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 		PageSize:  limit,
 		PageToken: in.PageToken,
 		Unread:    in.UnreadOnly,
+		BySpace:   in.SpaceType != "" || in.SpaceName != "",
 	})
 	if err != nil {
 		return nil, Classify(err)
@@ -327,7 +340,13 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 		// Google matches whole words wherever they are, so there is no
 		// single offset to center on. The first line stands in, which
 		// is what a person scanning results reads anyway.
-		out.Matches = append(out.Matches, searchMatch(*m, 0))
+		match := searchMatch(*m, 0)
+		match.Read = row.Read
+		if row.SpaceMuteSetting == "MUTED" || row.SpaceMuteSetting == "UNMUTED" {
+			muted := row.SpaceMuteSetting == "MUTED"
+			match.SpaceMuted = &muted
+		}
+		out.Matches = append(out.Matches, match)
 	}
 	return out, nil
 }
@@ -406,13 +425,34 @@ func (s *Service) searchFilter(ctx context.Context, in SearchMessagesInput) (str
 	if in.UnreadOnly {
 		clauses = append(clauses, "is_unread()")
 	}
+	if in.SpaceType != "" {
+		if err := requireEnum("space_type", in.SpaceType,
+			string(KindSpace), string(KindDirectMessage), string(KindGroupChat)); err != nil {
+			return "", err
+		}
+		clauses = append(clauses, `space.space_type = "`+in.SpaceType+`"`)
+	}
+	for _, word := range strings.Fields(in.SpaceName) {
+		// Each word is its own clause, so a space must hold all of
+		// them. A word is letters and digits only: the grammar's
+		// quoting for this field is not documented, and anything else
+		// could change what the expression means.
+		if !spaceNameWord.MatchString(word) {
+			return "", Invalidf("space_name %q holds something other than letters, digits, hyphens and "+
+				"underscores; pass the words of the name alone", word)
+		}
+		clauses = append(clauses, "space.display_name:"+word)
+	}
 
 	if len(clauses) == 0 {
 		return "", Invalidf("give the search something to match: query, a time bound, " +
-			"sender_email, mentions_me, has_attachment, has_link or unread_only")
+			"sender_email, mentions_me, has_attachment, has_link, unread_only, space_type or space_name")
 	}
 	return strings.Join(clauses, " AND "), nil
 }
+
+// spaceNameWord is one word of a space_name filter.
+var spaceNameWord = regexp.MustCompile(`^[\p{L}\p{N}_-]+$`)
 
 // searchTerm validates that exactly one of the two search modes was
 // asked for, and compiles it before anything reaches Google.

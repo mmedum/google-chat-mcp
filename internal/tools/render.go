@@ -503,7 +503,7 @@ func (o AttachmentOutput) Render() string {
 func (o SearchMatchOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID),
-			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
+			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime), flag("read", o.Read), flag("space muted", o.SpaceMuted)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),

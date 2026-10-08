@@ -484,6 +484,7 @@ var steps = []step{
 			Matches []struct {
 				MessageID string     `json:"message_id"`
 				Links     []struct{} `json:"links"`
+				Read      *bool      `json:"read"`
 			} `json:"matches"`
 		}
 		d.into(d.must("search_messages", map[string]any{
@@ -497,6 +498,11 @@ var steps = []step{
 			if m.MessageID == d.linked && len(m.Links) == 0 {
 				d.t.Log("Google's search returned the linking message with no links on it")
 			}
+		}
+		// The full view carries each hit's read state when the token
+		// holds the read-state scope, which login always asks for.
+		if len(out.Matches) > 0 && out.Matches[0].Read == nil {
+			d.t.Error("Google's search returned hits with no read state")
 		}
 	}},
 
