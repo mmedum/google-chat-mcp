@@ -98,7 +98,7 @@ jobs:
       - run: go vet -tags=live ./...
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
         with:
-          version: v2.13.2
+          version: v2.14.0
           # goinstall builds the pinned version with the Go from
           # go.mod, so the linter and the code it lints agree on the
           # language version. The prebuilt binary lags a new Go release.

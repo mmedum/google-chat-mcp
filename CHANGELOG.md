@@ -19,6 +19,12 @@ upgrading are marked **Breaking:** and say what to do.
   `requiresUserInteraction` mark; the server's own question is the
   confirmation. Every other write keeps the mark.
 
+### Security
+
+- Built with Go 1.27.2, which fixes nine advisories in `net/http`, its
+  HTTP/2 code, `crypto/tls` and `net/textproto` that `govulncheck` found
+  reachable from this server.
+
 ## [5.0.0] - 2026-10-08
 
 ### Added
