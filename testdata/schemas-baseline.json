@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v2.3.0",
+  "version": "v4.0.0",
   "sdk": "v1.7.0",
   "tools": [
     {
@@ -13,7 +13,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterward to make someone a manager. Set dry_run to see the request body without inviting anyone.",
+      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterward to make someone a manager. Set dry_run to see the request body without inviting anyone. When the client can ask, the server also asks the person before it adds someone; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -22,7 +22,7 @@
             "type": "boolean"
           },
           "group_name": {
-            "description": "a Google Group to add, groups/{id}. The id comes from the Cloud Identity API, which this server cannot query, so bring it with you. Google allows a group only in a named space, never a group chat or a direct message",
+            "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message",
             "type": "string"
           },
           "space_id": {
@@ -353,10 +353,14 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Create a named space, with up to 20 initial members or none at all. Leave yourself out of member_emails: Google adds the signed-in account. A space of your own is fine — invite people later with add_member. Set dry_run to see the request body without creating anything.",
+      "description": "Create a named space, with up to 20 initial members or none at all. Leave yourself out of member_emails: Google adds the signed-in account. A space of your own is fine — invite people later with add_member. A space is private unless audience opens it to the organization or to a target audience. Set dry_run to see the request body without creating anything. When the client can ask, the server also asks the person before it creates a space open to a target audience; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "audience": {
+            "description": "open the space to a target audience, who can then find it, read it and join without an invitation: default for the organization's default audience, or audiences/{id} for one an administrator set up. Omit it, or pass private, for a private space",
+            "type": "string"
+          },
           "display_name": {
             "description": "what to call the space, 1 to 128 characters",
             "type": "string"
@@ -385,6 +389,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "audience": {
+            "description": "the target audience the space was opened to; null for a private space",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "display_name": {
             "description": "what it is called",
             "type": "string"
@@ -417,6 +428,7 @@
           "space_id",
           "display_name",
           "member_count",
+          "audience",
           "dry_run",
           "rendered_payload"
         ],
@@ -433,7 +445,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Remove a custom emoji from your organization. It goes for everyone, and messages that already use it lose the image.",
+      "description": "Remove a custom emoji from your organization. It goes for everyone, and messages that already use it lose the image. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -486,7 +498,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Delete a message by its resource name. A message that is already gone reports deleted false rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as a deletion that already happened. Needs the restricted-tier chat.messages scope.",
+      "description": "Delete a message by its resource name. A message that is already gone reports deleted false rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as a deletion that already happened. Needs the restricted-tier chat.messages scope. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -601,7 +613,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Delete a space, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. This is the most destructive call in this server: read the space first, and ask the person before using it.",
+      "description": "Delete a space, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. This is the most destructive call in this server: read the space first, and ask the person before using it. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -741,6 +753,54 @@
         },
         "required": [
           "space_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Turn a Google Group's email address into its groups/{id} name, which add_member takes as group_name. Chat names a group only by that id. Looked up through Cloud Identity, which shows only the groups this account can see. Google answers an address no group has the same way as a group kept to its own members, so a refusal cannot say which.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "the group's email address, such as team@example.com",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "name": "find_group",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "the group's name, or null when Cloud Identity gave none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "description": "the address that was looked up",
+            "type": "string"
+          },
+          "group_name": {
+            "description": "the group's resource name, groups/{id}; pass it to add_member as group_name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_name",
+          "email",
+          "display_name"
         ],
         "type": "object"
       }
@@ -956,7 +1016,7 @@
             ]
           },
           "email": {
-            "description": "the person's email address; null for a group and for anyone neither Chat nor the People API named one for",
+            "description": "the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one",
             "type": [
               "null",
               "string"
@@ -1839,6 +1899,20 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "access_state": {
+            "description": "PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "audience": {
+            "description": "the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "create_time": {
             "description": "when the space was created, RFC 3339 in UTC; null when Google did not say",
             "format": "date-time",
@@ -1880,7 +1954,9 @@
           "display_name",
           "single_user_bot_dm",
           "external_user_allowed",
-          "create_time"
+          "create_time",
+          "access_state",
+          "audience"
         ],
         "type": "object"
       }
@@ -2545,7 +2621,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with the email Chat sends, or one looked up through the People API when Chat sends none; a Google Group has neither an email nor a name of its own, only groups/{id}. Default 50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null next_page_token means the space has more members than came back, so do not report the result as the whole membership.",
+      "description": "List the members of a Google Chat space: people, Google Groups, and anyone invited who has not joined yet. Every row carries kind (HUMAN or GROUP) and state (JOINED, INVITED, NOT_A_MEMBER), so check state before reporting someone as present. People come back with the email Chat sends, or one looked up through the People API when Chat sends none; a Google Group comes back with the address and name Cloud Identity gives it, or with only groups/{id} when that lookup is not granted. Default 50 entries; pass limit (1-200) to widen, and page with page_token and next_page_token. A non-null next_page_token means the space has more members than came back, so do not report the result as the whole membership.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2595,7 +2671,7 @@
                   ]
                 },
                 "email": {
-                  "description": "the person's email address; null for a group and for anyone neither Chat nor the People API named one for",
+                  "description": "the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one",
                   "type": [
                     "null",
                     "string"
@@ -4026,7 +4102,7 @@
                   ]
                 },
                 "sender_email": {
-                  "description": "the sender's email address when Chat names it, or null. A search does not look anyone up in the People API",
+                  "description": "the sender's email address when Chat names it or this server has already seen it, or null. A search does not look anyone up in the People API",
                   "type": [
                     "null",
                     "string"
@@ -4310,7 +4386,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Post a text message to a Chat space, a group chat or a direct message. The body is posted exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put \u003cusers/their@address\u003e in the text yourself. Pass thread_name to reply in an existing thread, which every message carries as thread_id. Set dry_run to see the request body without posting. The post carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the tool again after an error can, because that is a new post. Read the space first if you are unsure. To send a file, upload it with upload_attachment first and pass the token it returns.",
+      "description": "Post a text message to a Chat space, a group chat or a direct message. The body is posted exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put \u003cusers/their@address\u003e in the text yourself. Pass thread_name to reply in an existing thread, which every message carries as thread_id. Set dry_run to see the request body without posting. The post carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the tool again after an error can, because that is a new post. Read the space first if you are unsure. To send a file, upload it with upload_attachment first and pass the token it returns. When the client can ask, the server also asks the person before a post that mentions everyone in the space, \u003cusers/all\u003e, and before every post when GCM_ASK_BEFORE_SEND is set; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4717,7 +4793,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Replace the text of a message you sent. Text only: cards and attachments are left untouched, and editing them needs an identity this server does not have. Set dry_run to see the patch body without applying it. Needs the restricted-tier chat.messages scope.",
+      "description": "Replace the text of a message you sent. Text only: cards and attachments are left untouched, and editing them needs an identity this server does not have. Set dry_run to see the patch body without applying it. Needs the restricted-tier chat.messages scope. When the client can ask, the server also asks the person before an edit that makes the text mention everyone in the space, \u003cusers/all\u003e, and before every edit when GCM_ASK_BEFORE_SEND is set; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4784,10 +4860,14 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Rename a space or change its description. Pass at least one of the two; an empty edit is refused. Editing the description clears the space's guidelines, because Google's mask covers both at once, so edit a space that has guidelines in the Chat interface instead. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope.",
+      "description": "Rename a space, change its description, or set who can find and join it. Pass at least one; an empty edit is refused. Editing the description clears the space's guidelines, because Google's mask covers both at once, so edit a space that has guidelines in the Chat interface instead. audience opens a named space to the organization or a target audience, and private makes it private again; Google takes it only on its own, from a space manager. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope. When the client can ask, the server also asks the person before it opens a space to a target audience; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "audience": {
+            "description": "who can find the space, read it and join without an invitation: default for the organization's default target audience, audiences/{id} for one an administrator set up, or private to make the space private again. Omit it to leave access alone. Change it in a call of its own",
+            "type": "string"
+          },
           "description": {
             "description": "a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it",
             "type": [
@@ -4820,6 +4900,13 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "audience": {
+            "description": "the target audience that was set, private when the space was made private, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "description": {
             "description": "the description that was set, or null when the call left it alone",
             "type": [
@@ -4862,6 +4949,7 @@
           "space_id",
           "display_name",
           "description",
+          "audience",
           "update_mask",
           "dry_run",
           "rendered_payload"

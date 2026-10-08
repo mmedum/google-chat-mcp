@@ -15,6 +15,7 @@
 //	go run ./scripts/gates api-coverage
 //	go run ./scripts/gates api-diff
 //	go run ./scripts/gates schema-diff [BINARY]
+//	go run ./scripts/gates schema-baseline [BINARY]
 //	go run ./scripts/gates smoke [BINARY]
 //	go run ./scripts/gates staleness [BINARY]
 //	go run ./scripts/gates tool-names FILE
@@ -117,6 +118,13 @@ func init() {
 			},
 			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
 			doc: "the released tool surface, which a change may add to and never drop from",
+		},
+		"schema-baseline": {
+			run: func(a []string, o, e io.Writer) int {
+				return schemaBaseline(binaryArg(a), o, e)
+			},
+			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: manual,
+			doc: "record the surface of the release being cut, in its release commit",
 		},
 		"classes": {
 			run:   classes,
@@ -300,8 +308,19 @@ func parseDump(b []byte, source string) (*dump, error) {
 // end up reading a file the other one wrote at a different time. That
 // seam is what the shell wrappers had: one dumped the schemas and
 // another compared them, and nothing said they were the same dump.
+//
+// It dumps the default surface. A GCM_ setting in the shell running the
+// gate, such as read-only mode, changes what registers, and the profile
+// in the real config directory is none of the dump's business.
 func runDumpSchemas(bin string) ([]byte, error) {
-	out, err := exec.Command(bin, "--dump-schemas").Output()
+	configDir, err := os.MkdirTemp("", "gates-dump-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(configDir) }()
+	cmd := exec.Command(bin, "--dump-schemas")
+	cmd.Env = isolatedEnv(configDir)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("%s --dump-schemas: %w", bin, err)
 	}
@@ -315,7 +334,12 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // under the same name, with the same output fields. A reshaped input is
 // reported rather than failed, because a schema can gain an optional
 // argument without breaking anyone.
-func schemaDiff(baselinePath, currentPath string, stdout, stderr io.Writer) int {
+//
+// want is the version the baseline has to be, from baselineVersion, or
+// empty when there is none yet. A baseline from an older release fails,
+// because it protects an older surface: whatever shipped since could be
+// dropped and nothing would say.
+func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer) int {
 	baseline, err := read(baselinePath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
@@ -380,6 +404,11 @@ func schemaDiff(baselinePath, currentPath string, stdout, stderr io.Writer) int 
 	}
 
 	failed := false
+	if want != "" && baseline.Version != want {
+		failed = true
+		_, _ = fmt.Fprintf(stdout, "\nFAIL: the baseline is the %s surface, but it must be %s's. "+
+			"Refresh %s as CONTRIBUTING.md says.\n", baseline.Version, want, baselinePath)
+	}
 	// A tool in the baseline that is not in the build is one a caller
 	// already depends on and can no longer call.
 	if len(missing) > 0 {
@@ -467,13 +496,156 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "gates: write %s: %v\n", dumpPath, err)
 		return 1
 	}
+	raw, err := os.ReadFile(changelogPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	changelog := string(raw)
+	want := baselineVersion(changelog)
 	if _, err := os.Stat(baselinePath); err != nil {
+		if want != "" {
+			_, _ = fmt.Fprintf(stdout, "FAIL: %s names %s as released, but %s is missing.\n", changelogPath, want, baselinePath)
+			return 1
+		}
 		// The first release is exactly this state, and it is not a
 		// failure: there is nothing yet to be compatible with.
 		_, _ = fmt.Fprintf(stdout, "no baseline at %s; wrote %s\n", baselinePath, dumpPath)
 		return 0
 	}
-	return schemaDiff(baselinePath, dumpPath, stdout, stderr)
+	if code := schemaDiff(baselinePath, dumpPath, want, stdout, stderr); code != 0 {
+		return code
+	}
+	// With nothing unreleased, this build is the newest release itself, so
+	// its surface is the baseline's exactly. That holds in the release
+	// commit, where it proves the baseline was recorded rather than
+	// relabeled, and it holds until the next change, which the staleness
+	// gate makes put something under [Unreleased].
+	if want == "" || sectionFor(changelog, "Unreleased") != "" {
+		return 0
+	}
+	same, err := sameTools(baselinePath, dumpPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if !same {
+		_, _ = fmt.Fprintf(stdout, "\nFAIL: nothing is under [Unreleased], so this build is %s, and its tools differ from the baseline. "+
+			"In %s's release commit, run `make schema-baseline VERSION=%s`. Otherwise, say what changed under [Unreleased].\n",
+			want, want, want)
+		return 1
+	}
+	return 0
+}
+
+// sameTools reports whether two schema dumps register the same tools,
+// field for field. The version and SDK stamps are not part of it.
+func sameTools(aPath, bPath string) (bool, error) {
+	var tools [2]struct {
+		Tools any `json:"tools"`
+	}
+	for i, path := range []string{aPath, bPath} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return false, err
+		}
+		if err := json.Unmarshal(b, &tools[i]); err != nil {
+			return false, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	return reflect.DeepEqual(tools[0].Tools, tools[1].Tools), nil
+}
+
+// schemaBaseline records the surface of the release being cut as the
+// baseline. The release commit runs it, so the baseline lands with the
+// changelog heading that names it.
+//
+// It checks the build against the current baseline first, and refuses
+// when the build drops a tool or an output field. Overwriting first would
+// leave the diff comparing the release with itself.
+func schemaBaseline(bin string, stdout, stderr io.Writer) int {
+	out, err := runDumpSchemas(bin)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(dumpPath, out, 0o600); err != nil {
+		_, _ = fmt.Fprintf(stderr, "gates: write %s: %v\n", dumpPath, err)
+		return 1
+	}
+	built, err := parseDump(out, bin)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	changelog, err := os.ReadFile(changelogPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	want := baselineVersion(string(changelog))
+	if want == "" {
+		_, _ = fmt.Fprintf(stdout, "FAIL: %s names no release yet, so there is no surface to record.\n", changelogPath)
+		return 1
+	}
+	if built.Version != want {
+		_, _ = fmt.Fprintf(stdout, "FAIL: %s is stamped %s, but the release being cut is %s. "+
+			"Build it with `make build VERSION=%s`.\n", bin, built.Version, want, want)
+		return 1
+	}
+	if previous, err := read(baselinePath); err == nil {
+		if code := schemaDiff(baselinePath, dumpPath, "", stdout, stderr); code != 0 {
+			_, _ = fmt.Fprintf(stdout, "\n%s is unchanged.\n", baselinePath)
+			if previous.Version == want {
+				_, _ = fmt.Fprintf(stdout, "It already holds %s from an earlier run, so a tool new in %s counts as released. "+
+					"Restore the last release's baseline from its tag, then run this again.\n", want, want)
+			}
+			return code
+		}
+	}
+	if err := writeThrough(baselinePath, func(w io.Writer) error {
+		_, err := w.Write(out)
+		return err
+	}); err != nil {
+		_, _ = fmt.Fprintf(stderr, "gates: write %s: %v\n", baselinePath, err)
+		return 1
+	}
+	_, _ = fmt.Fprintf(stdout, "%s is now the %s surface: %d tools\n", baselinePath, want, len(built.Tools))
+	return 0
+}
+
+// writeThrough writes path through a temporary file beside it and a
+// rename, so a failed write leaves whatever was there whole rather than
+// truncated or half-written.
+func writeThrough(path string, write func(io.Writer) error) error {
+	tmp := path + ".tmp"
+	f, err := os.Create(tmp) //nolint:gosec // a path this program names, never one from input
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp) }()
+	if err := write(f); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// baselineVersion is the release whose surface the baseline must hold:
+// the changelog's newest heading, or empty before the first release.
+//
+// Between releases that heading is the last tag. In a release commit it
+// is the release being cut, and the baseline is refreshed in that same
+// commit. Refreshing after the tag instead would fail every branch from
+// the moment the tag is pushed until a second change lands.
+func baselineVersion(changelog string) string {
+	if v := newestVersion(changelog); v != "" {
+		return "v" + v
+	}
+	return ""
 }
 
 // argAt is args[i] when there is one, so a command with an optional

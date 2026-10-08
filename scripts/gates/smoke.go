@@ -205,7 +205,7 @@ func runSmoke(bin, configDir string, requests, await []string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin)
-	cmd.Env = smokeEnv(configDir)
+	cmd.Env = isolatedEnv(configDir)
 	var logs bytes.Buffer
 	cmd.Stderr = &logs
 	stdout, err := cmd.StdoutPipe()
@@ -268,15 +268,15 @@ func runSmoke(bin, configDir string, requests, await []string) (string, error) {
 	return transcript.String(), err
 }
 
-// smokeEnv is the environment for a smoke run: this one, with every GCM_
-// variable dropped.
+// isolatedEnv is the environment for a server the gates start: this one,
+// with every GCM_ variable dropped and a config directory of its own.
 //
-// Dropped rather than added to. The gate's claim is that a server with
+// Dropped rather than added to. The smoke gate's claim is that a server with
 // no credentials answers with an [auth] error, and a maintainer who
 // exports a client secret or a refresh token has a server that can
 // answer for real — so the gate would fail on a machine that is fine, or
 // pass for a reason it did not mean.
-func smokeEnv(configDir string) []string {
+func isolatedEnv(configDir string) []string {
 	parent := os.Environ()
 	env := make([]string, 0, len(parent)+3)
 	for _, kv := range parent {

@@ -144,7 +144,7 @@ func TestSmokeEnvDropsTheServersOwnVariables(t *testing.T) {
 	t.Setenv("GCM_CLIENT_SECRET", "/some/where.json")
 	t.Setenv("PATH", os.Getenv("PATH"))
 
-	env := smokeEnv("/tmp/cfg")
+	env := isolatedEnv("/tmp/cfg")
 	var kept, passed []string
 	for _, kv := range env {
 		switch {
@@ -155,14 +155,14 @@ func TestSmokeEnvDropsTheServersOwnVariables(t *testing.T) {
 		}
 	}
 	if len(kept) > 0 {
-		t.Errorf("smokeEnv kept credentials from the environment: %s", strings.Join(kept, ", "))
+		t.Errorf("isolatedEnv kept credentials from the environment: %s", strings.Join(kept, ", "))
 	}
 	want := []string{"GCM_CONFIG_DIR=/tmp/cfg", "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME=1", "GCM_LOG_LEVEL=error"}
 	if strings.Join(passed, " ") != strings.Join(want, " ") {
-		t.Errorf("smokeEnv passes\n got %v\nwant %v", passed, want)
+		t.Errorf("isolatedEnv passes\n got %v\nwant %v", passed, want)
 	}
 	if len(env) <= len(want) {
-		t.Error("smokeEnv dropped the whole environment; the server still needs PATH and HOME")
+		t.Error("isolatedEnv dropped the whole environment; the server still needs PATH and HOME")
 	}
 }
 
