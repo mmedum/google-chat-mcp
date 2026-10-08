@@ -11,6 +11,28 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-08
+
+### Added
+
+- `list_members` takes `expand_groups`, and each Google Group in the space then lists who is in it, one level down: up to 200 people for each of the first 10 groups. A group that does not show you its members says so on its row, and the rest of the listing stands.
+- `send_message` takes `quote_message`, to quote a message in the same space above the text. The server reads the quoted message for the timestamp Google requires. Forwarding a message is not offered: Google refused it under a person's sign-in every way it was tried.
+- `get_messages` takes `before`, so with `since` it reads a window, such as what was said on one day.
+- `search_messages` takes `space_type`, to search only direct messages, group chats or named spaces, and `space_name`, to search spaces whose names hold every one of the words. Each hit says whether you have read it and whether its space is muted.
+- `get_space` returns when the space was last active, its link, its description and guidelines, how many people and groups have joined, whether history is on, and whether ordinary members may post. `list_spaces`, `search_spaces` and `find_group_chats` return when each space was last active.
+- `get_messages`, `get_thread` and `search_messages` return each message's files, reaction counts, edit time and whether it replies in its thread, as `get_message` does. A message that is only a file no longer reads as an empty row. `get_message` gains `thread_reply` too.
+- `send_message` takes `markdown: true`, and Google then reads the text as standard Markdown: `**bold**`, `[label](url)`, lists and code blocks. The text is still posted exactly as given. A Markdown mention of everyone, `<chat-user data-user="users/all">`, is asked about like `<users/all>`.
+
+### Changed
+
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v5`, as Go requires from v5 on; install with `go install github.com/mmedum/google-chat-mcp/v5/cmd/google-chat-mcp@latest`.
+- **Breaking:** a rate-limited call now fails with `[rate_limited]` rather than `[rate_limit]`, the name the sibling Google Workspace servers use. A client that matches on the old class has to match the new one.
+
+### Fixed
+
+- `search_messages` with `regex` now honors `created_before`. It was ignored, so a scan read past the end of the window it was given.
+- `search_spaces` no longer says it finds spaces you are not a member of. Without `use_admin_access`, Google searches only the spaces you have joined.
+
 ## [4.0.0] - 2026-10-03
 
 ### Added
@@ -637,7 +659,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...v3.0.0

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // personFields is what this server reads off a Person. Asking for less

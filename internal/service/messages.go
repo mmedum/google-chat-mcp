@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // Message limits. These are this server's, not Google's: the tool
@@ -48,6 +48,37 @@ type MessageRow struct {
 	// the same. Only get_message surfaces it: a listing carrying both
 	// bodies would be twice the size for a second copy of itself.
 	FormattedText string
+	MessageExtras
+}
+
+// MessageExtras is what a message carries beside its text. A listing, a
+// search hit and get_message all fill it through messageExtras, so a
+// message reads the same whichever tool found it.
+type MessageExtras struct {
+	// LastUpdateTime is the zero value when the message was never
+	// edited.
+	LastUpdateTime time.Time
+	// ThreadReply says the message answers a thread rather than
+	// starting one.
+	ThreadReply bool
+	Reactions   []ReactionCount
+	// ReactionsPaged says the summaries were left out because there
+	// were too many, and list_reactions has the detail.
+	ReactionsPaged bool
+	// Attachments is the files on the message. download_attachment
+	// needs the name of one, so this is where a caller learns it.
+	Attachments []AttachmentRow
+}
+
+// messageExtras reads what a message carries beside its text.
+func messageExtras(m gchat.Message) MessageExtras {
+	e := MessageExtras{
+		LastUpdateTime: parseTime(m.LastUpdateTime),
+		ThreadReply:    m.ThreadReply,
+		Attachments:    attachmentRows(m.Attachments),
+	}
+	e.Reactions, e.ReactionsPaged = summarizeReactions(m.EmojiReactions)
+	return e
 }
 
 // MessageLink is a link Chat recognized in a message's text: to another
@@ -224,10 +255,11 @@ func messageLinks(all []gchat.Annotation) []MessageLink {
 // GetMessagesInput selects a page of a space's history.
 type GetMessagesInput struct {
 	Space string
-	// Since bounds the listing below, as RFC 3339 or a bare date.
-	// Empty means no bound.
-	Since string
-	Limit int
+	// Since and Before bound the listing below and above, as RFC 3339
+	// or a bare date. Empty means no bound.
+	Since  string
+	Before string
+	Limit  int
 	// PageToken continues a previous call.
 	PageToken string
 }
@@ -263,12 +295,19 @@ func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) (*Messag
 	if err != nil {
 		return nil, err
 	}
+	before, err := parseArgTime("before", in.Before)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireWindow("since", since, "before", before); err != nil {
+		return nil, err
+	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
 		Space:     space,
 		OrderBy:   "createTime desc",
 		PageSize:  limit,
-		Filter:    createdAfterFilter(since),
+		Filter:    createTimeFilter(since, before),
 		PageToken: in.PageToken,
 	})
 	if err != nil {
@@ -352,35 +391,9 @@ const inlineReactionCap = 25
 
 // MessageDetail is one message in full, as get_message returns it.
 type MessageDetail struct {
-	Name              string
-	Space             string
-	ThreadName        string
-	SenderUserID      string
-	SenderEmail       string
-	SenderDisplayName string
-	Text              string
-	// FormattedText is the body with Chat's markup left in — bold,
-	// italics, mentions and the URL behind a link — and is empty when
-	// the markup says nothing the text does not. See MessageRow.
-	FormattedText string
-	// Links is what the text links to, and the only place a link's
-	// target appears.
-	Links []MessageLink
-	// Quote is what this message quotes or forwards, and is nil when it
-	// quotes nothing.
-	Quote *MessageQuote
-
-	CreateTime time.Time
-	// LastUpdateTime is the zero value when the message was never
-	// edited.
-	LastUpdateTime time.Time
-	Reactions      []ReactionCount
-	// ReactionsPaged says the summaries were left out because there
-	// were too many, and list_reactions has the detail.
-	ReactionsPaged bool
-	// Attachments is the files on the message. download_attachment
-	// needs the name of one, so this is where a caller learns it.
-	Attachments []AttachmentRow
+	MessageRow
+	// Space is where it was posted, which a row leaves to its listing.
+	Space string
 }
 
 // AttachmentRow is one file on a message.
@@ -440,23 +453,7 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 	}
 	row := rows[0]
 
-	out := &MessageDetail{
-		Name:              row.Name,
-		Space:             space,
-		ThreadName:        row.ThreadName,
-		SenderUserID:      row.SenderUserID,
-		SenderEmail:       row.SenderEmail,
-		SenderDisplayName: row.SenderDisplayName,
-		Text:              row.Text,
-		FormattedText:     row.FormattedText,
-		Links:             row.Links,
-		Quote:             row.Quote,
-		CreateTime:        row.CreateTime,
-		LastUpdateTime:    parseTime(got.LastUpdateTime),
-	}
-	out.Reactions, out.ReactionsPaged = summarizeReactions(got.EmojiReactions)
-	out.Attachments = attachmentRows(got.Attachments)
-	return out, nil
+	return &MessageDetail{MessageRow: row, Space: space}, nil
 }
 
 // summarizeReactions turns Google's per-emoji counts into the inline
@@ -507,10 +504,11 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			continue
 		}
 		row := MessageRow{
-			Name:  m.Name,
-			Text:  m.Text,
-			Links: messageLinks(m.Annotations),
-			Quote: messageQuote(m.QuotedMessage),
+			Name:          m.Name,
+			Text:          m.Text,
+			Links:         messageLinks(m.Annotations),
+			Quote:         messageQuote(m.QuotedMessage),
+			MessageExtras: messageExtras(m),
 		}
 		if m.FormattedText != m.Text {
 			row.FormattedText = m.FormattedText
@@ -552,6 +550,11 @@ type SendMessageInput struct {
 	// Empty mints one per call, which covers this call's own retries
 	// and nothing further.
 	ClientMessageID string
+	// Markdown has Google read Text as standard Markdown rather than
+	// Chat's own syntax. The text is still posted as given.
+	Markdown bool
+	// Quote is a message in the same space to quote above the text.
+	Quote string
 	// DryRun renders the request body and posts nothing.
 	DryRun bool
 }
@@ -599,6 +602,15 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	}
 
 	body := gchat.BuildSendMessage(text, thread, strings.TrimSpace(in.UploadToken))
+	if in.Markdown {
+		body.MarkupSyntax = gchat.MarkupMarkdown
+	}
+	// Read before the dry run returns, so the preview is the body a post
+	// would send: the quote carries a timestamp only the quoted message
+	// has. A read, not a write, as a section move's preview reads too.
+	if body.Quote, err = s.quote(ctx, space, in.Quote); err != nil {
+		return nil, err
+	}
 	if in.DryRun {
 		rendered, err := renderBody(body)
 		if err != nil {
@@ -640,6 +652,39 @@ func (s *Service) askSend(ctx context.Context, space, text string, attached bool
 		return Classify(err)
 	}
 	return ask(ctx, askSend(space, sp.DisplayName, text, everyone, attached))
+}
+
+// quote builds the reference to a quoted message, or nil when there is
+// none to quote.
+//
+// Google needs the quoted message's latest timestamp and refuses a stale
+// one, so the message is read for it. A quote is a reply to a message in
+// the same space: Google refuses a forward under a person's sign-in,
+// whichever way it was tried, so a message from another space is refused
+// here with that said.
+func (s *Service) quote(ctx context.Context, space, name string) (*gchat.QuotedMessageMeta, error) {
+	if name == "" {
+		return nil, nil
+	}
+	name, err := requireMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	if from := spaceOfMessage(name); from != space {
+		return nil, Invalidf("quote_message is in %s, not %s. Only a message in the same space can be quoted: "+
+			"Google refuses to forward one under a person's sign-in", from, space)
+	}
+	got, err := s.client.GetMessage(ctx, name)
+	if err != nil {
+		return nil, Classify(err)
+	}
+	stamp := cmp.Or(got.LastUpdateTime, got.CreateTime)
+	if stamp == "" {
+		return nil, Failf(ClassUpstream, "Google returned %s with no timestamp, and quoting it needs one", name)
+	}
+	// Google's own name for it: a message read by its client-assigned id
+	// comes back under its real one, and that is what a quote names.
+	return &gchat.QuotedMessageMeta{Name: cmp.Or(got.Name, name), LastUpdate: stamp, QuoteType: "REPLY"}, nil
 }
 
 // askEdit asks before an edit that newly mentions everyone in the

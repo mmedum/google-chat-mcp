@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // SpaceKind is a space's type, in Google's spelling. The tool surface
@@ -75,6 +75,20 @@ type SpaceSummary struct {
 	Name        string
 	DisplayName string
 	Kind        SpaceKind
+	// LastActiveTime is when the last message was posted, and the zero
+	// value when Google did not say.
+	LastActiveTime time.Time
+}
+
+// spaceSummary shapes one space for a listing, so list_spaces,
+// search_spaces and find_group_chats read the same.
+func spaceSummary(sp gchat.Space) SpaceSummary {
+	return SpaceSummary{
+		Name:           sp.Name,
+		DisplayName:    displayNameOf(sp),
+		Kind:           kindOf(sp),
+		LastActiveTime: parseTime(sp.LastActive),
+	}
 }
 
 // ListSpacesInput selects which spaces to list.
@@ -89,6 +103,10 @@ type ListSpacesResult struct {
 	Spaces        []SpaceSummary
 	NextPageToken string
 }
+
+// narrowableKinds is every kind a caller may narrow a listing or a
+// search to.
+var narrowableKinds = []string{string(KindSpace), string(KindDirectMessage), string(KindGroupChat)}
 
 // Google's filter spelling for each kind we can narrow by.
 var spaceFilters = map[SpaceKind]string{
@@ -114,8 +132,7 @@ func (s *Service) ListSpaces(ctx context.Context, in ListSpacesInput) (*ListSpac
 
 	opts := gchat.ListSpacesOptions{PageSize: limit, PageToken: in.PageToken}
 	if in.Kind != "" {
-		if err := requireEnum("space_type", string(in.Kind),
-			string(KindSpace), string(KindDirectMessage), string(KindGroupChat)); err != nil {
+		if err := requireEnum("space_type", string(in.Kind), narrowableKinds...); err != nil {
 			return nil, err
 		}
 		opts.Filter = spaceFilters[in.Kind]
@@ -131,11 +148,7 @@ func (s *Service) ListSpaces(ctx context.Context, in ListSpacesInput) (*ListSpac
 		NextPageToken: resp.NextPageToken,
 	}
 	for _, sp := range resp.Spaces {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -178,10 +191,11 @@ type SearchSpacesResult struct {
 
 // SearchSpaces finds named spaces by display name.
 //
-// It reaches spaces the caller is not in, which is what separates it
-// from list_spaces. Google's grammar decides two things this cannot: a
-// search covers named spaces only, because spaceType = "SPACE" is
-// required, and matching is by word prefix rather than substring.
+// Without admin access it covers only spaces the caller has joined; what
+// separates it from list_spaces is the name match. Google's grammar
+// decides two things this cannot: a search covers named spaces only,
+// because spaceType = "SPACE" is required, and matching is by word prefix
+// rather than substring.
 func (s *Service) SearchSpaces(ctx context.Context, in SearchSpacesInput) (*SearchSpacesResult, error) {
 	limit, err := clampLimit("limit", in.Limit, defaultSearchSpaceLimit, maxSearchSpaceLimit)
 	if err != nil {
@@ -209,11 +223,7 @@ func (s *Service) SearchSpaces(ctx context.Context, in SearchSpacesInput) (*Sear
 		TotalSize:     resp.TotalSize,
 	}
 	for _, sp := range found {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -297,11 +307,7 @@ func (s *Service) FindGroupChats(ctx context.Context, in FindGroupChatsInput) (*
 		NextPageToken: resp.NextPageToken,
 	}
 	for _, sp := range resp.Spaces {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -311,9 +317,7 @@ const defaultGroupChatLimit = 10
 
 // SpaceDetails is one space in full, as get_space returns it.
 type SpaceDetails struct {
-	Name        string
-	Kind        SpaceKind
-	DisplayName string
+	SpaceSummary
 	// SingleUserBotDM and ExternalUserAllowed are nil when Google did
 	// not say. They are absent far more often than they are false, so
 	// flattening them to false would assert something Google did not.
@@ -324,6 +328,20 @@ type SpaceDetails struct {
 	// as Google says; empty when it does not, as for a direct message.
 	AccessState string
 	Audience    string
+
+	// URI opens the space in Chat.
+	URI         string
+	Description string
+	Guidelines  string
+	// HumanMembers and GroupMembers count who has joined, people and
+	// Google Groups apart. Nil when Google sent no count.
+	HumanMembers *int
+	GroupMembers *int
+	// HistoryState is Google's own word: HISTORY_ON or HISTORY_OFF.
+	HistoryState string
+	// MembersCanPost is false when only managers may post, as in an
+	// announcement space. Nil when Google did not say.
+	MembersCanPost *bool
 }
 
 // GetSpace returns one space by resource name.
@@ -337,15 +355,26 @@ func (s *Service) GetSpace(ctx context.Context, name string) (*SpaceDetails, err
 		return nil, Classify(err)
 	}
 	out := &SpaceDetails{
-		Name:                sp.Name,
-		Kind:                kindOf(*sp),
-		DisplayName:         displayNameOf(*sp),
+		SpaceSummary:        spaceSummary(*sp),
 		SingleUserBotDM:     sp.SingleUserBot,
 		ExternalUserAllowed: sp.ExternalUser,
 		CreateTime:          parseTime(sp.CreateTime),
+		URI:                 sp.URI,
+		HistoryState:        sp.HistoryState,
 	}
 	if sp.Access != nil {
 		out.AccessState, out.Audience = sp.Access.AccessState, sp.Access.Audience
+	}
+	if sp.Details != nil {
+		out.Description, out.Guidelines = sp.Details.Description, sp.Details.Guidelines
+	}
+	if sp.Membership != nil {
+		humans, groups := sp.Membership.JoinedDirectHumanUserCount, sp.Membership.JoinedGroupCount
+		out.HumanMembers, out.GroupMembers = &humans, &groups
+	}
+	if sp.Permissions != nil && sp.Permissions.PostMessages != nil {
+		members := sp.Permissions.PostMessages.MembersAllowed
+		out.MembersCanPost = &members
 	}
 	return out, nil
 }
@@ -417,7 +446,7 @@ func directoryHint(subject string, err error) error {
 		return err
 	}
 	switch se.Class {
-	case ClassAuth, ClassScope, ClassRateLimit:
+	case ClassAuth, ClassScope, ClassRateLimited:
 		return err
 	case ClassNotFound, ClassInvalid, ClassUpstream, ClassUnexpected:
 	}

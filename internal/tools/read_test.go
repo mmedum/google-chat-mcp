@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
 )
 
 // chatAndPeople splits Chat calls from People calls, which every
@@ -63,6 +65,75 @@ func peopleSearch(resource, email, name string) string {
 
 // personHit is peopleBatch with the fixture values every read test uses.
 var personHit = peopleBatch("janedoe@example.com", "Jane Doe")
+
+// What a space says about itself beyond its name: when it was last
+// active, its link, what it is for, who is in it, whether history is
+// kept and whether members may post.
+func TestGetSpaceCarriesWhatTheSpaceSaysAboutItself(t *testing.T) {
+	cs := session(t, body(`{"name":"spaces/A","spaceType":"SPACE","displayName":"Announcements",
+	  "lastActiveTime":"2026-01-03T09:00:00Z","spaceUri":"https://mail.google.com/chat/u/0/#chat/space/A",
+	  "spaceDetails":{"description":"news","guidelines":"read only"},
+	  "membershipCount":{"joinedDirectHumanUserCount":3,"joinedGroupCount":1},
+	  "spaceHistoryState":"HISTORY_OFF",
+	  "permissionSettings":{"postMessages":{"managersAllowed":true}}}`))
+	var out SpaceDetailOutput
+	call(t, cs, "get_space", map[string]any{"space_id": "spaces/A"}, &out)
+	if out.LastActiveTime == nil || !out.LastActiveTime.Equal(at("2026-01-03T09:00:00Z")) {
+		t.Errorf("last_active_time = %v, want 2026-01-03T09:00:00Z", out.LastActiveTime)
+	}
+	for field, got := range map[string]*string{
+		"space_uri":     out.SpaceURI,
+		"description":   out.Description,
+		"guidelines":    out.Guidelines,
+		"history_state": out.HistoryState,
+	} {
+		want := map[string]string{
+			"space_uri": "https://mail.google.com/chat/u/0/#chat/space/A", "description": "news",
+			"guidelines": "read only", "history_state": "HISTORY_OFF",
+		}[field]
+		if got == nil || *got != want {
+			t.Errorf("%s = %v, want %q", field, got, want)
+		}
+	}
+	if out.HumanMemberCount == nil || out.GroupMemberCount == nil {
+		t.Errorf("member counts = %v people, %v groups, want 3 and 1", out.HumanMemberCount, out.GroupMemberCount)
+	} else if *out.HumanMemberCount != 3 || *out.GroupMemberCount != 1 {
+		t.Errorf("member counts = %d people, %d groups, want 3 and 1", *out.HumanMemberCount, *out.GroupMemberCount)
+	}
+	if out.MembersCanPost == nil {
+		t.Error("members_can_post = null, want false: only managers may post")
+	} else if *out.MembersCanPost {
+		t.Error("members_can_post = true, want false: only managers may post")
+	}
+}
+
+// What Google leaves out arrives as null, not as an empty value that
+// reads like a fact.
+func TestGetSpaceLeavesWhatGoogleOmitsNull(t *testing.T) {
+	cs := session(t, body(`{"name":"spaces/A","spaceType":"DIRECT_MESSAGE"}`))
+	res := call(t, cs, "get_space", map[string]any{"space_id": "spaces/A"}, nil)
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"last_active_time", "space_uri", "description", "guidelines",
+		"human_member_count", "group_member_count", "history_state", "members_can_post"} {
+		if !strings.Contains(string(raw), `"`+field+`":null`) {
+			t.Errorf("%s is not null in %s", field, raw)
+		}
+	}
+}
+
+func TestListSpacesCarriesWhenEachWasLastActive(t *testing.T) {
+	cs := session(t, body(`{"spaces":[{"name":"spaces/A","spaceType":"SPACE","displayName":"Team",
+	  "lastActiveTime":"2026-01-03T09:00:00Z"}]}`))
+	var out ListSpacesOutput
+	call(t, cs, "list_spaces", map[string]any{}, &out)
+	if len(out.Result) != 1 || out.Result[0].LastActiveTime == nil ||
+		!out.Result[0].LastActiveTime.Equal(at("2026-01-03T09:00:00Z")) {
+		t.Errorf("list_spaces = %+v, want last_active_time 2026-01-03T09:00:00Z", out.Result)
+	}
+}
 
 func TestGetSpaceThroughASession(t *testing.T) {
 	cs := session(t, body(`{"name":"spaces/A","spaceType":"SPACE","displayName":"Team","createTime":"2026-01-02T03:04:05Z"}`))
@@ -167,6 +238,39 @@ func TestListMembersThroughASession(t *testing.T) {
 	}
 }
 
+// What the model sees of an expanded group: the members on the group's
+// row, and null on a person's row, where there is no group to expand.
+func TestListMembersExpandsGroupsThroughASession(t *testing.T) {
+	const page = `{"memberships":[
+	  {"name":"spaces/A/members/1","state":"JOINED","role":"ROLE_MEMBER","member":{"name":"users/1","displayName":"Jane Doe"}},
+	  {"name":"spaces/A/members/2","state":"JOINED","role":"ROLE_MEMBER","groupMember":{"name":"groups/G1"}}
+	]}`
+	chat := func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/groups/G1/memberships") {
+			fmt.Fprint(w, `{"memberships":[{"preferredMemberKey":{"id":"johndoe@example.com"},"roles":[{"name":"MEMBER"}],"type":"USER"}]}`)
+			return
+		}
+		fmt.Fprint(w, page)
+	}
+	cs := session(t, chatAndPeople(chat, personHit))
+	var out MemberListOutput
+	res := call(t, cs, "list_members", map[string]any{"space_id": "spaces/A", "expand_groups": true}, &out)
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Result) != 2 {
+		t.Fatalf("list_members = %s", raw)
+	}
+	want := []GroupMemberOutput{{Email: "johndoe@example.com", Kind: "USER", Role: "MEMBER"}}
+	if !reflect.DeepEqual(out.Result[1].GroupMembers, want) {
+		t.Errorf("the group row's members = %+v, want %+v", out.Result[1].GroupMembers, want)
+	}
+	if !strings.Contains(string(raw), `"group_members":null`) {
+		t.Errorf("the person's row = %s, want group_members null", raw)
+	}
+}
+
 func TestListReactionsThroughASession(t *testing.T) {
 	cs := session(t, body(`{"reactions":[{"name":"spaces/A/messages/1/reactions/R1","emoji":{"unicode":"👍"},"user":{"name":"users/1"}}]}`))
 	var out ListReactionsOutput
@@ -177,6 +281,64 @@ func TestListReactionsThroughASession(t *testing.T) {
 	if out.NextPageToken != nil {
 		t.Error("a single page should report no next page")
 	}
+}
+
+// fileReply is a reply that is only a file, edited, with a reaction:
+// everything a message carries beside its text.
+const fileReply = `{"name":"spaces/A/messages/2","sender":{"name":"users/1"},
+  "createTime":"2026-01-02T03:04:05Z","lastUpdateTime":"2026-01-02T03:10:00Z",
+  "thread":{"name":"spaces/A/threads/T1"},"threadReply":true,
+  "attachment":[{"name":"spaces/A/messages/2/attachments/F1","contentName":"report.pdf",
+    "contentType":"application/pdf","source":"UPLOADED_CONTENT",
+    "attachmentDataRef":{"resourceName":"spaces/A/attachments/F1"}}],
+  "emojiReactionSummaries":[{"emoji":{"unicode":"👍"},"reactionCount":2}]}`
+
+// A message that is only a file read as an empty row, and reactions and
+// edits were invisible until get_message. A listing and a search hit
+// carry them now, the same way.
+func TestListedMessagesCarryWhatTheyHoldBesideText(t *testing.T) {
+	want := MessageOutput{
+		LastUpdateTime: ptr(at("2026-01-02T03:10:00Z")),
+		ThreadReply:    true,
+		Reactions:      []ReactionSummaryOutput{{Emoji: "👍", Count: 2}},
+		Attachments: []AttachmentOutput{{
+			AttachmentName: "spaces/A/messages/2/attachments/F1", FileName: "report.pdf",
+			ContentType: "application/pdf", Source: "UPLOADED_CONTENT", Downloadable: true,
+		}},
+	}
+	check := func(t *testing.T, tool string, lastUpdate *time.Time, reply bool, reactions []ReactionSummaryOutput, files []AttachmentOutput) {
+		t.Helper()
+		if lastUpdate == nil || !lastUpdate.Equal(*want.LastUpdateTime) {
+			t.Errorf("%s last_update_time = %v, want %v", tool, lastUpdate, *want.LastUpdateTime)
+		}
+		if reply != want.ThreadReply {
+			t.Errorf("%s thread_reply = %v, want true", tool, reply)
+		}
+		if !reflect.DeepEqual(reactions, want.Reactions) {
+			t.Errorf("%s reactions = %+v, want %+v", tool, reactions, want.Reactions)
+		}
+		if !reflect.DeepEqual(files, want.Attachments) {
+			t.Errorf("%s attachments = %+v, want %+v", tool, files, want.Attachments)
+		}
+	}
+
+	cs := session(t, chatAndPeople(body(`{"messages":[`+fileReply+`]}`), personHit))
+	var rows MessageListOutput
+	call(t, cs, "get_messages", map[string]any{"space_id": "spaces/A"}, &rows)
+	if len(rows.Result) != 1 {
+		t.Fatalf("get_messages = %+v", rows)
+	}
+	r := rows.Result[0]
+	check(t, "get_messages", r.LastUpdateTime, r.ThreadReply, r.Reactions, r.Attachments)
+
+	cs = session(t, body(`{"results":[{"message":`+fileReply+`}]}`))
+	var hits SearchMessagesOutput
+	call(t, cs, "search_messages", map[string]any{"query": "report"}, &hits)
+	if len(hits.Matches) != 1 {
+		t.Fatalf("search_messages = %+v", hits)
+	}
+	h := hits.Matches[0]
+	check(t, "search_messages", h.LastUpdateTime, h.ThreadReply, h.Reactions, h.Attachments)
 }
 
 func TestSearchMessagesThroughASession(t *testing.T) {

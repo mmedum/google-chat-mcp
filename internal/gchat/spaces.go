@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // Userinfo returns the OpenID Connect profile of the token's owner.
@@ -96,8 +96,8 @@ type SearchSpacesOptions struct {
 
 // SearchSpaces finds named spaces by display name and metadata.
 //
-// It reaches spaces the caller is not a member of, which list_spaces
-// cannot, and it finds only named spaces: Google's own grammar requires
+// Without admin access it reaches only spaces the caller has joined, and
+// it finds only named spaces: Google's own grammar requires
 // spaceType = "SPACE". Group chats are what find_group_chats is for.
 func (c *Client) SearchSpaces(ctx context.Context, o SearchSpacesOptions) (*SearchSpacesResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)

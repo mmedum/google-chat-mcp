@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
-	"github.com/mmedum/google-chat-mcp/v4/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 type staticToken string
@@ -201,7 +201,7 @@ func TestClassifyMapsGooglesRefusals(t *testing.T) {
 			// the reason was looked at.
 			"a rate limit wearing a 403", 403,
 			`{"error":{"code":403,"message":"Rate Limit Exceeded","errors":[{"reason":"rateLimitExceeded"}]}}`,
-			ClassRateLimit,
+			ClassRateLimited,
 		},
 		{
 			// And a quota, where waiting a moment is the wrong advice.
@@ -212,7 +212,7 @@ func TestClassifyMapsGooglesRefusals(t *testing.T) {
 		{"expired token", 401, `{"error":{"status":"UNAUTHENTICATED","message":"invalid credentials"}}`, ClassAuth},
 		{"not found", 404, `{"error":{"status":"NOT_FOUND","message":"no such space"}}`, ClassNotFound},
 		{"bad argument", 400, `{"error":{"status":"INVALID_ARGUMENT","message":"bad filter"}}`, ClassInvalid},
-		{"rate limited", 429, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"slow down"}}`, ClassRateLimit},
+		{"rate limited", 429, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"slow down"}}`, ClassRateLimited},
 		{"server error", 500, `{"error":{"status":"INTERNAL","message":"oops"}}`, ClassServer},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

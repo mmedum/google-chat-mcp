@@ -79,6 +79,79 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"markup", "link"},
 		},
 		{
+			name: "a listed message that is only a file names the file",
+			out: MessageOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg2", SenderUserID: "users/1",
+				Timestamp: at("2026-01-02T03:04:05Z"), ThreadReply: true,
+				LastUpdateTime: ptr(at("2026-01-02T03:10:00Z")),
+				Reactions:      []ReactionSummaryOutput{{Emoji: "👍", Count: 2}},
+				Attachments: []AttachmentOutput{{
+					AttachmentName: "spaces/AAAAspace1/messages/AAAAmsg2/attachments/AAAAfile1",
+					FileName:       "report.pdf", ContentType: "application/pdf", Source: "UPLOADED_CONTENT",
+					Downloadable: true,
+				}},
+			},
+			want: []string{"reply", "edited 2026-01-02T03:10:00Z", "reactions: 👍 2", "1 attachment:", "report.pdf"},
+		},
+		{
+			// Too many reactions to inline leaves the list empty, and an
+			// empty line would read as a message nobody reacted to.
+			name: "reactions left out are said to be left out",
+			out: MessageDetailOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", SpaceID: "spaces/AAAAspace1",
+				Timestamp: at("2026-01-02T03:04:05Z"), SenderUserID: "users/1", Text: "popular",
+				ReactionsPaged: true,
+			},
+			want: []string{"(more not shown; call list_reactions)"},
+		},
+		{
+			name: "a message that starts its thread is not marked a reply",
+			out: MessageOutput{
+				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1", SenderUserID: "users/1",
+				Timestamp: at("2026-01-02T03:04:05Z"), Text: "shall we move the standup?",
+			},
+			avoid: []string{"reply", "edited", "reactions", "attachment"},
+		},
+		{
+			name: "a space says who is in it and who may post",
+			out: SpaceDetailOutput{
+				SpaceID: "spaces/AAAAspace1", Type: "SPACE", DisplayName: "Announcements",
+				LastActiveTime: ptr(at("2026-01-03T09:00:00Z")), HistoryState: ptr("HISTORY_OFF"),
+				HumanMemberCount: ptr(3), GroupMemberCount: ptr(1), MembersCanPost: ptr(false),
+				SpaceURI: ptr("https://mail.google.com/chat/u/0/#chat/space/AAAAspace1"), Description: ptr("news"),
+			},
+			want: []string{"active 2026-01-03T09:00:00Z", "history off", "3 members and 1 group",
+				"only managers can post", "https://mail.google.com/chat/u/0/#chat/space/AAAAspace1", "description: news"},
+		},
+		{
+			name: "a space everyone may post in says nothing about posting",
+			out: SpaceDetailOutput{
+				SpaceID: "spaces/AAAAspace1", Type: "SPACE", DisplayName: "Team",
+				HumanMemberCount: ptr(2), GroupMemberCount: ptr(0), MembersCanPost: ptr(true),
+			},
+			want:  []string{"2 members"},
+			avoid: []string{"post", "group", "guidelines"},
+		},
+		{
+			name: "an expanded group lists who is in it",
+			out: MemberOutput{
+				Kind: "GROUP", MembershipName: "spaces/AAAAspace1/members/AAAAmember1", MemberID: "groups/AAAAgroup1",
+				Email: ptr("team@example.com"), Role: "ROLE_MEMBER", State: "JOINED",
+				GroupMembers:     []GroupMemberOutput{{Email: "johndoe@example.com", Kind: "USER", Role: "OWNER"}},
+				GroupMembersMore: true,
+			},
+			want: []string{"1 group member:", "johndoe@example.com", "OWNER", "The group has more members than are listed."},
+		},
+		{
+			name: "a group that hides its members says so",
+			out: MemberOutput{
+				Kind: "GROUP", MembershipName: "spaces/AAAAspace1/members/AAAAmember1", MemberID: "groups/AAAAgroup1",
+				Role: "ROLE_MEMBER", State: "JOINED", GroupMembersMissing: ptr("[forbidden] the group does not show its members"),
+			},
+			want:  []string{"group members not read: [forbidden]"},
+			avoid: []string{"has more"},
+		},
+		{
 			name: "a listed message carries its links too",
 			out: MessageOutput{
 				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1",

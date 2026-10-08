@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
-	"github.com/mmedum/google-chat-mcp/v4/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // Service turns tool intent into Chat API calls and applies the rules
@@ -381,16 +381,40 @@ func sectionOfItem(name string) string {
 	return ""
 }
 
-// createdAfterFilter bounds a message listing below.
+// requireWindow refuses a time window that ends where it starts, or
+// before: it holds nothing, and an empty answer would read as a quiet
+// space rather than as swapped arguments.
+func requireWindow(fromField string, from time.Time, toField string, to time.Time) error {
+	if !from.IsZero() && !to.IsZero() && !to.After(from) {
+		return Invalidf("%s must be later than %s, or the window holds nothing", toField, fromField)
+	}
+	return nil
+}
+
+// inclusive turns an at-or-after bound into the strictly-after one the
+// listing filter takes, by the timestamps' precision of a microsecond.
+func inclusive(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	return t.Add(-time.Microsecond)
+}
+
+// createTimeFilter bounds a message listing below, above or both. A
+// zero time is no bound on that side.
 //
 // The quoting matters and is not obvious: Chat's filter grammar wants
 // the timestamp quoted here, while the space filter on a section item
 // listing must not be. One place to get it right.
-func createdAfterFilter(t time.Time) string {
-	if t.IsZero() {
-		return ""
+func createTimeFilter(after, before time.Time) string {
+	var clauses []string
+	if !after.IsZero() {
+		clauses = append(clauses, `createTime > "`+googleTime(after)+`"`)
 	}
-	return `createTime > "` + googleTime(t) + `"`
+	if !before.IsZero() {
+		clauses = append(clauses, `createTime < "`+googleTime(before)+`"`)
+	}
+	return strings.Join(clauses, " AND ")
 }
 
 // requireText checks a text argument the caller wrote.

@@ -218,7 +218,7 @@ func (o WhoamiOutput) Render() string {
 
 // Render is one row of a space listing.
 func (o SpaceSummaryOutput) Render() string {
-	return meta(o.SpaceID, o.Type, o.DisplayName)
+	return meta(o.SpaceID, o.Type, o.DisplayName, stamp("active", o.LastActiveTime))
 }
 
 // Render is one space in full.
@@ -231,7 +231,33 @@ func (o SpaceDetailOutput) Render() string {
 			stamp("created", o.CreateTime),
 		),
 		meta(labeled("access", strings.ToLower(deref(o.AccessState))), labeled("audience", deref(o.Audience))),
+		meta(stamp("active", o.LastActiveTime), strings.ToLower(strings.ReplaceAll(deref(o.HistoryState), "_", " ")),
+			memberCounts(o.HumanMemberCount, o.GroupMemberCount), onlyManagersPost(o.MembersCanPost)),
+		deref(o.SpaceURI),
+		labeled("description:", deref(o.Description)),
+		labeled("guidelines:", deref(o.Guidelines)),
 	)
+}
+
+// memberCounts is who has joined a space, or nothing when Google sent no
+// count.
+func memberCounts(humans, groups *int) string {
+	if humans == nil || groups == nil {
+		return ""
+	}
+	out := count(*humans, "member", "members")
+	if *groups > 0 {
+		out += " and " + count(*groups, "group", "groups")
+	}
+	return out
+}
+
+// onlyManagersPost marks a space where ordinary members cannot post.
+func onlyManagersPost(membersCanPost *bool) string {
+	if membersCanPost != nil && !*membersCanPost {
+		return "only managers can post"
+	}
+	return ""
 }
 
 // Render lists the spaces the account belongs to.
@@ -305,11 +331,36 @@ func (o MessageOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
-			labeled("thread", o.ThreadID)),
+			labeled("thread", o.ThreadID), o.marks()),
 		o.Text,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
+		o.lines(),
 	)
+}
+
+// marks are what a message's first line says beside who and when: that
+// it answers its thread, and when it was edited.
+func (o MessageExtrasOutput) marks() string {
+	reply := ""
+	if o.ThreadReply {
+		reply = "reply"
+	}
+	return meta(reply, stamp("edited", o.LastUpdateTime))
+}
+
+// lines are a message's reactions and files, below its text. Too many
+// reactions to inline is said even with none shown, since an empty line
+// would read as a message nobody reacted to.
+func (o MessageExtrasOutput) lines() string {
+	reactions := ""
+	if len(o.Reactions) > 0 {
+		reactions = "reactions: " + strings.Join(rows(o.Reactions), "  ")
+	}
+	if o.ReactionsPaged {
+		reactions = strings.TrimSpace(reactions + " (more not shown; call list_reactions)")
+	}
+	return block(reactions, optionalListing(o.Attachments, "attachment", "attachments"))
 }
 
 // Render is one link in a message: what kind it is, where it goes, and
@@ -423,24 +474,16 @@ func (o ReactionSummaryOutput) Render() string {
 
 // Render is one message with everything known about it.
 func (o MessageDetailOutput) Render() string {
-	reactions := ""
-	if len(o.Reactions) > 0 {
-		reactions = "reactions: " + strings.Join(rows(o.Reactions), "  ")
-		if o.ReactionsPaged {
-			reactions += " (more not shown; call list_reactions)"
-		}
-	}
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
 			labeled("space", o.SpaceID), labeled("thread", o.ThreadID),
-			stamp("edited", o.LastUpdateTime)),
+			o.marks()),
 		o.Text,
 		labeled("markup:", deref(o.FormattedText)),
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
-		reactions,
-		optionalListing(o.Attachments, "attachment", "attachments"),
+		o.lines(),
 	)
 }
 
@@ -459,10 +502,12 @@ func (o AttachmentOutput) Render() string {
 // Render is one search hit.
 func (o SearchMatchOutput) Render() string {
 	return block(
-		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID)),
+		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID),
+			o.marks(), flag("read", o.Read), flag("space muted", o.SpaceMuted)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
+		o.lines(),
 	)
 }
 
@@ -688,8 +733,21 @@ func (o UpdateMemberRoleOutput) Render() string {
 
 // Render is one member of a space.
 func (o MemberOutput) Render() string {
-	return meta(o.MembershipName, o.Kind, person(o.MemberID, o.DisplayName, o.Email),
-		o.Role, o.State, o.Affiliation)
+	more := ""
+	if o.GroupMembersMore {
+		more = "The group has more members than are listed."
+	}
+	return block(
+		meta(o.MembershipName, o.Kind, person(o.MemberID, o.DisplayName, o.Email), o.Role, o.State, o.Affiliation),
+		optionalListing(o.GroupMembers, "group member", "group members"),
+		more,
+		labeled("group members not read:", deref(o.GroupMembersMissing)),
+	)
+}
+
+// Render is one member of a group.
+func (o GroupMemberOutput) Render() string {
+	return meta(o.Email, o.Kind, o.Role)
 }
 
 // Render lists a space's members.

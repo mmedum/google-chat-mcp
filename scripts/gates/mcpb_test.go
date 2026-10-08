@@ -17,7 +17,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/server"
+	"github.com/mmedum/google-chat-mcp/v5/internal/server"
 )
 
 // The Claude Desktop bundle is built once a year at most, on a runner,

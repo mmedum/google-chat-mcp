@@ -23,7 +23,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // Scopes returns the scope set login requests. It is the full set

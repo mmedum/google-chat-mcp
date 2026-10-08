@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 func searchPage(messages ...string) string {
@@ -168,22 +168,6 @@ func TestABadPatternNeverReachesGoogle(t *testing.T) {
 	}
 }
 
-func TestSearchBoundsTheScanByTime(t *testing.T) {
-	var filter string
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-		filter = r.URL.Query().Get("filter")
-		fmt.Fprint(w, `{"messages":[]}`)
-	})
-	if _, err := s.SearchMessages(context.Background(), SearchMessagesInput{
-		Space: "spaces/A", Regex: "x", CreatedAfter: "2026-01-02",
-	}); err != nil {
-		t.Fatalf("SearchMessages: %v", err)
-	}
-	if filter != `createTime > "2026-01-02T00:00:00.000000Z"` {
-		t.Errorf("filter = %q", filter)
-	}
-}
-
 // A model sends what it has. The strict form is what Google wants and
 // what the schema documents; a bare date should still get the day it
 // asked for rather than a schema violation it cannot see the shape of.
@@ -278,6 +262,18 @@ func TestUpstreamSearchBuildsGooglesFilter(t *testing.T) {
 			SearchMessagesInput{Space: "spaces/AAAAspace1", Query: "deploy"},
 			`space.name = "spaces/AAAAspace1" AND "deploy"`,
 		},
+		{
+			"a kind of space is a clause",
+			SearchMessagesInput{Query: "deploy", SpaceType: "DIRECT_MESSAGE"},
+			`"deploy" AND space.space_type = "DIRECT_MESSAGE"`,
+		},
+		{
+			// Every word must be in the name, so each is its own clause.
+			"each word of a space name is a clause",
+			SearchMessagesInput{Query: "deploy", SpaceName: " Project  Alpha "},
+			`"deploy" AND space.display_name:Project AND space.display_name:Alpha`,
+		},
+		{"a space name alone is a search", SearchMessagesInput{SpaceName: "Alpha"}, `space.display_name:Alpha`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var filter, method, path string
@@ -323,6 +319,89 @@ func TestUpstreamSearchRefusesGrammarInAKeyword(t *testing.T) {
 	}
 }
 
+// A space filter is refused rather than guessed at when it could change
+// what the expression means, or names a kind Google does not have.
+func TestUpstreamSearchRefusesABadSpaceFilter(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("a refused argument must not reach Google")
+	})
+	for _, in := range []SearchMessagesInput{
+		{SpaceType: "ROOM"},
+		{SpaceName: `Alpha"`},
+		{SpaceName: "Alpha OR(b)"},
+		{SpaceName: "a:b"},
+		{SpaceName: "-ops"},
+		{SpaceName: "team_ops"},
+		{Query: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-01"},
+		{Space: "spaces/AAAAspace1", Regex: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-02"},
+		{Space: "spaces/AAAAspace1", Regex: "x", SpaceType: "SPACE"},
+		{Space: "spaces/AAAAspace1", Regex: "x", SpaceName: "Alpha"},
+	} {
+		_, err := s.SearchMessages(context.Background(), in)
+		assertClass(t, err, ClassInvalid)
+	}
+}
+
+// Google's search reports each hit's read state and its space's mute
+// setting in the full view, which every search asks for. Its JSON leaves
+// a false boolean out, so a silent hit is unread when something shows
+// the read state is being reported, and unknown otherwise.
+func TestUpstreamSearchCarriesReadStateAndMute(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		results    string
+		unreadOnly bool
+		want       []string
+	}{
+		{
+			name: "one hit read says the silent ones are unread",
+			results: `{"message":{"name":"spaces/A/messages/1","text":"a"},"spaceMuteSetting":"MUTED"},
+			  {"message":{"name":"spaces/A/messages/2","text":"b"},"read":true,"spaceMuteSetting":"UNMUTED"},
+			  {"message":{"name":"spaces/A/messages/3","text":"c"}}`,
+			want: []string{"read false, muted true", "read true, muted false", "read false, muted unknown"},
+		},
+		{
+			name:    "no hit read leaves them unknown",
+			results: `{"message":{"name":"spaces/A/messages/1","text":"a"}}`,
+			want:    []string{"read unknown, muted unknown"},
+		},
+		{
+			name:       "unread_only matched only unread messages",
+			results:    `{"message":{"name":"spaces/A/messages/1","text":"a"}}`,
+			unreadOnly: true,
+			want:       []string{"read false, muted unknown"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var view string
+			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+				view = r.URL.Query().Get("view")
+				fmt.Fprintf(w, `{"results":[%s]}`, tc.results)
+			})
+			got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Query: "x", UnreadOnly: tc.unreadOnly})
+			if err != nil {
+				t.Fatalf("SearchMessages: %v", err)
+			}
+			if view != "SEARCH_MESSAGES_VIEW_FULL" {
+				t.Errorf("view = %q, want SEARCH_MESSAGES_VIEW_FULL", view)
+			}
+			show := func(b *bool) string {
+				if b == nil {
+					return "unknown"
+				}
+				return fmt.Sprint(*b)
+			}
+			var states []string
+			for _, m := range got.Matches {
+				states = append(states, "read "+show(m.Read)+", muted "+show(m.SpaceMuted))
+			}
+			if strings.Join(states, "; ") != strings.Join(tc.want, "; ") {
+				t.Errorf("hits = %q, want %q", states, tc.want)
+			}
+		})
+	}
+}
+
 // A page token is the only honest way to say there is more, and
 // cap_reached is what a caller reads to know the answer is partial.
 func TestUpstreamSearchReportsAFurtherPage(t *testing.T) {
@@ -365,6 +444,22 @@ func TestAnUnreadSearchNamesBothScopes(t *testing.T) {
 	}
 }
 
+// A space filter reads the spaces as well as the messages, and Google's
+// refusal does not say which scope was declined.
+func TestASpaceFilteredSearchNamesBothScopes(t *testing.T) {
+	s := newService(t, status(403,
+		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
+	for _, in := range []SearchMessagesInput{{SpaceType: "SPACE"}, {SpaceName: "Alpha"}} {
+		_, err := s.SearchMessages(context.Background(), in)
+		assertClass(t, err, ClassScope)
+		for _, want := range []string{scopes.MessagesReadonly, scopes.SpacesReadonly} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%+v: the message %q does not name %s", in, err, want)
+			}
+		}
+	}
+}
+
 // Both searches read the same messages, so both have to carry what a
 // message links to. A hit whose body is a link is otherwise a row of
 // anchor text with nowhere to go.
@@ -391,5 +486,25 @@ func TestSearchCarriesTheLinksOnAHit(t *testing.T) {
 				t.Errorf("links = %+v, want the linked message named", links)
 			}
 		})
+	}
+}
+
+// A regex scan bounds the history it reads on both sides, as Google's
+// search does. created_before was once dropped here without a word, and
+// created_after means at or after, which the listing filter's > reaches
+// by stepping back the timestamps' precision of one microsecond.
+func TestARegexScanBoundsItsWindow(t *testing.T) {
+	var filter string
+	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+		filter = r.URL.Query().Get("filter")
+		fmt.Fprint(w, `{"messages":[]}`)
+	})
+	if _, err := s.SearchMessages(context.Background(), SearchMessagesInput{
+		Space: "spaces/A", Regex: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-03",
+	}); err != nil {
+		t.Fatalf("SearchMessages: %v", err)
+	}
+	if want := `createTime > "2026-01-01T23:59:59.999999Z" AND createTime < "2026-01-03T00:00:00.000000Z"`; filter != want {
+		t.Errorf("filter = %q, want %q", filter, want)
 	}
 }

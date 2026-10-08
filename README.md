@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v4.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v4)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v5.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v5)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -32,7 +32,7 @@ tools you are actually using need.
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v4/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v5/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -164,17 +164,17 @@ and the three tools that move them say so.
 | `whoami` | Which account the stored credentials belong to | `openid email profile` |
 | `list_spaces` | Spaces, group chats and direct messages you are in | `chat.spaces.readonly` |
 | `get_space` | One space by resource name | `chat.spaces.readonly` |
-| `search_spaces` | Named spaces by display name, including ones you are not in | `chat.spaces.readonly`; `chat.admin.spaces.readonly` for `use_admin_access` |
+| `search_spaces` | Named spaces you are in, by display name; every space with `use_admin_access` | `chat.spaces.readonly`; `chat.admin.spaces.readonly` for `use_admin_access` |
 | `find_group_chats` | The group chats holding exactly you and the people you name | `chat.memberships.readonly`, `chat.spaces.readonly` |
 | `find_direct_message` | The direct message with one person, created if there is none yet | `chat.spaces.readonly`, `chat.spaces.create` |
 | `get_messages` | Recent messages in a space, newest first, senders resolved to names | `chat.messages.readonly` |
 | `get_message` | One message, with its reaction counts, what its text links to and what it quotes | `chat.messages.readonly` |
 | `get_thread` | Every message in one thread, oldest first | `chat.messages.readonly` |
 | `download_attachment` | Save a message's attachment into the server's local directory | `chat.messages.readonly` |
-| `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only` |
+| `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only`; `chat.spaces.readonly` for `space_type` and `space_name` |
 | `search_people` | Turn a name into an email address, from the directory and your contacts | `directory.readonly`, `contacts.readonly` |
 | `find_group` | Turn a Google Group's email address into the id `add_member` takes | `cloud-identity.groups.readonly` |
-| `list_members` | Who is in a space, people and groups resolved to names and addresses | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
+| `list_members` | Who is in a space, people and groups resolved to names and addresses, and on request who is in each group | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `update_member_role` | Make someone a member, manager or assistant manager | `chat.memberships` |
 | `list_reactions` | Reactions on a message | `chat.messages.reactions` |
@@ -199,7 +199,7 @@ and the three tools that move them say so.
 | `delete_space` | Delete a space and everything in it | `chat.delete` |
 | `list_sections` | Your own sidebar sections | `chat.users.sections.readonly` |
 | `list_section_items` | What a section holds, or which section a space sits in | `chat.users.sections.readonly` |
-| `send_message` | Post text, exactly as given. Optionally into a thread, or carrying an uploaded file | `chat.messages.create` |
+| `send_message` | Post text, exactly as given, in Chat's syntax or Markdown. Optionally into a thread, quoting a message, or carrying an uploaded file | `chat.messages.create`; `chat.messages.readonly` to quote |
 | `upload_attachment` | Send a local file to a space and get the token that attaches it | `chat.messages.create` |
 | `update_message` | Edit the text of a message you sent | `chat.messages` |
 | `delete_message` | Delete a message. Already gone counts as success | `chat.messages` |
@@ -229,10 +229,11 @@ client that includes resources in its context:
 ## Safety
 
 - **`dry_run` on 25 write tools.** It returns the request body that
-  would have been sent, and the call cannot reach the network: the flag
-  puts the request on a context the HTTP client refuses to write under,
-  so a tool that forgot its own preview branch fails loudly instead of
-  posting.
+  would have been sent, and the call cannot write: the flag puts the
+  request on a context the HTTP client refuses to write under, so a
+  tool that forgot its own preview branch fails loudly instead of
+  posting. A preview may still read what it shows, such as the quoted
+  message a quote names.
 - **`GCM_READ_ONLY=true` leaves the write tools unregistered.** A tool
   that is not registered cannot be called, whatever permission mode the
   client is in or whatever a model asks for. It is set where you start

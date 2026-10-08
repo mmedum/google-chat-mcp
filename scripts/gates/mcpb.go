@@ -275,21 +275,7 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 // release does is checksum whatever is in dist/, and a half-written
 // bundle would be signed as readily as a whole one.
 func writeBundle(out string, files []bundleFile, manifest []byte) error {
-	tmp := out + ".tmp"
-	f, err := os.Create(tmp) //nolint:gosec // a path built from the release's own version
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(tmp) }()
-
-	if err := writeEntries(f, files, manifest); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, out)
+	return writeThrough(out, func(w io.Writer) error { return writeEntries(w, files, manifest) })
 }
 
 func writeEntries(w io.Writer, files []bundleFile, manifest []byte) error {

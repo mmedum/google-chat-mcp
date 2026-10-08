@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // MessageOutput is one message in a listing.
@@ -25,6 +25,7 @@ type MessageOutput struct {
 	ThreadID          string              `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
 	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
 	Quote             *MessageQuoteOutput `json:"quote" jsonschema:"the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing"`
+	MessageExtrasOutput
 }
 
 // MessageQuoteOutput is the message this one quotes or forwards.
@@ -75,6 +76,7 @@ type GetMessagesInput struct {
 	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
 	SpaceID   string `json:"space_id" jsonschema:"the space to read, spaces/{id}, from list_spaces"`
 	Since     string `json:"since,omitempty" jsonschema:"only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z"`
+	Before    string `json:"before,omitempty" jsonschema:"only messages created before this time; RFC 3339. With since, a window, such as what was said on one day"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 20"`
 }
 
@@ -97,23 +99,46 @@ type ReactionSummaryOutput struct {
 	Count int    `json:"count" jsonschema:"how many people reacted with it"`
 }
 
+// MessageExtrasOutput is what a message carries beside its text. A
+// listing row, a search hit and get_message embed it, so the fields and
+// their descriptions are written once.
+type MessageExtrasOutput struct {
+	LastUpdateTime *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
+	ThreadReply    bool                    `json:"thread_reply" jsonschema:"true when it was posted as a reply in its thread, false when it started the thread"`
+	Reactions      []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
+	ReactionsPaged bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
+	Attachments    []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message, with the name download_attachment takes; empty when it carries none. A message that is only a file has empty text and its file here"`
+}
+
+// messageExtras shapes what a message carries beside its text.
+func messageExtras(e service.MessageExtras) MessageExtrasOutput {
+	out := MessageExtrasOutput{
+		LastUpdateTime: nullableTime(e.LastUpdateTime),
+		ThreadReply:    e.ThreadReply,
+		Reactions:      make([]ReactionSummaryOutput, 0, len(e.Reactions)),
+		ReactionsPaged: e.ReactionsPaged,
+		Attachments:    attachmentOutputs(e.Attachments),
+	}
+	for _, r := range e.Reactions {
+		out.Reactions = append(out.Reactions, ReactionSummaryOutput{Emoji: r.Emoji, Count: r.Count})
+	}
+	return out
+}
+
 // MessageDetailOutput is one message with its reactions inline.
 type MessageDetailOutput struct {
-	MessageID         string                  `json:"message_id" jsonschema:"the message's resource name"`
-	SpaceID           string                  `json:"space_id" jsonschema:"the space it was posted in"`
-	ThreadID          string                  `json:"thread_id" jsonschema:"the thread it belongs to"`
-	SenderUserID      string                  `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	SenderEmail       *string                 `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
-	SenderDisplayName *string                 `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
-	Text              string                  `json:"text" jsonschema:"the message body as plain text"`
-	FormattedText     *string                 `json:"formatted_text" jsonschema:"the same body with Chat's markup left in — bold, italics, mentions and the URL behind a link — or null when the markup says nothing the plain text does not"`
-	Links             []MessageLinkOutput     `json:"links" jsonschema:"what the text links to; empty when it links to nothing"`
-	Quote             *MessageQuoteOutput     `json:"quote" jsonschema:"the message this one quotes or forwards; null when it quotes nothing"`
-	Timestamp         time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
-	LastUpdateTime    *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
-	Reactions         []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
-	ReactionsPaged    bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
-	Attachments       []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message; empty when it carries none"`
+	MessageID         string              `json:"message_id" jsonschema:"the message's resource name"`
+	SpaceID           string              `json:"space_id" jsonschema:"the space it was posted in"`
+	ThreadID          string              `json:"thread_id" jsonschema:"the thread it belongs to"`
+	SenderUserID      string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
+	SenderEmail       *string             `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
+	SenderDisplayName *string             `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
+	Text              string              `json:"text" jsonschema:"the message body as plain text"`
+	FormattedText     *string             `json:"formatted_text" jsonschema:"the same body with Chat's markup left in — bold, italics, mentions and the URL behind a link — or null when the markup says nothing the plain text does not"`
+	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to; empty when it links to nothing"`
+	Quote             *MessageQuoteOutput `json:"quote" jsonschema:"the message this one quotes or forwards; null when it quotes nothing"`
+	Timestamp         time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
+	MessageExtrasOutput
 }
 
 // AttachmentOutput is one file on a message.
@@ -132,12 +157,14 @@ type SearchMessagesInput struct {
 	Query         string `json:"query,omitempty" jsonschema:"keywords for Google's own search, matched as a phrase across whole words. Quotes, backslashes and brackets are not allowed; use regex for a literal or partial-word match"`
 	Regex         string `json:"regex,omitempty" jsonschema:"a regular expression in RE2 syntax, scanned by this server over one space rather than by Google. The only way to match a pattern or part of a word, and the slowest: it reads pages of history. Cannot be combined with query or the filters below"`
 	CreatedAfter  string `json:"created_after,omitempty" jsonschema:"only messages created at or after this time; RFC 3339, such as 2026-01-01T00:00:00Z. Strongly recommended for a regex scan: an unbounded scan of a busy space stops at the page cap and returns a partial result"`
-	CreatedBefore string `json:"created_before,omitempty" jsonschema:"only messages created before this time; RFC 3339. Google's search only"`
+	CreatedBefore string `json:"created_before,omitempty" jsonschema:"only messages created before this time; RFC 3339"`
 	SenderEmail   string `json:"sender_email,omitempty" jsonschema:"only messages from this person. Google's search only"`
 	MentionsMe    bool   `json:"mentions_me,omitempty" jsonschema:"only messages that @-mention you. Google's search only"`
 	HasAttachment bool   `json:"has_attachment,omitempty" jsonschema:"only messages carrying an attachment. Google's search only"`
 	HasLink       bool   `json:"has_link,omitempty" jsonschema:"only messages containing a hyperlink. Google's search only"`
 	UnreadOnly    bool   `json:"unread_only,omitempty" jsonschema:"only messages you have not read. Google's search only, and it needs the read-state scope as well as the message one"`
+	SpaceType     string `json:"space_type,omitempty" jsonschema:"only messages in spaces of this kind: SPACE, GROUP_CHAT or DIRECT_MESSAGE. Google's search only"`
+	SpaceName     string `json:"space_name,omitempty" jsonschema:"only messages in spaces whose display name holds every one of these words, such as Project Alpha. Google searches its top five matching spaces. Google's search only"`
 	ByRelevance   bool   `json:"by_relevance,omitempty" jsonschema:"order by relevance instead of newest first. Google has this in Developer Preview and refuses it outside that program"`
 	Limit         int    `json:"limit,omitempty" jsonschema:"how many matches to return, 1 to 100; default 50"`
 	MaxPages      int    `json:"max_pages,omitempty" jsonschema:"how many pages of history a regex scan may read, 1 to 50; default 10"`
@@ -155,6 +182,9 @@ type SearchMatchOutput struct {
 	Snippet      string              `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
 	Links        []MessageLinkOutput `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
 	Quote        *MessageQuoteOutput `json:"quote" jsonschema:"the message this hit quotes or forwards; null when it quotes nothing"`
+	MessageExtrasOutput
+	Read       *bool `json:"read" jsonschema:"whether you have read it. Null when it cannot be told: in a regex scan, without the read-state scope, or when no hit on the page is read and unread_only is off, because Google leaves an unread state out rather than sending false"`
+	SpaceMuted *bool `json:"space_muted" jsonschema:"whether you have muted its space; null when Google did not say, which it does not for a regex scan or without the space-settings scope"`
 }
 
 // SearchMessagesOutput is what a scan found and how far it got.
@@ -176,11 +206,12 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"page size before it filters. Sender email is the one Chat sends, or a People API lookup when " +
 			"Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
 			"message reading as a bare word may be a link to something. quote is what a message replies to or " +
-			"forwards, which Chat also keeps out of the body.",
+			"forwards, which Chat also keeps out of the body. Each message also carries its files, reaction counts, " +
+			"when it was edited and whether it replies in its thread; a message that is only a file has empty text.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
-			Space: in.SpaceID, Since: in.Since, Limit: in.Limit, PageToken: in.PageToken,
+			Space: in.SpaceID, Since: in.Since, Before: in.Before, Limit: in.Limit, PageToken: in.PageToken,
 		})
 		if err != nil {
 			return nil, MessageListOutput{}, err
@@ -197,8 +228,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Description: "Read one thread's messages, oldest first. Give the parent space_id and the thread_name " +
 			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; " +
 			"page with page_token and next_page_token. A non-null next_page_token means the thread is longer than " +
-			"what came back, so do not read the result as the whole thread. Each message carries its links and " +
-			"what it quotes.",
+			"what came back, so do not read the result as the whole thread. Each message carries its links, what " +
+			"it quotes, its files and reaction counts, and when it was edited.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetThreadInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
@@ -240,7 +271,7 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads " +
 			"pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is " +
 			"partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. " +
-			"Each hit carries its links and what it quotes.",
+			"Each hit carries its links, what it quotes, its files and reaction counts, and when it was edited.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchMessagesInput) (*mcp.CallToolResult, SearchMessagesOutput, error) {
 		got, err := d.Service.SearchMessages(ctx, service.SearchMessagesInput{
@@ -254,6 +285,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			HasAttachment: in.HasAttachment,
 			HasLink:       in.HasLink,
 			UnreadOnly:    in.UnreadOnly,
+			SpaceType:     in.SpaceType,
+			SpaceName:     in.SpaceName,
 			ByRelevance:   in.ByRelevance,
 			Limit:         in.Limit,
 			MaxPages:      in.MaxPages,
@@ -279,25 +312,19 @@ func registerMessages(s *mcp.Server, d Deps) {
 // interchangeable.
 func messageDetail(got *service.MessageDetail) MessageDetailOutput {
 	out := MessageDetailOutput{
-		MessageID:         got.Name,
-		SpaceID:           got.Space,
-		ThreadID:          got.ThreadName,
-		SenderUserID:      got.SenderUserID,
-		SenderEmail:       nullable(got.SenderEmail),
-		SenderDisplayName: nullable(got.SenderDisplayName),
-		Text:              got.Text,
-		FormattedText:     nullable(got.FormattedText),
-		Links:             messageLinks(got.Links),
-		Quote:             messageQuote(got.Quote),
-		Timestamp:         got.CreateTime,
-		LastUpdateTime:    nullableTime(got.LastUpdateTime),
-		Reactions:         make([]ReactionSummaryOutput, 0, len(got.Reactions)),
-		ReactionsPaged:    got.ReactionsPaged,
+		MessageID:           got.Name,
+		SpaceID:             got.Space,
+		ThreadID:            got.ThreadName,
+		SenderUserID:        got.SenderUserID,
+		SenderEmail:         nullable(got.SenderEmail),
+		SenderDisplayName:   nullable(got.SenderDisplayName),
+		Text:                got.Text,
+		FormattedText:       nullable(got.FormattedText),
+		Links:               messageLinks(got.Links),
+		Quote:               messageQuote(got.Quote),
+		Timestamp:           got.CreateTime,
+		MessageExtrasOutput: messageExtras(got.MessageExtras),
 	}
-	for _, r := range got.Reactions {
-		out.Reactions = append(out.Reactions, ReactionSummaryOutput{Emoji: r.Emoji, Count: r.Count})
-	}
-	out.Attachments = attachmentOutputs(got.Attachments)
 	return out
 }
 
@@ -323,15 +350,16 @@ func messageRows(rows []service.MessageRow) []MessageOutput {
 	out := make([]MessageOutput, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, MessageOutput{
-			MessageID:         r.Name,
-			SenderUserID:      r.SenderUserID,
-			SenderEmail:       nullable(r.SenderEmail),
-			SenderDisplayName: nullable(r.SenderDisplayName),
-			Text:              r.Text,
-			Timestamp:         r.CreateTime,
-			ThreadID:          r.ThreadName,
-			Links:             messageLinks(r.Links),
-			Quote:             messageQuote(r.Quote),
+			MessageID:           r.Name,
+			SenderUserID:        r.SenderUserID,
+			SenderEmail:         nullable(r.SenderEmail),
+			SenderDisplayName:   nullable(r.SenderDisplayName),
+			Text:                r.Text,
+			Timestamp:           r.CreateTime,
+			ThreadID:            r.ThreadName,
+			Links:               messageLinks(r.Links),
+			Quote:               messageQuote(r.Quote),
+			MessageExtrasOutput: messageExtras(r.MessageExtras),
 		})
 	}
 	return out
@@ -352,6 +380,10 @@ func searchMatches(matches []service.SearchMatch) []SearchMatchOutput {
 			Snippet:      m.Snippet,
 			Links:        messageLinks(m.Links),
 			Quote:        messageQuote(m.Quote),
+
+			MessageExtrasOutput: messageExtras(m.MessageExtras),
+			Read:                m.Read,
+			SpaceMuted:          m.SpaceMuted,
 		})
 	}
 	return out
@@ -406,6 +438,8 @@ type SendMessageInput struct {
 	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
 	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
 	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
+	QuoteMessage    string `json:"quote_message,omitempty" jsonschema:"quote this message above the text, as a reply to it: spaces/{space}/messages/{message}, in the same space. Google refuses to forward a message under a person's sign-in, so one from another space cannot be quoted"`
+	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">, and <chat-user data-user=\"users/all\"> mentions and notifies EVERYONE"`
 	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
 
@@ -464,7 +498,8 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 		got, err := d.Service.SendMessage(ctx, service.SendMessageInput{
 			Space: in.SpaceID, Text: in.Text, Thread: in.ThreadName,
 			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken,
-			ClientMessageID: in.ClientMessageID, DryRun: in.DryRun,
+			ClientMessageID: in.ClientMessageID, Markdown: in.Markdown, DryRun: in.DryRun,
+			Quote: in.QuoteMessage,
 		})
 		if err != nil {
 			return nil, SendMessageOutput{}, err

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // MaxAttachmentBytes is the largest attachment Google accepts, from the

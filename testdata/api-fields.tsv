@@ -37,6 +37,14 @@ cloudidentity	Group	externalIds	out	find_group and the member listings report a 
 cloudidentity	Group	labels	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
 cloudidentity	Group	parent	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
 cloudidentity	Group	updateTime	out	find_group and the member listings report a group's name, address and display name; nothing reads the rest
+cloudidentity	Membership	*	alias	GroupMembership
+cloudidentity	Membership	createTime	out	list_members with expand_groups reports each member's address, kind and highest role; nothing reads the rest
+cloudidentity	Membership	deliverySetting	out	list_members with expand_groups reports each member's address, kind and highest role; nothing reads the rest
+cloudidentity	Membership	updateTime	out	list_members with expand_groups reports each member's address, kind and highest role; nothing reads the rest
+cloudidentity	MembershipRole	*	alias	GroupMembershipRole
+cloudidentity	MembershipRole	expiryDetail	out	list_members with expand_groups reports each member's address, kind and highest role; nothing reads the rest
+cloudidentity	MembershipRole	restrictionEvaluations	out	list_members with expand_groups reports each member's address, kind and highest role; nothing reads the rest
+cloudidentity	ListMembershipsResponse	*	alias	GroupMembershipsPage
 #
 # Names that collide with something else entirely. Chat publishes a
 # Section and a SectionItem of cards and widgets, for a message's card

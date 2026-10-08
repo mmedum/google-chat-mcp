@@ -3,6 +3,7 @@
 package livecheck
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path"
@@ -101,8 +102,10 @@ var steps = []step{
 
 	{"the scratch space reads back", "get_space", func(d *driver) {
 		var out struct {
-			SpaceID     string `json:"space_id"`
-			DisplayName string `json:"display_name"`
+			SpaceID          string  `json:"space_id"`
+			DisplayName      string  `json:"display_name"`
+			SpaceURI         *string `json:"space_uri"`
+			HumanMemberCount *int    `json:"human_member_count"`
 		}
 		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
 		if out.SpaceID != d.space {
@@ -110,6 +113,13 @@ var steps = []step{
 		}
 		if !strings.Contains(out.DisplayName, spacePrefix) {
 			d.t.Errorf("display name = %q, want the name create_space was given", d.redact(out.DisplayName))
+		}
+		if out.SpaceURI == nil {
+			d.t.Error("the space came back with no space_uri")
+		}
+		// Its creator has joined it, whatever else Google counts.
+		if out.HumanMemberCount == nil || *out.HumanMemberCount < 1 {
+			d.t.Error("the space came back with no count of the people in it")
 		}
 	}},
 
@@ -199,6 +209,23 @@ var steps = []step{
 		d.t.Error("the posted message is not in get_messages")
 	}},
 
+	// The upper bound is a clause Google could refuse; the scratch space
+	// is minutes old, so a window that ends an hour ago holds none of
+	// this run's messages.
+	{"a window that ends before the space existed is empty", "get_messages", func(d *driver) {
+		var out struct {
+			Result []struct {
+				MessageID string `json:"message_id"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{
+			"space_id": d.space, "before": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+		}), &out)
+		if len(out.Result) != 0 {
+			d.t.Errorf("a window ending an hour ago returned %d messages from a space made minutes ago", len(out.Result))
+		}
+	}},
+
 	// Chat keeps a link out of the message text: it arrives as an
 	// annotation naming what was linked, and a reader that drops
 	// annotations sees the anchor word alone. Posting one here and
@@ -255,6 +282,119 @@ var steps = []step{
 		default:
 			d.t.Errorf("the link came back as %s naming %s, want the message or the space it points at",
 				got.LinkType, d.redact(got.MessageID))
+		}
+	}},
+
+	// Markdown is GA for messages created through the API (release note
+	// 2026-08-19), and discovery calls markupSyntax optional rather than
+	// output only. Only a post read back can say whether a person's
+	// token gets it too.
+	{"a markdown message is posted", "send_message", func(d *driver) {
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": liveMarkdownBody, "markdown": true,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the markdown message")
+		}
+		d.record(out.MessageID)
+		d.markdown = out.MessageID
+	}},
+
+	// Quoting needs the quoted message's exact timestamp, which the
+	// server reads first; a stale one is refused. Only a reply: Google
+	// refused every forward under a person's sign-in, live 2026-10-08 —
+	// a main-chat message into its own space, a thread reply into another
+	// thread, and a message into another space.
+	{"a reply is posted into the thread", "send_message", func(d *driver) {
+		if d.thread == "" {
+			d.t.Skip("no thread to reply in")
+		}
+		var out struct {
+			MessageID string `json:"message_id"`
+			ThreadID  string `json:"thread_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " replied in the thread", "thread_name": d.thread,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the reply")
+		}
+		d.record(out.MessageID)
+		if out.ThreadID != d.thread {
+			d.t.Errorf("the reply landed in %s, want the thread it was posted into", d.redact(out.ThreadID))
+		}
+		d.threadReply = out.MessageID
+	}},
+
+	{"a reply quotes the posted message", "send_message", func(d *driver) {
+		if d.posted == "" {
+			d.t.Skip("nothing was posted to quote")
+		}
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " quoted this line", "quote_message": d.posted,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the quote")
+		}
+		d.record(out.MessageID)
+		d.quoted = out.MessageID
+	}},
+
+	{"a quote reads back naming what it quotes", "get_message", func(d *driver) {
+		if d.quoted == "" {
+			d.t.Skip("no quote was posted")
+		}
+		var out struct {
+			Quote *struct {
+				MessageID string `json:"message_id"`
+				QuoteType string `json:"quote_type"`
+			} `json:"quote"`
+		}
+		d.into(d.must("get_message", map[string]any{"message_name": d.quoted}), &out)
+		switch {
+		case out.Quote == nil:
+			d.t.Error("the quote came back quoting nothing")
+		case out.Quote.MessageID != d.posted:
+			d.t.Errorf("the quote came back quoting %s, want the posted message", d.redact(out.Quote.MessageID))
+		case cmp.Or(out.Quote.QuoteType, "REPLY") != "REPLY":
+			d.t.Errorf("the quote came back as quote type %q", d.redact(out.Quote.QuoteType))
+		}
+	}},
+
+	{"the space reads as active once something is posted", "get_space", func(d *driver) {
+		var out struct {
+			LastActiveTime *string `json:"last_active_time"`
+		}
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+		if out.LastActiveTime == nil {
+			d.t.Error("the space has messages in it and came back with no last_active_time")
+		}
+	}},
+
+	{"a markdown message reads back formatted", "get_message", func(d *driver) {
+		if d.markdown == "" {
+			d.t.Skip("no markdown message was posted")
+		}
+		var out struct {
+			Text          string  `json:"text"`
+			FormattedText *string `json:"formatted_text"`
+		}
+		d.into(d.must("get_message", map[string]any{"message_name": d.markdown}), &out)
+		// Chat's own markup for bold is one asterisk. Two, or no
+		// formatting at all, means Google read the body as Chat syntax.
+		var markup string
+		if out.FormattedText != nil {
+			markup = *out.FormattedText
+		}
+		if !strings.Contains(markup, "*"+liveMarkdownBold+"*") || strings.Contains(markup, "**"+liveMarkdownBold+"**") {
+			d.t.Errorf("the markdown message came back as text %q and markup %q, want the bold word in Chat's markup",
+				d.redact(out.Text), d.redact(markup))
 		}
 	}},
 
@@ -358,6 +498,34 @@ var steps = []step{
 		d.attached = out.MessageID
 	}},
 
+	// A listing used to show a file-only message as an empty row. This
+	// is the one place a real attachment can say whether it now shows.
+	{"a listing names the file on a message", "get_messages", func(d *driver) {
+		if d.attached == "" {
+			d.t.Skip("no message with an attachment was posted")
+		}
+		var out struct {
+			Result []struct {
+				MessageID   string `json:"message_id"`
+				Attachments []struct {
+					AttachmentName string `json:"attachment_name"`
+					Downloadable   bool   `json:"downloadable"`
+				} `json:"attachments"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{"space_id": d.space, "limit": 50}), &out)
+		for _, m := range out.Result {
+			if m.MessageID != d.attached {
+				continue
+			}
+			if len(m.Attachments) != 1 || m.Attachments[0].AttachmentName == "" || !m.Attachments[0].Downloadable {
+				d.t.Errorf("the listed message carries %d attachments, want the one downloadable file", len(m.Attachments))
+			}
+			return
+		}
+		d.t.Error("the message with the attachment is not in get_messages")
+	}},
+
 	{"the attachment downloads into the allowed directory", "download_attachment", func(d *driver) {
 		var out struct {
 			Path  string `json:"path"`
@@ -398,6 +566,7 @@ var steps = []step{
 			Matches []struct {
 				MessageID string     `json:"message_id"`
 				Links     []struct{} `json:"links"`
+				Read      *bool      `json:"read"`
 			} `json:"matches"`
 		}
 		d.into(d.must("search_messages", map[string]any{
@@ -411,6 +580,11 @@ var steps = []step{
 			if m.MessageID == d.linked && len(m.Links) == 0 {
 				d.t.Log("Google's search returned the linking message with no links on it")
 			}
+		}
+		// The full view carries each hit's read state when the token
+		// holds the read-state scope, which login always asks for.
+		if len(out.Matches) > 0 && out.Matches[0].Read == nil {
+			d.t.Error("Google's search returned hits with no read state")
 		}
 	}},
 
@@ -660,6 +834,25 @@ var steps = []step{
 		}
 	}},
 
+	// The reply goes first: Google refuses to delete a message that has
+	// threaded replies unless forced, and force is a step of its own.
+	{"the thread reply deletes", "delete_message", func(d *driver) {
+		if d.threadReply == "" {
+			d.t.Skip("no reply was posted into the thread")
+		}
+		var out struct {
+			Deleted bool `json:"deleted"`
+		}
+		asked := d.person.expect(false)
+		d.into(d.must("delete_message", map[string]any{"message_name": d.threadReply}), &out)
+		if len(asked()) != 1 {
+			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
+		}
+		if !out.Deleted {
+			d.t.Error("the reply's delete reported that it deleted nothing")
+		}
+	}},
+
 	{"the message deletes", "delete_message", func(d *driver) {
 		var out struct {
 			Deleted bool `json:"deleted"`
@@ -732,8 +925,12 @@ var steps = []step{
 // anyone's real message, and nothing about them identifies an account.
 const (
 	livePostBody = "livecheck posted this line and will delete it"
-	liveEditBody = "livecheck edited this line and will delete it"
-	searchTerm   = "livecheck"
+	// liveMarkdownBody is posted with markdown: true, and its bold word
+	// is what reading it back looks for.
+	liveMarkdownBody = "livecheck posted this **" + liveMarkdownBold + "** line and will delete it"
+	liveMarkdownBold = "markdown"
+	liveEditBody     = "livecheck edited this line and will delete it"
+	searchTerm       = "livecheck"
 )
 
 func TestLive(t *testing.T) {

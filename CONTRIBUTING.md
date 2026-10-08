@@ -48,7 +48,13 @@ Four of those are worth knowing about before they fail on you:
 - **The schema diff** compares the built binary with
   `testdata/schemas-baseline.json`. A renamed tool or a dropped output
   field breaks every caller and fails the build. A reshaped input is
-  reported and allowed.
+  reported and allowed. The baseline holds the surface of the
+  CHANGELOG's newest release, and the diff fails when it holds any
+  other. With nothing under `[Unreleased]`, the build is that release,
+  so its tools must match the baseline exactly. The release commit
+  records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
+  refuses a build that drops a tool or an output field. It also refuses
+  a build stamped with another version.
 - **`internal/leakcheck`** fails on anything that could identify a real
   person, account or space — an email under a domain someone could own,
   a 21-digit account id, a space id that does not look invented, and the
@@ -167,7 +173,9 @@ Release cutting is maintainer-only:
 1. Land a `release: cut vX.Y.Z …` commit on `main` that moves the
    `[Unreleased]` section under a `## [X.Y.Z] - YYYY-MM-DD` heading.
    `release.yml` lifts that section verbatim into the GitHub release
-   notes, so read it once as the release note it becomes.
+   notes, so read it once as the release note it becomes. The same
+   commit runs `make schema-baseline VERSION=vX.Y.Z`. The schema diff
+   fails the commit until it does.
 2. Wait for `ci.yml` to pass on that exact commit. `release.yml`'s
    `verify-ci` gate requires a green run for the tagged commit, so
    tagging first fails the release.

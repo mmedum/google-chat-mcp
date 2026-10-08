@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // Class is the leading tag on a tool error. The model reads these, so
@@ -27,8 +27,8 @@ const (
 	// ClassInvalid means the arguments were wrong. The caller can fix
 	// them and try again.
 	ClassInvalid Class = "invalid"
-	// ClassRateLimit means Google asked for a pause. Waiting helps.
-	ClassRateLimit Class = "rate_limit"
+	// ClassRateLimited means Google asked for a pause. Waiting helps.
+	ClassRateLimited Class = "rate_limited"
 	// ClassQuota means a quota is spent rather than a rate exceeded.
 	// Waiting a moment does not help; waiting until tomorrow might.
 	ClassQuota Class = "quota"
@@ -182,7 +182,7 @@ func Classify(err error) error {
 		}
 	case gchat.IsRateLimited(err):
 		return &Error{
-			Class:   ClassRateLimit,
+			Class:   ClassRateLimited,
 			Message: "Google is rate limiting this account. Wait a moment and try again.",
 			err:     err,
 		}

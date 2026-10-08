@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -73,7 +73,7 @@ func (g *stubChat) handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"name":"customEmojis/AAAAemoji1","emojiName":":party-*time*:"}`)
 	case strings.Contains(path, "/messages/"):
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1","sender":{"name":"users/1","displayName":"Ada [Lovelace](x)"},`+
-			`"text":"The **plan** is at https://evil.example/login"}`)
+			`"createTime":"2026-01-02T03:04:05Z","text":"The **plan** is at https://evil.example/login"}`)
 	case strings.HasSuffix(path, "/members"):
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MEMBER"}`)
 	case strings.HasSuffix(path, "/messages"):

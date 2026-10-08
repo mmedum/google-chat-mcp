@@ -3,7 +3,7 @@
 GO       ?= go
 BIN      ?= ./google-chat-mcp
 VERSION  ?= dev
-PKG       = github.com/mmedum/google-chat-mcp/v4
+PKG       = github.com/mmedum/google-chat-mcp/v5
 LDFLAGS   = -s -w -X $(PKG)/internal/version.Version=$(VERSION)
 COVER_MIN ?= 80
 GOBIN    := $(shell $(GO) env GOPATH)/bin
@@ -112,8 +112,12 @@ schemas: build ## Dump tool schemas
 	$(BIN) --dump-schemas > schemas.json
 
 .PHONY: schema-diff
-schema-diff: build ## Diff tool schemas against the last tag
+schema-diff: build ## Diff tool schemas against the released baseline
 	@$(GO) run ./scripts/gates schema-diff $(BIN)
+
+.PHONY: schema-baseline
+schema-baseline: build ## Record the release being cut as the baseline (VERSION=vX.Y.Z, in the release commit)
+	@$(GO) run ./scripts/gates schema-baseline $(BIN)
 
 .PHONY: smoke
 smoke: build ## Drive the binary over stdio

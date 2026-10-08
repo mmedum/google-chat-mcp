@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // ListMessagesOptions narrows spaces.messages.list.
@@ -82,6 +82,9 @@ type SearchMessagesOptions struct {
 	// OrderBy is "createTime desc" or "relevance desc". Empty takes
 	// Google's default, which is newest first.
 	OrderBy string
+	// BySpace says the filter names a space's type or display name,
+	// which Google reads with the spaces scope as well.
+	BySpace bool
 	// PageSize is capped by Google at MaxSearchMessagesPageSize.
 	PageSize int
 	// PageToken continues a previous search.
@@ -108,6 +111,10 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 	if o.OrderBy != "" {
 		q.Set("orderBy", o.OrderBy)
 	}
+	// The full view adds each hit's read state and the space's mute
+	// setting. Google sends each only when the token holds its scope,
+	// and leaves it out otherwise rather than refusing the search.
+	q.Set("view", "SEARCH_MESSAGES_VIEW_FULL")
 	r := request{
 		method:   "POST",
 		name:     parent,
@@ -118,7 +125,10 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 		scope:    scopes.MessagesReadonly,
 	}
 	if o.Unread {
-		r.alsoScopes = []string{scopes.ReadStateReadonly}
+		r.alsoScopes = append(r.alsoScopes, scopes.ReadStateReadonly)
+	}
+	if o.BySpace {
+		r.alsoScopes = append(r.alsoScopes, scopes.SpacesReadonly)
 	}
 	var out SearchMessagesResponse
 	err := c.do(ctx, r, &out)
@@ -132,6 +142,9 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 // response struct would offer fields the API refuses.
 type SendMessageRequest struct {
 	Text string `json:"text"`
+	// MarkupSyntax says how Google reads Text. Empty is Chat's own
+	// syntax; MarkupMarkdown is standard Markdown.
+	MarkupSyntax string `json:"markupSyntax,omitempty"`
 	// Thread is set when the message replies to an existing thread.
 	Thread *Thread `json:"thread,omitempty"`
 	// Attachments carries a file uploaded beforehand. It is the one
@@ -139,7 +152,14 @@ type SendMessageRequest struct {
 	// about the file — its name, its type, where it can be downloaded
 	// — Google fills in from the upload.
 	Attachments []MessageAttachment `json:"attachment,omitempty"`
+	// Quote is the message this one quotes. Name and LastUpdate are
+	// required, and LastUpdate must match the quoted message's latest
+	// version or Google refuses the post; the rest is output only.
+	Quote *QuotedMessageMeta `json:"quotedMessageMetadata,omitempty"`
 }
+
+// MarkupMarkdown has Google read a message's text as standard Markdown.
+const MarkupMarkdown = "MARKUP_SYNTAX_MARKDOWN"
 
 // MessageAttachment attaches an already-uploaded file to a message.
 type MessageAttachment struct {

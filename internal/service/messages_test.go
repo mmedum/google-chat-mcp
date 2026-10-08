@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v4/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API
@@ -182,6 +182,51 @@ func TestAMessageWithNoNameIsDropped(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Text != "kept" {
 		t.Errorf("messages = %+v, want only the addressable row", got)
+	}
+}
+
+// since and before are a window; either alone is a one-sided bound.
+func TestGetMessagesBoundsTheWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name, since, before, want string
+	}{
+		{name: "since alone", since: "2026-01-02", want: `createTime > "2026-01-02T00:00:00.000000Z"`},
+		{name: "before alone", before: "2026-01-03", want: `createTime < "2026-01-03T00:00:00.000000Z"`},
+		{
+			name: "a window", since: "2026-01-02", before: "2026-01-03",
+			want: `createTime > "2026-01-02T00:00:00.000000Z" AND createTime < "2026-01-03T00:00:00.000000Z"`,
+		},
+		{name: "no bound", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var filter string
+			s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {
+				filter = r.URL.Query().Get("filter")
+				fmt.Fprint(w, `{"messages":[]}`)
+			}, nobody()))
+			if _, err := s.GetMessages(context.Background(), GetMessagesInput{
+				Space: "spaces/A", Since: tc.since, Before: tc.before,
+			}); err != nil {
+				t.Fatalf("GetMessages: %v", err)
+			}
+			if filter != tc.want {
+				t.Errorf("filter = %q, want %q", filter, tc.want)
+			}
+		})
+	}
+}
+
+// A window that ends where it starts, or before, holds nothing, and
+// saying so beats an empty listing that reads like a quiet space.
+func TestGetMessagesRefusesAnEmptyWindow(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("an empty window must not reach Google")
+	})
+	for _, before := range []string{"2026-01-02", "2026-01-01"} {
+		_, err := s.GetMessages(context.Background(), GetMessagesInput{
+			Space: "spaces/A", Since: "2026-01-02", Before: before,
+		})
+		assertClass(t, err, ClassInvalid)
 	}
 }
 
@@ -420,6 +465,131 @@ func TestSendMessagePostsTheTextVerbatim(t *testing.T) {
 	}
 	if got.Name != "spaces/A/messages/1" || got.Thread != "spaces/A/threads/T" {
 		t.Errorf("result = %+v", got)
+	}
+}
+
+// Markdown changes how Google reads the text, not the text: the body
+// still goes out exactly as given, beside the syntax it is in.
+func TestSendMessageInMarkdown(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		markdown bool
+		want     string
+	}{
+		{name: "markdown", markdown: true, want: `{"text":"**hi** [there](https://example.com)","markupSyntax":"MARKUP_SYNTAX_MARKDOWN"}`},
+		{name: "chat syntax", markdown: false, want: `{"text":"**hi** [there](https://example.com)"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
+			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+				Space: "spaces/A", Text: "**hi** [there](https://example.com)", Markdown: tc.markdown,
+			}); err != nil {
+				t.Fatalf("SendMessage: %v", err)
+			}
+			if got := rec.last(t).Body; got != tc.want {
+				t.Errorf("posted %s\nwant     %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// quoteBackend answers a read of the quoted message with the given
+// timestamps, and a post with the new message.
+func quoteBackend(created, updated string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprintf(w, `{"name":"spaces/A/messages/9","createTime":%q,"lastUpdateTime":%q}`, created, updated)
+			return
+		}
+		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
+	}
+}
+
+// Google refuses a quote whose timestamp is not the quoted message's
+// latest, so the server reads it: the edit time when there was an edit,
+// the creation time otherwise.
+func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
+	for _, tc := range []struct {
+		name, created, updated, want string
+	}{
+		{
+			name: "an edited message", created: "2026-01-02T03:04:05Z", updated: "2026-01-02T04:00:00Z",
+			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T04:00:00Z","quoteType":"REPLY"}}`,
+		},
+		{
+			name: "a message never edited", created: "2026-01-02T03:04:05Z", updated: "",
+			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"REPLY"}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, quoteBackend(tc.created, tc.updated))
+			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9",
+			}); err != nil {
+				t.Fatalf("SendMessage: %v", err)
+			}
+			if posted := rec.last(t).Body; posted != tc.want {
+				t.Errorf("posted %s\nwant   %s", posted, tc.want)
+			}
+		})
+	}
+}
+
+// A message read by its client-assigned id comes back under its real
+// name, and the quote names that.
+func TestSendMessageQuotesByGooglesName(t *testing.T) {
+	s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"name":"spaces/A/messages/9","createTime":"2026-01-02T03:04:05Z"}`)
+			return
+		}
+		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
+	})
+	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/client-abc",
+	}); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if body := rec.last(t).Body; !strings.Contains(body, `"name":"spaces/A/messages/9"`) {
+		t.Errorf("posted %s, want the quote to name spaces/A/messages/9", body)
+	}
+}
+
+// A dry run of a quote reads the quoted message, so the preview is the
+// body a post would send, and posts nothing.
+func TestSendMessageDryRunOfAQuoteReadsButDoesNotPost(t *testing.T) {
+	s, rec := recorded(t, quoteBackend("2026-01-02T03:04:05Z", ""))
+	got, err := s.SendMessage(writeCtx(), SendMessageInput{
+		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	for _, c := range rec.all() {
+		if c.Method != http.MethodGet {
+			t.Errorf("a dry run made a %s to %s", c.Method, c.Path)
+		}
+	}
+	q, _ := got.Rendered["quotedMessageMetadata"].(map[string]any)
+	if q["lastUpdateTime"] != "2026-01-02T03:04:05Z" || q["name"] != "spaces/A/messages/9" {
+		t.Errorf("rendered quote = %v, want the quoted message and its timestamp", got.Rendered["quotedMessageMetadata"])
+	}
+}
+
+// What a quote cannot be is refused before anything reaches Google.
+func TestSendMessageRefusesABadQuote(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("a refused quote must not reach Google")
+	})
+	for name, in := range map[string]SendMessageInput{
+		"a message from another space": {Space: "spaces/A", Text: "x", Quote: "spaces/B/messages/9"},
+		"not a message":                {Space: "spaces/A", Text: "x", Quote: "spaces/A"},
+	} {
+		_, err := s.SendMessage(writeCtx(), in)
+		var e *Error
+		if !errors.As(err, &e) || e.Class != ClassInvalid {
+			t.Errorf("%s: error = %v, want [invalid]", name, err)
+		}
 	}
 }
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // Output types are deliberate shadows of the wire types, not embeds of
@@ -28,9 +28,10 @@ type WhoamiOutput struct {
 
 // SpaceSummaryOutput is one row of a space listing.
 type SpaceSummaryOutput struct {
-	SpaceID     string `json:"space_id" jsonschema:"the space's resource name, spaces/{id}; pass this to other tools"`
-	Type        string `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize"`
-	DisplayName string `json:"display_name" jsonschema:"what to call the space; a direct message or group chat has no name of its own, so a label is supplied"`
+	SpaceID        string     `json:"space_id" jsonschema:"the space's resource name, spaces/{id}; pass this to other tools"`
+	Type           string     `json:"type" jsonschema:"SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize"`
+	DisplayName    string     `json:"display_name" jsonschema:"what to call the space; a direct message or group chat has no name of its own, so a label is supplied"`
+	LastActiveTime *time.Time `json:"last_active_time" jsonschema:"when the last message was posted, RFC 3339 in UTC; null when Google did not say"`
 }
 
 // SpaceDetailOutput is one space in full.
@@ -46,6 +47,14 @@ type SpaceDetailOutput struct {
 	CreateTime          *time.Time `json:"create_time" jsonschema:"when the space was created, RFC 3339 in UTC; null when Google did not say"`
 	AccessState         *string    `json:"access_state" jsonschema:"PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message"`
 	Audience            *string    `json:"audience" jsonschema:"the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join"`
+	LastActiveTime      *time.Time `json:"last_active_time" jsonschema:"when the last message was posted, RFC 3339 in UTC; null when Google did not say"`
+	SpaceURI            *string    `json:"space_uri" jsonschema:"the link that opens the space in Chat; null when Google did not say"`
+	Description         *string    `json:"description" jsonschema:"what the space is for, as its managers wrote it; null when it has none"`
+	Guidelines          *string    `json:"guidelines" jsonschema:"the rules its managers set for it; null when it has none"`
+	HumanMemberCount    *int       `json:"human_member_count" jsonschema:"people who have joined, not counting those who are in only through a group; null when Google did not say"`
+	GroupMemberCount    *int       `json:"group_member_count" jsonschema:"Google Groups that have joined; null when Google did not say"`
+	HistoryState        *string    `json:"history_state" jsonschema:"HISTORY_OFF when messages are kept for 24 hours, HISTORY_ON when the organization's retention rules decide; null when Google did not say"`
+	MembersCanPost      *bool      `json:"members_can_post" jsonschema:"false when only managers may post, as in an announcement space; null when Google did not say"`
 }
 
 // GetSpaceInput names one space.
@@ -157,10 +166,9 @@ func registerSpaces(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "search_spaces",
-		Description: "Search named Google Chat spaces by display name, including spaces you are not a member of. " +
-			"Use it to find a space to join or read; use list_spaces for the ones you are already in, and " +
-			"find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without " +
-			"admin access Google returns a single page of up to 100 and no total.",
+		Description: "Search the named Google Chat spaces you are a member of by display name, or every space in " +
+			"the Workspace with use_admin_access. Use find_group_chats for a group chat, which this cannot return. " +
+			"Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchSpacesInput) (*mcp.CallToolResult, SearchSpacesOutput, error) {
 		if in.UseAdminAccess && !d.Config.Enabled(config.ToolsetAdmin) {
@@ -215,9 +223,10 @@ func spaceSummaries(in []service.SpaceSummary) []SpaceSummaryOutput {
 	out := make([]SpaceSummaryOutput, 0, len(in))
 	for _, sp := range in {
 		out = append(out, SpaceSummaryOutput{
-			SpaceID:     sp.Name,
-			Type:        string(sp.Kind),
-			DisplayName: sp.DisplayName,
+			SpaceID:        sp.Name,
+			Type:           string(sp.Kind),
+			DisplayName:    sp.DisplayName,
+			LastActiveTime: nullableTime(sp.LastActiveTime),
 		})
 	}
 	return out
@@ -236,6 +245,14 @@ func spaceDetail(got *service.SpaceDetails) SpaceDetailOutput {
 		CreateTime:          nullableTime(got.CreateTime),
 		AccessState:         nullable(got.AccessState),
 		Audience:            nullable(got.Audience),
+		LastActiveTime:      nullableTime(got.LastActiveTime),
+		SpaceURI:            nullable(got.URI),
+		Description:         nullable(got.Description),
+		Guidelines:          nullable(got.Guidelines),
+		HumanMemberCount:    got.HumanMembers,
+		GroupMemberCount:    got.GroupMembers,
+		HistoryState:        nullable(got.HistoryState),
+		MembersCanPost:      got.MembersCanPost,
 	}
 }
 
