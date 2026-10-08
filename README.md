@@ -246,7 +246,8 @@ client that includes resources in its context:
   rule does not suppress it, and there is nobody to ask. So if you are
   automating with nobody at the keyboard, `GCM_INTERACTION_HINT=false`
   is the way to use the write tools at all, and it is a decision to make
-  on purpose.
+  on purpose. The four tools the server asks you about itself on every
+  call drop the mark when your client can ask, so you answer once.
 - **The server asks you before what cannot be taken back.** When your
   MCP client supports elicitation, it asks before deleting a message, a
   space or a custom emoji, adding a member, opening a space to a target

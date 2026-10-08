@@ -537,7 +537,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_message",
-		Asks: "before it deletes",
+		Asks: "before it deletes", AsksEveryCall: true,
 		Description: "Delete a message by its resource name. A message that is already gone reports deleted false " +
 			"rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as " +
 			"a deletion that already happened. Needs the restricted-tier chat.messages scope.",

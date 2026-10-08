@@ -30,6 +30,7 @@ func Register(s *mcp.Server, d Deps) {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
 	d.asking = newAsking(d.Logger)
+	s.AddReceivingMiddleware(interactionHint(d.asking))
 	registerSpaces(s, d)
 	registerSpaceState(s, d)
 	registerPresence(s, d)

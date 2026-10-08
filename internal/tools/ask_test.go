@@ -437,3 +437,40 @@ func TestAReplyLostAfterTheWriteIsAmbiguous(t *testing.T) {
 		t.Fatalf("%s; %d writes", text, g.written())
 	}
 }
+
+// A tool that asks the person before every write carries Claude Code's
+// requiresUserInteraction mark only for a client that cannot ask; with
+// both, the person would answer twice for one call. A tool that asks only
+// sometimes, or never, keeps it: there the mark is the only per-call
+// prompt.
+func TestTheMarkIsDroppedOnlyWhereTheServerAlwaysAsks(t *testing.T) {
+	always := []string{"add_member", "delete_custom_emoji", "delete_message", "delete_space"}
+	sometimes := []string{"send_message", "update_message", "create_space", "update_space", "pin_message", "remove_member"}
+	for _, protocol := range protocols {
+		for _, canAsk := range []bool{true, false} {
+			var p *answerer
+			if canAsk {
+				p = &answerer{answer: accepts}
+			}
+			cs, _ := askingSession(t, protocol, p, askOptions{})
+			res, err := cs.ListTools(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marked := map[string]bool{}
+			for _, tool := range res.Tools {
+				marked[tool.Name] = tool.Meta["anthropic/requiresUserInteraction"] == true
+			}
+			for _, name := range always {
+				if marked[name] == canAsk {
+					t.Errorf("%s, client can ask %t: %s marked %t", protocol, canAsk, name, marked[name])
+				}
+			}
+			for _, name := range sometimes {
+				if !marked[name] {
+					t.Errorf("%s, client can ask %t: %s lost the mark", protocol, canAsk, name)
+				}
+			}
+		}
+	}
+}

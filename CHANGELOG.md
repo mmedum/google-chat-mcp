@@ -11,6 +11,14 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- A delete or an added member asks once in Claude Code, not twice. In a
+  client that can ask the person, `delete_message`, `delete_space`,
+  `delete_custom_emoji` and `add_member` no longer carry the
+  `requiresUserInteraction` mark; the server's own question is the
+  confirmation. Every other write keeps the mark.
+
 ## [5.0.0] - 2026-10-08
 
 ### Added

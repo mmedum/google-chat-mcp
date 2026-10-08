@@ -63,6 +63,11 @@ type spec struct {
 	// writes, as the end of a sentence: "before it deletes". The service
 	// asks at its write; a tool without it that reaches one is refused.
 	Asks string
+	// AsksEveryCall says Asks has no condition: every write is put to
+	// the person. Such a tool drops the requiresUserInteraction mark for
+	// a client that can ask (interactionHint), since the question is the
+	// confirmation then.
+	AsksEveryCall bool
 }
 
 // annotations returns what a client shows for this kind.
@@ -147,7 +152,7 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 		// WriteIdempotent is left out on purpose: a reaction is
 		// trivially undone, and a new direct message stays invisible
 		// until something is posted in it, which asks here anyway.
-		tool.Meta = mcp.Meta{"anthropic/requiresUserInteraction": true}
+		tool.Meta = mcp.Meta{interactionKey: true}
 	}
 	// A destructive tool is REGISTERED whether or not deletes are
 	// allowed, and refuses at call time instead.
@@ -172,6 +177,9 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	var a *asking
 	if sp.Asks != "" {
 		a = d.asking
+		if sp.AsksEveryCall {
+			a.always[sp.Name] = true
+		}
 	}
 	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse, sp.Name, a, d.Config.RequirePrompt))
 }
