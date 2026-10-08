@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/mmedum/google-chat-mcp/v4/internal/directory"
 	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
@@ -151,7 +152,7 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 		}
 	}
 	people := s.resolvePeople(ctx, users)
-	groups := s.resolveGroups(ctx, groupNames)
+	groups, groupsFailed := s.resolveGroups(ctx, groupNames)
 
 	out := make([]Member, 0, len(resp.Memberships))
 	var unparsed int
@@ -169,7 +170,7 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 	}
 	s.warnUnparsed("memberships_unparsed", unparsed, len(resp.Memberships))
 	if in.ExpandGroups {
-		s.expandGroups(ctx, out)
+		s.expandGroups(ctx, out, groupsFailed)
 	}
 	return &MembersResult{Members: out, NextPageToken: resp.NextPageToken, Unparsed: unparsed}, nil
 }
@@ -178,54 +179,78 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 //
 // A group that will not show its members costs that group's members and
 // nothing else: the row says why, and the listing stands. A failure
-// every group would share, such as a missing scope, is said on every
-// group row rather than asked about again.
-func (s *Service) expandGroups(ctx context.Context, rows []Member) {
-	expanded := 0
-	shared := ""
+// every group would share is learned once — from the lookups that named
+// the groups, failed, or from the first read here — and said on every
+// group row. The rest are read at once: each is its own call, and Cloud
+// Identity's limiter allows them together.
+func (s *Service) expandGroups(ctx context.Context, rows []Member, failed error) {
+	var groups []int
 	for i := range rows {
-		row := &rows[i]
-		if row.Kind != KindGroup {
-			continue
+		if rows[i].Kind == KindGroup {
+			groups = append(groups, i)
 		}
-		switch {
-		case shared != "":
-			row.GroupMembersMissing = shared
-			continue
-		case expanded == maxExpandedGroups:
-			row.GroupMembersMissing = fmt.Sprintf("not read: only the first %d groups on a page are expanded", maxExpandedGroups)
-			continue
-		}
-		expanded++
-		page, err := s.client.ListGroupMembers(ctx, row.Name, groupMemberPage)
-		if err != nil {
-			row.GroupMembersMissing = Classify(err).Error()
-			class, status := degradation(err)
-			s.log.Warn("group_members_degraded", "class", class, "status", status)
-			if gchat.IsMissingScope(err) || gchat.IsServiceDisabled(err) || gchat.IsUnauthorized(err) || ctx.Err() != nil {
-				shared = row.GroupMembersMissing
-			}
-			continue
-		}
-		row.GroupMembers = make([]GroupMember, 0, len(page.Memberships))
-		for _, m := range page.Memberships {
-			row.GroupMembers = append(row.GroupMembers, GroupMember{
-				Email: m.PreferredMemberKey.ID,
-				Kind:  m.Type,
-				Role:  highestGroupRole(m.Roles),
-			})
-		}
-		row.GroupMembersMore = page.NextPageToken != ""
 	}
+	if len(groups) > maxExpandedGroups {
+		for _, i := range groups[maxExpandedGroups:] {
+			rows[i].GroupMembersMissing = fmt.Sprintf("not read: only the first %d groups on a page are expanded", maxExpandedGroups)
+		}
+		groups = groups[:maxExpandedGroups]
+	}
+	if len(groups) == 0 {
+		return
+	}
+	shared := ""
+	if failed != nil {
+		shared = Classify(failed).Error()
+	} else if s.expandGroup(ctx, &rows[groups[0]]) {
+		shared = rows[groups[0]].GroupMembersMissing
+	}
+	if shared != "" {
+		for _, i := range groups {
+			rows[i].GroupMembersMissing = shared
+		}
+		return
+	}
+	var wg sync.WaitGroup
+	for _, i := range groups[1:] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.expandGroup(ctx, &rows[i])
+		}()
+	}
+	wg.Wait()
 }
+
+// expandGroup reads one group's members into its row, and reports a
+// failure every group would share.
+func (s *Service) expandGroup(ctx context.Context, row *Member) (shared bool) {
+	page, err := s.client.ListGroupMembers(ctx, row.Name, groupMemberPage)
+	if err != nil {
+		row.GroupMembersMissing = Classify(err).Error()
+		return s.degraded(ctx, "group_members_degraded", err)
+	}
+	row.GroupMembers = make([]GroupMember, 0, len(page.Memberships))
+	for _, m := range page.Memberships {
+		row.GroupMembers = append(row.GroupMembers, GroupMember{
+			Email: m.PreferredMemberKey.ID,
+			Kind:  m.Type,
+			Role:  highestGroupRole(m.Roles),
+		})
+	}
+	row.GroupMembersMore = page.NextPageToken != ""
+	return false
+}
+
+// groupRoleRank orders a group member's roles, weakest first.
+var groupRoleRank = map[string]int{"MEMBER": 1, "MANAGER": 2, "OWNER": 3}
 
 // highestGroupRole is the strongest of a group member's roles. Every
 // member holds MEMBER; an owner or a manager holds that as well.
 func highestGroupRole(roles []gchat.GroupMembershipRole) string {
 	best := ""
 	for _, r := range roles {
-		switch {
-		case r.Name == "OWNER", r.Name == "MANAGER" && best != "OWNER", best == "":
+		if best == "" || groupRoleRank[r.Name] > groupRoleRank[best] {
 			best = r.Name
 		}
 	}
@@ -271,7 +296,7 @@ func (s *Service) GetMember(ctx context.Context, name string) (*Member, error) {
 	// which is the rule everywhere a person or a group is resolved.
 	var groups map[string]Group
 	if got.GroupMember != nil {
-		groups = s.resolveGroups(ctx, []string{got.GroupMember.Name})
+		groups, _ = s.resolveGroups(ctx, []string{got.GroupMember.Name})
 	}
 	row, _ := memberRow(*got, s.resolvePeople(ctx, []*gchat.User{got.Member}), groups)
 	return &row, nil

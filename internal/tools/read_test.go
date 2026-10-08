@@ -253,13 +253,10 @@ func TestListMembersExpandsGroupsThroughASession(t *testing.T) {
 		fmt.Fprint(w, page)
 	}
 	cs := session(t, chatAndPeople(chat, personHit))
-	res := call(t, cs, "list_members", map[string]any{"space_id": "spaces/A", "expand_groups": true}, nil)
 	var out MemberListOutput
+	res := call(t, cs, "list_members", map[string]any{"space_id": "spaces/A", "expand_groups": true}, &out)
 	raw, err := json.Marshal(res.StructuredContent)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Result) != 2 {

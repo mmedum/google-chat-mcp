@@ -475,3 +475,21 @@ func TestSearchCarriesTheLinksOnAHit(t *testing.T) {
 		})
 	}
 }
+
+// A regex scan bounds the history it reads on both sides, as Google's
+// search does. created_before was once dropped here without a word.
+func TestARegexScanHonorsBothTimeBounds(t *testing.T) {
+	var filter string
+	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+		filter = r.URL.Query().Get("filter")
+		fmt.Fprint(w, `{"messages":[]}`)
+	})
+	if _, err := s.SearchMessages(context.Background(), SearchMessagesInput{
+		Space: "spaces/A", Regex: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-03",
+	}); err != nil {
+		t.Fatalf("SearchMessages: %v", err)
+	}
+	if want := `createTime > "2026-01-02T00:00:00.000000Z" AND createTime < "2026-01-03T00:00:00.000000Z"`; filter != want {
+		t.Errorf("filter = %q, want %q", filter, want)
+	}
+}

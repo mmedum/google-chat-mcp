@@ -47,12 +47,16 @@ func (s *Service) FindGroup(ctx context.Context, email string) (*Group, error) {
 	if !groupName.MatchString(name) {
 		return nil, Failf(ClassUnexpected, "Cloud Identity answered the lookup with %q, which is not a group name.", name)
 	}
-	return &Group{Name: name, Email: email, DisplayName: s.resolveGroups(ctx, []string{name})[name].DisplayName}, nil
+	groups, _ := s.resolveGroups(ctx, []string{name})
+	return &Group{Name: name, Email: email, DisplayName: groups[name].DisplayName}, nil
 }
 
-// degradation is what a failed lookup logs: its class and HTTP status,
-// never its text, which can carry what was looked up.
-func degradation(err error) (Class, int) {
+// degraded logs a failed Cloud Identity read by its class and HTTP
+// status, never its text, which can carry what was read. It reports
+// whether every further read would fail the same way — a missing scope,
+// a disabled API, a rejected token, a canceled call — so a caller stops
+// rather than repeating the failure once per group.
+func (s *Service) degraded(ctx context.Context, event string, err error) (shared bool) {
 	class, status := ClassUnexpected, 0
 	var se *Error
 	if errors.As(Classify(err), &se) {
@@ -62,7 +66,8 @@ func degradation(err error) (Class, int) {
 	if errors.As(err, &ae) {
 		status = ae.StatusCode
 	}
-	return class, status
+	s.log.Warn(event, "class", class, "status", status)
+	return gchat.IsMissingScope(err) || gchat.IsServiceDisabled(err) || gchat.IsUnauthorized(err) || ctx.Err() != nil
 }
 
 // resolveGroups reads each group's address and display name from Cloud
@@ -75,7 +80,10 @@ func degradation(err error) (Class, int) {
 //
 // The log line names the class and status, not Google's message, which
 // for a disabled API names the Cloud project.
-func (s *Service) resolveGroups(ctx context.Context, names []string) map[string]Group {
+//
+// The failure that ended the lookups, when one did, is returned, so a
+// later read of the same groups need not meet it again.
+func (s *Service) resolveGroups(ctx context.Context, names []string) (map[string]Group, error) {
 	out := make(map[string]Group, len(names))
 	for _, name := range names {
 		if name == "" {
@@ -86,10 +94,8 @@ func (s *Service) resolveGroups(ctx context.Context, names []string) map[string]
 		}
 		g, err := s.client.GetGroup(ctx, name)
 		if err != nil {
-			class, status := degradation(err)
-			s.log.Warn("group_lookup_degraded", "class", class, "status", status)
-			if gchat.IsMissingScope(err) || gchat.IsServiceDisabled(err) || gchat.IsUnauthorized(err) || ctx.Err() != nil {
-				break
+			if s.degraded(ctx, "group_lookup_degraded", err) {
+				return out, err
 			}
 			// Remembered empty, so a group on two rows is asked about once.
 			out[name] = Group{}
@@ -97,5 +103,5 @@ func (s *Service) resolveGroups(ctx context.Context, names []string) map[string]
 		}
 		out[name] = Group{Name: name, Email: g.GroupKey.ID, DisplayName: g.DisplayName}
 	}
-	return out
+	return out, nil
 }

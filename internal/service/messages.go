@@ -302,19 +302,12 @@ func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) (*Messag
 	if !since.IsZero() && !before.IsZero() && !before.After(since) {
 		return nil, Invalidf("before must be later than since, or the window holds nothing")
 	}
-	var clauses []string
-	if !since.IsZero() {
-		clauses = append(clauses, createdAfterFilter(since))
-	}
-	if !before.IsZero() {
-		clauses = append(clauses, `createTime < "`+googleTime(before)+`"`)
-	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
 		Space:     space,
 		OrderBy:   "createTime desc",
 		PageSize:  limit,
-		Filter:    strings.Join(clauses, " AND "),
+		Filter:    createTimeFilter(since, before),
 		PageToken: in.PageToken,
 	})
 	if err != nil {
@@ -398,26 +391,9 @@ const inlineReactionCap = 25
 
 // MessageDetail is one message in full, as get_message returns it.
 type MessageDetail struct {
-	Name              string
-	Space             string
-	ThreadName        string
-	SenderUserID      string
-	SenderEmail       string
-	SenderDisplayName string
-	Text              string
-	// FormattedText is the body with Chat's markup left in — bold,
-	// italics, mentions and the URL behind a link — and is empty when
-	// the markup says nothing the text does not. See MessageRow.
-	FormattedText string
-	// Links is what the text links to, and the only place a link's
-	// target appears.
-	Links []MessageLink
-	// Quote is what this message quotes or forwards, and is nil when it
-	// quotes nothing.
-	Quote *MessageQuote
-
-	CreateTime time.Time
-	MessageExtras
+	MessageRow
+	// Space is where it was posted, which a row leaves to its listing.
+	Space string
 }
 
 // AttachmentRow is one file on a message.
@@ -477,21 +453,7 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 	}
 	row := rows[0]
 
-	out := &MessageDetail{
-		Name:              row.Name,
-		Space:             space,
-		ThreadName:        row.ThreadName,
-		SenderUserID:      row.SenderUserID,
-		SenderEmail:       row.SenderEmail,
-		SenderDisplayName: row.SenderDisplayName,
-		Text:              row.Text,
-		FormattedText:     row.FormattedText,
-		Links:             row.Links,
-		Quote:             row.Quote,
-		CreateTime:        row.CreateTime,
-		MessageExtras:     row.MessageExtras,
-	}
-	return out, nil
+	return &MessageDetail{MessageRow: row, Space: space}, nil
 }
 
 // summarizeReactions turns Google's per-emoji counts into the inline

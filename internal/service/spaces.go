@@ -104,6 +104,10 @@ type ListSpacesResult struct {
 	NextPageToken string
 }
 
+// narrowableKinds is every kind a caller may narrow a listing or a
+// search to.
+var narrowableKinds = []string{string(KindSpace), string(KindDirectMessage), string(KindGroupChat)}
+
 // Google's filter spelling for each kind we can narrow by.
 var spaceFilters = map[SpaceKind]string{
 	KindSpace:         `spaceType = "SPACE"`,
@@ -128,8 +132,7 @@ func (s *Service) ListSpaces(ctx context.Context, in ListSpacesInput) (*ListSpac
 
 	opts := gchat.ListSpacesOptions{PageSize: limit, PageToken: in.PageToken}
 	if in.Kind != "" {
-		if err := requireEnum("space_type", string(in.Kind),
-			string(KindSpace), string(KindDirectMessage), string(KindGroupChat)); err != nil {
+		if err := requireEnum("space_type", string(in.Kind), narrowableKinds...); err != nil {
 			return nil, err
 		}
 		opts.Filter = spaceFilters[in.Kind]
@@ -314,9 +317,7 @@ const defaultGroupChatLimit = 10
 
 // SpaceDetails is one space in full, as get_space returns it.
 type SpaceDetails struct {
-	Name        string
-	Kind        SpaceKind
-	DisplayName string
+	SpaceSummary
 	// SingleUserBotDM and ExternalUserAllowed are nil when Google did
 	// not say. They are absent far more often than they are false, so
 	// flattening them to false would assert something Google did not.
@@ -328,9 +329,6 @@ type SpaceDetails struct {
 	AccessState string
 	Audience    string
 
-	// LastActiveTime is when the last message was posted, and the zero
-	// value when Google did not say.
-	LastActiveTime time.Time
 	// URI opens the space in Chat.
 	URI         string
 	Description string
@@ -357,13 +355,10 @@ func (s *Service) GetSpace(ctx context.Context, name string) (*SpaceDetails, err
 		return nil, Classify(err)
 	}
 	out := &SpaceDetails{
-		Name:                sp.Name,
-		Kind:                kindOf(*sp),
-		DisplayName:         displayNameOf(*sp),
+		SpaceSummary:        spaceSummary(*sp),
 		SingleUserBotDM:     sp.SingleUserBot,
 		ExternalUserAllowed: sp.ExternalUser,
 		CreateTime:          parseTime(sp.CreateTime),
-		LastActiveTime:      parseTime(sp.LastActive),
 		URI:                 sp.URI,
 		HistoryState:        sp.HistoryState,
 	}

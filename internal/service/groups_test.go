@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -219,12 +220,16 @@ func TestAFailedGroupReadLogsNoGoogleText(t *testing.T) {
 
 // groupMembersAPI answers Chat with one group row per name and Cloud
 // Identity with each group's members, refusing the groups in hidden.
+// The groups are read at once, so queries is kept under a lock.
 func groupMembersAPI(groups []string, hidden map[string]bool, queries *[]string) http.HandlerFunc {
+	var mu sync.Mutex
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.HasSuffix(path, "/memberships") && strings.HasPrefix(path, "/cloudidentity/"):
+			mu.Lock()
 			*queries = append(*queries, r.URL.RawQuery)
+			mu.Unlock()
 			if hidden[strings.TrimSuffix(strings.TrimPrefix(path, "/cloudidentity/"), "/memberships")] {
 				w.WriteHeader(http.StatusForbidden)
 				fmt.Fprint(w, `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Error(2028): Permission denied for resource groups/AAAAgroup2"}}`)
@@ -339,6 +344,37 @@ func TestHighestGroupRole(t *testing.T) {
 		}
 		if got := highestGroupRole(roles); got != tc.want {
 			t.Errorf("highestGroupRole(%v) = %q, want %q", tc.roles, got, tc.want)
+		}
+	}
+}
+
+// A failure every group would share, met while the groups were named, is
+// not met again for their members: one listing, one refusal.
+func TestListMembersDoesNotRepeatAFailureTheLookupsMet(t *testing.T) {
+	var memberReads atomic.Int32
+	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/cloudidentity") {
+			if strings.HasSuffix(r.URL.Path, "/memberships") {
+				memberReads.Add(1)
+			}
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`)
+			return
+		}
+		fmt.Fprint(w, `{"memberships":[
+		  {"name":"spaces/A/members/1","groupMember":{"name":"groups/AAAAgroup1"}},
+		  {"name":"spaces/A/members/2","groupMember":{"name":"groups/AAAAgroup2"}}]}`)
+	})
+	got, err := s.ListMembers(context.Background(), ListMembersInput{Space: "spaces/A", ExpandGroups: true})
+	if err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	if n := memberReads.Load(); n != 0 {
+		t.Errorf("read members %d times after the lookups met a missing scope, want none", n)
+	}
+	for _, row := range got.Members {
+		if !strings.HasPrefix(row.GroupMembersMissing, "[scope]") {
+			t.Errorf("row %s says %q, want the missing scope", row.Name, row.GroupMembersMissing)
 		}
 	}
 }

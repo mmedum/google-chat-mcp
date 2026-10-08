@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"reflect"
 	"slices"
@@ -494,19 +493,14 @@ func TestSendMessageInMarkdown(t *testing.T) {
 	}
 }
 
-// quoteBackend answers a read of the quoted message with stamp as its
-// timestamps, and a post with the new message, keeping the posted body.
-func quoteBackend(t *testing.T, created, updated string, posted *string) http.HandlerFunc {
+// quoteBackend answers a read of the quoted message with the given
+// timestamps, and a post with the new message.
+func quoteBackend(created, updated string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			fmt.Fprintf(w, `{"name":"spaces/A/messages/9","createTime":%q,"lastUpdateTime":%q}`, created, updated)
 			return
 		}
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		*posted = string(b)
 		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
 	}
 }
@@ -532,14 +526,13 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var posted string
-			s := newService(t, quoteBackend(t, tc.created, tc.updated, &posted))
+			s, rec := recorded(t, quoteBackend(tc.created, tc.updated))
 			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
 				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", QuoteType: tc.quoteType,
 			}); err != nil {
 				t.Fatalf("SendMessage: %v", err)
 			}
-			if posted != tc.want {
+			if posted := rec.last(t).Body; posted != tc.want {
 				t.Errorf("posted %s\nwant   %s", posted, tc.want)
 			}
 		})
@@ -549,16 +542,17 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 // A dry run of a quote reads the quoted message, so the preview is the
 // body a post would send, and posts nothing.
 func TestSendMessageDryRunOfAQuoteReadsButDoesNotPost(t *testing.T) {
-	var posted string
-	s := newService(t, quoteBackend(t, "2026-01-02T03:04:05Z", "", &posted))
+	s, rec := recorded(t, quoteBackend("2026-01-02T03:04:05Z", ""))
 	got, err := s.SendMessage(writeCtx(), SendMessageInput{
 		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
-	if posted != "" {
-		t.Errorf("a dry run posted %s", posted)
+	for _, c := range rec.all() {
+		if c.Method != http.MethodGet {
+			t.Errorf("a dry run made a %s to %s", c.Method, c.Path)
+		}
 	}
 	q, _ := got.Rendered["quotedMessageMetadata"].(map[string]any)
 	if q["lastUpdateTime"] != "2026-01-02T03:04:05Z" || q["name"] != "spaces/A/messages/9" {

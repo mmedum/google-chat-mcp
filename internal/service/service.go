@@ -381,16 +381,21 @@ func sectionOfItem(name string) string {
 	return ""
 }
 
-// createdAfterFilter bounds a message listing below.
+// createTimeFilter bounds a message listing below, above or both. A
+// zero time is no bound on that side.
 //
 // The quoting matters and is not obvious: Chat's filter grammar wants
 // the timestamp quoted here, while the space filter on a section item
 // listing must not be. One place to get it right.
-func createdAfterFilter(t time.Time) string {
-	if t.IsZero() {
-		return ""
+func createTimeFilter(after, before time.Time) string {
+	var clauses []string
+	if !after.IsZero() {
+		clauses = append(clauses, `createTime > "`+googleTime(after)+`"`)
 	}
-	return `createTime > "` + googleTime(t) + `"`
+	if !before.IsZero() {
+		clauses = append(clauses, `createTime < "`+googleTime(before)+`"`)
+	}
+	return strings.Join(clauses, " AND ")
 }
 
 // requireText checks a text argument the caller wrote.

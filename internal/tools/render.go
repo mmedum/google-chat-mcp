@@ -331,35 +331,36 @@ func (o MessageOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
-			labeled("thread", o.ThreadID), replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
+			labeled("thread", o.ThreadID), o.marks()),
 		o.Text,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
-		reactionsLine(o.Reactions, o.ReactionsPaged),
-		optionalListing(o.Attachments, "attachment", "attachments"),
+		o.lines(),
 	)
 }
 
-// replyMark says a message answers its thread rather than starting it.
-func replyMark(reply bool) string {
-	if reply {
-		return "reply"
+// marks are what a message's first line says beside who and when: that
+// it answers its thread, and when it was edited.
+func (o MessageExtrasOutput) marks() string {
+	reply := ""
+	if o.ThreadReply {
+		reply = "reply"
 	}
-	return ""
+	return meta(reply, stamp("edited", o.LastUpdateTime))
 }
 
-// reactionsLine is a message's reactions on one line, or nothing. Too
-// many to inline is said even with none shown, since an empty line
+// lines are a message's reactions and files, below its text. Too many
+// reactions to inline is said even with none shown, since an empty line
 // would read as a message nobody reacted to.
-func reactionsLine(reactions []ReactionSummaryOutput, paged bool) string {
-	line := ""
-	if len(reactions) > 0 {
-		line = "reactions: " + strings.Join(rows(reactions), "  ")
+func (o MessageExtrasOutput) lines() string {
+	reactions := ""
+	if len(o.Reactions) > 0 {
+		reactions = "reactions: " + strings.Join(rows(o.Reactions), "  ")
 	}
-	if paged {
-		line = strings.TrimSpace(line + " (more not shown; call list_reactions)")
+	if o.ReactionsPaged {
+		reactions = strings.TrimSpace(reactions + " (more not shown; call list_reactions)")
 	}
-	return line
+	return block(reactions, optionalListing(o.Attachments, "attachment", "attachments"))
 }
 
 // Render is one link in a message: what kind it is, where it goes, and
@@ -477,13 +478,12 @@ func (o MessageDetailOutput) Render() string {
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
 			labeled("space", o.SpaceID), labeled("thread", o.ThreadID),
-			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
+			o.marks()),
 		o.Text,
 		labeled("markup:", deref(o.FormattedText)),
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
-		reactionsLine(o.Reactions, o.ReactionsPaged),
-		optionalListing(o.Attachments, "attachment", "attachments"),
+		o.lines(),
 	)
 }
 
@@ -503,12 +503,11 @@ func (o AttachmentOutput) Render() string {
 func (o SearchMatchOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID),
-			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime), flag("read", o.Read), flag("space muted", o.SpaceMuted)),
+			o.marks(), flag("read", o.Read), flag("space muted", o.SpaceMuted)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
-		reactionsLine(o.Reactions, o.ReactionsPaged),
-		optionalListing(o.Attachments, "attachment", "attachments"),
+		o.lines(),
 	)
 }
 

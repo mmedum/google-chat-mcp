@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -225,12 +226,16 @@ func (s *Service) scanSpace(ctx context.Context, in SearchMessagesInput) (*Searc
 	if err != nil {
 		return nil, err
 	}
+	before, err := parseArgTime("created_before", in.CreatedBefore)
+	if err != nil {
+		return nil, err
+	}
 
 	opts := gchat.ListMessagesOptions{
 		Space:    space,
 		OrderBy:  "createTime desc",
 		PageSize: maxPageSize,
-		Filter:   createdAfterFilter(after),
+		Filter:   createTimeFilter(after, before),
 	}
 
 	out := &SearchMessagesResult{Matches: []SearchMatch{}}
@@ -342,7 +347,7 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 		// is what a person scanning results reads anyway.
 		match := searchMatch(*m, 0)
 		match.Read = row.Read
-		if row.SpaceMuteSetting == "MUTED" || row.SpaceMuteSetting == "UNMUTED" {
+		if slices.Contains(muteSettings, row.SpaceMuteSetting) {
 			muted := row.SpaceMuteSetting == "MUTED"
 			match.SpaceMuted = &muted
 		}
@@ -426,8 +431,7 @@ func (s *Service) searchFilter(ctx context.Context, in SearchMessagesInput) (str
 		clauses = append(clauses, "is_unread()")
 	}
 	if in.SpaceType != "" {
-		if err := requireEnum("space_type", in.SpaceType,
-			string(KindSpace), string(KindDirectMessage), string(KindGroupChat)); err != nil {
+		if err := requireEnum("space_type", in.SpaceType, narrowableKinds...); err != nil {
 			return "", err
 		}
 		clauses = append(clauses, `space.space_type = "`+in.SpaceType+`"`)
