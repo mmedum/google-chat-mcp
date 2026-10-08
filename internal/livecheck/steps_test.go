@@ -208,6 +208,23 @@ var steps = []step{
 		d.t.Error("the posted message is not in get_messages")
 	}},
 
+	// The upper bound is a clause Google could refuse; the scratch space
+	// is minutes old, so a window that ends an hour ago holds none of
+	// this run's messages.
+	{"a window that ends before the space existed is empty", "get_messages", func(d *driver) {
+		var out struct {
+			Result []struct {
+				MessageID string `json:"message_id"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{
+			"space_id": d.space, "before": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+		}), &out)
+		if len(out.Result) != 0 {
+			d.t.Errorf("a window ending an hour ago returned %d messages from a space made minutes ago", len(out.Result))
+		}
+	}},
+
 	// Chat keeps a link out of the message text: it arrives as an
 	// annotation naming what was linked, and a reader that drops
 	// annotations sees the anchor word alone. Posting one here and

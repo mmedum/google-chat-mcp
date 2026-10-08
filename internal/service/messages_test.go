@@ -185,6 +185,51 @@ func TestAMessageWithNoNameIsDropped(t *testing.T) {
 	}
 }
 
+// since and before are a window; either alone is a one-sided bound.
+func TestGetMessagesBoundsTheWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name, since, before, want string
+	}{
+		{name: "since alone", since: "2026-01-02", want: `createTime > "2026-01-02T00:00:00.000000Z"`},
+		{name: "before alone", before: "2026-01-03", want: `createTime < "2026-01-03T00:00:00.000000Z"`},
+		{
+			name: "a window", since: "2026-01-02", before: "2026-01-03",
+			want: `createTime > "2026-01-02T00:00:00.000000Z" AND createTime < "2026-01-03T00:00:00.000000Z"`,
+		},
+		{name: "no bound", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var filter string
+			s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {
+				filter = r.URL.Query().Get("filter")
+				fmt.Fprint(w, `{"messages":[]}`)
+			}, nobody()))
+			if _, err := s.GetMessages(context.Background(), GetMessagesInput{
+				Space: "spaces/A", Since: tc.since, Before: tc.before,
+			}); err != nil {
+				t.Fatalf("GetMessages: %v", err)
+			}
+			if filter != tc.want {
+				t.Errorf("filter = %q, want %q", filter, tc.want)
+			}
+		})
+	}
+}
+
+// A window that ends where it starts, or before, holds nothing, and
+// saying so beats an empty listing that reads like a quiet space.
+func TestGetMessagesRefusesAnEmptyWindow(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("an empty window must not reach Google")
+	})
+	for _, before := range []string{"2026-01-02", "2026-01-01"} {
+		_, err := s.GetMessages(context.Background(), GetMessagesInput{
+			Space: "spaces/A", Since: "2026-01-02", Before: before,
+		})
+		assertClass(t, err, ClassInvalid)
+	}
+}
+
 func TestGetMessagesSendsTheRightQuery(t *testing.T) {
 	var query, path string
 	s := newService(t, route(func(w http.ResponseWriter, r *http.Request) {

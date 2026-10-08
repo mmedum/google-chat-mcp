@@ -80,6 +80,7 @@ type GetMessagesInput struct {
 	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
 	SpaceID   string `json:"space_id" jsonschema:"the space to read, spaces/{id}, from list_spaces"`
 	Since     string `json:"since,omitempty" jsonschema:"only messages created after this time; RFC 3339, such as 2026-01-01T00:00:00Z"`
+	Before    string `json:"before,omitempty" jsonschema:"only messages created before this time; RFC 3339. With since, a window, such as what was said on one day"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 20"`
 }
 
@@ -196,7 +197,7 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
-			Space: in.SpaceID, Since: in.Since, Limit: in.Limit, PageToken: in.PageToken,
+			Space: in.SpaceID, Since: in.Since, Before: in.Before, Limit: in.Limit, PageToken: in.PageToken,
 		})
 		if err != nil {
 			return nil, MessageListOutput{}, err

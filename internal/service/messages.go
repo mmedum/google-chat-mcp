@@ -255,10 +255,11 @@ func messageLinks(all []gchat.Annotation) []MessageLink {
 // GetMessagesInput selects a page of a space's history.
 type GetMessagesInput struct {
 	Space string
-	// Since bounds the listing below, as RFC 3339 or a bare date.
-	// Empty means no bound.
-	Since string
-	Limit int
+	// Since and Before bound the listing below and above, as RFC 3339
+	// or a bare date. Empty means no bound.
+	Since  string
+	Before string
+	Limit  int
 	// PageToken continues a previous call.
 	PageToken string
 }
@@ -294,12 +295,26 @@ func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) (*Messag
 	if err != nil {
 		return nil, err
 	}
+	before, err := parseArgTime("before", in.Before)
+	if err != nil {
+		return nil, err
+	}
+	if !since.IsZero() && !before.IsZero() && !before.After(since) {
+		return nil, Invalidf("before must be later than since, or the window holds nothing")
+	}
+	var clauses []string
+	if !since.IsZero() {
+		clauses = append(clauses, createdAfterFilter(since))
+	}
+	if !before.IsZero() {
+		clauses = append(clauses, `createTime < "`+googleTime(before)+`"`)
+	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
 		Space:     space,
 		OrderBy:   "createTime desc",
 		PageSize:  limit,
-		Filter:    createdAfterFilter(since),
+		Filter:    strings.Join(clauses, " AND "),
 		PageToken: in.PageToken,
 	})
 	if err != nil {

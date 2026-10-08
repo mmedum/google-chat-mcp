@@ -13,6 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
+- `get_messages` takes `before`, so with `since` it reads a window, such as what was said on one day.
 - `search_messages` takes `space_type`, to search only direct messages, group chats or named spaces, and `space_name`, to search spaces whose names hold every one of the words. Each hit says whether you have read it and whether its space is muted.
 - `get_space` returns when the space was last active, its link, its description and guidelines, how many people and groups have joined, whether history is on, and whether ordinary members may post. `list_spaces`, `search_spaces` and `find_group_chats` return when each space was last active.
 - `get_messages`, `get_thread` and `search_messages` return each message's files, reaction counts, edit time and whether it replies in its thread, as `get_message` does. A message that is only a file no longer reads as an empty row. `get_message` gains `thread_reply` too.
