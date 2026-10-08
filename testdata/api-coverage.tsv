@@ -117,17 +117,17 @@ cloudidentity	groups.get	used	Client.GetGroup
 cloudidentity	groups.getSecuritySettings	out	a group's security settings say nothing about adding it to a Chat space
 cloudidentity	groups.list	out	enumerates the organization's groups; find_group answers from the one address a caller already has, which is the question Chat leaves open
 cloudidentity	groups.lookup	used	Client.LookupGroup
-cloudidentity	groups.memberships.checkTransitiveMembership	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
+cloudidentity	groups.memberships.checkTransitiveMembership	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
 cloudidentity	groups.memberships.create	unreachable	https://www.googleapis.com/auth/cloud-identity.groups
 cloudidentity	groups.memberships.delete	unreachable	https://www.googleapis.com/auth/cloud-identity.groups
-cloudidentity	groups.memberships.get	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
-cloudidentity	groups.memberships.getMembershipGraph	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
-cloudidentity	groups.memberships.list	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
-cloudidentity	groups.memberships.lookup	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
+cloudidentity	groups.memberships.get	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
+cloudidentity	groups.memberships.getMembershipGraph	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
+cloudidentity	groups.memberships.list	used	Client.ListGroupMembers
+cloudidentity	groups.memberships.lookup	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
 cloudidentity	groups.memberships.modifyMembershipRoles	unreachable	https://www.googleapis.com/auth/cloud-identity.groups
-cloudidentity	groups.memberships.searchDirectGroups	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
-cloudidentity	groups.memberships.searchTransitiveGroups	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
-cloudidentity	groups.memberships.searchTransitiveMemberships	out	who is in a group is the group's own business; Chat adds a group whole, and its members reach a space through it
+cloudidentity	groups.memberships.searchDirectGroups	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
+cloudidentity	groups.memberships.searchTransitiveGroups	out	list_members reads a group's direct members with memberships.list; nothing here asks this narrower question
+cloudidentity	groups.memberships.searchTransitiveMemberships	out	only Enterprise and Cloud Identity Premium accounts may call it, a 403 for the rest; list_members expands a group one level with memberships.list
 cloudidentity	groups.patch	unreachable	https://www.googleapis.com/auth/cloud-identity.groups
 cloudidentity	groups.search	out	enumerates the organization's groups; find_group answers from the one address a caller already has, which is the question Chat leaves open
 cloudidentity	groups.updateSecuritySettings	unreachable	https://www.googleapis.com/auth/cloud-identity.groups

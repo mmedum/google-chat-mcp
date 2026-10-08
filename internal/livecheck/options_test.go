@@ -47,6 +47,7 @@ var excusedOptions = map[string]string{
 	"get_messages.since":                             "a time bound on a space minutes old, where every bound is degenerate",
 	"list_space_events.since":                        "same: the scratch space has no history to bound",
 	"list_space_events.until":                        "same",
+	"list_members.expand_groups":                     "the scratch space has no Google Group in it: LIVE_GROUP_EMAIL is looked up and added nowhere",
 	"list_spaces.space_type":                         "filters the account's own spaces rather than the scratch one, so it reads what this run did not create",
 	"remove_reaction.reaction_name":                  "the by-name form of a removal the step already makes by emoji",
 	"search_people.sources":                          "narrows to one upstream; the step asserts a directory hit, which the default already reaches",

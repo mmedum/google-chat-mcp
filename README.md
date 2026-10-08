@@ -174,7 +174,7 @@ and the three tools that move them say so.
 | `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only` |
 | `search_people` | Turn a name into an email address, from the directory and your contacts | `directory.readonly`, `contacts.readonly` |
 | `find_group` | Turn a Google Group's email address into the id `add_member` takes | `cloud-identity.groups.readonly` |
-| `list_members` | Who is in a space, people and groups resolved to names and addresses | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
+| `list_members` | Who is in a space, people and groups resolved to names and addresses, and on request who is in each group | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `update_member_role` | Make someone a member, manager or assistant manager | `chat.memberships` |
 | `list_reactions` | Reactions on a message | `chat.messages.reactions` |

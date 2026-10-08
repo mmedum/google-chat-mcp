@@ -20,6 +20,17 @@ type MemberOutput struct {
 	Role           string  `json:"role" jsonschema:"ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize"`
 	State          string  `json:"state" jsonschema:"JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED"`
 	Affiliation    string  `json:"affiliation,omitempty" jsonschema:"INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in"`
+
+	GroupMembers        []GroupMemberOutput `json:"group_members" jsonschema:"for a GROUP row of list_members with expand_groups: who is in the group, directly, up to 200. Null otherwise, and when they could not be read"`
+	GroupMembersMore    bool                `json:"group_members_more" jsonschema:"true when the group has more direct members than group_members holds"`
+	GroupMembersMissing *string             `json:"group_members_missing" jsonschema:"why group_members could not be read, such as a group that does not show its members to you; null when they were read or not asked for"`
+}
+
+// GroupMemberOutput is one direct member of a Google Group.
+type GroupMemberOutput struct {
+	Email string `json:"email" jsonschema:"the member's email address"`
+	Kind  string `json:"kind" jsonschema:"USER, GROUP for a group inside the group, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER"`
+	Role  string `json:"role" jsonschema:"OWNER, MANAGER or MEMBER: the highest role the member holds in the group"`
 }
 
 // memberRow shapes one membership for the model. get_member returns the
@@ -34,7 +45,25 @@ func memberRow(m service.Member) MemberOutput {
 		Role:           m.Role,
 		State:          m.State,
 		Affiliation:    m.Affiliation,
+
+		GroupMembers:        groupMemberOutputs(m.GroupMembers),
+		GroupMembersMore:    m.GroupMembersMore,
+		GroupMembersMissing: nullable(m.GroupMembersMissing),
 	}
+}
+
+// groupMemberOutputs shapes a group's members, and nil stays nil: a
+// group that was not expanded says so with null, not with an empty list
+// that reads as an empty group.
+func groupMemberOutputs(all []service.GroupMember) []GroupMemberOutput {
+	if all == nil {
+		return nil
+	}
+	out := make([]GroupMemberOutput, 0, len(all))
+	for _, m := range all {
+		out = append(out, GroupMemberOutput{Email: m.Email, Kind: m.Kind, Role: m.Role})
+	}
+	return out
 }
 
 // MemberListOutput wraps the rows.
@@ -46,9 +75,10 @@ type MemberListOutput struct {
 
 // ListMembersInput selects a page of a space's members.
 type ListMembersInput struct {
-	SpaceID   string `json:"space_id" jsonschema:"the space, spaces/{id}"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 200; default 50"`
-	PageToken string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
+	SpaceID      string `json:"space_id" jsonschema:"the space, spaces/{id}"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 200; default 50"`
+	PageToken    string `json:"page_token,omitempty" jsonschema:"next_page_token from a previous call"`
+	ExpandGroups bool   `json:"expand_groups,omitempty" jsonschema:"also list who is in each Google Group member, one level down: up to 200 people for each of the first 10 groups. Google shows a group's members only to someone the group lets see them"`
 }
 
 func registerMembers(s *mcp.Server, d Deps) {
@@ -65,7 +95,7 @@ func registerMembers(s *mcp.Server, d Deps) {
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ListMembersInput) (*mcp.CallToolResult, MemberListOutput, error) {
 		got, err := d.Service.ListMembers(ctx, service.ListMembersInput{
-			Space: in.SpaceID, Limit: in.Limit, PageToken: in.PageToken,
+			Space: in.SpaceID, Limit: in.Limit, PageToken: in.PageToken, ExpandGroups: in.ExpandGroups,
 		})
 		if err != nil {
 			return nil, MemberListOutput{}, err

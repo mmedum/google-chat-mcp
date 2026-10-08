@@ -734,8 +734,21 @@ func (o UpdateMemberRoleOutput) Render() string {
 
 // Render is one member of a space.
 func (o MemberOutput) Render() string {
-	return meta(o.MembershipName, o.Kind, person(o.MemberID, o.DisplayName, o.Email),
-		o.Role, o.State, o.Affiliation)
+	more := ""
+	if o.GroupMembersMore {
+		more = "The group has more members than are listed."
+	}
+	return block(
+		meta(o.MembershipName, o.Kind, person(o.MemberID, o.DisplayName, o.Email), o.Role, o.State, o.Affiliation),
+		optionalListing(o.GroupMembers, "group member", "group members"),
+		more,
+		labeled("group members not read:", deref(o.GroupMembersMissing)),
+	)
+}
+
+// Render is one member of a group.
+func (o GroupMemberOutput) Render() string {
+	return meta(o.Email, o.Kind, o.Role)
 }
 
 // Render lists a space's members.

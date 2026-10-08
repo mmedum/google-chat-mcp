@@ -238,6 +238,42 @@ func TestListMembersThroughASession(t *testing.T) {
 	}
 }
 
+// What the model sees of an expanded group: the members on the group's
+// row, and null on a person's row, where there is no group to expand.
+func TestListMembersExpandsGroupsThroughASession(t *testing.T) {
+	const page = `{"memberships":[
+	  {"name":"spaces/A/members/1","state":"JOINED","role":"ROLE_MEMBER","member":{"name":"users/1","displayName":"Jane Doe"}},
+	  {"name":"spaces/A/members/2","state":"JOINED","role":"ROLE_MEMBER","groupMember":{"name":"groups/G1"}}
+	]}`
+	chat := func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/groups/G1/memberships") {
+			fmt.Fprint(w, `{"memberships":[{"preferredMemberKey":{"id":"johndoe@example.com"},"roles":[{"name":"MEMBER"}],"type":"USER"}]}`)
+			return
+		}
+		fmt.Fprint(w, page)
+	}
+	cs := session(t, chatAndPeople(chat, personHit))
+	res := call(t, cs, "list_members", map[string]any{"space_id": "spaces/A", "expand_groups": true}, nil)
+	var out MemberListOutput
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Result) != 2 {
+		t.Fatalf("list_members = %s", raw)
+	}
+	want := []GroupMemberOutput{{Email: "johndoe@example.com", Kind: "USER", Role: "MEMBER"}}
+	if !reflect.DeepEqual(out.Result[1].GroupMembers, want) {
+		t.Errorf("the group row's members = %+v, want %+v", out.Result[1].GroupMembers, want)
+	}
+	if !strings.Contains(string(raw), `"group_members":null`) {
+		t.Errorf("the person's row = %s, want group_members null", raw)
+	}
+}
+
 func TestListReactionsThroughASession(t *testing.T) {
 	cs := session(t, body(`{"reactions":[{"name":"spaces/A/messages/1/reactions/R1","emoji":{"unicode":"👍"},"user":{"name":"users/1"}}]}`))
 	var out ListReactionsOutput

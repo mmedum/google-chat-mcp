@@ -133,6 +133,25 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"post", "group", "guidelines"},
 		},
 		{
+			name: "an expanded group lists who is in it",
+			out: MemberOutput{
+				Kind: "GROUP", MembershipName: "spaces/AAAAspace1/members/AAAAmember1", MemberID: "groups/AAAAgroup1",
+				Email: ptr("team@example.com"), Role: "ROLE_MEMBER", State: "JOINED",
+				GroupMembers:     []GroupMemberOutput{{Email: "johndoe@example.com", Kind: "USER", Role: "OWNER"}},
+				GroupMembersMore: true,
+			},
+			want: []string{"1 group member:", "johndoe@example.com", "OWNER", "The group has more members than are listed."},
+		},
+		{
+			name: "a group that hides its members says so",
+			out: MemberOutput{
+				Kind: "GROUP", MembershipName: "spaces/AAAAspace1/members/AAAAmember1", MemberID: "groups/AAAAgroup1",
+				Role: "ROLE_MEMBER", State: "JOINED", GroupMembersMissing: ptr("[forbidden] the group does not show its members"),
+			},
+			want:  []string{"group members not read: [forbidden]"},
+			avoid: []string{"has more"},
+		},
+		{
 			name: "a listed message carries its links too",
 			out: MessageOutput{
 				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1",

@@ -3,6 +3,7 @@ package service
 import (
 	"cmp"
 	"context"
+	"fmt"
 
 	"github.com/mmedum/google-chat-mcp/v4/internal/directory"
 	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
@@ -60,7 +61,32 @@ type Member struct {
 	// Affiliation is INTERNAL, EXTERNAL or MANAGED_EXTERNAL, and empty
 	// when Google said nothing.
 	Affiliation string
+
+	// GroupMembers is who is in a group row's group, directly, when the
+	// listing was asked to expand groups. GroupMembersMore says the
+	// group has more than were read, and GroupMembersMissing why they
+	// could not be read at all.
+	GroupMembers        []GroupMember
+	GroupMembersMore    bool
+	GroupMembersMissing string
 }
+
+// GroupMember is one direct member of a Google Group.
+type GroupMember struct {
+	// Email is the member's address, Cloud Identity's own key for it.
+	Email string
+	// Kind is USER, GROUP, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER.
+	Kind string
+	// Role is OWNER, MANAGER or MEMBER: the highest the member holds.
+	Role string
+}
+
+// Bounds on expanding groups, so a listing costs a known number of
+// calls: one page of members for each of the first few groups.
+const (
+	groupMemberPage   = 200
+	maxExpandedGroups = 10
+)
 
 // ListMembersInput selects a page of a space's members.
 type ListMembersInput struct {
@@ -68,6 +94,9 @@ type ListMembersInput struct {
 	Limit int
 	// PageToken continues a previous call.
 	PageToken string
+	// ExpandGroups reads who is in each group row's group, one level
+	// down.
+	ExpandGroups bool
 }
 
 // MembersResult is one page of a space's membership.
@@ -139,7 +168,68 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 		out = append(out, row)
 	}
 	s.warnUnparsed("memberships_unparsed", unparsed, len(resp.Memberships))
+	if in.ExpandGroups {
+		s.expandGroups(ctx, out)
+	}
 	return &MembersResult{Members: out, NextPageToken: resp.NextPageToken, Unparsed: unparsed}, nil
+}
+
+// expandGroups fills in who is in each group row's group.
+//
+// A group that will not show its members costs that group's members and
+// nothing else: the row says why, and the listing stands. A failure
+// every group would share, such as a missing scope, is said on every
+// group row rather than asked about again.
+func (s *Service) expandGroups(ctx context.Context, rows []Member) {
+	expanded := 0
+	shared := ""
+	for i := range rows {
+		row := &rows[i]
+		if row.Kind != KindGroup {
+			continue
+		}
+		switch {
+		case shared != "":
+			row.GroupMembersMissing = shared
+			continue
+		case expanded == maxExpandedGroups:
+			row.GroupMembersMissing = fmt.Sprintf("not read: only the first %d groups on a page are expanded", maxExpandedGroups)
+			continue
+		}
+		expanded++
+		page, err := s.client.ListGroupMembers(ctx, row.Name, groupMemberPage)
+		if err != nil {
+			row.GroupMembersMissing = Classify(err).Error()
+			class, status := degradation(err)
+			s.log.Warn("group_members_degraded", "class", class, "status", status)
+			if gchat.IsMissingScope(err) || gchat.IsServiceDisabled(err) || gchat.IsUnauthorized(err) || ctx.Err() != nil {
+				shared = row.GroupMembersMissing
+			}
+			continue
+		}
+		row.GroupMembers = make([]GroupMember, 0, len(page.Memberships))
+		for _, m := range page.Memberships {
+			row.GroupMembers = append(row.GroupMembers, GroupMember{
+				Email: m.PreferredMemberKey.ID,
+				Kind:  m.Type,
+				Role:  highestGroupRole(m.Roles),
+			})
+		}
+		row.GroupMembersMore = page.NextPageToken != ""
+	}
+}
+
+// highestGroupRole is the strongest of a group member's roles. Every
+// member holds MEMBER; an owner or a manager holds that as well.
+func highestGroupRole(roles []gchat.GroupMembershipRole) string {
+	best := ""
+	for _, r := range roles {
+		switch {
+		case r.Name == "OWNER", r.Name == "MANAGER" && best != "OWNER", best == "":
+			best = r.Name
+		}
+	}
+	return best
 }
 
 // Roles a caller may ask for, in the tool surface's spelling. Google's

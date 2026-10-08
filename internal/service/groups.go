@@ -50,6 +50,21 @@ func (s *Service) FindGroup(ctx context.Context, email string) (*Group, error) {
 	return &Group{Name: name, Email: email, DisplayName: s.resolveGroups(ctx, []string{name})[name].DisplayName}, nil
 }
 
+// degradation is what a failed lookup logs: its class and HTTP status,
+// never its text, which can carry what was looked up.
+func degradation(err error) (Class, int) {
+	class, status := ClassUnexpected, 0
+	var se *Error
+	if errors.As(Classify(err), &se) {
+		class = se.Class
+	}
+	var ae *gchat.APIError
+	if errors.As(err, &ae) {
+		status = ae.StatusCode
+	}
+	return class, status
+}
+
 // resolveGroups reads each group's address and display name from Cloud
 // Identity, once per distinct group.
 //
@@ -71,15 +86,7 @@ func (s *Service) resolveGroups(ctx context.Context, names []string) map[string]
 		}
 		g, err := s.client.GetGroup(ctx, name)
 		if err != nil {
-			class, status := ClassUnexpected, 0
-			var se *Error
-			if errors.As(Classify(err), &se) {
-				class = se.Class
-			}
-			var ae *gchat.APIError
-			if errors.As(err, &ae) {
-				status = ae.StatusCode
-			}
+			class, status := degradation(err)
 			s.log.Warn("group_lookup_degraded", "class", class, "status", status)
 			if gchat.IsMissingScope(err) || gchat.IsServiceDisabled(err) || gchat.IsUnauthorized(err) || ctx.Err() != nil {
 				break

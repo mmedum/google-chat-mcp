@@ -68,3 +68,48 @@ func (c *Client) GetGroup(ctx context.Context, name string) (*IdentityGroup, err
 	}, &out)
 	return &out, err
 }
+
+// GroupMembership is one direct member of a Google Group, as Cloud
+// Identity describes it. Named apart from Membership, which is Chat's:
+// who is in a space.
+type GroupMembership struct {
+	Name               string                `json:"name,omitempty"`
+	PreferredMemberKey EntityKey             `json:"preferredMemberKey"`
+	Roles              []GroupMembershipRole `json:"roles,omitempty"`
+	// Type is USER, GROUP, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER.
+	Type string `json:"type,omitempty"`
+}
+
+// GroupMembershipRole is one role a group member holds: OWNER, MANAGER
+// or MEMBER.
+type GroupMembershipRole struct {
+	Name string `json:"name"`
+}
+
+// GroupMembershipsPage is groups.memberships.list.
+type GroupMembershipsPage struct {
+	Memberships   []GroupMembership `json:"memberships,omitempty"`
+	NextPageToken string            `json:"nextPageToken,omitempty"`
+}
+
+// groupMembershipFields trims a membership page to what this server
+// reads, as groupFields trims a group.
+const groupMembershipFields = "memberships(name,preferredMemberKey,roles(name),type),nextPageToken"
+
+// ListGroupMembers reads one page of a group's direct members. Google
+// shows them only to someone the group's own settings let see them, and
+// refuses the call otherwise.
+func (c *Client) ListGroupMembers(ctx context.Context, group string, pageSize int) (*GroupMembershipsPage, error) {
+	q := pageQuery(pageSize, "")
+	q.Set("fields", groupMembershipFields)
+	var out GroupMembershipsPage
+	err := c.do(ctx, request{
+		api:    cloudIdentityAPI,
+		method: "GET",
+		name:   group,
+		path:   "memberships",
+		query:  q,
+		scope:  scopes.GroupsReadonly,
+	}, &out)
+	return &out, err
+}
