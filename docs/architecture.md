@@ -115,7 +115,7 @@ by name only. `doctor` walks live responses and reports what it saw. The
 alternative — strict decoding — turns an upstream addition into a total
 outage, which is exactly what happened here, twice.
 
-### A dry run cannot reach the network
+### A dry run cannot write
 
 `dry_run` is not a promise each handler keeps. The flag puts the call on
 a context `internal/gchat` refuses to write under, so a tool that

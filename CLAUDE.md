@@ -44,9 +44,11 @@ was checked, against which source, and which live call contradicted it.
    `TestLogsNeverCarryThePayload` holds this.
 4. **`send_message` posts the body verbatim.** No prefix, no suffix,
    nothing appended server-side, ever.
-5. **A dry run may not reach the network.** The flag puts the call on a
-   context `internal/gchat` refuses to write under. Do not add a preview
-   that works by convention instead.
+5. **A dry run may not write.** The flag puts the call on a context
+   `internal/gchat` refuses to write under. A preview may read what it
+   has to show: a section move's reads where the space sits, a quote's
+   reads the quoted message's timestamp. Do not add a preview that works
+   by convention instead.
 6. **Every tool goes through `register`.** It decides the annotations,
    the read-only gating, the interaction hint and the rendered reply from
    one `Kind`. Four rules kept by hand at fifty call sites is four ways

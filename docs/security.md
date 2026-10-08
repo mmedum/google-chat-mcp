@@ -81,9 +81,10 @@ Each of these is enforced, not documented — the tests named in
    names, tokens and search terms stay out at every level, including
    inside a transport error's URL.
    `TestLogsNeverCarryThePayload` fails the build on one.
-3. **A dry run cannot reach the network.** The flag puts the request on
-   a context the HTTP client refuses to write under, so the guarantee
-   does not depend on each handler remembering.
+3. **A dry run cannot write.** The flag puts the request on a context
+   the HTTP client refuses to write under, so the guarantee does not
+   depend on each handler remembering. A preview may read what it
+   shows.
 4. **Resource names are checked before they are sent.** Several Chat
    calls put a name inside a filter expression, where an unchecked quote
    would end the clause early. Nothing reachable that way crosses a

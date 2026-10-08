@@ -229,10 +229,11 @@ client that includes resources in its context:
 ## Safety
 
 - **`dry_run` on 25 write tools.** It returns the request body that
-  would have been sent, and the call cannot reach the network: the flag
-  puts the request on a context the HTTP client refuses to write under,
-  so a tool that forgot its own preview branch fails loudly instead of
-  posting.
+  would have been sent, and the call cannot write: the flag puts the
+  request on a context the HTTP client refuses to write under, so a
+  tool that forgot its own preview branch fails loudly instead of
+  posting. A preview may still read what it shows, such as the quoted
+  message a quote names.
 - **`GCM_READ_ONLY=true` leaves the write tools unregistered.** A tool
   that is not registered cannot be called, whatever permission mode the
   client is in or whatever a model asks for. It is set where you start
