@@ -199,7 +199,7 @@ and the three tools that move them say so.
 | `delete_space` | Delete a space and everything in it | `chat.delete` |
 | `list_sections` | Your own sidebar sections | `chat.users.sections.readonly` |
 | `list_section_items` | What a section holds, or which section a space sits in | `chat.users.sections.readonly` |
-| `send_message` | Post text, exactly as given, in Chat's syntax or Markdown. Optionally into a thread, quoting or forwarding a message, or carrying an uploaded file | `chat.messages.create`; `chat.messages.readonly` to quote |
+| `send_message` | Post text, exactly as given, in Chat's syntax or Markdown. Optionally into a thread, quoting a message, or carrying an uploaded file | `chat.messages.create`; `chat.messages.readonly` to quote |
 | `upload_attachment` | Send a local file to a space and get the token that attaches it | `chat.messages.create` |
 | `update_message` | Edit the text of a message you sent | `chat.messages` |
 | `delete_message` | Delete a message. Already gone counts as success | `chat.messages` |
@@ -249,9 +249,8 @@ client that includes resources in its context:
 - **The server asks you before what cannot be taken back.** When your
   MCP client supports elicitation, it asks before deleting a message, a
   space or a custom emoji, adding a member, opening a space to a target
-  audience, a post or an edit that mentions everyone in a space, and a
-  post that forwards a message out of another space; only your accept
-  writes.
+  audience, and a post or an edit that mentions everyone in a space;
+  only your accept writes.
   `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
   a client that cannot ask.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no

@@ -304,49 +304,66 @@ var steps = []step{
 	}},
 
 	// Quoting needs the quoted message's exact timestamp, which the
-	// server reads first; a stale one is refused. Both kinds stay in the
-	// scratch space, so the forward asks nobody.
-	{"a reply and a forward quote the posted message", "send_message", func(d *driver) {
+	// server reads first; a stale one is refused. Only a reply: Google
+	// refused every forward under a person's sign-in, live 2026-10-08 —
+	// a main-chat message into its own space, a thread reply into another
+	// thread, and a message into another space.
+	{"a reply is posted into the thread", "send_message", func(d *driver) {
+		if d.thread == "" {
+			d.t.Skip("no thread to reply in")
+		}
+		var out struct {
+			MessageID string `json:"message_id"`
+			ThreadID  string `json:"thread_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " replied in the thread", "thread_name": d.thread,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the reply")
+		}
+		d.record(out.MessageID)
+		if out.ThreadID != d.thread {
+			d.t.Errorf("the reply landed in %s, want the thread it was posted into", d.redact(out.ThreadID))
+		}
+		d.threadReply = out.MessageID
+	}},
+
+	{"a reply quotes the posted message", "send_message", func(d *driver) {
 		if d.posted == "" {
 			d.t.Skip("nothing was posted to quote")
 		}
-		d.quoted = map[string]string{}
-		for _, quoteType := range []string{"REPLY", "FORWARD"} {
-			var out struct {
-				MessageID string `json:"message_id"`
-			}
-			d.into(d.must("send_message", map[string]any{
-				"space_id": d.space, "text": searchTerm + " quoted this line",
-				"quote_message": d.posted, "quote_type": quoteType,
-			}), &out)
-			if out.MessageID == "" {
-				d.t.Fatalf("send_message returned no message id for the %s", quoteType)
-			}
-			d.record(out.MessageID)
-			d.quoted[quoteType] = out.MessageID
+		var out struct {
+			MessageID string `json:"message_id"`
 		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " quoted this line", "quote_message": d.posted,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the quote")
+		}
+		d.record(out.MessageID)
+		d.quoted = out.MessageID
 	}},
 
 	{"a quote reads back naming what it quotes", "get_message", func(d *driver) {
-		if len(d.quoted) == 0 {
+		if d.quoted == "" {
 			d.t.Skip("no quote was posted")
 		}
-		for quoteType, name := range d.quoted {
-			var out struct {
-				Quote *struct {
-					MessageID string `json:"message_id"`
-					QuoteType string `json:"quote_type"`
-				} `json:"quote"`
-			}
-			d.into(d.must("get_message", map[string]any{"message_name": name}), &out)
-			switch {
-			case out.Quote == nil:
-				d.t.Errorf("the %s came back quoting nothing", quoteType)
-			case out.Quote.MessageID != d.posted:
-				d.t.Errorf("the %s came back quoting %s, want the posted message", quoteType, d.redact(out.Quote.MessageID))
-			case cmp.Or(out.Quote.QuoteType, "REPLY") != quoteType:
-				d.t.Errorf("the %s came back as quote type %q", quoteType, d.redact(out.Quote.QuoteType))
-			}
+		var out struct {
+			Quote *struct {
+				MessageID string `json:"message_id"`
+				QuoteType string `json:"quote_type"`
+			} `json:"quote"`
+		}
+		d.into(d.must("get_message", map[string]any{"message_name": d.quoted}), &out)
+		switch {
+		case out.Quote == nil:
+			d.t.Error("the quote came back quoting nothing")
+		case out.Quote.MessageID != d.posted:
+			d.t.Errorf("the quote came back quoting %s, want the posted message", d.redact(out.Quote.MessageID))
+		case cmp.Or(out.Quote.QuoteType, "REPLY") != "REPLY":
+			d.t.Errorf("the quote came back as quote type %q", d.redact(out.Quote.QuoteType))
 		}
 	}},
 

@@ -510,7 +510,7 @@ func quoteBackend(created, updated string) http.HandlerFunc {
 // the creation time otherwise.
 func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 	for _, tc := range []struct {
-		name, created, updated, quoteType, want string
+		name, created, updated, want string
 	}{
 		{
 			name: "an edited message", created: "2026-01-02T03:04:05Z", updated: "2026-01-02T04:00:00Z",
@@ -520,15 +520,11 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 			name: "a message never edited", created: "2026-01-02T03:04:05Z", updated: "",
 			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"REPLY"}}`,
 		},
-		{
-			name: "a forward", created: "2026-01-02T03:04:05Z", updated: "", quoteType: "FORWARD",
-			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"FORWARD"}}`,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, rec := recorded(t, quoteBackend(tc.created, tc.updated))
 			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", QuoteType: tc.quoteType,
+				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9",
 			}); err != nil {
 				t.Fatalf("SendMessage: %v", err)
 			}
@@ -586,10 +582,8 @@ func TestSendMessageRefusesABadQuote(t *testing.T) {
 		t.Error("a refused quote must not reach Google")
 	})
 	for name, in := range map[string]SendMessageInput{
-		"a reply from another space": {Space: "spaces/A", Text: "x", Quote: "spaces/B/messages/9"},
-		"a type with nothing quoted": {Space: "spaces/A", Text: "x", QuoteType: "FORWARD"},
-		"a type Google has not got":  {Space: "spaces/A", Text: "x", Quote: "spaces/A/messages/9", QuoteType: "QUOTE"},
-		"not a message":              {Space: "spaces/A", Text: "x", Quote: "spaces/A"},
+		"a message from another space": {Space: "spaces/A", Text: "x", Quote: "spaces/B/messages/9"},
+		"not a message":                {Space: "spaces/A", Text: "x", Quote: "spaces/A"},
 	} {
 		_, err := s.SendMessage(writeCtx(), in)
 		var e *Error

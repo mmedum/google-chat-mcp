@@ -553,11 +553,8 @@ type SendMessageInput struct {
 	// Markdown has Google read Text as standard Markdown rather than
 	// Chat's own syntax. The text is still posted as given.
 	Markdown bool
-	// Quote is a message to quote above the text. QuoteType is REPLY,
-	// the default, for one in this space, or FORWARD, which quotes one
-	// from another space or another thread.
-	Quote     string
-	QuoteType string
+	// Quote is a message in the same space to quote above the text.
+	Quote string
 	// DryRun renders the request body and posts nothing.
 	DryRun bool
 }
@@ -611,7 +608,7 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	// Read before the dry run returns, so the preview is the body a post
 	// would send: the quote carries a timestamp only the quoted message
 	// has. A read, not a write, as a section move's preview reads too.
-	if body.Quote, err = s.quote(ctx, space, in.Quote, in.QuoteType); err != nil {
+	if body.Quote, err = s.quote(ctx, space, in.Quote); err != nil {
 		return nil, err
 	}
 	if in.DryRun {
@@ -622,7 +619,7 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		return &SendMessageResult{Space: space, DryRun: true, Rendered: rendered}, nil
 	}
 
-	if err := s.askSend(ctx, space, text, strings.TrimSpace(in.UploadToken) != "", forwardedFrom(space, body.Quote)); err != nil {
+	if err := s.askSend(ctx, space, text, strings.TrimSpace(in.UploadToken) != ""); err != nil {
 		return nil, err
 	}
 	// Minted here rather than in the client, so a failure can name it:
@@ -643,46 +640,39 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 }
 
 // askSend asks before a post that mentions everyone in the space, or
-// that forwards a message out of another space, or before every post
-// when the configuration says so. The space is read for its name only
-// when a question could go out.
-func (s *Service) askSend(ctx context.Context, space, text string, attached bool, forwardFrom string) error {
+// before every post when the configuration says so. The space is read
+// for its name only when a question could go out.
+func (s *Service) askSend(ctx context.Context, space, text string, attached bool) error {
 	everyone := mentionsEveryone(text)
-	if !everyone && forwardFrom == "" && !s.cfg.AskBeforeSend || !asks(ctx) {
+	if !everyone && !s.cfg.AskBeforeSend || !asks(ctx) {
 		return nil
 	}
 	sp, err := s.client.GetSpace(ctx, space)
 	if err != nil {
 		return Classify(err)
 	}
-	return ask(ctx, askSend(space, sp.DisplayName, text, everyone, attached, forwardFrom))
+	return ask(ctx, askSend(space, sp.DisplayName, text, everyone, attached))
 }
 
 // quote builds the reference to a quoted message, or nil when there is
 // none to quote.
 //
 // Google needs the quoted message's latest timestamp and refuses a stale
-// one, so the message is read for it. A reply is to a message in the
-// same space; quoting one from another space is a forward, and saying so
-// here beats Google's refusal.
-func (s *Service) quote(ctx context.Context, space, name, quoteType string) (*gchat.QuotedMessageMeta, error) {
+// one, so the message is read for it. A quote is a reply to a message in
+// the same space: Google refuses a forward under a person's sign-in,
+// whichever way it was tried, so a message from another space is refused
+// here with that said.
+func (s *Service) quote(ctx context.Context, space, name string) (*gchat.QuotedMessageMeta, error) {
 	if name == "" {
-		if quoteType != "" {
-			return nil, Invalidf("quote_type needs quote_message")
-		}
 		return nil, nil
 	}
 	name, err := requireMessage(name)
 	if err != nil {
 		return nil, err
 	}
-	quoteType = cmp.Or(quoteType, quoteReply)
-	if err := requireEnum("quote_type", quoteType, quoteReply, quoteForward); err != nil {
-		return nil, err
-	}
-	if from := spaceOfMessage(name); quoteType == quoteReply && from != space {
-		return nil, Invalidf("quote_message is in %s, not %s; quoting a message from another space is a forward, "+
-			"so pass quote_type FORWARD", from, space)
+	if from := spaceOfMessage(name); from != space {
+		return nil, Invalidf("quote_message is in %s, not %s. Only a message in the same space can be quoted: "+
+			"Google refuses to forward one under a person's sign-in", from, space)
 	}
 	got, err := s.client.GetMessage(ctx, name)
 	if err != nil {
@@ -694,25 +684,7 @@ func (s *Service) quote(ctx context.Context, space, name, quoteType string) (*gc
 	}
 	// Google's own name for it: a message read by its client-assigned id
 	// comes back under its real one, and that is what a quote names.
-	return &gchat.QuotedMessageMeta{Name: cmp.Or(got.Name, name), LastUpdate: stamp, QuoteType: quoteType}, nil
-}
-
-// Google's words for how a message is quoted.
-const (
-	quoteReply   = "REPLY"
-	quoteForward = "FORWARD"
-)
-
-// forwardedFrom is the space a post forwards a message out of, or empty
-// when it forwards nothing or forwards within its own space.
-func forwardedFrom(space string, q *gchat.QuotedMessageMeta) string {
-	if q == nil || q.QuoteType != quoteForward {
-		return ""
-	}
-	if from := spaceOfMessage(q.Name); from != space {
-		return from
-	}
-	return ""
+	return &gchat.QuotedMessageMeta{Name: cmp.Or(got.Name, name), LastUpdate: stamp, QuoteType: "REPLY"}, nil
 }
 
 // askEdit asks before an edit that newly mentions everyone in the

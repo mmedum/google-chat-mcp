@@ -52,7 +52,6 @@ var excusedOptions = map[string]string{
 	"remove_reaction.reaction_name":                  "the by-name form of a removal the step already makes by emoji",
 	"search_people.sources":                          "narrows to one upstream; the step asserts a directory hit, which the default already reaches",
 	"send_message.reply_fallback":                    "needs a thread that has since been deleted to fall back from",
-	"send_message.thread_name":                       "the thread step reads a thread rather than posting into one; posting a second message to build one is a step nobody has written",
 	"update_space.description":                       "the same call the rename step makes, with a different field",
 	"update_space_notification_setting.mute_setting": "the same call the notification step makes, with a different field",
 	"upload_attachment.file_name":                    "renames an upload the step already makes under its own name",

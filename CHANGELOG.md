@@ -14,7 +14,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Added
 
 - `list_members` takes `expand_groups`, and each Google Group in the space then lists who is in it, one level down: up to 200 people for each of the first 10 groups. A group that does not show you its members says so on its row, and the rest of the listing stands.
-- `send_message` takes `quote_message`, to quote a message above the text, and `quote_type: FORWARD`, to quote one from another space or thread. The server reads the quoted message for the timestamp Google requires. A forward out of another space is asked about first, when your client can ask, because everyone in the space it lands in can then read it.
+- `send_message` takes `quote_message`, to quote a message in the same space above the text. The server reads the quoted message for the timestamp Google requires. Forwarding a message is not offered: Google refused it under a person's sign-in every way it was tried.
 - `get_messages` takes `before`, so with `since` it reads a window, such as what was said on one day.
 - `search_messages` takes `space_type`, to search only direct messages, group chats or named spaces, and `space_name`, to search spaces whose names hold every one of the words. Each hit says whether you have read it and whether its space is muted.
 - `get_space` returns when the space was last active, its link, its description and guidelines, how many people and groups have joined, whether history is on, and whether ordinary members may post. `list_spaces`, `search_spaces` and `find_group_chats` return when each space was last active.

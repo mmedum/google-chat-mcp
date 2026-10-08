@@ -54,13 +54,11 @@ var loggedPlain = map[string]string{
 	"v":       "a setting value the test passed in",
 	"where":   "a file and line this process computed",
 	"key":     "a settings key, from the driver's own table",
-	// A quote type the driver loops over.
-	"quoteType": "REPLY or FORWARD, from the driver's own list",
-	"half":      "a literal saying which half of the answer was shown",
-	"f":         "a file name this process chose",
-	"p":         "as f",
-	"path":      "a path this process chose under the output directory",
-	"b":         "a byte count",
+	"half":    "a literal saying which half of the answer was shown",
+	"f":       "a file name this process chose",
+	"p":       "as f",
+	"path":    "a path this process chose under the output directory",
+	"b":       "a byte count",
 
 	// Counts, numbers and enums. None can carry a message.
 	"counted":                       "a count",
