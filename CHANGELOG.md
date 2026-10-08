@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a rate-limited call now fails with `[rate_limited]` rather than `[rate_limit]`, the name the sibling Google Workspace servers use. A client that matches on the old class has to match the new one.
+
 ### Fixed
 
 - `search_spaces` no longer says it finds spaces you are not a member of. Without `use_admin_access`, Google searches only the spaces you have joined.

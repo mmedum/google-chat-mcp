@@ -418,7 +418,7 @@ func directoryHint(subject string, err error) error {
 		return err
 	}
 	switch se.Class {
-	case ClassAuth, ClassScope, ClassRateLimit:
+	case ClassAuth, ClassScope, ClassRateLimited:
 		return err
 	case ClassNotFound, ClassInvalid, ClassUpstream, ClassUnexpected:
 	}
