@@ -183,7 +183,7 @@ type SearchMatchOutput struct {
 	Links        []MessageLinkOutput `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
 	Quote        *MessageQuoteOutput `json:"quote" jsonschema:"the message this hit quotes or forwards; null when it quotes nothing"`
 	MessageExtrasOutput
-	Read       *bool `json:"read" jsonschema:"whether you have read it; null when Google did not say, which it does not for a regex scan or without the read-state scope"`
+	Read       *bool `json:"read" jsonschema:"whether you have read it. Null when it cannot be told: in a regex scan, without the read-state scope, or when no hit on the page is read and unread_only is off, because Google leaves an unread state out rather than sending false"`
 	SpaceMuted *bool `json:"space_muted" jsonschema:"whether you have muted its space; null when Google did not say, which it does not for a regex scan or without the space-settings scope"`
 }
 

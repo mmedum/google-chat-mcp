@@ -381,6 +381,25 @@ func sectionOfItem(name string) string {
 	return ""
 }
 
+// requireWindow refuses a time window that ends where it starts, or
+// before: it holds nothing, and an empty answer would read as a quiet
+// space rather than as swapped arguments.
+func requireWindow(fromField string, from time.Time, toField string, to time.Time) error {
+	if !from.IsZero() && !to.IsZero() && !to.After(from) {
+		return Invalidf("%s must be later than %s, or the window holds nothing", toField, fromField)
+	}
+	return nil
+}
+
+// inclusive turns an at-or-after bound into the strictly-after one the
+// listing filter takes, by the timestamps' precision of a microsecond.
+func inclusive(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	return t.Add(-time.Microsecond)
+}
+
 // createTimeFilter bounds a message listing below, above or both. A
 // zero time is no bound on that side.
 //

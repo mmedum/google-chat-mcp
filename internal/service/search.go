@@ -230,12 +230,18 @@ func (s *Service) scanSpace(ctx context.Context, in SearchMessagesInput) (*Searc
 	if err != nil {
 		return nil, err
 	}
+	if err := requireWindow("created_after", after, "created_before", before); err != nil {
+		return nil, err
+	}
 
 	opts := gchat.ListMessagesOptions{
 		Space:    space,
 		OrderBy:  "createTime desc",
 		PageSize: maxPageSize,
-		Filter:   createTimeFilter(after, before),
+		// The listing filter has > but not >=, and created_after means
+		// at or after; a microsecond, the timestamps' precision, closes
+		// the gap.
+		Filter: createTimeFilter(inclusive(after), before),
 	}
 
 	out := &SearchMessagesResult{Matches: []SearchMatch{}}
@@ -353,7 +359,33 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 		}
 		out.Matches = append(out.Matches, match)
 	}
+	fillUnread(out.Matches, in.UnreadOnly)
 	return out, nil
+}
+
+// fillUnread turns a missing read state into false where it can only mean
+// unread.
+//
+// Google's JSON leaves a false boolean out, so an unread hit arrives with
+// no read field, as every hit does when the token lacks the read-state
+// scope. Two things tell them apart. unread_only matched only unread
+// messages. And Google reports read state for every hit or for none, so
+// one hit marked read says the scope is there and the silent ones are
+// unread. With neither, unread and unknown look the same, and the hit
+// says null.
+func fillUnread(matches []SearchMatch, unreadOnly bool) {
+	known := unreadOnly
+	for _, m := range matches {
+		known = known || m.Read != nil
+	}
+	if !known {
+		return
+	}
+	for i := range matches {
+		if matches[i].Read == nil {
+			matches[i].Read = new(bool)
+		}
+	}
 }
 
 // searchFilter renders Google's search expression.
@@ -401,6 +433,9 @@ func (s *Service) searchFilter(ctx context.Context, in SearchMessagesInput) (str
 	if err != nil {
 		return "", err
 	}
+	if err := requireWindow("created_after", after, "created_before", before); err != nil {
+		return "", err
+	}
 	if !before.IsZero() {
 		clauses = append(clauses, `create_time < "`+before.UTC().Format(time.RFC3339)+`"`)
 	}
@@ -442,8 +477,8 @@ func (s *Service) searchFilter(ctx context.Context, in SearchMessagesInput) (str
 		// quoting for this field is not documented, and anything else
 		// could change what the expression means.
 		if !spaceNameWord.MatchString(word) {
-			return "", Invalidf("space_name %q holds something other than letters, digits, hyphens and "+
-				"underscores; pass the words of the name alone", word)
+			return "", Invalidf("space_name %q holds something other than letters and digits; "+
+				"pass the words of the name alone", word)
 		}
 		clauses = append(clauses, "space.display_name:"+word)
 	}
@@ -456,7 +491,7 @@ func (s *Service) searchFilter(ctx context.Context, in SearchMessagesInput) (str
 }
 
 // spaceNameWord is one word of a space_name filter.
-var spaceNameWord = regexp.MustCompile(`^[\p{L}\p{N}_-]+$`)
+var spaceNameWord = regexp.MustCompile(`^[\p{L}\p{N}]+$`)
 
 // searchTerm validates that exactly one of the two search modes was
 // asked for, and compiles it before anything reaches Google.

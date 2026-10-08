@@ -583,6 +583,29 @@ var steps = []step{
 		})
 	}},
 
+	// Google's JSON may leave a false read state out, as it does any
+	// false boolean. With the space just marked unread no hit is read, so
+	// this shows which: false sent, or nothing. The server reads either
+	// honestly, so this reports rather than fails.
+	{"an unread hit's read state", "search_messages", func(d *driver) {
+		var out struct {
+			Matches []struct {
+				Read *bool `json:"read"`
+			} `json:"matches"`
+		}
+		d.into(d.must("search_messages", map[string]any{"space_id": d.space, "query": searchTerm}), &out)
+		switch {
+		case len(out.Matches) == 0:
+			d.t.Log("search returned no hits, so an unread hit's read state was not seen")
+		case out.Matches[0].Read == nil:
+			d.t.Log("Google left the read state of an unread hit out")
+		case *out.Matches[0].Read:
+			d.t.Error("a hit in a space just marked unread came back read")
+		default:
+			d.t.Log("Google sent read: false for an unread hit")
+		}
+	}},
+
 	{"the read state reads back", "get_space_read_state", func(d *driver) {
 		d.must("get_space_read_state", map[string]any{"space_id": d.space})
 	}},

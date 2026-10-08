@@ -539,6 +539,26 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 	}
 }
 
+// A message read by its client-assigned id comes back under its real
+// name, and the quote names that.
+func TestSendMessageQuotesByGooglesName(t *testing.T) {
+	s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"name":"spaces/A/messages/9","createTime":"2026-01-02T03:04:05Z"}`)
+			return
+		}
+		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
+	})
+	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/client-abc",
+	}); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if body := rec.last(t).Body; !strings.Contains(body, `"name":"spaces/A/messages/9"`) {
+		t.Errorf("posted %s, want the quote to name spaces/A/messages/9", body)
+	}
+}
+
 // A dry run of a quote reads the quoted message, so the preview is the
 // body a post would send, and posts nothing.
 func TestSendMessageDryRunOfAQuoteReadsButDoesNotPost(t *testing.T) {

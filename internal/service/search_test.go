@@ -168,22 +168,6 @@ func TestABadPatternNeverReachesGoogle(t *testing.T) {
 	}
 }
 
-func TestSearchBoundsTheScanByTime(t *testing.T) {
-	var filter string
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-		filter = r.URL.Query().Get("filter")
-		fmt.Fprint(w, `{"messages":[]}`)
-	})
-	if _, err := s.SearchMessages(context.Background(), SearchMessagesInput{
-		Space: "spaces/A", Regex: "x", CreatedAfter: "2026-01-02",
-	}); err != nil {
-		t.Fatalf("SearchMessages: %v", err)
-	}
-	if filter != `createTime > "2026-01-02T00:00:00.000000Z"` {
-		t.Errorf("filter = %q", filter)
-	}
-}
-
 // A model sends what it has. The strict form is what Google wants and
 // what the schema documents; a bare date should still get the day it
 // asked for rather than a schema violation it cannot see the shape of.
@@ -346,6 +330,10 @@ func TestUpstreamSearchRefusesABadSpaceFilter(t *testing.T) {
 		{SpaceName: `Alpha"`},
 		{SpaceName: "Alpha OR(b)"},
 		{SpaceName: "a:b"},
+		{SpaceName: "-ops"},
+		{SpaceName: "team_ops"},
+		{Query: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-01"},
+		{Space: "spaces/AAAAspace1", Regex: "x", CreatedAfter: "2026-01-02", CreatedBefore: "2026-01-02"},
 		{Space: "spaces/AAAAspace1", Regex: "x", SpaceType: "SPACE"},
 		{Space: "spaces/AAAAspace1", Regex: "x", SpaceName: "Alpha"},
 	} {
@@ -355,37 +343,62 @@ func TestUpstreamSearchRefusesABadSpaceFilter(t *testing.T) {
 }
 
 // Google's search reports each hit's read state and its space's mute
-// setting in the full view, which every search asks for. What Google
-// leaves out stays unknown rather than becoming false.
+// setting in the full view, which every search asks for. Its JSON leaves
+// a false boolean out, so a silent hit is unread when something shows
+// the read state is being reported, and unknown otherwise.
 func TestUpstreamSearchCarriesReadStateAndMute(t *testing.T) {
-	var view string
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-		view = r.URL.Query().Get("view")
-		fmt.Fprint(w, `{"results":[
-		  {"message":{"name":"spaces/A/messages/1","text":"a"},"read":false,"spaceMuteSetting":"MUTED"},
-		  {"message":{"name":"spaces/A/messages/2","text":"b"},"read":true,"spaceMuteSetting":"UNMUTED"},
-		  {"message":{"name":"spaces/A/messages/3","text":"c"}}]}`)
-	})
-	got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Query: "x"})
-	if err != nil {
-		t.Fatalf("SearchMessages: %v", err)
-	}
-	if view != "SEARCH_MESSAGES_VIEW_FULL" {
-		t.Errorf("view = %q, want SEARCH_MESSAGES_VIEW_FULL", view)
-	}
-	show := func(b *bool) string {
-		if b == nil {
-			return "unknown"
-		}
-		return fmt.Sprint(*b)
-	}
-	var states []string
-	for _, m := range got.Matches {
-		states = append(states, "read "+show(m.Read)+", muted "+show(m.SpaceMuted))
-	}
-	want := []string{"read false, muted true", "read true, muted false", "read unknown, muted unknown"}
-	if strings.Join(states, "; ") != strings.Join(want, "; ") {
-		t.Errorf("hits = %q, want %q", states, want)
+	for _, tc := range []struct {
+		name       string
+		results    string
+		unreadOnly bool
+		want       []string
+	}{
+		{
+			name: "one hit read says the silent ones are unread",
+			results: `{"message":{"name":"spaces/A/messages/1","text":"a"},"spaceMuteSetting":"MUTED"},
+			  {"message":{"name":"spaces/A/messages/2","text":"b"},"read":true,"spaceMuteSetting":"UNMUTED"},
+			  {"message":{"name":"spaces/A/messages/3","text":"c"}}`,
+			want: []string{"read false, muted true", "read true, muted false", "read false, muted unknown"},
+		},
+		{
+			name:    "no hit read leaves them unknown",
+			results: `{"message":{"name":"spaces/A/messages/1","text":"a"}}`,
+			want:    []string{"read unknown, muted unknown"},
+		},
+		{
+			name:       "unread_only matched only unread messages",
+			results:    `{"message":{"name":"spaces/A/messages/1","text":"a"}}`,
+			unreadOnly: true,
+			want:       []string{"read false, muted unknown"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var view string
+			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+				view = r.URL.Query().Get("view")
+				fmt.Fprintf(w, `{"results":[%s]}`, tc.results)
+			})
+			got, err := s.SearchMessages(context.Background(), SearchMessagesInput{Query: "x", UnreadOnly: tc.unreadOnly})
+			if err != nil {
+				t.Fatalf("SearchMessages: %v", err)
+			}
+			if view != "SEARCH_MESSAGES_VIEW_FULL" {
+				t.Errorf("view = %q, want SEARCH_MESSAGES_VIEW_FULL", view)
+			}
+			show := func(b *bool) string {
+				if b == nil {
+					return "unknown"
+				}
+				return fmt.Sprint(*b)
+			}
+			var states []string
+			for _, m := range got.Matches {
+				states = append(states, "read "+show(m.Read)+", muted "+show(m.SpaceMuted))
+			}
+			if strings.Join(states, "; ") != strings.Join(tc.want, "; ") {
+				t.Errorf("hits = %q, want %q", states, tc.want)
+			}
+		})
 	}
 }
 
@@ -477,8 +490,10 @@ func TestSearchCarriesTheLinksOnAHit(t *testing.T) {
 }
 
 // A regex scan bounds the history it reads on both sides, as Google's
-// search does. created_before was once dropped here without a word.
-func TestARegexScanHonorsBothTimeBounds(t *testing.T) {
+// search does. created_before was once dropped here without a word, and
+// created_after means at or after, which the listing filter's > reaches
+// by stepping back the timestamps' precision of one microsecond.
+func TestARegexScanBoundsItsWindow(t *testing.T) {
 	var filter string
 	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
 		filter = r.URL.Query().Get("filter")
@@ -489,7 +504,7 @@ func TestARegexScanHonorsBothTimeBounds(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SearchMessages: %v", err)
 	}
-	if want := `createTime > "2026-01-02T00:00:00.000000Z" AND createTime < "2026-01-03T00:00:00.000000Z"`; filter != want {
+	if want := `createTime > "2026-01-01T23:59:59.999999Z" AND createTime < "2026-01-03T00:00:00.000000Z"`; filter != want {
 		t.Errorf("filter = %q, want %q", filter, want)
 	}
 }

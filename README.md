@@ -171,7 +171,7 @@ and the three tools that move them say so.
 | `get_message` | One message, with its reaction counts, what its text links to and what it quotes | `chat.messages.readonly` |
 | `get_thread` | Every message in one thread, oldest first | `chat.messages.readonly` |
 | `download_attachment` | Save a message's attachment into the server's local directory | `chat.messages.readonly` |
-| `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only` |
+| `search_messages` | Google's search across every space you can see, or a regular-expression scan of one | `chat.messages.readonly`; `chat.users.readstate.readonly` for `unread_only`; `chat.spaces.readonly` for `space_type` and `space_name` |
 | `search_people` | Turn a name into an email address, from the directory and your contacts | `directory.readonly`, `contacts.readonly` |
 | `find_group` | Turn a Google Group's email address into the id `add_member` takes | `cloud-identity.groups.readonly` |
 | `list_members` | Who is in a space, people and groups resolved to names and addresses, and on request who is in each group | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |

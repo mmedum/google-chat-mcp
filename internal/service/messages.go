@@ -299,8 +299,8 @@ func (s *Service) GetMessages(ctx context.Context, in GetMessagesInput) (*Messag
 	if err != nil {
 		return nil, err
 	}
-	if !since.IsZero() && !before.IsZero() && !before.After(since) {
-		return nil, Invalidf("before must be later than since, or the window holds nothing")
+	if err := requireWindow("since", since, "before", before); err != nil {
+		return nil, err
 	}
 
 	resp, err := s.client.ListMessages(ctx, gchat.ListMessagesOptions{
@@ -692,7 +692,9 @@ func (s *Service) quote(ctx context.Context, space, name, quoteType string) (*gc
 	if stamp == "" {
 		return nil, Failf(ClassUpstream, "Google returned %s with no timestamp, and quoting it needs one", name)
 	}
-	return &gchat.QuotedMessageMeta{Name: name, LastUpdate: stamp, QuoteType: quoteType}, nil
+	// Google's own name for it: a message read by its client-assigned id
+	// comes back under its real one, and that is what a quote names.
+	return &gchat.QuotedMessageMeta{Name: cmp.Or(got.Name, name), LastUpdate: stamp, QuoteType: quoteType}, nil
 }
 
 // Google's words for how a message is quoted.
