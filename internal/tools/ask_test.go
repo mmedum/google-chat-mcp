@@ -73,7 +73,7 @@ func (g *stubChat) handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"name":"customEmojis/AAAAemoji1","emojiName":":party-*time*:"}`)
 	case strings.Contains(path, "/messages/"):
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1","sender":{"name":"users/1","displayName":"Ada [Lovelace](x)"},`+
-			`"text":"The **plan** is at https://evil.example/login"}`)
+			`"createTime":"2026-01-02T03:04:05Z","text":"The **plan** is at https://evil.example/login"}`)
 	case strings.HasSuffix(path, "/members"):
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MEMBER"}`)
 	case strings.HasSuffix(path, "/messages"):
@@ -435,5 +435,47 @@ func TestAReplyLostAfterTheWriteIsAmbiguous(t *testing.T) {
 	res := callRaw(t, cs, &mcp.CallToolParams{Name: "send_message", Arguments: askCases["send_message"].args})
 	if text := textOf(res); !res.IsError || !strings.HasPrefix(text, "[ambiguous_outcome]") || g.written() != 1 {
 		t.Fatalf("%s; %d writes", text, g.written())
+	}
+}
+
+// A forward into another space lets everyone in it read a message they
+// may not have been able to, so it is asked about like a mention of
+// everyone. Declined, nothing is posted.
+func TestAForwardIntoAnotherSpaceAsks(t *testing.T) {
+	p := &answerer{answer: declines}
+	cs, g := askingSession(t, "", p, askOptions{})
+	res := callRaw(t, cs, &mcp.CallToolParams{Name: "send_message", Arguments: map[string]any{
+		"space_id": "spaces/AAAAspace2", "text": "fyi",
+		"quote_message": "spaces/AAAAspace1/messages/AAAAmsg1", "quote_type": "FORWARD",
+	}})
+	if text := textOf(res); !res.IsError || !strings.HasPrefix(text, "[blocked]") {
+		t.Errorf("a declined forward = %s, want [blocked]", text)
+	}
+	if g.written() != 0 {
+		t.Errorf("declined, and %d writes were sent", g.written())
+	}
+	qs := p.asked()
+	if len(qs) != 1 || !strings.Contains(qs[0].Message, "It forwards a message from `spaces/AAAAspace1`") {
+		t.Errorf("questions = %+v, want one naming the space the message comes from", qs)
+	}
+}
+
+// Forwarding within one space shows its members nothing new, so it is
+// not asked about.
+func TestAForwardWithinASpaceDoesNotAsk(t *testing.T) {
+	p := &answerer{answer: declines}
+	cs, g := askingSession(t, "", p, askOptions{})
+	res := callRaw(t, cs, &mcp.CallToolParams{Name: "send_message", Arguments: map[string]any{
+		"space_id": "spaces/AAAAspace1", "text": "fyi",
+		"quote_message": "spaces/AAAAspace1/messages/AAAAmsg1", "quote_type": "FORWARD",
+	}})
+	if res.IsError {
+		t.Fatalf("a forward within the space failed: %s", textOf(res))
+	}
+	if len(p.asked()) != 0 {
+		t.Errorf("asked %d questions, want none", len(p.asked()))
+	}
+	if g.written() != 1 {
+		t.Errorf("%d writes, want the one post", g.written())
 	}
 }

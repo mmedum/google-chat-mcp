@@ -193,7 +193,8 @@ whether it does is the client's decision. So when the client supports
 MCP form elicitation, the server asks the person itself before eight
 writes: `delete_message`, `delete_space`, `delete_custom_emoji`,
 `add_member`, a `send_message` whose text mentions everyone in the
-space, `<users/all>`, an `update_message` that edits such a mention
+space, `<users/all>`, or that forwards a message out of another space,
+since everyone in this one can then read it, an `update_message` that edits such a mention
 in, since an edit notifies whoever it newly mentions, and an
 `update_space` or `create_space` that opens a space to a target
 audience, since whoever is in it can read the space and making it
@@ -378,6 +379,7 @@ contradicted a document, which won.
 | `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
 | An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
+| A person's token can quote and forward | The create-messages guide quotes with `chat.messages.create` under user auth. `quotedMessageMetadata.lastUpdateTime` must be the quoted message's latest, or the post fails, so the server reads it first. FORWARD, which quotes across spaces and threads, went GA on 2026-06-12. The live driver posts a reply and a forward and reads both back; not yet run |
 | A person's token can post Markdown | The REST reference called `markupSyntax` output only on 2026-09-05. Discovery revision 20261005 calls it "Optional. Specifies how the server interprets the message `text`", and the release note of 2026-08-19 makes Markdown GA for messages created through the API. The live driver posts a Markdown message and reads it back; not yet run |
 | The media upload protocol is only in the discovery document | `media.upload` is a POST to a different base with a JSON metadata part; the guide does not say so. `downloadUri` is documented as not for downloading, and is never fetched |
 | The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. Two of the four left out are not choices: `spaces.completeImport` takes only `chat.import` and `spaces.messages.attachments.get` only `chat.bot`. The other two are — `spaces.create`, because `spaces.setup` does the same thing and adds the first members, and the PUT form of a message update, which would clear cards and attachments |

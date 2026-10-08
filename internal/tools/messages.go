@@ -445,6 +445,8 @@ type SendMessageInput struct {
 	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
 	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
 	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
+	QuoteMessage    string `json:"quote_message,omitempty" jsonschema:"quote this message above the text, spaces/{space}/messages/{message}. A reply quotes a message in this space; to quote one from another space or another thread, set quote_type FORWARD"`
+	QuoteType       string `json:"quote_type,omitempty" jsonschema:"REPLY, the default, or FORWARD, which quotes a message from another space or another thread. A forward into another space is asked about first, when your client can ask, because everyone here can then read it"`
 	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">, and <chat-user data-user=\"users/all\"> mentions and notifies EVERYONE"`
 	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
@@ -491,7 +493,7 @@ type DeleteMessageOutput struct {
 func registerMessageWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "send_message",
-		Asks: "before a post that mentions everyone in the space, <users/all>, and before every post when GCM_ASK_BEFORE_SEND is set",
+		Asks: "before a post that mentions everyone in the space, <users/all>, or that forwards a message out of another space, and before every post when GCM_ASK_BEFORE_SEND is set",
 		Description: "Post a text message to a Chat space, a group chat or a direct message. The body is posted " +
 			"exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put " +
 			"<users/their@address> in the text yourself. Pass thread_name to reply in an existing thread, which " +
@@ -505,6 +507,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 			Space: in.SpaceID, Text: in.Text, Thread: in.ThreadName,
 			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken,
 			ClientMessageID: in.ClientMessageID, Markdown: in.Markdown, DryRun: in.DryRun,
+			Quote: in.QuoteMessage, QuoteType: in.QuoteType,
 		})
 		if err != nil {
 			return nil, SendMessageOutput{}, err

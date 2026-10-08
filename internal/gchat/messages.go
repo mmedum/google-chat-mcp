@@ -152,6 +152,10 @@ type SendMessageRequest struct {
 	// about the file — its name, its type, where it can be downloaded
 	// — Google fills in from the upload.
 	Attachments []MessageAttachment `json:"attachment,omitempty"`
+	// Quote is the message this one quotes. Name and LastUpdate are
+	// required, and LastUpdate must match the quoted message's latest
+	// version or Google refuses the post; the rest is output only.
+	Quote *QuotedMessageMeta `json:"quotedMessageMetadata,omitempty"`
 }
 
 // MarkupMarkdown has Google read a message's text as standard Markdown.

@@ -3,6 +3,7 @@
 package livecheck
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path"
@@ -300,6 +301,53 @@ var steps = []step{
 		}
 		d.record(out.MessageID)
 		d.markdown = out.MessageID
+	}},
+
+	// Quoting needs the quoted message's exact timestamp, which the
+	// server reads first; a stale one is refused. Both kinds stay in the
+	// scratch space, so the forward asks nobody.
+	{"a reply and a forward quote the posted message", "send_message", func(d *driver) {
+		if d.posted == "" {
+			d.t.Skip("nothing was posted to quote")
+		}
+		d.quoted = map[string]string{}
+		for _, quoteType := range []string{"REPLY", "FORWARD"} {
+			var out struct {
+				MessageID string `json:"message_id"`
+			}
+			d.into(d.must("send_message", map[string]any{
+				"space_id": d.space, "text": searchTerm + " quoted this line",
+				"quote_message": d.posted, "quote_type": quoteType,
+			}), &out)
+			if out.MessageID == "" {
+				d.t.Fatalf("send_message returned no message id for the %s", quoteType)
+			}
+			d.record(out.MessageID)
+			d.quoted[quoteType] = out.MessageID
+		}
+	}},
+
+	{"a quote reads back naming what it quotes", "get_message", func(d *driver) {
+		if len(d.quoted) == 0 {
+			d.t.Skip("no quote was posted")
+		}
+		for quoteType, name := range d.quoted {
+			var out struct {
+				Quote *struct {
+					MessageID string `json:"message_id"`
+					QuoteType string `json:"quote_type"`
+				} `json:"quote"`
+			}
+			d.into(d.must("get_message", map[string]any{"message_name": name}), &out)
+			switch {
+			case out.Quote == nil:
+				d.t.Errorf("the %s came back quoting nothing", quoteType)
+			case out.Quote.MessageID != d.posted:
+				d.t.Errorf("the %s came back quoting %s, want the posted message", quoteType, d.redact(out.Quote.MessageID))
+			case cmp.Or(out.Quote.QuoteType, "REPLY") != quoteType:
+				d.t.Errorf("the %s came back as quote type %q", quoteType, d.redact(out.Quote.QuoteType))
+			}
+		}
 	}},
 
 	{"the space reads as active once something is posted", "get_space", func(d *driver) {

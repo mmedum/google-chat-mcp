@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"slices"
@@ -490,6 +491,97 @@ func TestSendMessageInMarkdown(t *testing.T) {
 				t.Errorf("posted %s\nwant     %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// quoteBackend answers a read of the quoted message with stamp as its
+// timestamps, and a post with the new message, keeping the posted body.
+func quoteBackend(t *testing.T, created, updated string, posted *string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprintf(w, `{"name":"spaces/A/messages/9","createTime":%q,"lastUpdateTime":%q}`, created, updated)
+			return
+		}
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*posted = string(b)
+		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
+	}
+}
+
+// Google refuses a quote whose timestamp is not the quoted message's
+// latest, so the server reads it: the edit time when there was an edit,
+// the creation time otherwise.
+func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
+	for _, tc := range []struct {
+		name, created, updated, quoteType, want string
+	}{
+		{
+			name: "an edited message", created: "2026-01-02T03:04:05Z", updated: "2026-01-02T04:00:00Z",
+			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T04:00:00Z","quoteType":"REPLY"}}`,
+		},
+		{
+			name: "a message never edited", created: "2026-01-02T03:04:05Z", updated: "",
+			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"REPLY"}}`,
+		},
+		{
+			name: "a forward", created: "2026-01-02T03:04:05Z", updated: "", quoteType: "FORWARD",
+			want: `{"text":"agreed","quotedMessageMetadata":{"name":"spaces/A/messages/9","lastUpdateTime":"2026-01-02T03:04:05Z","quoteType":"FORWARD"}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var posted string
+			s := newService(t, quoteBackend(t, tc.created, tc.updated, &posted))
+			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", QuoteType: tc.quoteType,
+			}); err != nil {
+				t.Fatalf("SendMessage: %v", err)
+			}
+			if posted != tc.want {
+				t.Errorf("posted %s\nwant   %s", posted, tc.want)
+			}
+		})
+	}
+}
+
+// A dry run of a quote reads the quoted message, so the preview is the
+// body a post would send, and posts nothing.
+func TestSendMessageDryRunOfAQuoteReadsButDoesNotPost(t *testing.T) {
+	var posted string
+	s := newService(t, quoteBackend(t, "2026-01-02T03:04:05Z", "", &posted))
+	got, err := s.SendMessage(writeCtx(), SendMessageInput{
+		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if posted != "" {
+		t.Errorf("a dry run posted %s", posted)
+	}
+	q, _ := got.Rendered["quotedMessageMetadata"].(map[string]any)
+	if q["lastUpdateTime"] != "2026-01-02T03:04:05Z" || q["name"] != "spaces/A/messages/9" {
+		t.Errorf("rendered quote = %v, want the quoted message and its timestamp", got.Rendered["quotedMessageMetadata"])
+	}
+}
+
+// What a quote cannot be is refused before anything reaches Google.
+func TestSendMessageRefusesABadQuote(t *testing.T) {
+	s := newService(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("a refused quote must not reach Google")
+	})
+	for name, in := range map[string]SendMessageInput{
+		"a reply from another space": {Space: "spaces/A", Text: "x", Quote: "spaces/B/messages/9"},
+		"a type with nothing quoted": {Space: "spaces/A", Text: "x", QuoteType: "FORWARD"},
+		"a type Google has not got":  {Space: "spaces/A", Text: "x", Quote: "spaces/A/messages/9", QuoteType: "QUOTE"},
+		"not a message":              {Space: "spaces/A", Text: "x", Quote: "spaces/A"},
+	} {
+		_, err := s.SendMessage(writeCtx(), in)
+		var e *Error
+		if !errors.As(err, &e) || e.Class != ClassInvalid {
+			t.Errorf("%s: error = %v, want [invalid]", name, err)
+		}
 	}
 }
 

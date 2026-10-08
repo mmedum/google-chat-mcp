@@ -62,8 +62,10 @@ type driver struct {
 	linked string
 	// markdown is the message posted with markdown: true.
 	markdown string
-	thread   string
-	member   string
+	// quoted maps a quote type to the message that quoted posted with it.
+	quoted map[string]string
+	thread string
+	member string
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string

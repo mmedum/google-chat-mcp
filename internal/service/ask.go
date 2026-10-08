@@ -191,7 +191,7 @@ func audienceRef(audience string) string {
 // askSend asks before send_message, when the post mentions everyone in
 // the space or the configuration asks before every send. The text is a
 // call argument, so the answer's state binds all of it already.
-func askSend(space, displayName, text string, everyone, attached bool) Question {
+func askSend(space, displayName, text string, everyone, attached bool, forwardFrom string) Question {
 	to := spaceRef(space, displayName)
 	first := fmt.Sprintf("send_message: post to %s?", to)
 	notice := "A post cannot be recalled from the notifications it sends."
@@ -202,6 +202,10 @@ func askSend(space, displayName, text string, everyone, attached bool) Question 
 	lines := []string{first, textLine(text)}
 	if attached {
 		lines = append(lines, "An uploaded file goes with it.")
+	}
+	if forwardFrom != "" {
+		lines = append(lines, fmt.Sprintf("It forwards a message from %s, so everyone in %s can read it.",
+			quoted(forwardFrom, quotedLen), to))
 	}
 	return askText(append(lines, notice)...)
 }
