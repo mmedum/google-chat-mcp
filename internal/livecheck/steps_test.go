@@ -101,8 +101,10 @@ var steps = []step{
 
 	{"the scratch space reads back", "get_space", func(d *driver) {
 		var out struct {
-			SpaceID     string `json:"space_id"`
-			DisplayName string `json:"display_name"`
+			SpaceID          string  `json:"space_id"`
+			DisplayName      string  `json:"display_name"`
+			SpaceURI         *string `json:"space_uri"`
+			HumanMemberCount *int    `json:"human_member_count"`
 		}
 		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
 		if out.SpaceID != d.space {
@@ -110,6 +112,13 @@ var steps = []step{
 		}
 		if !strings.Contains(out.DisplayName, spacePrefix) {
 			d.t.Errorf("display name = %q, want the name create_space was given", d.redact(out.DisplayName))
+		}
+		if out.SpaceURI == nil {
+			d.t.Error("the space came back with no space_uri")
+		}
+		// Its creator has joined it, whatever else Google counts.
+		if out.HumanMemberCount == nil || *out.HumanMemberCount < 1 {
+			d.t.Error("the space came back with no count of the people in it")
 		}
 	}},
 
@@ -274,6 +283,16 @@ var steps = []step{
 		}
 		d.record(out.MessageID)
 		d.markdown = out.MessageID
+	}},
+
+	{"the space reads as active once something is posted", "get_space", func(d *driver) {
+		var out struct {
+			LastActiveTime *string `json:"last_active_time"`
+		}
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+		if out.LastActiveTime == nil {
+			d.t.Error("the space has messages in it and came back with no last_active_time")
+		}
 	}},
 
 	{"a markdown message reads back formatted", "get_message", func(d *driver) {

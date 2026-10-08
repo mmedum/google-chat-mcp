@@ -75,6 +75,20 @@ type SpaceSummary struct {
 	Name        string
 	DisplayName string
 	Kind        SpaceKind
+	// LastActiveTime is when the last message was posted, and the zero
+	// value when Google did not say.
+	LastActiveTime time.Time
+}
+
+// spaceSummary shapes one space for a listing, so list_spaces,
+// search_spaces and find_group_chats read the same.
+func spaceSummary(sp gchat.Space) SpaceSummary {
+	return SpaceSummary{
+		Name:           sp.Name,
+		DisplayName:    displayNameOf(sp),
+		Kind:           kindOf(sp),
+		LastActiveTime: parseTime(sp.LastActive),
+	}
 }
 
 // ListSpacesInput selects which spaces to list.
@@ -131,11 +145,7 @@ func (s *Service) ListSpaces(ctx context.Context, in ListSpacesInput) (*ListSpac
 		NextPageToken: resp.NextPageToken,
 	}
 	for _, sp := range resp.Spaces {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -210,11 +220,7 @@ func (s *Service) SearchSpaces(ctx context.Context, in SearchSpacesInput) (*Sear
 		TotalSize:     resp.TotalSize,
 	}
 	for _, sp := range found {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -298,11 +304,7 @@ func (s *Service) FindGroupChats(ctx context.Context, in FindGroupChatsInput) (*
 		NextPageToken: resp.NextPageToken,
 	}
 	for _, sp := range resp.Spaces {
-		out.Spaces = append(out.Spaces, SpaceSummary{
-			Name:        sp.Name,
-			DisplayName: displayNameOf(sp),
-			Kind:        kindOf(sp),
-		})
+		out.Spaces = append(out.Spaces, spaceSummary(sp))
 	}
 	return out, nil
 }
@@ -325,6 +327,23 @@ type SpaceDetails struct {
 	// as Google says; empty when it does not, as for a direct message.
 	AccessState string
 	Audience    string
+
+	// LastActiveTime is when the last message was posted, and the zero
+	// value when Google did not say.
+	LastActiveTime time.Time
+	// URI opens the space in Chat.
+	URI         string
+	Description string
+	Guidelines  string
+	// HumanMembers and GroupMembers count who has joined, people and
+	// Google Groups apart. Nil when Google sent no count.
+	HumanMembers *int
+	GroupMembers *int
+	// HistoryState is Google's own word: HISTORY_ON or HISTORY_OFF.
+	HistoryState string
+	// MembersCanPost is false when only managers may post, as in an
+	// announcement space. Nil when Google did not say.
+	MembersCanPost *bool
 }
 
 // GetSpace returns one space by resource name.
@@ -344,9 +363,23 @@ func (s *Service) GetSpace(ctx context.Context, name string) (*SpaceDetails, err
 		SingleUserBotDM:     sp.SingleUserBot,
 		ExternalUserAllowed: sp.ExternalUser,
 		CreateTime:          parseTime(sp.CreateTime),
+		LastActiveTime:      parseTime(sp.LastActive),
+		URI:                 sp.URI,
+		HistoryState:        sp.HistoryState,
 	}
 	if sp.Access != nil {
 		out.AccessState, out.Audience = sp.Access.AccessState, sp.Access.Audience
+	}
+	if sp.Details != nil {
+		out.Description, out.Guidelines = sp.Details.Description, sp.Details.Guidelines
+	}
+	if sp.Membership != nil {
+		humans, groups := sp.Membership.JoinedDirectHumanUserCount, sp.Membership.JoinedGroupCount
+		out.HumanMembers, out.GroupMembers = &humans, &groups
+	}
+	if sp.Permissions != nil && sp.Permissions.PostMessages != nil {
+		members := sp.Permissions.PostMessages.MembersAllowed
+		out.MembersCanPost = &members
 	}
 	return out, nil
 }

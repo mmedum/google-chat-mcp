@@ -13,6 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
+- `get_space` returns when the space was last active, its link, its description and guidelines, how many people and groups have joined, whether history is on, and whether ordinary members may post. `list_spaces`, `search_spaces` and `find_group_chats` return when each space was last active.
 - `get_messages`, `get_thread` and `search_messages` return each message's files, reaction counts, edit time and whether it replies in its thread, as `get_message` does. A message that is only a file no longer reads as an empty row. `get_message` gains `thread_reply` too.
 - `send_message` takes `markdown: true`, and Google then reads the text as standard Markdown: `**bold**`, `[label](url)`, lists and code blocks. The text is still posted exactly as given. A Markdown mention of everyone, `<chat-user data-user="users/all">`, is asked about like `<users/all>`.
 

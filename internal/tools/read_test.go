@@ -66,6 +66,75 @@ func peopleSearch(resource, email, name string) string {
 // personHit is peopleBatch with the fixture values every read test uses.
 var personHit = peopleBatch("janedoe@example.com", "Jane Doe")
 
+// What a space says about itself beyond its name: when it was last
+// active, its link, what it is for, who is in it, whether history is
+// kept and whether members may post.
+func TestGetSpaceCarriesWhatTheSpaceSaysAboutItself(t *testing.T) {
+	cs := session(t, body(`{"name":"spaces/A","spaceType":"SPACE","displayName":"Announcements",
+	  "lastActiveTime":"2026-01-03T09:00:00Z","spaceUri":"https://mail.google.com/chat/u/0/#chat/space/A",
+	  "spaceDetails":{"description":"news","guidelines":"read only"},
+	  "membershipCount":{"joinedDirectHumanUserCount":3,"joinedGroupCount":1},
+	  "spaceHistoryState":"HISTORY_OFF",
+	  "permissionSettings":{"postMessages":{"managersAllowed":true}}}`))
+	var out SpaceDetailOutput
+	call(t, cs, "get_space", map[string]any{"space_id": "spaces/A"}, &out)
+	if out.LastActiveTime == nil || !out.LastActiveTime.Equal(at("2026-01-03T09:00:00Z")) {
+		t.Errorf("last_active_time = %v, want 2026-01-03T09:00:00Z", out.LastActiveTime)
+	}
+	for field, got := range map[string]*string{
+		"space_uri":     out.SpaceURI,
+		"description":   out.Description,
+		"guidelines":    out.Guidelines,
+		"history_state": out.HistoryState,
+	} {
+		want := map[string]string{
+			"space_uri": "https://mail.google.com/chat/u/0/#chat/space/A", "description": "news",
+			"guidelines": "read only", "history_state": "HISTORY_OFF",
+		}[field]
+		if got == nil || *got != want {
+			t.Errorf("%s = %v, want %q", field, got, want)
+		}
+	}
+	if out.HumanMemberCount == nil || out.GroupMemberCount == nil {
+		t.Errorf("member counts = %v people, %v groups, want 3 and 1", out.HumanMemberCount, out.GroupMemberCount)
+	} else if *out.HumanMemberCount != 3 || *out.GroupMemberCount != 1 {
+		t.Errorf("member counts = %d people, %d groups, want 3 and 1", *out.HumanMemberCount, *out.GroupMemberCount)
+	}
+	if out.MembersCanPost == nil {
+		t.Error("members_can_post = null, want false: only managers may post")
+	} else if *out.MembersCanPost {
+		t.Error("members_can_post = true, want false: only managers may post")
+	}
+}
+
+// What Google leaves out arrives as null, not as an empty value that
+// reads like a fact.
+func TestGetSpaceLeavesWhatGoogleOmitsNull(t *testing.T) {
+	cs := session(t, body(`{"name":"spaces/A","spaceType":"DIRECT_MESSAGE"}`))
+	res := call(t, cs, "get_space", map[string]any{"space_id": "spaces/A"}, nil)
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"last_active_time", "space_uri", "description", "guidelines",
+		"human_member_count", "group_member_count", "history_state", "members_can_post"} {
+		if !strings.Contains(string(raw), `"`+field+`":null`) {
+			t.Errorf("%s is not null in %s", field, raw)
+		}
+	}
+}
+
+func TestListSpacesCarriesWhenEachWasLastActive(t *testing.T) {
+	cs := session(t, body(`{"spaces":[{"name":"spaces/A","spaceType":"SPACE","displayName":"Team",
+	  "lastActiveTime":"2026-01-03T09:00:00Z"}]}`))
+	var out ListSpacesOutput
+	call(t, cs, "list_spaces", map[string]any{}, &out)
+	if len(out.Result) != 1 || out.Result[0].LastActiveTime == nil ||
+		!out.Result[0].LastActiveTime.Equal(at("2026-01-03T09:00:00Z")) {
+		t.Errorf("list_spaces = %+v, want last_active_time 2026-01-03T09:00:00Z", out.Result)
+	}
+}
+
 func TestGetSpaceThroughASession(t *testing.T) {
 	cs := session(t, body(`{"name":"spaces/A","spaceType":"SPACE","displayName":"Team","createTime":"2026-01-02T03:04:05Z"}`))
 	var out SpaceDetailOutput

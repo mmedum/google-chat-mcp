@@ -218,7 +218,7 @@ func (o WhoamiOutput) Render() string {
 
 // Render is one row of a space listing.
 func (o SpaceSummaryOutput) Render() string {
-	return meta(o.SpaceID, o.Type, o.DisplayName)
+	return meta(o.SpaceID, o.Type, o.DisplayName, stamp("active", o.LastActiveTime))
 }
 
 // Render is one space in full.
@@ -231,7 +231,33 @@ func (o SpaceDetailOutput) Render() string {
 			stamp("created", o.CreateTime),
 		),
 		meta(labeled("access", strings.ToLower(deref(o.AccessState))), labeled("audience", deref(o.Audience))),
+		meta(stamp("active", o.LastActiveTime), strings.ToLower(strings.ReplaceAll(deref(o.HistoryState), "_", " ")),
+			memberCounts(o.HumanMemberCount, o.GroupMemberCount), onlyManagersPost(o.MembersCanPost)),
+		deref(o.SpaceURI),
+		labeled("description:", deref(o.Description)),
+		labeled("guidelines:", deref(o.Guidelines)),
 	)
+}
+
+// memberCounts is who has joined a space, or nothing when Google sent no
+// count.
+func memberCounts(humans, groups *int) string {
+	if humans == nil || groups == nil {
+		return ""
+	}
+	out := count(*humans, "member", "members")
+	if *groups > 0 {
+		out += " and " + count(*groups, "group", "groups")
+	}
+	return out
+}
+
+// onlyManagersPost marks a space where ordinary members cannot post.
+func onlyManagersPost(membersCanPost *bool) string {
+	if membersCanPost != nil && !*membersCanPost {
+		return "only managers can post"
+	}
+	return ""
 }
 
 // Render lists the spaces the account belongs to.

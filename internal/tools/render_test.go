@@ -113,6 +113,26 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"reply", "edited", "reactions", "attachment"},
 		},
 		{
+			name: "a space says who is in it and who may post",
+			out: SpaceDetailOutput{
+				SpaceID: "spaces/AAAAspace1", Type: "SPACE", DisplayName: "Announcements",
+				LastActiveTime: ptr(at("2026-01-03T09:00:00Z")), HistoryState: ptr("HISTORY_OFF"),
+				HumanMemberCount: ptr(3), GroupMemberCount: ptr(1), MembersCanPost: ptr(false),
+				SpaceURI: ptr("https://mail.google.com/chat/u/0/#chat/space/AAAAspace1"), Description: ptr("news"),
+			},
+			want: []string{"active 2026-01-03T09:00:00Z", "history off", "3 members and 1 group",
+				"only managers can post", "https://mail.google.com/chat/u/0/#chat/space/AAAAspace1", "description: news"},
+		},
+		{
+			name: "a space everyone may post in says nothing about posting",
+			out: SpaceDetailOutput{
+				SpaceID: "spaces/AAAAspace1", Type: "SPACE", DisplayName: "Team",
+				HumanMemberCount: ptr(2), GroupMemberCount: ptr(0), MembersCanPost: ptr(true),
+			},
+			want:  []string{"2 members"},
+			avoid: []string{"post", "group", "guidelines"},
+		},
+		{
 			name: "a listed message carries its links too",
 			out: MessageOutput{
 				MessageID: "spaces/AAAAspace1/messages/AAAAmsg1",
