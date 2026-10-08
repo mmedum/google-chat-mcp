@@ -164,7 +164,7 @@ and the three tools that move them say so.
 | `whoami` | Which account the stored credentials belong to | `openid email profile` |
 | `list_spaces` | Spaces, group chats and direct messages you are in | `chat.spaces.readonly` |
 | `get_space` | One space by resource name | `chat.spaces.readonly` |
-| `search_spaces` | Named spaces by display name, including ones you are not in | `chat.spaces.readonly`; `chat.admin.spaces.readonly` for `use_admin_access` |
+| `search_spaces` | Named spaces you are in, by display name; every space with `use_admin_access` | `chat.spaces.readonly`; `chat.admin.spaces.readonly` for `use_admin_access` |
 | `find_group_chats` | The group chats holding exactly you and the people you name | `chat.memberships.readonly`, `chat.spaces.readonly` |
 | `find_direct_message` | The direct message with one person, created if there is none yet | `chat.spaces.readonly`, `chat.spaces.create` |
 | `get_messages` | Recent messages in a space, newest first, senders resolved to names | `chat.messages.readonly` |

@@ -178,10 +178,11 @@ type SearchSpacesResult struct {
 
 // SearchSpaces finds named spaces by display name.
 //
-// It reaches spaces the caller is not in, which is what separates it
-// from list_spaces. Google's grammar decides two things this cannot: a
-// search covers named spaces only, because spaceType = "SPACE" is
-// required, and matching is by word prefix rather than substring.
+// Without admin access it covers only spaces the caller has joined; what
+// separates it from list_spaces is the name match. Google's grammar
+// decides two things this cannot: a search covers named spaces only,
+// because spaceType = "SPACE" is required, and matching is by word prefix
+// rather than substring.
 func (s *Service) SearchSpaces(ctx context.Context, in SearchSpacesInput) (*SearchSpacesResult, error) {
 	limit, err := clampLimit("limit", in.Limit, defaultSearchSpaceLimit, maxSearchSpaceLimit)
 	if err != nil {

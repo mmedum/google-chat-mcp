@@ -157,10 +157,9 @@ func registerSpaces(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "search_spaces",
-		Description: "Search named Google Chat spaces by display name, including spaces you are not a member of. " +
-			"Use it to find a space to join or read; use list_spaces for the ones you are already in, and " +
-			"find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without " +
-			"admin access Google returns a single page of up to 100 and no total.",
+		Description: "Search the named Google Chat spaces you are a member of by display name, or every space in " +
+			"the Workspace with use_admin_access. Use find_group_chats for a group chat, which this cannot return. " +
+			"Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchSpacesInput) (*mcp.CallToolResult, SearchSpacesOutput, error) {
 		if in.UseAdminAccess && !d.Config.Enabled(config.ToolsetAdmin) {
