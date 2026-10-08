@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -177,6 +179,64 @@ func TestListReactionsThroughASession(t *testing.T) {
 	if out.NextPageToken != nil {
 		t.Error("a single page should report no next page")
 	}
+}
+
+// fileReply is a reply that is only a file, edited, with a reaction:
+// everything a message carries beside its text.
+const fileReply = `{"name":"spaces/A/messages/2","sender":{"name":"users/1"},
+  "createTime":"2026-01-02T03:04:05Z","lastUpdateTime":"2026-01-02T03:10:00Z",
+  "thread":{"name":"spaces/A/threads/T1"},"threadReply":true,
+  "attachment":[{"name":"spaces/A/messages/2/attachments/F1","contentName":"report.pdf",
+    "contentType":"application/pdf","source":"UPLOADED_CONTENT",
+    "attachmentDataRef":{"resourceName":"spaces/A/attachments/F1"}}],
+  "emojiReactionSummaries":[{"emoji":{"unicode":"👍"},"reactionCount":2}]}`
+
+// A message that is only a file read as an empty row, and reactions and
+// edits were invisible until get_message. A listing and a search hit
+// carry them now, the same way.
+func TestListedMessagesCarryWhatTheyHoldBesideText(t *testing.T) {
+	want := MessageOutput{
+		LastUpdateTime: ptr(at("2026-01-02T03:10:00Z")),
+		ThreadReply:    true,
+		Reactions:      []ReactionSummaryOutput{{Emoji: "👍", Count: 2}},
+		Attachments: []AttachmentOutput{{
+			AttachmentName: "spaces/A/messages/2/attachments/F1", FileName: "report.pdf",
+			ContentType: "application/pdf", Source: "UPLOADED_CONTENT", Downloadable: true,
+		}},
+	}
+	check := func(t *testing.T, tool string, lastUpdate *time.Time, reply bool, reactions []ReactionSummaryOutput, files []AttachmentOutput) {
+		t.Helper()
+		if lastUpdate == nil || !lastUpdate.Equal(*want.LastUpdateTime) {
+			t.Errorf("%s last_update_time = %v, want %v", tool, lastUpdate, *want.LastUpdateTime)
+		}
+		if reply != want.ThreadReply {
+			t.Errorf("%s thread_reply = %v, want true", tool, reply)
+		}
+		if !reflect.DeepEqual(reactions, want.Reactions) {
+			t.Errorf("%s reactions = %+v, want %+v", tool, reactions, want.Reactions)
+		}
+		if !reflect.DeepEqual(files, want.Attachments) {
+			t.Errorf("%s attachments = %+v, want %+v", tool, files, want.Attachments)
+		}
+	}
+
+	cs := session(t, chatAndPeople(body(`{"messages":[`+fileReply+`]}`), personHit))
+	var rows MessageListOutput
+	call(t, cs, "get_messages", map[string]any{"space_id": "spaces/A"}, &rows)
+	if len(rows.Result) != 1 {
+		t.Fatalf("get_messages = %+v", rows)
+	}
+	r := rows.Result[0]
+	check(t, "get_messages", r.LastUpdateTime, r.ThreadReply, r.Reactions, r.Attachments)
+
+	cs = session(t, body(`{"results":[{"message":`+fileReply+`}]}`))
+	var hits SearchMessagesOutput
+	call(t, cs, "search_messages", map[string]any{"query": "report"}, &hits)
+	if len(hits.Matches) != 1 {
+		t.Fatalf("search_messages = %+v", hits)
+	}
+	h := hits.Matches[0]
+	check(t, "search_messages", h.LastUpdateTime, h.ThreadReply, h.Reactions, h.Attachments)
 }
 
 func TestSearchMessagesThroughASession(t *testing.T) {

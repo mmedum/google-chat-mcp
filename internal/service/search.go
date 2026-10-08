@@ -80,6 +80,7 @@ type SearchMatch struct {
 	// Links is what the message's text links to; see MessageLink. A hit
 	// whose body is a link reads as a bare word without it.
 	Links []MessageLink
+	MessageExtras
 
 	// users is the sender and the people the message mentions, as Chat
 	// named them, for withSenders.
@@ -100,6 +101,8 @@ func searchMatch(m gchat.Message, at int) SearchMatch {
 		Snippet:    snippet(m.Text, at),
 		Links:      messageLinks(m.Annotations),
 		Quote:      messageQuote(m.QuotedMessage),
+
+		MessageExtras: messageExtras(m),
 	}
 	if m.Thread != nil {
 		match.ThreadName = m.Thread.Name

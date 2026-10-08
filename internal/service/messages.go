@@ -48,6 +48,37 @@ type MessageRow struct {
 	// the same. Only get_message surfaces it: a listing carrying both
 	// bodies would be twice the size for a second copy of itself.
 	FormattedText string
+	MessageExtras
+}
+
+// MessageExtras is what a message carries beside its text. A listing, a
+// search hit and get_message all fill it through messageExtras, so a
+// message reads the same whichever tool found it.
+type MessageExtras struct {
+	// LastUpdateTime is the zero value when the message was never
+	// edited.
+	LastUpdateTime time.Time
+	// ThreadReply says the message answers a thread rather than
+	// starting one.
+	ThreadReply bool
+	Reactions   []ReactionCount
+	// ReactionsPaged says the summaries were left out because there
+	// were too many, and list_reactions has the detail.
+	ReactionsPaged bool
+	// Attachments is the files on the message. download_attachment
+	// needs the name of one, so this is where a caller learns it.
+	Attachments []AttachmentRow
+}
+
+// messageExtras reads what a message carries beside its text.
+func messageExtras(m gchat.Message) MessageExtras {
+	e := MessageExtras{
+		LastUpdateTime: parseTime(m.LastUpdateTime),
+		ThreadReply:    m.ThreadReply,
+		Attachments:    attachmentRows(m.Attachments),
+	}
+	e.Reactions, e.ReactionsPaged = summarizeReactions(m.EmojiReactions)
+	return e
 }
 
 // MessageLink is a link Chat recognized in a message's text: to another
@@ -371,16 +402,7 @@ type MessageDetail struct {
 	Quote *MessageQuote
 
 	CreateTime time.Time
-	// LastUpdateTime is the zero value when the message was never
-	// edited.
-	LastUpdateTime time.Time
-	Reactions      []ReactionCount
-	// ReactionsPaged says the summaries were left out because there
-	// were too many, and list_reactions has the detail.
-	ReactionsPaged bool
-	// Attachments is the files on the message. download_attachment
-	// needs the name of one, so this is where a caller learns it.
-	Attachments []AttachmentRow
+	MessageExtras
 }
 
 // AttachmentRow is one file on a message.
@@ -452,10 +474,8 @@ func (s *Service) GetMessage(ctx context.Context, name string) (*MessageDetail, 
 		Links:             row.Links,
 		Quote:             row.Quote,
 		CreateTime:        row.CreateTime,
-		LastUpdateTime:    parseTime(got.LastUpdateTime),
+		MessageExtras:     row.MessageExtras,
 	}
-	out.Reactions, out.ReactionsPaged = summarizeReactions(got.EmojiReactions)
-	out.Attachments = attachmentRows(got.Attachments)
 	return out, nil
 }
 
@@ -507,10 +527,11 @@ func (s *Service) enrich(ctx context.Context, msgs []gchat.Message) ([]MessageRo
 			continue
 		}
 		row := MessageRow{
-			Name:  m.Name,
-			Text:  m.Text,
-			Links: messageLinks(m.Annotations),
-			Quote: messageQuote(m.QuotedMessage),
+			Name:          m.Name,
+			Text:          m.Text,
+			Links:         messageLinks(m.Annotations),
+			Quote:         messageQuote(m.QuotedMessage),
+			MessageExtras: messageExtras(m),
 		}
 		if m.FormattedText != m.Text {
 			row.FormattedText = m.FormattedText

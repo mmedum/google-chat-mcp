@@ -16,15 +16,20 @@ import (
 // for an account that is gone. The message is still here: an enrichment
 // failure never costs a row.
 type MessageOutput struct {
-	MessageID         string              `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
-	SenderUserID      string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	SenderEmail       *string             `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
-	SenderDisplayName *string             `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
-	Text              string              `json:"text" jsonschema:"the message body as plain text; empty for a message that is only an attachment or a card"`
-	Timestamp         time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
-	ThreadID          string              `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
-	Links             []MessageLinkOutput `json:"links" jsonschema:"what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
-	Quote             *MessageQuoteOutput `json:"quote" jsonschema:"the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing"`
+	MessageID         string                  `json:"message_id" jsonschema:"the message's resource name, spaces/{space}/messages/{message}"`
+	SenderUserID      string                  `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
+	SenderEmail       *string                 `json:"sender_email" jsonschema:"the sender's email address, or null when it could not be resolved"`
+	SenderDisplayName *string                 `json:"sender_display_name" jsonschema:"the sender's name, or null when Google gave none"`
+	Text              string                  `json:"text" jsonschema:"the message body as plain text; empty for a message that is only an attachment or a card"`
+	Timestamp         time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
+	ThreadID          string                  `json:"thread_id" jsonschema:"the thread's resource name; pass it to get_thread to read the rest"`
+	Links             []MessageLinkOutput     `json:"links" jsonschema:"what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something"`
+	Quote             *MessageQuoteOutput     `json:"quote" jsonschema:"the message this one quotes or forwards, as it read when it was quoted; null when it quotes nothing"`
+	LastUpdateTime    *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
+	ThreadReply       bool                    `json:"thread_reply" jsonschema:"true when it was posted as a reply in its thread, false when it started the thread"`
+	Reactions         []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
+	ReactionsPaged    bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
+	Attachments       []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message; empty when it carries none. A message that is only a file has empty text and its file here"`
 }
 
 // MessageQuoteOutput is the message this one quotes or forwards.
@@ -111,6 +116,7 @@ type MessageDetailOutput struct {
 	Quote             *MessageQuoteOutput     `json:"quote" jsonschema:"the message this one quotes or forwards; null when it quotes nothing"`
 	Timestamp         time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
 	LastUpdateTime    *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
+	ThreadReply       bool                    `json:"thread_reply" jsonschema:"true when it was posted as a reply in its thread, false when it started the thread"`
 	Reactions         []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
 	ReactionsPaged    bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
 	Attachments       []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message; empty when it carries none"`
@@ -146,15 +152,20 @@ type SearchMessagesInput struct {
 
 // SearchMatchOutput is one message that matched.
 type SearchMatchOutput struct {
-	MessageID    string              `json:"message_id" jsonschema:"the message's resource name"`
-	ThreadID     string              `json:"thread_id" jsonschema:"the thread it belongs to"`
-	SenderUserID string              `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
-	SenderEmail  *string             `json:"sender_email" jsonschema:"the sender's email address when Chat names it or this server has already seen it, or null. A search does not look anyone up in the People API"`
-	Text         string              `json:"text" jsonschema:"the whole message body"`
-	Timestamp    time.Time           `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
-	Snippet      string              `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
-	Links        []MessageLinkOutput `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
-	Quote        *MessageQuoteOutput `json:"quote" jsonschema:"the message this hit quotes or forwards; null when it quotes nothing"`
+	MessageID      string                  `json:"message_id" jsonschema:"the message's resource name"`
+	ThreadID       string                  `json:"thread_id" jsonschema:"the thread it belongs to"`
+	SenderUserID   string                  `json:"sender_user_id" jsonschema:"who sent it, users/{id}"`
+	SenderEmail    *string                 `json:"sender_email" jsonschema:"the sender's email address when Chat names it or this server has already seen it, or null. A search does not look anyone up in the People API"`
+	Text           string                  `json:"text" jsonschema:"the whole message body"`
+	Timestamp      time.Time               `json:"timestamp" jsonschema:"when the message was created, RFC 3339 in UTC"`
+	Snippet        string                  `json:"snippet" jsonschema:"up to about 160 characters of the body around the first match"`
+	Links          []MessageLinkOutput     `json:"links" jsonschema:"what the message's text links to; empty when it links to nothing"`
+	Quote          *MessageQuoteOutput     `json:"quote" jsonschema:"the message this hit quotes or forwards; null when it quotes nothing"`
+	LastUpdateTime *time.Time              `json:"last_update_time" jsonschema:"when it was last edited, or null when it never was"`
+	ThreadReply    bool                    `json:"thread_reply" jsonschema:"true when it was posted as a reply in its thread, false when it started the thread"`
+	Reactions      []ReactionSummaryOutput `json:"reactions" jsonschema:"one entry per distinct emoji on the message"`
+	ReactionsPaged bool                    `json:"reactions_paged" jsonschema:"true when the summaries were left out because there were too many; call list_reactions for the detail"`
+	Attachments    []AttachmentOutput      `json:"attachments" jsonschema:"the files on the message; empty when it carries none. A message that is only a file has empty text and its file here"`
 }
 
 // SearchMessagesOutput is what a scan found and how far it got.
@@ -176,7 +187,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"page size before it filters. Sender email is the one Chat sends, or a People API lookup when " +
 			"Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a " +
 			"message reading as a bare word may be a link to something. quote is what a message replies to or " +
-			"forwards, which Chat also keeps out of the body.",
+			"forwards, which Chat also keeps out of the body. Each message also carries its files, reaction counts, " +
+			"when it was edited and whether it replies in its thread; a message that is only a file has empty text.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetMessages(ctx, service.GetMessagesInput{
@@ -197,8 +209,8 @@ func registerMessages(s *mcp.Server, d Deps) {
 		Description: "Read one thread's messages, oldest first. Give the parent space_id and the thread_name " +
 			"(spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; " +
 			"page with page_token and next_page_token. A non-null next_page_token means the thread is longer than " +
-			"what came back, so do not read the result as the whole thread. Each message carries its links and " +
-			"what it quotes.",
+			"what came back, so do not read the result as the whole thread. Each message carries its links, what " +
+			"it quotes, its files and reaction counts, and when it was edited.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetThreadInput) (*mcp.CallToolResult, MessageListOutput, error) {
 		got, err := d.Service.GetThread(ctx, service.GetThreadInput{
@@ -240,7 +252,7 @@ func registerMessages(s *mcp.Server, d Deps) {
 			"space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads " +
 			"pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is " +
 			"partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. " +
-			"Each hit carries its links and what it quotes.",
+			"Each hit carries its links, what it quotes, its files and reaction counts, and when it was edited.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchMessagesInput) (*mcp.CallToolResult, SearchMessagesOutput, error) {
 		got, err := d.Service.SearchMessages(ctx, service.SearchMessagesInput{
@@ -291,13 +303,11 @@ func messageDetail(got *service.MessageDetail) MessageDetailOutput {
 		Quote:             messageQuote(got.Quote),
 		Timestamp:         got.CreateTime,
 		LastUpdateTime:    nullableTime(got.LastUpdateTime),
-		Reactions:         make([]ReactionSummaryOutput, 0, len(got.Reactions)),
+		ThreadReply:       got.ThreadReply,
+		Reactions:         reactionOutputs(got.Reactions),
 		ReactionsPaged:    got.ReactionsPaged,
+		Attachments:       attachmentOutputs(got.Attachments),
 	}
-	for _, r := range got.Reactions {
-		out.Reactions = append(out.Reactions, ReactionSummaryOutput{Emoji: r.Emoji, Count: r.Count})
-	}
-	out.Attachments = attachmentOutputs(got.Attachments)
 	return out
 }
 
@@ -318,6 +328,15 @@ func attachmentOutputs(all []service.AttachmentRow) []AttachmentOutput {
 	return out
 }
 
+// reactionOutputs shapes a message's reaction summaries for the model.
+func reactionOutputs(all []service.ReactionCount) []ReactionSummaryOutput {
+	out := make([]ReactionSummaryOutput, 0, len(all))
+	for _, r := range all {
+		out = append(out, ReactionSummaryOutput{Emoji: r.Emoji, Count: r.Count})
+	}
+	return out
+}
+
 // messageRows shapes a service listing for the model.
 func messageRows(rows []service.MessageRow) []MessageOutput {
 	out := make([]MessageOutput, 0, len(rows))
@@ -332,6 +351,11 @@ func messageRows(rows []service.MessageRow) []MessageOutput {
 			ThreadID:          r.ThreadName,
 			Links:             messageLinks(r.Links),
 			Quote:             messageQuote(r.Quote),
+			LastUpdateTime:    nullableTime(r.LastUpdateTime),
+			ThreadReply:       r.ThreadReply,
+			Reactions:         reactionOutputs(r.Reactions),
+			ReactionsPaged:    r.ReactionsPaged,
+			Attachments:       attachmentOutputs(r.Attachments),
 		})
 	}
 	return out
@@ -352,6 +376,12 @@ func searchMatches(matches []service.SearchMatch) []SearchMatchOutput {
 			Snippet:      m.Snippet,
 			Links:        messageLinks(m.Links),
 			Quote:        messageQuote(m.Quote),
+
+			LastUpdateTime: nullableTime(m.LastUpdateTime),
+			ThreadReply:    m.ThreadReply,
+			Reactions:      reactionOutputs(m.Reactions),
+			ReactionsPaged: m.ReactionsPaged,
+			Attachments:    attachmentOutputs(m.Attachments),
 		})
 	}
 	return out

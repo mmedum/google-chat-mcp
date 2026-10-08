@@ -397,6 +397,34 @@ var steps = []step{
 		d.attached = out.MessageID
 	}},
 
+	// A listing used to show a file-only message as an empty row. This
+	// is the one place a real attachment can say whether it now shows.
+	{"a listing names the file on a message", "get_messages", func(d *driver) {
+		if d.attached == "" {
+			d.t.Skip("no message with an attachment was posted")
+		}
+		var out struct {
+			Result []struct {
+				MessageID   string `json:"message_id"`
+				Attachments []struct {
+					AttachmentName string `json:"attachment_name"`
+					Downloadable   bool   `json:"downloadable"`
+				} `json:"attachments"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{"space_id": d.space, "limit": 50}), &out)
+		for _, m := range out.Result {
+			if m.MessageID != d.attached {
+				continue
+			}
+			if len(m.Attachments) != 1 || m.Attachments[0].AttachmentName == "" || !m.Attachments[0].Downloadable {
+				d.t.Errorf("the listed message carries %d attachments, want the one downloadable file", len(m.Attachments))
+			}
+			return
+		}
+		d.t.Error("the message with the attachment is not in get_messages")
+	}},
+
 	{"the attachment downloads into the allowed directory", "download_attachment", func(d *driver) {
 		var out struct {
 			Path  string `json:"path"`

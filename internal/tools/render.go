@@ -305,11 +305,35 @@ func (o MessageOutput) Render() string {
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
-			labeled("thread", o.ThreadID)),
+			labeled("thread", o.ThreadID), replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
 		o.Text,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
+		reactionsLine(o.Reactions, o.ReactionsPaged),
+		optionalListing(o.Attachments, "attachment", "attachments"),
 	)
+}
+
+// replyMark says a message answers its thread rather than starting it.
+func replyMark(reply bool) string {
+	if reply {
+		return "reply"
+	}
+	return ""
+}
+
+// reactionsLine is a message's reactions on one line, or nothing. Too
+// many to inline is said even with none shown, since an empty line
+// would read as a message nobody reacted to.
+func reactionsLine(reactions []ReactionSummaryOutput, paged bool) string {
+	line := ""
+	if len(reactions) > 0 {
+		line = "reactions: " + strings.Join(rows(reactions), "  ")
+	}
+	if paged {
+		line = strings.TrimSpace(line + " (more not shown; call list_reactions)")
+	}
+	return line
 }
 
 // Render is one link in a message: what kind it is, where it goes, and
@@ -423,23 +447,16 @@ func (o ReactionSummaryOutput) Render() string {
 
 // Render is one message with everything known about it.
 func (o MessageDetailOutput) Render() string {
-	reactions := ""
-	if len(o.Reactions) > 0 {
-		reactions = "reactions: " + strings.Join(rows(o.Reactions), "  ")
-		if o.ReactionsPaged {
-			reactions += " (more not shown; call list_reactions)"
-		}
-	}
 	return block(
 		meta(o.MessageID, utc(o.Timestamp),
 			person(o.SenderUserID, o.SenderDisplayName, o.SenderEmail),
 			labeled("space", o.SpaceID), labeled("thread", o.ThreadID),
-			stamp("edited", o.LastUpdateTime)),
+			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
 		o.Text,
 		labeled("markup:", deref(o.FormattedText)),
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
-		reactions,
+		reactionsLine(o.Reactions, o.ReactionsPaged),
 		optionalListing(o.Attachments, "attachment", "attachments"),
 	)
 }
@@ -459,10 +476,13 @@ func (o AttachmentOutput) Render() string {
 // Render is one search hit.
 func (o SearchMatchOutput) Render() string {
 	return block(
-		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID)),
+		meta(o.MessageID, utc(o.Timestamp), person(o.SenderUserID, nil, o.SenderEmail), labeled("thread", o.ThreadID),
+			replyMark(o.ThreadReply), stamp("edited", o.LastUpdateTime)),
 		o.Snippet,
 		optionalListing(o.Links, "link", "links"),
 		quoteBlock(o.Quote),
+		reactionsLine(o.Reactions, o.ReactionsPaged),
+		optionalListing(o.Attachments, "attachment", "attachments"),
 	)
 }
 
