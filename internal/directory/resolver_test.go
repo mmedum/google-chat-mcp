@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 type staticToken string

@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // groupAPI answers the lookup and the read the way Cloud Identity does,

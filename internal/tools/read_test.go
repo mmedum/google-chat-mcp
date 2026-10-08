@@ -13,7 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
 )
 
 // chatAndPeople splits Chat calls from People calls, which every

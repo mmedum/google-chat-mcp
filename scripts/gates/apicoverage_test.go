@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // row spells one entry with tabs, so a fixture reads as columns rather

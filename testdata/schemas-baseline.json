@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v4.0.0",
+  "version": "v5.0.0",
   "sdk": "v1.7.0",
   "tools": [
     {
@@ -856,6 +856,14 @@
                   "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
                   "type": "string"
                 },
+                "last_active_time": {
+                  "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "space_id": {
                   "description": "the space's resource name, spaces/{id}; pass this to other tools",
                   "type": "string"
@@ -868,7 +876,8 @@
               "required": [
                 "space_id",
                 "type",
-                "display_name"
+                "display_name",
+                "last_active_time"
               ],
               "type": "object"
             },
@@ -1022,6 +1031,47 @@
               "string"
             ]
           },
+          "group_members": {
+            "description": "for a GROUP row of list_members with expand_groups: who is in the group, directly, up to 200. Null otherwise, and when they could not be read",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "email": {
+                  "description": "the member's email address",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "USER, GROUP for a group inside the group, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER",
+                  "type": "string"
+                },
+                "role": {
+                  "description": "OWNER, MANAGER or MEMBER: the highest role the member holds in the group",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email",
+                "kind",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "group_members_missing": {
+            "description": "why group_members could not be read, such as a group that does not show its members to you; null when they were read or not asked for",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "group_members_more": {
+            "description": "true when the group has more direct members than group_members holds",
+            "type": "boolean"
+          },
           "kind": {
             "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
             "type": "string"
@@ -1050,7 +1100,10 @@
           "display_name",
           "email",
           "role",
-          "state"
+          "state",
+          "group_members",
+          "group_members_more",
+          "group_members_missing"
         ],
         "type": "object"
       }
@@ -1080,7 +1133,7 @@
         "additionalProperties": false,
         "properties": {
           "attachments": {
-            "description": "the files on the message; empty when it carries none",
+            "description": "the files on the message, with the name download_attachment takes; empty when it carries none. A message that is only a file has empty text and its file here",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -1470,6 +1523,10 @@
             "description": "the thread it belongs to",
             "type": "string"
           },
+          "thread_reply": {
+            "description": "true when it was posted as a reply in its thread, false when it started the thread",
+            "type": "boolean"
+          },
           "timestamp": {
             "description": "when the message was created, RFC 3339 in UTC",
             "format": "date-time",
@@ -1489,6 +1546,7 @@
           "quote",
           "timestamp",
           "last_update_time",
+          "thread_reply",
           "reactions",
           "reactions_paged",
           "attachments"
@@ -1502,10 +1560,14 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is the one Chat sends, or a People API lookup when Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a message reading as a bare word may be a link to something. quote is what a message replies to or forwards, which Chat also keeps out of the body.",
+      "description": "Read recent messages from a space. Returns up to limit messages (default 20, max 100), newest first; page with page_token and next_page_token. Keep paging while next_page_token is non-null: an EMPTY result with a token still on it does not mean the space is empty, because Google applies the page size before it filters. Sender email is the one Chat sends, or a People API lookup when Chat sends none, and is null when both come back empty. Each message carries links: what its text links to, which Chat keeps out of the body, so a message reading as a bare word may be a link to something. quote is what a message replies to or forwards, which Chat also keeps out of the body. Each message also carries its files, reaction counts, when it was edited and whether it replies in its thread; a message that is only a file has empty text.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "before": {
+            "description": "only messages created before this time; RFC 3339. With since, a window, such as what was said on one day",
+            "type": "string"
+          },
           "limit": {
             "description": "how many to return, 1 to 100; default 20",
             "type": "integer"
@@ -1544,6 +1606,62 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "attachments": {
+                  "description": "the files on the message, with the name download_attachment takes; empty when it carries none. A message that is only a file has empty text and its file here",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attachment_name": {
+                        "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                        "type": "string"
+                      },
+                      "content_type": {
+                        "description": "the MIME type Google reported",
+                        "type": "string"
+                      },
+                      "downloadable": {
+                        "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                        "type": "boolean"
+                      },
+                      "drive_file_id": {
+                        "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "file_name": {
+                        "description": "the original file name",
+                        "type": "string"
+                      },
+                      "source": {
+                        "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "attachment_name",
+                      "file_name",
+                      "content_type",
+                      "source",
+                      "drive_file_id",
+                      "downloadable"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "last_update_time": {
+                  "description": "when it was last edited, or null when it never was",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "links": {
                   "description": "what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something",
                   "items": {
@@ -1813,6 +1931,35 @@
                     "object"
                   ]
                 },
+                "reactions": {
+                  "description": "one entry per distinct emoji on the message",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "description": "how many people reacted with it",
+                        "type": "integer"
+                      },
+                      "emoji": {
+                        "description": "the emoji character",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "emoji",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "reactions_paged": {
+                  "description": "true when the summaries were left out because there were too many; call list_reactions for the detail",
+                  "type": "boolean"
+                },
                 "sender_display_name": {
                   "description": "the sender's name, or null when Google gave none",
                   "type": [
@@ -1839,6 +1986,10 @@
                   "description": "the thread's resource name; pass it to get_thread to read the rest",
                   "type": "string"
                 },
+                "thread_reply": {
+                  "description": "true when it was posted as a reply in its thread, false when it started the thread",
+                  "type": "boolean"
+                },
                 "timestamp": {
                   "description": "when the message was created, RFC 3339 in UTC",
                   "format": "date-time",
@@ -1854,7 +2005,12 @@
                 "timestamp",
                 "thread_id",
                 "links",
-                "quote"
+                "quote",
+                "last_update_time",
+                "thread_reply",
+                "reactions",
+                "reactions_paged",
+                "attachments"
               ],
               "type": "object"
             },
@@ -1921,12 +2077,62 @@
               "string"
             ]
           },
+          "description": {
+            "description": "what the space is for, as its managers wrote it; null when it has none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "display_name": {
             "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
             "type": "string"
           },
           "external_user_allowed": {
             "description": "true when people outside the organization may join; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "group_member_count": {
+            "description": "Google Groups that have joined; null when Google did not say",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "guidelines": {
+            "description": "the rules its managers set for it; null when it has none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "history_state": {
+            "description": "HISTORY_OFF when messages are kept for 24 hours, HISTORY_ON when the organization's retention rules decide; null when Google did not say",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "human_member_count": {
+            "description": "people who have joined, not counting those who are in only through a group; null when Google did not say",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "last_active_time": {
+            "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "members_can_post": {
+            "description": "false when only managers may post, as in an announcement space; null when Google did not say",
             "type": [
               "null",
               "boolean"
@@ -1943,6 +2149,13 @@
             "description": "the space's resource name, spaces/{id}",
             "type": "string"
           },
+          "space_uri": {
+            "description": "the link that opens the space in Chat; null when Google did not say",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "type": {
             "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
             "type": "string"
@@ -1956,7 +2169,15 @@
           "external_user_allowed",
           "create_time",
           "access_state",
-          "audience"
+          "audience",
+          "last_active_time",
+          "space_uri",
+          "description",
+          "guidelines",
+          "human_member_count",
+          "group_member_count",
+          "history_state",
+          "members_can_post"
         ],
         "type": "object"
       }
@@ -2123,7 +2344,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Read one thread's messages, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; page with page_token and next_page_token. A non-null next_page_token means the thread is longer than what came back, so do not read the result as the whole thread. Each message carries its links and what it quotes.",
+      "description": "Read one thread's messages, oldest first. Give the parent space_id and the thread_name (spaces/{space}/threads/{thread}), which every message carries as thread_id. Default limit 50, max 100; page with page_token and next_page_token. A non-null next_page_token means the thread is longer than what came back, so do not read the result as the whole thread. Each message carries its links, what it quotes, its files and reaction counts, and when it was edited.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2166,6 +2387,62 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "attachments": {
+                  "description": "the files on the message, with the name download_attachment takes; empty when it carries none. A message that is only a file has empty text and its file here",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attachment_name": {
+                        "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                        "type": "string"
+                      },
+                      "content_type": {
+                        "description": "the MIME type Google reported",
+                        "type": "string"
+                      },
+                      "downloadable": {
+                        "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                        "type": "boolean"
+                      },
+                      "drive_file_id": {
+                        "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "file_name": {
+                        "description": "the original file name",
+                        "type": "string"
+                      },
+                      "source": {
+                        "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "attachment_name",
+                      "file_name",
+                      "content_type",
+                      "source",
+                      "drive_file_id",
+                      "downloadable"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "last_update_time": {
+                  "description": "when it was last edited, or null when it never was",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "links": {
                   "description": "what the text links to. Chat keeps a link out of the text, so a message reading as a bare word may be a link to something",
                   "items": {
@@ -2435,6 +2712,35 @@
                     "object"
                   ]
                 },
+                "reactions": {
+                  "description": "one entry per distinct emoji on the message",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "description": "how many people reacted with it",
+                        "type": "integer"
+                      },
+                      "emoji": {
+                        "description": "the emoji character",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "emoji",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "reactions_paged": {
+                  "description": "true when the summaries were left out because there were too many; call list_reactions for the detail",
+                  "type": "boolean"
+                },
                 "sender_display_name": {
                   "description": "the sender's name, or null when Google gave none",
                   "type": [
@@ -2461,6 +2767,10 @@
                   "description": "the thread's resource name; pass it to get_thread to read the rest",
                   "type": "string"
                 },
+                "thread_reply": {
+                  "description": "true when it was posted as a reply in its thread, false when it started the thread",
+                  "type": "boolean"
+                },
                 "timestamp": {
                   "description": "when the message was created, RFC 3339 in UTC",
                   "format": "date-time",
@@ -2476,7 +2786,12 @@
                 "timestamp",
                 "thread_id",
                 "links",
-                "quote"
+                "quote",
+                "last_update_time",
+                "thread_reply",
+                "reactions",
+                "reactions_paged",
+                "attachments"
               ],
               "type": "object"
             },
@@ -2625,6 +2940,10 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "expand_groups": {
+            "description": "also list who is in each Google Group member, one level down: up to 200 people for each of the first 10 groups. Google shows a group's members only to someone the group lets see them",
+            "type": "boolean"
+          },
           "limit": {
             "description": "how many to return, 1 to 200; default 50",
             "type": "integer"
@@ -2677,6 +2996,47 @@
                     "string"
                   ]
                 },
+                "group_members": {
+                  "description": "for a GROUP row of list_members with expand_groups: who is in the group, directly, up to 200. Null otherwise, and when they could not be read",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "description": "the member's email address",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "description": "USER, GROUP for a group inside the group, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER",
+                        "type": "string"
+                      },
+                      "role": {
+                        "description": "OWNER, MANAGER or MEMBER: the highest role the member holds in the group",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "email",
+                      "kind",
+                      "role"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "group_members_missing": {
+                  "description": "why group_members could not be read, such as a group that does not show its members to you; null when they were read or not asked for",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "group_members_more": {
+                  "description": "true when the group has more direct members than group_members holds",
+                  "type": "boolean"
+                },
                 "kind": {
                   "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
                   "type": "string"
@@ -2705,7 +3065,10 @@
                 "display_name",
                 "email",
                 "role",
-                "state"
+                "state",
+                "group_members",
+                "group_members_more",
+                "group_members_missing"
               ],
               "type": "object"
             },
@@ -3204,6 +3567,14 @@
                   "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
                   "type": "string"
                 },
+                "last_active_time": {
+                  "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "space_id": {
                   "description": "the space's resource name, spaces/{id}; pass this to other tools",
                   "type": "string"
@@ -3216,7 +3587,8 @@
               "required": [
                 "space_id",
                 "type",
-                "display_name"
+                "display_name",
+                "last_active_time"
               ],
               "type": "object"
             },
@@ -3756,7 +4128,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Search Google Chat message history. Two searches in one tool. Pass query and Google searches every space you can see, matching whole words; narrow it with space_id, sender_email, mentions_me, has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. Each hit carries its links and what it quotes.",
+      "description": "Search Google Chat message history. Two searches in one tool. Pass query and Google searches every space you can see, matching whole words; narrow it with space_id, sender_email, mentions_me, has_attachment, has_link, unread_only and a time window. Pass regex instead and this server scans one space itself, which is the only way to match a pattern or part of a word — it needs space_id, reads pages of history, and takes none of the filters. Prefer query. If cap_reached is true the answer is partial; if unparsed is non-zero it is incomplete, and saying the space is empty would be wrong. Each hit carries its links, what it quotes, its files and reaction counts, and when it was edited.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -3769,7 +4141,7 @@
             "type": "string"
           },
           "created_before": {
-            "description": "only messages created before this time; RFC 3339. Google's search only",
+            "description": "only messages created before this time; RFC 3339",
             "type": "string"
           },
           "has_attachment": {
@@ -3812,6 +4184,14 @@
             "description": "the space to search, spaces/{id}. Google's search takes every space you can see when this is omitted; a regex scan needs it",
             "type": "string"
           },
+          "space_name": {
+            "description": "only messages in spaces whose display name holds every one of these words, such as Project Alpha. Google searches its top five matching spaces. Google's search only",
+            "type": "string"
+          },
+          "space_type": {
+            "description": "only messages in spaces of this kind: SPACE, GROUP_CHAT or DIRECT_MESSAGE. Google's search only",
+            "type": "string"
+          },
           "unread_only": {
             "description": "only messages you have not read. Google's search only, and it needs the read-state scope as well as the message one",
             "type": "boolean"
@@ -3832,6 +4212,62 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "attachments": {
+                  "description": "the files on the message, with the name download_attachment takes; empty when it carries none. A message that is only a file has empty text and its file here",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attachment_name": {
+                        "description": "the attachment's resource name; pass it to download_attachment when the message carries more than one",
+                        "type": "string"
+                      },
+                      "content_type": {
+                        "description": "the MIME type Google reported",
+                        "type": "string"
+                      },
+                      "downloadable": {
+                        "description": "true when download_attachment can fetch the bytes. A Drive file is false: those bytes are Drive's, not Chat's",
+                        "type": "boolean"
+                      },
+                      "drive_file_id": {
+                        "description": "the Drive file id for a DRIVE_FILE attachment, or null",
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "file_name": {
+                        "description": "the original file name",
+                        "type": "string"
+                      },
+                      "source": {
+                        "description": "UPLOADED_CONTENT for a file uploaded to Chat, DRIVE_FILE for one that lives in Google Drive",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "attachment_name",
+                      "file_name",
+                      "content_type",
+                      "source",
+                      "drive_file_id",
+                      "downloadable"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "last_update_time": {
+                  "description": "when it was last edited, or null when it never was",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "links": {
                   "description": "what the message's text links to; empty when it links to nothing",
                   "items": {
@@ -4101,6 +4537,42 @@
                     "object"
                   ]
                 },
+                "reactions": {
+                  "description": "one entry per distinct emoji on the message",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "description": "how many people reacted with it",
+                        "type": "integer"
+                      },
+                      "emoji": {
+                        "description": "the emoji character",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "emoji",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "reactions_paged": {
+                  "description": "true when the summaries were left out because there were too many; call list_reactions for the detail",
+                  "type": "boolean"
+                },
+                "read": {
+                  "description": "whether you have read it. Null when it cannot be told: in a regex scan, without the read-state scope, or when no hit on the page is read and unread_only is off, because Google leaves an unread state out rather than sending false",
+                  "type": [
+                    "null",
+                    "boolean"
+                  ]
+                },
                 "sender_email": {
                   "description": "the sender's email address when Chat names it or this server has already seen it, or null. A search does not look anyone up in the People API",
                   "type": [
@@ -4116,6 +4588,13 @@
                   "description": "up to about 160 characters of the body around the first match",
                   "type": "string"
                 },
+                "space_muted": {
+                  "description": "whether you have muted its space; null when Google did not say, which it does not for a regex scan or without the space-settings scope",
+                  "type": [
+                    "null",
+                    "boolean"
+                  ]
+                },
                 "text": {
                   "description": "the whole message body",
                   "type": "string"
@@ -4123,6 +4602,10 @@
                 "thread_id": {
                   "description": "the thread it belongs to",
                   "type": "string"
+                },
+                "thread_reply": {
+                  "description": "true when it was posted as a reply in its thread, false when it started the thread",
+                  "type": "boolean"
                 },
                 "timestamp": {
                   "description": "when the message was created, RFC 3339 in UTC",
@@ -4139,7 +4622,14 @@
                 "timestamp",
                 "snippet",
                 "links",
-                "quote"
+                "quote",
+                "last_update_time",
+                "thread_reply",
+                "reactions",
+                "reactions_paged",
+                "attachments",
+                "read",
+                "space_muted"
               ],
               "type": "object"
             },
@@ -4297,7 +4787,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Search named Google Chat spaces by display name, including spaces you are not a member of. Use it to find a space to join or read; use list_spaces for the ones you are already in, and find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
+      "description": "Search the named Google Chat spaces you are a member of by display name, or every space in the Workspace with use_admin_access. Use find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4344,6 +4834,14 @@
                   "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
                   "type": "string"
                 },
+                "last_active_time": {
+                  "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "space_id": {
                   "description": "the space's resource name, spaces/{id}; pass this to other tools",
                   "type": "string"
@@ -4356,7 +4854,8 @@
               "required": [
                 "space_id",
                 "type",
-                "display_name"
+                "display_name",
+                "last_active_time"
               ],
               "type": "object"
             },
@@ -4401,6 +4900,14 @@
           "dry_run": {
             "description": "return the request body without posting; call again without it to post",
             "type": "boolean"
+          },
+          "markdown": {
+            "description": "read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written \u003cchat-user data-email=\"their@address\"\u003e, and \u003cchat-user data-user=\"users/all\"\u003e mentions and notifies EVERYONE",
+            "type": "boolean"
+          },
+          "quote_message": {
+            "description": "quote this message above the text, as a reply to it: spaces/{space}/messages/{message}, in the same space. Google refuses to forward a message under a person's sign-in, so one from another space cannot be quoted",
+            "type": "string"
           },
           "reply_fallback": {
             "description": "if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected",

@@ -5,7 +5,7 @@ package evals
 import (
 	"encoding/json"
 	"errors"
-	redactpkg "github.com/mmedum/google-chat-mcp/v4/internal/redact"
+	redactpkg "github.com/mmedum/google-chat-mcp/v5/internal/redact"
 	"os"
 	"os/exec"
 	"path/filepath"

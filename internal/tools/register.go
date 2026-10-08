@@ -9,8 +9,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/config"
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a

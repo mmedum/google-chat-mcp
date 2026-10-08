@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-08
+
 ### Added
 
 - `list_members` takes `expand_groups`, and each Google Group in the space then lists who is in it, one level down: up to 200 people for each of the first 10 groups. A group that does not show you its members says so on its row, and the rest of the listing stands.
@@ -23,6 +25,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Changed
 
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v5`, as Go requires from v5 on; install with `go install github.com/mmedum/google-chat-mcp/v5/cmd/google-chat-mcp@latest`.
 - **Breaking:** a rate-limited call now fails with `[rate_limited]` rather than `[rate_limit]`, the name the sibling Google Workspace servers use. A client that matches on the old class has to match the new one.
 
 ### Fixed
@@ -656,7 +659,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v2.3.1...v3.0.0

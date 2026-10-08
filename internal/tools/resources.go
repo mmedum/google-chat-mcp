@@ -10,7 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // resourceScheme is the URI scheme of this server's resources.

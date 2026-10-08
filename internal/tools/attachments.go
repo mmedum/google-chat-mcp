@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // DownloadAttachmentInput names one attachment on one message.

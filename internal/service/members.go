@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's

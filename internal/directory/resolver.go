@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
 )
 
 // PeopleAPI is the part of the Chat client this package uses.

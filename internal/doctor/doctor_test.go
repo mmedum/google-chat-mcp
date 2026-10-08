@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v4/internal/service"
+	"github.com/mmedum/google-chat-mcp/v5/internal/service"
 )
 
 // fakeChat stands in for the service. The walk is about which calls it
