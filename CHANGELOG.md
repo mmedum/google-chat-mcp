@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `send_message` takes `markdown: true`, and Google then reads the text as standard Markdown: `**bold**`, `[label](url)`, lists and code blocks. The text is still posted exactly as given. A Markdown mention of everyone, `<chat-user data-user="users/all">`, is asked about like `<users/all>`.
+
 ### Changed
 
 - **Breaking:** a rate-limited call now fails with `[rate_limited]` rather than `[rate_limit]`, the name the sibling Google Workspace servers use. A client that matches on the old class has to match the new one.

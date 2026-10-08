@@ -67,11 +67,17 @@ func asks(ctx context.Context) bool {
 }
 
 // mentionsEveryone reports whether a message's text mentions everyone
-// in its space, which notifies every member. Matched regardless of case,
-// since an extra question costs less than a missed one.
+// in its space, which notifies every member. Chat's syntax writes that
+// <users/all>, and Markdown writes <chat-user data-user="users/all">.
+// Both forms are matched in either syntax and regardless of case, since
+// an extra question costs less than a missed one.
 func mentionsEveryone(text string) bool {
-	return strings.Contains(strings.ToLower(text), "<users/all>")
+	return strings.Contains(strings.ToLower(text), "<users/all>") || markdownMentionsAll.MatchString(text)
 }
+
+// markdownMentionsAll matches a Markdown mention of everyone, with either
+// quote or none around the value.
+var markdownMentionsAll = regexp.MustCompile(`(?i)<chat-user\b[^>]*\bdata-user\s*=\s*["']?users/all\b`)
 
 // Question is what the server asks the person. Text is the message a
 // client shows; accepting it is the confirmation. Every word is the

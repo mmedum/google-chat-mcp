@@ -258,6 +258,45 @@ var steps = []step{
 		}
 	}},
 
+	// Markdown is GA for messages created through the API (release note
+	// 2026-08-19), and discovery calls markupSyntax optional rather than
+	// output only. Only a post read back can say whether a person's
+	// token gets it too.
+	{"a markdown message is posted", "send_message", func(d *driver) {
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": liveMarkdownBody, "markdown": true,
+		}), &out)
+		if out.MessageID == "" {
+			d.t.Fatal("send_message returned no message id for the markdown message")
+		}
+		d.record(out.MessageID)
+		d.markdown = out.MessageID
+	}},
+
+	{"a markdown message reads back formatted", "get_message", func(d *driver) {
+		if d.markdown == "" {
+			d.t.Skip("no markdown message was posted")
+		}
+		var out struct {
+			Text          string  `json:"text"`
+			FormattedText *string `json:"formatted_text"`
+		}
+		d.into(d.must("get_message", map[string]any{"message_name": d.markdown}), &out)
+		// Chat's own markup for bold is one asterisk. Two, or no
+		// formatting at all, means Google read the body as Chat syntax.
+		var markup string
+		if out.FormattedText != nil {
+			markup = *out.FormattedText
+		}
+		if !strings.Contains(markup, "*"+liveMarkdownBold+"*") || strings.Contains(markup, "**"+liveMarkdownBold+"**") {
+			d.t.Errorf("the markdown message came back as text %q and markup %q, want the bold word in Chat's markup",
+				d.redact(out.Text), d.redact(markup))
+		}
+	}},
+
 	{"the thread carries the message", "get_thread", func(d *driver) {
 		if d.thread == "" {
 			d.t.Skip("no thread id was returned")
@@ -732,8 +771,12 @@ var steps = []step{
 // anyone's real message, and nothing about them identifies an account.
 const (
 	livePostBody = "livecheck posted this line and will delete it"
-	liveEditBody = "livecheck edited this line and will delete it"
-	searchTerm   = "livecheck"
+	// liveMarkdownBody is posted with markdown: true, and its bold word
+	// is what reading it back looks for.
+	liveMarkdownBody = "livecheck posted this **" + liveMarkdownBold + "** line and will delete it"
+	liveMarkdownBold = "markdown"
+	liveEditBody     = "livecheck edited this line and will delete it"
+	searchTerm       = "livecheck"
 )
 
 func TestLive(t *testing.T) {

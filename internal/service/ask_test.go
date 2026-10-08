@@ -118,9 +118,22 @@ func TestAskBindsTheWholeText(t *testing.T) {
 	}
 }
 
-// A mention of everyone is found however it is cased.
-func TestMentionsEveryoneIgnoresCase(t *testing.T) {
-	for text, want := range map[string]bool{"hi <users/all>": true, "hi <USERS/All>": true, "hi users/all": false, "hi": false} {
+// A mention of everyone is found in Chat's syntax and in Markdown's,
+// however it is cased or quoted.
+func TestMentionsEveryone(t *testing.T) {
+	for text, want := range map[string]bool{
+		"hi <users/all>":                                  true,
+		"hi <USERS/All>":                                  true,
+		`hi <chat-user data-user="users/all">`:            true,
+		`hi <chat-user data-user='users/all'>`:            true,
+		`hi <chat-user data-user=users/all>`:              true,
+		`hi <CHAT-USER class="x" DATA-USER="USERS/ALL">`:  true,
+		"hi users/all":                                    false,
+		"hi":                                              false,
+		`hi <chat-user data-user="users/allison">`:        false,
+		`hi <chat-user data-user="users/123">`:            false,
+		`hi <chat-user data-email="janedoe@example.com">`: false,
+	} {
 		if mentionsEveryone(text) != want {
 			t.Errorf("mentionsEveryone(%q) = %v", text, !want)
 		}

@@ -132,6 +132,9 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 // response struct would offer fields the API refuses.
 type SendMessageRequest struct {
 	Text string `json:"text"`
+	// MarkupSyntax says how Google reads Text. Empty is Chat's own
+	// syntax; MarkupMarkdown is standard Markdown.
+	MarkupSyntax string `json:"markupSyntax,omitempty"`
 	// Thread is set when the message replies to an existing thread.
 	Thread *Thread `json:"thread,omitempty"`
 	// Attachments carries a file uploaded beforehand. It is the one
@@ -140,6 +143,9 @@ type SendMessageRequest struct {
 	// — Google fills in from the upload.
 	Attachments []MessageAttachment `json:"attachment,omitempty"`
 }
+
+// MarkupMarkdown has Google read a message's text as standard Markdown.
+const MarkupMarkdown = "MARKUP_SYNTAX_MARKDOWN"
 
 // MessageAttachment attaches an already-uploaded file to a message.
 type MessageAttachment struct {

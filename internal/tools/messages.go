@@ -406,6 +406,7 @@ type SendMessageInput struct {
 	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
 	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
 	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
+	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">, and <chat-user data-user=\"users/all\"> mentions and notifies EVERYONE"`
 	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
 
@@ -464,7 +465,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 		got, err := d.Service.SendMessage(ctx, service.SendMessageInput{
 			Space: in.SpaceID, Text: in.Text, Thread: in.ThreadName,
 			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken,
-			ClientMessageID: in.ClientMessageID, DryRun: in.DryRun,
+			ClientMessageID: in.ClientMessageID, Markdown: in.Markdown, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, SendMessageOutput{}, err

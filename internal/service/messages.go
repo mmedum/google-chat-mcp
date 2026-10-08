@@ -552,6 +552,9 @@ type SendMessageInput struct {
 	// Empty mints one per call, which covers this call's own retries
 	// and nothing further.
 	ClientMessageID string
+	// Markdown has Google read Text as standard Markdown rather than
+	// Chat's own syntax. The text is still posted as given.
+	Markdown bool
 	// DryRun renders the request body and posts nothing.
 	DryRun bool
 }
@@ -599,6 +602,9 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	}
 
 	body := gchat.BuildSendMessage(text, thread, strings.TrimSpace(in.UploadToken))
+	if in.Markdown {
+		body.MarkupSyntax = gchat.MarkupMarkdown
+	}
 	if in.DryRun {
 		rendered, err := renderBody(body)
 		if err != nil {

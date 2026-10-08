@@ -423,6 +423,31 @@ func TestSendMessagePostsTheTextVerbatim(t *testing.T) {
 	}
 }
 
+// Markdown changes how Google reads the text, not the text: the body
+// still goes out exactly as given, beside the syntax it is in.
+func TestSendMessageInMarkdown(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		markdown bool
+		want     string
+	}{
+		{name: "markdown", markdown: true, want: `{"text":"**hi** [there](https://example.com)","markupSyntax":"MARKUP_SYNTAX_MARKDOWN"}`},
+		{name: "chat syntax", markdown: false, want: `{"text":"**hi** [there](https://example.com)"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
+			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
+				Space: "spaces/A", Text: "**hi** [there](https://example.com)", Markdown: tc.markdown,
+			}); err != nil {
+				t.Fatalf("SendMessage: %v", err)
+			}
+			if got := rec.last(t).Body; got != tc.want {
+				t.Errorf("posted %s\nwant     %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSendMessageRepliesInAThread(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`))
 	if _, err := s.SendMessage(writeCtx(), SendMessageInput{

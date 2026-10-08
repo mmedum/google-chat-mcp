@@ -60,8 +60,10 @@ type driver struct {
 	// linked is the message whose body is a link to posted, for the
 	// step that reads a link back.
 	linked string
-	thread string
-	member string
+	// markdown is the message posted with markdown: true.
+	markdown string
+	thread   string
+	member   string
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string
