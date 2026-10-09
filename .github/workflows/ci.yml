@@ -140,14 +140,14 @@ jobs:
         run: >
           go run github.com/google/go-licenses/v2@v2.0.1 check ./...
           --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
+      # Both run from source through the Go module proxy, like the steps
+      # above: an image pull from Docker Hub is rate limited for shared
+      # runners, and failed this job three times in a row on 2026-10-09
+      # without scanning anything.
       - name: gitleaks
-        run: |
-          docker run --rm -v "$PWD":/repo -w /repo \
-            zricethezav/gitleaks:v8.30.1 detect --source=/repo --redact --no-banner
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 detect --source=. --redact --no-banner
       - name: actionlint
-        run: |
-          docker run --rm -v "$PWD":/repo -w /repo \
-            rhysd/actionlint:1.7.12 -color
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
   # The gates that need a built binary: it has to speak MCP over stdio
   # without credentials, keep its tool surface, and match the docs.
