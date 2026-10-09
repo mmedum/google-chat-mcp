@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-09
+
 ### Changed
 
 - A delete or an added member asks once in Claude Code, not twice. In a
@@ -684,7 +686,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...v3.0.1
