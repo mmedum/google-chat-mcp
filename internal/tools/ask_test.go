@@ -442,12 +442,25 @@ func TestAReplyLostAfterTheWriteIsAmbiguous(t *testing.T) {
 // requiresUserInteraction mark only for a client that cannot ask; with
 // both, the person would answer twice for one call. A tool that asks only
 // sometimes, or never, keeps it: there the mark is the only per-call
-// prompt. The clients share one server and the one that can ask lists
-// first, so a mark taken off the server's own tool, rather than a copy,
-// goes missing for the clients after it.
+// prompt. With GCM_ASK_BEFORE_SEND, a send and an edit always ask. The
+// clients share one server and the one that can ask lists first, so a
+// mark taken off the server's own tool, rather than a copy, goes missing
+// for the clients after it.
 func TestTheMarkIsDroppedOnlyWhereTheServerAlwaysAsks(t *testing.T) {
-	always := []string{"add_member", "delete_custom_emoji", "delete_message", "delete_space"}
-	sometimes := []string{"send_message", "update_message", "create_space", "update_space", "pin_message", "remove_member"}
+	for _, askBeforeSend := range []bool{false, true} {
+		always := []string{"add_member", "delete_custom_emoji", "delete_message", "delete_space"}
+		sometimes := []string{"send_message", "update_message", "create_space", "update_space", "pin_message", "remove_member"}
+		if askBeforeSend {
+			always = append(always, sometimes[:2]...)
+			sometimes = sometimes[2:]
+		}
+		cfg := config.Config{Toolsets: config.AllToolsets, LocalDir: localDir(t), AskBeforeSend: askBeforeSend}
+		theMarkFollowsTheQuestion(t, cfg, always, sometimes)
+	}
+}
+
+func theMarkFollowsTheQuestion(t *testing.T, cfg config.Config, always, sometimes []string) {
+	t.Helper()
 	p := &answerer{answer: accepts}
 	urlOnly := &mcp.ClientCapabilities{Elicitation: &mcp.ElicitationCapabilities{URL: &mcp.URLElicitationCapabilities{}}}
 	clients := []struct {
@@ -459,7 +472,6 @@ func TestTheMarkIsDroppedOnlyWhereTheServerAlwaysAsks(t *testing.T) {
 		{"no elicitation", &mcp.ClientOptions{}, false},
 		{"URL elicitation only", &mcp.ClientOptions{ElicitationHandler: p.handle, Capabilities: urlOnly}, false},
 	}
-	cfg := config.Config{Toolsets: config.AllToolsets, LocalDir: localDir(t)}
 	for _, protocol := range protocols {
 		s := testServer(t, (&stubChat{}).handler, cfg, slog.New(slog.DiscardHandler))
 		for _, c := range clients {
@@ -478,12 +490,13 @@ func TestTheMarkIsDroppedOnlyWhereTheServerAlwaysAsks(t *testing.T) {
 			}
 			for _, name := range always {
 				if marked[name] == c.canAsk {
-					t.Errorf("%s, %s: %s marked %t, want %t", protocol, c.name, name, marked[name], !c.canAsk)
+					t.Errorf("%s, %s, ask before send %t: %s marked %t, want %t",
+						protocol, c.name, cfg.AskBeforeSend, name, marked[name], !c.canAsk)
 				}
 			}
 			for _, name := range sometimes {
 				if !marked[name] {
-					t.Errorf("%s, %s: %s lost the mark", protocol, c.name, name)
+					t.Errorf("%s, %s, ask before send %t: %s lost the mark", protocol, c.name, cfg.AskBeforeSend, name)
 				}
 			}
 		}

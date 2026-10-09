@@ -802,6 +802,62 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 	}
 }
 
+// declining is the asker of a person who says no: it records each
+// question and refuses it.
+type declining struct{ asked []Question }
+
+var errDeclined = errors.New("declined")
+
+func (d *declining) Ask(_ context.Context, q Question) error {
+	d.asked = append(d.asked, q)
+	return errDeclined
+}
+func (*declining) Asks() bool { return true }
+
+// A message that cannot be read is still asked about: that an account
+// cannot delete what it cannot read is a belief, and the question is
+// the only thing between the call and a delete nobody can undo. One
+// already gone asks nothing.
+func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		read  http.HandlerFunc
+		asked string
+	}{
+		{"unreadable", status(403, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`),
+			"This server could not read it to show it to you."},
+		{"readable", ok(`{"name":"spaces/A/messages/1","text":"hello"}`), "text: `hello`"},
+		{"gone", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deletes := 0
+			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodDelete {
+					deletes++
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"error":{"status":"NOT_FOUND","message":"gone"}}`)
+					return
+				}
+				tc.read(w, r)
+			})
+			person := &declining{}
+			_, err := s.DeleteMessage(WithAsker(context.Background(), person), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			if tc.asked == "" {
+				if err != nil || len(person.asked) != 0 || deletes != 1 {
+					t.Fatalf("err %v, asked %d, deletes %d; want no question and the delete sent", err, len(person.asked), deletes)
+				}
+				return
+			}
+			if !errors.Is(err, errDeclined) || deletes != 0 {
+				t.Fatalf("err %v, deletes %d; want the refusal and no delete", err, deletes)
+			}
+			if len(person.asked) != 1 || !strings.Contains(person.asked[0].Text, tc.asked) {
+				t.Fatalf("asked %+v, want one question saying %q", person.asked, tc.asked)
+			}
+		})
+	}
+}
+
 // The one 403 that must not read as "already gone": the caller was told
 // the delete succeeded when what they needed was a prompt to grant a
 // scope.

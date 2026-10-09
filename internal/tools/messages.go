@@ -486,6 +486,9 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "send_message",
 		Asks: "before a post that mentions everyone in the space, <users/all>, and before every post when GCM_ASK_BEFORE_SEND is set",
+		// With GCM_ASK_BEFORE_SEND, every post is asked about, so the
+		// question is the confirmation, as it is for a delete.
+		AsksEveryCall: d.Config.AskBeforeSend,
 		Description: "Post a text message to a Chat space, a group chat or a direct message. The body is posted " +
 			"exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put " +
 			"<users/their@address> in the text yourself. Pass thread_name to reply in an existing thread, which " +
@@ -514,8 +517,9 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 	})
 
 	register(s, d, spec{
-		Name: "update_message",
-		Asks: "before an edit that makes the text mention everyone in the space, <users/all>, and before every edit when GCM_ASK_BEFORE_SEND is set",
+		Name:          "update_message",
+		Asks:          "before an edit that makes the text mention everyone in the space, <users/all>, and before every edit when GCM_ASK_BEFORE_SEND is set",
+		AsksEveryCall: d.Config.AskBeforeSend,
 		Description: "Replace the text of a message you sent. Text only: cards and attachments are left untouched, " +
 			"and editing them needs an identity this server does not have. Set dry_run to see the patch body without " +
 			"applying it. Needs the restricted-tier chat.messages scope.",

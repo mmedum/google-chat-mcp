@@ -20,7 +20,15 @@ upgrading are marked **Breaking:** and say what to do.
   confirmation. Every other write keeps the mark. A Claude Code
   `Elicitation` hook that accepts now confirms these four writes by
   itself, where the mark used to stop the call before it reached the
-  server.
+  server. With `GCM_ASK_BEFORE_SEND`, every post and edit is asked about,
+  so `send_message` and `update_message` drop the mark as well.
+
+### Fixed
+
+- `delete_message` asks before deleting a message it cannot read to show
+  you. It used to delete it without asking, on the belief that an
+  account cannot delete a message it cannot read, which Google does not
+  state.
 
 ### Security
 
