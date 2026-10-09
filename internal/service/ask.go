@@ -128,6 +128,19 @@ func askDeleteMessage(space, sender, text string, force bool) Question {
 	return q
 }
 
+// askDeleteUnreadable asks before delete_message when the message could
+// not be read to show it.
+func askDeleteUnreadable(space string, force bool) Question {
+	lines := []string{
+		fmt.Sprintf("delete_message: delete a message in %s for good?", quoted(space, quotedLen)),
+		"This server could not read it to show it to you.",
+	}
+	if force {
+		lines = append(lines, "Every reply in its thread goes with it.")
+	}
+	return askText(append(lines, "Chat keeps no trash: it cannot be restored.")...)
+}
+
 // askDeleteSpace asks before delete_space.
 func askDeleteSpace(space, displayName string) Question {
 	return askText(

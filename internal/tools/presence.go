@@ -235,7 +235,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_custom_emoji",
-		Asks: "before it deletes",
+		Asks: "before it deletes", AsksEveryCall: true,
 		Description: "Remove a custom emoji from your organization. It goes for everyone, and messages that " +
 			"already use it lose the image.",
 		Kind:    Destructive,
@@ -252,7 +252,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_space",
-		Asks: "before it deletes",
+		Asks: "before it deletes", AsksEveryCall: true,
 		Description: "Delete a space, and with it every message and membership in it, for everyone. Google " +
 			"always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. " +
 			"This is the most destructive call in this server: read the space first, and ask the person " +

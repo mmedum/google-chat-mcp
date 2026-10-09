@@ -437,3 +437,68 @@ func TestAReplyLostAfterTheWriteIsAmbiguous(t *testing.T) {
 		t.Fatalf("%s; %d writes", text, g.written())
 	}
 }
+
+// A tool that asks the person before every write carries Claude Code's
+// requiresUserInteraction mark only for a client that cannot ask; with
+// both, the person would answer twice for one call. A tool that asks only
+// sometimes, or never, keeps it: there the mark is the only per-call
+// prompt. With GCM_ASK_BEFORE_SEND, a send and an edit always ask. The
+// clients share one server and the one that can ask lists first, so a
+// mark taken off the server's own tool, rather than a copy, goes missing
+// for the clients after it.
+func TestTheMarkIsDroppedOnlyWhereTheServerAlwaysAsks(t *testing.T) {
+	for _, askBeforeSend := range []bool{false, true} {
+		always := []string{"add_member", "delete_custom_emoji", "delete_message", "delete_space"}
+		sometimes := []string{"send_message", "update_message", "create_space", "update_space", "pin_message", "remove_member"}
+		if askBeforeSend {
+			always = append(always, sometimes[:2]...)
+			sometimes = sometimes[2:]
+		}
+		cfg := config.Config{Toolsets: config.AllToolsets, LocalDir: localDir(t), AskBeforeSend: askBeforeSend}
+		theMarkFollowsTheQuestion(t, cfg, always, sometimes)
+	}
+}
+
+func theMarkFollowsTheQuestion(t *testing.T, cfg config.Config, always, sometimes []string) {
+	t.Helper()
+	p := &answerer{answer: accepts}
+	urlOnly := &mcp.ClientCapabilities{Elicitation: &mcp.ElicitationCapabilities{URL: &mcp.URLElicitationCapabilities{}}}
+	clients := []struct {
+		name   string
+		opts   *mcp.ClientOptions
+		canAsk bool
+	}{
+		{"form elicitation", &mcp.ClientOptions{ElicitationHandler: p.handle}, true},
+		{"no elicitation", &mcp.ClientOptions{}, false},
+		{"URL elicitation only", &mcp.ClientOptions{ElicitationHandler: p.handle, Capabilities: urlOnly}, false},
+	}
+	for _, protocol := range protocols {
+		s := testServer(t, (&stubChat{}).handler, cfg, slog.New(slog.DiscardHandler))
+		for _, c := range clients {
+			res, err := connectTo(t, s, c.opts, protocol).ListTools(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marked := map[string]bool{}
+			for _, tool := range res.Tools {
+				marked[tool.Name] = tool.Meta["anthropic/requiresUserInteraction"] == true
+			}
+			for _, name := range slices.Concat(always, sometimes) {
+				if _, ok := marked[name]; !ok {
+					t.Fatalf("%s, %s: %s is not listed", protocol, c.name, name)
+				}
+			}
+			for _, name := range always {
+				if marked[name] == c.canAsk {
+					t.Errorf("%s, %s, ask before send %t: %s marked %t, want %t",
+						protocol, c.name, cfg.AskBeforeSend, name, marked[name], !c.canAsk)
+				}
+			}
+			for _, name := range sometimes {
+				if !marked[name] {
+					t.Errorf("%s, %s, ask before send %t: %s lost the mark", protocol, c.name, cfg.AskBeforeSend, name)
+				}
+			}
+		}
+	}
+}

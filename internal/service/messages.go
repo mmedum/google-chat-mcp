@@ -821,12 +821,17 @@ func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*De
 	if asks(ctx) {
 		// The question shows the message, so it is read first. One already
 		// gone asks nothing: the delete changes nothing.
-		// A 403 is a message gone from a space that keeps no history, or
-		// one the account may not delete: the delete is a no-op or
-		// refused, so nothing is asked either way.
 		msg, err := s.client.GetMessage(ctx, name)
 		switch {
-		case err == nil && messageDeleted(msg), gchat.IsNotFound(err), gchat.IsForbidden(err):
+		case err == nil && messageDeleted(msg), gchat.IsNotFound(err):
+		case gchat.IsForbidden(err):
+			// A message gone from a space that keeps no history, or one
+			// this account may not read. That it may not delete one it
+			// cannot read is a belief, not something Google says, so the
+			// person is still asked, without the text.
+			if err := ask(ctx, askDeleteUnreadable(spaceOfMessage(name), in.Force)); err != nil {
+				return nil, err
+			}
 		case err != nil:
 			return nil, Classify(err)
 		default:

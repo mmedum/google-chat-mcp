@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v5.0.0",
+  "version": "v5.1.0",
   "sdk": "v1.7.0",
   "tools": [
     {

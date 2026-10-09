@@ -11,6 +11,33 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-09
+
+### Changed
+
+- A delete or an added member asks once in Claude Code, not twice. In a
+  client that can ask the person, `delete_message`, `delete_space`,
+  `delete_custom_emoji` and `add_member` no longer carry the
+  `requiresUserInteraction` mark; the server's own question is the
+  confirmation. Every other write keeps the mark. A Claude Code
+  `Elicitation` hook that accepts now confirms these four writes by
+  itself, where the mark used to stop the call before it reached the
+  server. With `GCM_ASK_BEFORE_SEND`, every post and edit is asked about,
+  so `send_message` and `update_message` drop the mark as well.
+
+### Fixed
+
+- `delete_message` asks before deleting a message it cannot read to show
+  you. It used to delete it without asking, on the belief that an
+  account cannot delete a message it cannot read, which Google does not
+  state.
+
+### Security
+
+- Built with Go 1.27.2, which fixes nine advisories in `net/http`, its
+  HTTP/2 code, `crypto/tls` and `net/textproto` that `govulncheck` found
+  reachable from this server.
+
 ## [5.0.0] - 2026-10-08
 
 ### Added
@@ -659,7 +686,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.0...v3.0.1
