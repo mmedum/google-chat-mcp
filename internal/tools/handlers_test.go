@@ -75,6 +75,13 @@ func connectClient(t *testing.T, handler http.HandlerFunc, cfg config.Config, lo
 	protocol string, middleware ...mcp.Middleware,
 ) *mcp.ClientSession {
 	t.Helper()
+	return connectTo(t, testServer(t, handler, cfg, log, middleware...), co, protocol)
+}
+
+// testServer is every tool registered against a stub Google, carrying
+// middleware after AskFailures.
+func testServer(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger, middleware ...mcp.Middleware) *mcp.Server {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
@@ -101,7 +108,13 @@ func connectClient(t *testing.T, handler http.HandlerFunc, cfg config.Config, lo
 		Config:  cfg,
 		Logger:  log,
 	})
+	return s
+}
 
+// connectTo connects a new client to s with co, on protocol (the SDK's
+// newest when empty).
+func connectTo(t *testing.T, s *mcp.Server, co *mcp.ClientOptions, protocol string) *mcp.ClientSession {
+	t.Helper()
 	ct, st := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(context.Background(), st, nil)
 	if err != nil {

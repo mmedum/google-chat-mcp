@@ -17,7 +17,10 @@ upgrading are marked **Breaking:** and say what to do.
   client that can ask the person, `delete_message`, `delete_space`,
   `delete_custom_emoji` and `add_member` no longer carry the
   `requiresUserInteraction` mark; the server's own question is the
-  confirmation. Every other write keeps the mark.
+  confirmation. Every other write keeps the mark. A Claude Code
+  `Elicitation` hook that accepts now confirms these four writes by
+  itself, where the mark used to stop the call before it reached the
+  server.
 
 ### Security
 

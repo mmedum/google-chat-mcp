@@ -84,8 +84,9 @@ func canAsk(c *mcp.ClientCapabilities) bool {
 	return c != nil && c.Elicitation != nil && (c.Elicitation.Form != nil || c.Elicitation.URL == nil)
 }
 
-// interactionKey is Claude Code's mark for a tool it must prompt for on
-// every call, in every permission mode, with no allow rule to skip it.
+// interactionKey is Claude Code's mark for a tool it prompts for even
+// under an allow rule. Auto mode has still run a marked write with no
+// prompt (register.go).
 const interactionKey = "anthropic/requiresUserInteraction"
 
 // interactionHint is receiving middleware for tools/list. A tool that
