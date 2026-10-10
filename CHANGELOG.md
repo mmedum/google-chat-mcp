@@ -11,6 +11,14 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-10-10
+
+### Fixed
+
+- `delete_message` with `force` asks before deleting a message that is already deleted and is not a reply. Its thread may still hold replies, and `force` could delete them unasked.
+- `delete_message`'s question for a message it cannot read names the message, not only its space.
+- The schema dump's `sdk` field names the MCP SDK the binary was built with. It said v1.7.0 after the move to v1.8.0.
+
 ## [5.1.0] - 2026-10-09
 
 ### Changed
@@ -686,7 +694,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...HEAD
+[5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v3.0.1...v4.0.0

@@ -42,10 +42,27 @@ func dump(t *testing.T, cfg config.Config) Dump {
 	return d
 }
 
+// The dump names the SDK go.mod requires, which is the one built in.
 func TestDumpSchemasReportsTheServerIdentity(t *testing.T) {
+	mod, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSDK := ""
+	for line := range strings.Lines(string(mod)) {
+		// A block line or a one-line require, with or without a comment.
+		line, _, _ = strings.Cut(line, "//")
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		if len(f) == 2 && f[0] == sdkModule {
+			wantSDK = f[1]
+		}
+	}
+	if wantSDK == "" {
+		t.Fatalf("go.mod requires no %s", sdkModule)
+	}
 	d := dump(t, config.Config{})
-	if d.Server != Name || d.Version != "test" || d.SDK != SDKVersion {
-		t.Errorf("identity = %+v", d)
+	if d.Server != Name || d.Version != "test" || d.SDK != wantSDK {
+		t.Errorf("identity = server %q, version %q, sdk %q; want %q, %q, %q", d.Server, d.Version, d.SDK, Name, "test", wantSDK)
 	}
 	if len(d.Tools) == 0 {
 		t.Fatal("no tools registered")

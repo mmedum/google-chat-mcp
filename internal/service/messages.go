@@ -820,16 +820,23 @@ func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*De
 	}
 	if asks(ctx) {
 		// The question shows the message, so it is read first. One already
-		// gone asks nothing: the delete changes nothing.
+		// gone asks nothing: the delete changes nothing. A deleted message
+		// that is not a reply still asks under force: a thread root
+		// deleted in Chat keeps its replies, and whether force deletes
+		// them then is not established, so the person is asked.
 		msg, err := s.client.GetMessage(ctx, name)
 		switch {
+		case err == nil && messageDeleted(msg) && in.Force && !msg.ThreadReply:
+			if err := ask(ctx, askDeleteReplies(name)); err != nil {
+				return nil, err
+			}
 		case err == nil && messageDeleted(msg), gchat.IsNotFound(err):
 		case gchat.IsForbidden(err):
 			// A message gone from a space that keeps no history, or one
 			// this account may not read. That it may not delete one it
 			// cannot read is a belief, not something Google says, so the
 			// person is still asked, without the text.
-			if err := ask(ctx, askDeleteUnreadable(spaceOfMessage(name), in.Force)); err != nil {
+			if err := ask(ctx, askDeleteUnreadable(name, in.Force)); err != nil {
 				return nil, err
 			}
 		case err != nil:

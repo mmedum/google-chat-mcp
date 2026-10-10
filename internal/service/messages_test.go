@@ -817,17 +817,25 @@ func (*declining) Asks() bool { return true }
 // A message that cannot be read is still asked about: that an account
 // cannot delete what it cannot read is a belief, and the question is
 // the only thing between the call and a delete nobody can undo. One
-// already gone asks nothing.
+// already gone asks nothing, unless force would still take the replies
+// a deleted thread root keeps.
 func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
+	deleted := ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)
 	for _, tc := range []struct {
 		name  string
 		read  http.HandlerFunc
+		force bool
 		asked string
 	}{
-		{"unreadable", status(403, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`),
-			"This server could not read it to show it to you."},
-		{"readable", ok(`{"name":"spaces/A/messages/1","text":"hello"}`), "text: `hello`"},
-		{"gone", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), ""},
+		{"unreadable", status(403, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`), false,
+			"delete_message: delete the message `spaces/A/messages/1` for good?"},
+		{"readable", ok(`{"name":"spaces/A/messages/1","text":"hello"}`), false, "text: `hello`"},
+		{"gone", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), false, ""},
+		{"deleted", deleted, false, ""},
+		{"deleted, with its replies", deleted, true,
+			"the message `spaces/A/messages/1` is already deleted. Delete any reply still in its thread"},
+		{"a deleted reply, forced", ok(`{"name":"spaces/A/messages/1","threadReply":true,"deleteTime":"2026-10-01T00:00:00Z"}`),
+			true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			deletes := 0
@@ -841,7 +849,8 @@ func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
 				tc.read(w, r)
 			})
 			person := &declining{}
-			_, err := s.DeleteMessage(WithAsker(context.Background(), person), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			_, err := s.DeleteMessage(WithAsker(context.Background(), person),
+				DeleteMessageInput{Message: "spaces/A/messages/1", Force: tc.force})
 			if tc.asked == "" {
 				if err != nil || len(person.asked) != 0 || deletes != 1 {
 					t.Fatalf("err %v, asked %d, deletes %d; want no question and the delete sent", err, len(person.asked), deletes)
@@ -853,6 +862,48 @@ func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
 			}
 			if len(person.asked) != 1 || !strings.Contains(person.asked[0].Text, tc.asked) {
 				t.Fatalf("asked %+v, want one question saying %q", person.asked, tc.asked)
+			}
+		})
+	}
+}
+
+// accepting is the asker of a person who says yes to every question.
+type accepting struct{ asked int }
+
+func (a *accepting) Ask(context.Context, Question) error { a.asked++; return nil }
+func (*accepting) Asks() bool                            { return true }
+
+// Once the person accepts deleting a deleted root's replies, the delete
+// goes out with force, and the result says what Google answered: a
+// delete it carried out, or one that found nothing to take.
+func TestDeleteMessageForcedOnADeletedRootReportsGooglesAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		answer      http.HandlerFunc
+		wantDeleted bool
+	}{
+		{"Google deletes", ok(`{}`), true},
+		{"Google finds nothing", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var force string
+			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodDelete {
+					force = r.URL.Query().Get("force")
+					tc.answer(w, r)
+					return
+				}
+				ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)(w, r)
+			})
+			person := &accepting{}
+			got, err := s.DeleteMessage(WithAsker(context.Background(), person),
+				DeleteMessageInput{Message: "spaces/A/messages/1", Force: true})
+			if err != nil {
+				t.Fatalf("DeleteMessage: %v", err)
+			}
+			if person.asked != 1 || force != "true" || got.Deleted != tc.wantDeleted || !got.Forced {
+				t.Errorf("asked %d, force %q, deleted %v, forced %v; want 1, %q, %v, true",
+					person.asked, force, got.Deleted, got.Forced, "true", tc.wantDeleted)
 			}
 		})
 	}
