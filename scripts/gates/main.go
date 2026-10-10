@@ -266,9 +266,10 @@ func usage(w io.Writer) {
 }
 
 // dump is the shape of a --dump-schemas file, from either server. Only
-// the fields the gate compares are declared.
+// the fields the gate compares or reports are declared.
 type dump struct {
 	Version string `json:"version"`
+	SDK     string `json:"sdk"`
 	Tools   []struct {
 		Name string `json:"name"`
 		// Decoded rather than kept raw: the comparison is by value, so
@@ -365,6 +366,10 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 	old, built := index(baseline), index(current)
 
 	_, _ = fmt.Fprintf(stdout, "baseline %s: %d tools; built: %d tools\n", baseline.Version, len(old), len(built))
+	if baseline.SDK != current.SDK {
+		_, _ = fmt.Fprintf(stdout, "SDK %s, built with %s: a reshaped input may be the SDK's change, not a tool's\n",
+			baseline.SDK, current.SDK)
+	}
 
 	var missing, extra, reshaped []string
 	lost := map[string][]string{}

@@ -49,6 +49,28 @@ func TestSchemaDiffClean(t *testing.T) {
 	}
 }
 
+// A build on another SDK says so, since a reshaped input may then be the
+// SDK's; one on the same SDK says nothing about it.
+func TestSchemaDiffNamesAnSDKChange(t *testing.T) {
+	stamped := func(sdk string) string {
+		return strings.Replace(baseline, `{"version":"0.9.0",`, `{"version":"0.9.0","sdk":"`+sdk+`",`, 1)
+	}
+	for _, tc := range []struct {
+		name, built string
+		want        bool
+	}{
+		{"another SDK", "v1.8.0", true},
+		{"the same SDK", "v1.7.0", false},
+	} {
+		var out, errOut bytes.Buffer
+		code := schemaDiff(write(t, "old.json", stamped("v1.7.0")), write(t, "new.json", stamped(tc.built)), "", &out, &errOut)
+		said := strings.Contains(out.String(), "SDK v1.7.0, built with v1.8.0")
+		if code != 0 || said != tc.want {
+			t.Errorf("%s: exit %d, named the SDK change %v, want 0 and %v: %s", tc.name, code, said, tc.want, out.String())
+		}
+	}
+}
+
 func TestSchemaDiffFailures(t *testing.T) {
 	tests := []struct {
 		name    string

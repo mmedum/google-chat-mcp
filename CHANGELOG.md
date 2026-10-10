@@ -11,6 +11,12 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Fixed
+
+- `delete_message` with `force` asks before deleting a message that is already deleted and is not a reply. Its thread may still hold replies, and `force` could delete them unasked.
+- `delete_message`'s question for a message it cannot read names the message, not only its space.
+- The schema dump's `sdk` field names the MCP SDK the binary was built with. It said v1.7.0 after the move to v1.8.0.
+
 ## [5.1.0] - 2026-10-09
 
 ### Changed

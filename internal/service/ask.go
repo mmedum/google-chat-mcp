@@ -129,16 +129,28 @@ func askDeleteMessage(space, sender, text string, force bool) Question {
 }
 
 // askDeleteUnreadable asks before delete_message when the message could
-// not be read to show it.
-func askDeleteUnreadable(space string, force bool) Question {
+// not be read to show it. It names the message, since nothing else in
+// the question tells it from the rest of the space.
+func askDeleteUnreadable(message string, force bool) Question {
 	lines := []string{
-		fmt.Sprintf("delete_message: delete a message in %s for good?", quoted(space, quotedLen)),
+		fmt.Sprintf("delete_message: delete the message %s for good?", quoted(message, quotedLen)),
 		"This server could not read it to show it to you.",
 	}
 	if force {
 		lines = append(lines, "Every reply in its thread goes with it.")
 	}
 	return askText(append(lines, "Chat keeps no trash: it cannot be restored.")...)
+}
+
+// askDeleteReplies asks before a forced delete_message of a message that
+// is already deleted: what can still go is the replies in its thread,
+// if it has any.
+func askDeleteReplies(message string) Question {
+	return askText(
+		fmt.Sprintf("delete_message: the message %s is already deleted. Delete any reply still in its thread "+
+			"for good?", quoted(message, quotedLen)),
+		"It may have none. Chat keeps no trash: a deleted reply cannot be restored.",
+	)
 }
 
 // askDeleteSpace asks before delete_space.

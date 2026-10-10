@@ -5,7 +5,10 @@
 // It does not work, and the comment is kept because what it proves is
 // worth more than the code. Checked against Claude Code 2.1.263:
 //
-//  1. Every write tool here carries `anthropic/requiresUserInteraction`.
+//  1. Every write tool here carried `anthropic/requiresUserInteraction`
+//     then. Since v5.1.0 the tools the server asks about on every call
+//     drop it for a client that can ask; the rest keep it, and so does
+//     every write for a client that cannot.
 //     Headless, the call is refused whatever the allowlist says — the
 //     server-wide form, the exact tool name, `--permission-mode dontAsk`
 //     and `bypassPermissions` were all tried, and all refused.

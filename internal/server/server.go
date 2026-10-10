@@ -3,11 +3,13 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,9 +22,27 @@ import (
 // Name is the MCP server name.
 const Name = "google-chat-mcp"
 
-// SDKVersion is recorded in a schema dump so a diff caused by an SDK
-// upgrade can be told from a change to the tool surface.
-const SDKVersion = "v1.7.0"
+// sdkModule is the MCP Go SDK's module path.
+const sdkModule = "github.com/modelcontextprotocol/go-sdk"
+
+// sdkVersion is recorded in a schema dump so a diff caused by an SDK
+// upgrade can be told from a change to the tool surface. It is read
+// from the build, since a typed copy fell behind go.mod once, and a
+// replace directive wins, since that is the code built in.
+func sdkVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, d := range bi.Deps {
+			if d.Path != sdkModule {
+				continue
+			}
+			if r := d.Replace; r != nil {
+				return cmp.Or(r.Version, r.Path)
+			}
+			return d.Version
+		}
+	}
+	return "unknown"
+}
 
 // Description is the one-line summary of the server. The Claude Desktop
 // bundle and the MCP registry entry both carry it, and both are built
@@ -137,7 +157,7 @@ func DumpSchemas(ctx context.Context, s *mcp.Server, w io.Writer, version string
 	return enc.Encode(Dump{
 		Server:            Name,
 		Version:           version,
-		SDK:               SDKVersion,
+		SDK:               sdkVersion(),
 		Tools:             toolList.Tools,
 		ResourceTemplates: templates.ResourceTemplates,
 	})

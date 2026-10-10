@@ -65,13 +65,14 @@ func TestQuestionsAreInertMarkdown(t *testing.T) {
 	qs := map[string]Question{
 		"delete_message":      askDeleteMessage(x, x, x, true),
 		"delete_message 403":  askDeleteUnreadable(x, true),
+		"delete_message gone": askDeleteReplies(x),
 		"delete_space":        askDeleteSpace(x, x),
 		"delete_custom_emoji": askDeleteCustomEmoji(x, x),
 		"add_member":          askAddMember(x, x, x, true),
 		"send_message":        askSend(x, x, x, true, true),
 		"update_message":      askEdit(x, x, x, true),
 	}
-	wantSpans := map[string]int{"delete_message": 3, "delete_message 403": 1, "delete_space": 2, "delete_custom_emoji": 2, "add_member": 3, "send_message": 3, "update_message": 3}
+	wantSpans := map[string]int{"delete_message": 3, "delete_message 403": 1, "delete_message gone": 1, "delete_space": 2, "delete_custom_emoji": 2, "add_member": 3, "send_message": 3, "update_message": 3}
 	for name, q := range qs {
 		if !strings.HasPrefix(q.Text, strings.Fields(name)[0]+": ") {
 			t.Errorf("%s: %q", name, q.Text)

@@ -208,8 +208,12 @@ reading, and the rare ones need the attention.
 - **A second gate, not a replacement.** `GCM_ALLOW_DESTRUCTIVE`,
   `confirm_space_id` and every other check come first; a call they
   refuse asks nothing. A delete whose target reads as gone asks nothing
-  either; one that cannot be read at all is still asked about, without
-  its text. The question comes after the reads, just before
+  either, unless it is a forced `delete_message` of a message that is
+  not a reply: whether force still takes a deleted root's replies is
+  not established, so that asks about them (evidence log). A message
+  that cannot be read at all is
+  still asked about, by its resource name, without its text. The
+  question comes after the reads, just before
   the write, so it shows what the write would do: the message's sender
   and the start of its text, the space by name, the person added, the
   post's text.
@@ -376,6 +380,7 @@ contradicted a document, which won.
 | A forward names the space it came from, and a DM by the other person | `forwardedMetadata` carried the source space and its display name on a real forward, 2026-09-17; for a direct message that name is the other participant, as the reference says. Whether a forward also carries the links and files the reference promises is still unverified: the one forwarded here had neither |
 | A quote's snapshot is filled differently for a reply and a forward | A REPLY carries `sender` and `text` only; `formattedText`, `annotations` and `attachments` are documented as populated for FORWARD alone, and `forwardedMetadata` only for a forward. Reference, 2026-09-17. So an empty link list on a reply-quote is Google saying nothing, not the quoted message having no links, and the tool schemas say which is which. For a forward the snapshot is the only copy a caller can reach: the source space is usually one they are not in |
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
+| A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too; whether Chat's own client can leave it is not probed here either. So a forced delete of a deleted message that is not a `threadReply` asks about the replies, and the result reports Google's answer. Asking where nothing goes costs one question; not asking could delete replies nobody saw. 2026-10-10 |
 | A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
 | `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
