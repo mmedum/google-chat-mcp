@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-10-24
+
 ### Added
 
 - The Claude Desktop bundle asks for the profile, read-only, `enable_destructive`, the toolsets and the attachment folder, each off or empty unless you set it, names Google's privacy policy and needs Claude Desktop 0.10.0 or later.
@@ -749,7 +751,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...HEAD
+[6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
