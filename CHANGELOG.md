@@ -49,6 +49,10 @@ upgrading are marked **Breaking:** and say what to do.
 - `update_space` keeps a space's guidelines when it changes the description. It cleared them.
 - `GCM_TOOLSETS=all,admin` turns on every toolset, as the setup guide and `search_spaces` say. It refused to start.
 
+### Security
+
+- Built with Go 1.27.3, which fixes GO-2026-6809 in `crypto/x509`, which `govulncheck` found reachable: intermediate certificates known to be compromised are no longer trusted.
+
 ## [5.1.1] - 2026-10-10
 
 ### Fixed
