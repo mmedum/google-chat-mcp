@@ -9,8 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 type probeIn struct {
@@ -94,7 +94,7 @@ func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 // what the schema diff holds.
 func TestRefusingDeletesLeavesEveryToolRegistered(t *testing.T) {
 	cfg := allToolsets()
-	cfg.RefuseDeletes = true
+	cfg.RefuseDestructive = true
 	got := registered(t, cfg,
 		spec{Name: "a_read", Description: "d", Kind: Read},
 		spec{Name: "a_write", Description: "d", Kind: Write},
@@ -115,60 +115,6 @@ func TestWritesAreRegisteredByDefault(t *testing.T) {
 	)
 	if len(got) != 2 {
 		t.Errorf("%d tools, want both", len(got))
-	}
-}
-
-// A tool whose effect other people see, and cannot be undone, asks the
-// client to put a person in the loop. Annotations are advice; this is
-// the part with teeth, and attaching it by hand per tool is how one
-// gets forgotten.
-//
-// The cut is "irreversible and visible", not "destroys something": a
-// posted message cannot be recalled from anyone's notifications, while
-// a reaction is undone by removing it.
-func TestAnIrreversibleToolAsksForAPerson(t *testing.T) {
-	got := registered(t, allToolsets(),
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		spec{Name: "a_write", Description: "d", Kind: Write},
-		spec{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
-		spec{Name: "a_read", Description: "d", Kind: Read},
-	)
-	for _, name := range []string{"a_delete", "a_write"} {
-		if v, ok := got[name].Meta["anthropic/requiresUserInteraction"]; !ok || v != true {
-			t.Errorf("%s meta = %v, want a person asked for", name, got[name].Meta)
-		}
-	}
-	for _, name := range []string{"an_idempotent_write", "a_read"} {
-		if _, ok := got[name].Meta["anthropic/requiresUserInteraction"]; ok {
-			t.Errorf("%s demands an interaction it does not need", name)
-		}
-	}
-}
-
-// A deployer running unattended can turn the hint off, and then it is
-// off everywhere rather than on the tools somebody remembered.
-//
-// It is worth the setting because the mark is absolute in the client
-// that reads it: an allow rule does not suppress it, and headless there
-// is nobody to ask, so every write is refused. The spec puts the
-// confirmation on the application — "the protocol itself does not
-// mandate any specific user interaction model" — so a server that
-// demands one leaves a deployer no way out. Default is on; this is the
-// way out.
-func TestADeployerCanTurnTheHintOff(t *testing.T) {
-	cfg := allToolsets()
-	cfg.SuppressInteractionHint = true
-	got := registered(t, cfg,
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		spec{Name: "a_write", Description: "d", Kind: Write},
-	)
-	if len(got) != 2 {
-		t.Fatalf("%d tools, want both still registered", len(got))
-	}
-	for name, tool := range got {
-		if _, ok := tool.Meta["anthropic/requiresUserInteraction"]; ok {
-			t.Errorf("%s still asks for a person after the hint was turned off", name)
-		}
 	}
 }
 
@@ -284,7 +230,7 @@ func (noToken) Token(context.Context) (string, error) { return "", errors.New("n
 // that runs the handler first has already deleted the thing.
 func TestARefusedDeleteNeverReachesItsHandler(t *testing.T) {
 	cfg := allToolsets()
-	cfg.RefuseDeletes = true
+	cfg.RefuseDestructive = true
 
 	ran := false
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
@@ -335,7 +281,7 @@ func TestARefusedDeleteNeverReachesItsHandler(t *testing.T) {
 // With deletes allowed, the same call goes through.
 func TestAnAllowedDeleteReachesItsHandler(t *testing.T) {
 	cfg := allToolsets()
-	cfg.RefuseDeletes = false
+	cfg.RefuseDestructive = false
 
 	ran := false
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)

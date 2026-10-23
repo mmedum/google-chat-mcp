@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Message limits. These are this server's, not Google's: the tool
@@ -585,6 +586,9 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	if err != nil {
 		return nil, err
 	}
+	if mentionsEveryone(text) {
+		return nil, everyoneRefused("post")
+	}
 	// Refused here rather than by Google, whose answer for a malformed
 	// id is a 400 naming a query parameter the caller never wrote.
 	if in.ClientMessageID != "" && !gchat.ValidMessageID(in.ClientMessageID) {
@@ -619,9 +623,6 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		return &SendMessageResult{Space: space, DryRun: true, Rendered: rendered}, nil
 	}
 
-	if err := s.askSend(ctx, space, text, strings.TrimSpace(in.UploadToken) != ""); err != nil {
-		return nil, err
-	}
 	// Minted here rather than in the client, so a failure can name it:
 	// sending again with the same id is what makes a repeat safe.
 	id := in.ClientMessageID
@@ -639,19 +640,13 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 	return out, nil
 }
 
-// askSend asks before a post that mentions everyone in the space, or
-// before every post when the configuration says so. The space is read
-// for its name only when a question could go out.
-func (s *Service) askSend(ctx context.Context, space, text string, attached bool) error {
-	everyone := mentionsEveryone(text)
-	if !everyone && !s.cfg.AskBeforeSend || !asks(ctx) {
-		return nil
-	}
-	sp, err := s.client.GetSpace(ctx, space)
-	if err != nil {
-		return Classify(err)
-	}
-	return ask(ctx, askSend(space, sp.DisplayName, text, everyone, attached))
+// everyoneRefused is the refusal of a post or an edit that would notify
+// every member of a space. A broadcast is refused rather than left to
+// the client, which approves a tool and never one of its arguments
+// (docs/architecture.md, "What a write may reach").
+func everyoneRefused(what string) error {
+	return Failf(ClassBlocked, "the text mentions everyone in the space, which notifies every member, and this server "+
+		"does not %s that; nothing was sent. Mention the people you mean with <users/their@address>", what)
 }
 
 // quote builds the reference to a quoted message, or nil when there is
@@ -687,29 +682,21 @@ func (s *Service) quote(ctx context.Context, space, name string) (*gchat.QuotedM
 	return &gchat.QuotedMessageMeta{Name: cmp.Or(got.Name, name), LastUpdate: stamp, QuoteType: "REPLY"}, nil
 }
 
-// askEdit asks before an edit that newly mentions everyone in the
-// space, or before every edit when the configuration asks before every
-// post. An edit notifies only whom it newly mentions, so a message that
-// already mentioned everyone is read and compared, only when a question
-// could go out.
-func (s *Service) askEdit(ctx context.Context, name, text string) error {
-	newly := mentionsEveryone(text)
-	if !newly && !s.cfg.AskBeforeSend || !asks(ctx) {
+// refuseNewEveryone refuses an edit that newly mentions everyone in the
+// space. An edit notifies only whom it newly mentions, so a message that
+// already mentioned everyone is read and compared, and may keep it.
+func (s *Service) refuseNewEveryone(ctx context.Context, name, text string) error {
+	if !mentionsEveryone(text) {
 		return nil
 	}
-	if newly {
-		old, err := s.client.GetMessage(ctx, name)
-		if err != nil && !gchat.IsNotFound(err) {
-			return Classify(err)
-		}
-		if err == nil && mentionsEveryone(old.Text) {
-			newly = false
-		}
+	old, err := s.client.GetMessage(ctx, name)
+	if err != nil {
+		return Classify(err)
 	}
-	if !newly && !s.cfg.AskBeforeSend {
+	if mentionsEveryone(old.Text) {
 		return nil
 	}
-	return ask(ctx, askEdit(name, spaceOfMessage(name), text, newly))
+	return everyoneRefused("edit a message to")
 }
 
 // UpdateMessageInput is a text edit of a message the caller sent.
@@ -742,6 +729,11 @@ func (s *Service) UpdateMessage(ctx context.Context, in UpdateMessageInput) (*Up
 		return nil, err
 	}
 
+	// A read, before the dry run returns, so a preview is refused as the
+	// edit would be.
+	if err := s.refuseNewEveryone(ctx, name, text); err != nil {
+		return nil, err
+	}
 	body := gchat.BuildUpdateMessage(text)
 	if in.DryRun {
 		rendered, err := renderBody(body)
@@ -750,10 +742,6 @@ func (s *Service) UpdateMessage(ctx context.Context, in UpdateMessageInput) (*Up
 		}
 		return &UpdateMessageResult{Name: name, Text: text, DryRun: true, Rendered: rendered}, nil
 	}
-	if err := s.askEdit(ctx, name, text); err != nil {
-		return nil, err
-	}
-
 	msg, err := s.client.UpdateMessage(ctx, name, body)
 	if err != nil {
 		return nil, Classify(err)
@@ -818,39 +806,6 @@ func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*De
 	if in.DryRun {
 		return &DeleteMessageResult{Name: name, Forced: in.Force, DryRun: true}, nil
 	}
-	if asks(ctx) {
-		// The question shows the message, so it is read first. One already
-		// gone asks nothing: the delete changes nothing. A deleted message
-		// that is not a reply still asks under force: a thread root
-		// deleted in Chat keeps its replies, and whether force deletes
-		// them then is not established, so the person is asked.
-		msg, err := s.client.GetMessage(ctx, name)
-		switch {
-		case err == nil && messageDeleted(msg) && in.Force && !msg.ThreadReply:
-			if err := ask(ctx, askDeleteReplies(name)); err != nil {
-				return nil, err
-			}
-		case err == nil && messageDeleted(msg), gchat.IsNotFound(err):
-		case gchat.IsForbidden(err):
-			// A message gone from a space that keeps no history, or one
-			// this account may not read. That it may not delete one it
-			// cannot read is a belief, not something Google says, so the
-			// person is still asked, without the text.
-			if err := ask(ctx, askDeleteUnreadable(name, in.Force)); err != nil {
-				return nil, err
-			}
-		case err != nil:
-			return nil, Classify(err)
-		default:
-			sender := ""
-			if msg.Sender != nil {
-				sender = cmp.Or(msg.Sender.DisplayName, msg.Sender.Name)
-			}
-			if err := ask(ctx, askDeleteMessage(spaceOfMessage(name), sender, msg.Text, in.Force)); err != nil {
-				return nil, err
-			}
-		}
-	}
 	deleted, err := deleteIdempotent(ctx, name,
 		func(ctx context.Context, name string) error {
 			return s.client.DeleteMessage(ctx, name, in.Force)
@@ -880,3 +835,16 @@ func sendFailure(err error, id string) error {
 		"a second copy.", e.Message, id)
 	return e
 }
+
+// mentionsEveryone reports whether a message's text mentions everyone
+// in its space, which notifies every member. Chat's syntax writes that
+// <users/all>, and Markdown writes <chat-user data-user="users/all">.
+// Both forms are matched in either syntax and regardless of case, since
+// a refused post costs less than a missed broadcast.
+func mentionsEveryone(text string) bool {
+	return strings.Contains(strings.ToLower(text), "<users/all>") || markdownMentionsAll.MatchString(text)
+}
+
+// markdownMentionsAll matches a Markdown mention of everyone, with either
+// quote or none around the value.
+var markdownMentionsAll = regexp.MustCompile(`(?i)<chat-user\b[^>]*\bdata-user\s*=\s*["']?users/all\b`)

@@ -6,9 +6,8 @@
 // worth more than the code. Checked against Claude Code 2.1.263:
 //
 //  1. Every write tool here carried `anthropic/requiresUserInteraction`
-//     then. Since v5.1.0 the tools the server asks about on every call
-//     drop it for a client that can ask; the rest keep it, and so does
-//     every write for a client that cannot.
+//     then. Since v6.0.0 only `delete_space` and `set_space_audience`
+//     do.
 //     Headless, the call is refused whatever the allowlist says — the
 //     server-wide form, the exact tool name, `--permission-mode dontAsk`
 //     and `bypassPermissions` were all tried, and all refused.
@@ -31,8 +30,7 @@
 // So the hint is absolute: a tool that declares it wants a person cannot
 // be called by an unattended client through any route. That is the
 // finding, and it is a fact about the product, not about the harness —
-// unattended automation cannot write through this server while the hint
-// is set.
+// unattended automation cannot call a tool that carries the hint.
 //
 // Two lessons kept here rather than in a commit message: a permission
 // hook must accept a payload it does not model, or it fails in a place

@@ -11,8 +11,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
 )
 
 // A Desktop OAuth client, in the shape Google hands out. Every value is

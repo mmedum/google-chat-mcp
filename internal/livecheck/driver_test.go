@@ -30,7 +30,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -77,54 +76,6 @@ type driver struct {
 	attached string
 	// uploadToken is spent by the post that carries it.
 	uploadToken string
-
-	// person answers the questions the server puts before a write that
-	// cannot be taken back.
-	person *livePerson
-}
-
-// livePerson answers the server's questions for the maintainer running
-// this suite, against a space the run made: accept, unless a step
-// declines. Each question is logged, redacted like everything else.
-type livePerson struct {
-	mu       sync.Mutex
-	declines bool
-	asked    []string
-	log      func(string)
-	// names are the account's own display names, which a question
-	// quotes as a message's sender and a report never prints.
-	names []string
-}
-
-func (p *livePerson) handle(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.asked = append(p.asked, req.Params.Message)
-	action := "accept"
-	if p.declines {
-		action = "decline"
-	}
-	if p.log != nil {
-		q := req.Params.Message
-		for _, n := range p.names {
-			q = strings.ReplaceAll(q, n, "<account>")
-		}
-		p.log("question put to the person, answered " + action + ":\n" + strings.TrimRight(q, "\n"))
-	}
-	return &mcp.ElicitResult{Action: action}, nil
-}
-
-// expect readies the person for one call and returns the questions it
-// was asked during it.
-func (p *livePerson) expect(declines bool) func() []string {
-	p.mu.Lock()
-	p.declines, p.asked = declines, nil
-	p.mu.Unlock()
-	return func() []string {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		return append([]string(nil), p.asked...)
-	}
 }
 
 func binPath(t *testing.T) string {
@@ -156,17 +107,13 @@ func connect(t *testing.T) *driver {
 	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
 		"GCM_ALLOW_DESTRUCTIVE=true")
 	ctx := context.Background()
-	person := &livePerson{}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "livecheck", Version: "0"},
-		&mcp.ClientOptions{ElicitationHandler: person.handle}).
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "livecheck", Version: "0"}, nil).
 		Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(func() { _ = cs.Close() })
-	d := &driver{t: t, cs: cs, ctx: ctx, dir: dir, made: map[string]bool{}, person: person}
-	person.log = func(s string) { t.Log(d.redact(s)) }
-	return d
+	return &driver{t: t, cs: cs, ctx: ctx, dir: dir, made: map[string]bool{}}
 }
 
 // result is one tool call's answer, in both halves.
@@ -225,8 +172,11 @@ func (d *driver) seed() {
 	var out struct {
 		SpaceID string `json:"space_id"`
 	}
+	// audience private is the only audience create_space takes, and it
+	// sends what leaving it out does.
 	d.into(d.must("create_space", map[string]any{
 		"display_name": fmt.Sprintf("%s %d (safe to delete)", spacePrefix, time.Now().Unix()),
+		"audience":     "private",
 	}), &out)
 	if out.SpaceID == "" {
 		d.t.Fatal("create_space returned no space_id")

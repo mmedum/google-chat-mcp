@@ -1,13 +1,12 @@
 package service
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's
@@ -457,16 +456,6 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 		return out, nil
 	}
 
-	if asks(ctx) {
-		sp, err := s.client.GetSpace(ctx, space)
-		if err != nil {
-			return nil, Classify(err)
-		}
-		who := cmp.Or(out.Email, out.Group)
-		if err := ask(ctx, askAddMember(space, sp.DisplayName, who, out.Group != "")); err != nil {
-			return nil, err
-		}
-	}
 	membership, err := s.client.AddMember(ctx, space, body)
 	if err != nil {
 		subject := out.Email

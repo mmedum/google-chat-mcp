@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // Userinfo returns the OpenID Connect profile of the token's owner.
@@ -191,9 +191,6 @@ type SetupSpace struct {
 	// allowed is decided in internal/service, and dropping it here
 	// would hide the mistake rather than report it.
 	DisplayName string `json:"displayName,omitempty"`
-	// Access is set only when the space opens to a target audience; a
-	// space made without it is private.
-	Access *AudienceRequest `json:"accessSettings,omitempty"`
 }
 
 // AudienceRequest is the accessSettings half of a create or patch body:

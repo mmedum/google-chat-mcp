@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Class is the leading tag on a tool error. The model reads these, so
@@ -48,15 +48,10 @@ const (
 	// not hold. No argument change helps, so the message says what
 	// would.
 	ClassUnsupported Class = "unsupported"
-	// ClassBlocked means a write was stopped before it was made: the
-	// person did not confirm it, or it could not be put to them.
-	// Nothing was changed, and the call is not to be made again unless
-	// the person asks.
+	// ClassBlocked means this server refuses what the write would reach:
+	// everyone in a space, or an audience outside it. Nothing was
+	// changed, and the same call is refused again.
 	ClassBlocked Class = "blocked"
-	// ClassAmbiguousOutcome means the person confirmed a write and the
-	// call ended before its result: it may have happened. The call is
-	// not to be made again; reading shows whether it took effect.
-	ClassAmbiguousOutcome Class = "ambiguous_outcome"
 	// ClassUnexpected is a failure this server did not anticipate.
 	ClassUnexpected Class = "unexpected"
 )

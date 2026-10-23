@@ -9,20 +9,19 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a
 // client shows a person, whether the tool is registered at all under
-// GCM_READ_ONLY and GCM_ALLOW_DESTRUCTIVE, and whether the client is
-// asked to put a person in the loop first.
+// GCM_READ_ONLY, and whether GCM_ALLOW_DESTRUCTIVE refuses its calls.
 //
-// It is one field per tool rather than four, because four rules
-// enforced by author discipline is four ways to be quietly wrong: a
-// destructive tool with no interaction hint, a write tool still
-// registered in read-only mode, a timestamped output that lost its
-// format annotation. Fifty-three tools is too many for that.
+// It is one field per tool rather than three, because three rules
+// enforced by author discipline is three ways to be quietly wrong: a
+// destructive tool annotated as safe, a write tool still registered in
+// read-only mode, a timestamped output that lost its format annotation.
+// Fifty-three tools is too many for that.
 type Kind int
 
 // Tool kinds.
@@ -43,9 +42,10 @@ const (
 	Write
 	// WriteIdempotent additionally lands the same way twice.
 	WriteIdempotent
-	// Destructive removes something. Idempotent by nature here: a
-	// second delete of the same thing is a no-op, not a second
-	// deletion.
+	// Destructive cannot be taken back: it removes something, or opens
+	// a space to an audience. Idempotent by nature here: a second delete
+	// of the same thing is a no-op, not a second deletion, and opening a
+	// space twice sets the same audience.
 	Destructive
 )
 
@@ -59,15 +59,12 @@ type spec struct {
 	// Toolset is the group this tool belongs to. The zero value is
 	// ToolsetCore, which is always registered.
 	Toolset config.Toolset
-	// Asks, when set, says when the tool asks the person before it
-	// writes, as the end of a sentence: "before it deletes". The service
-	// asks at its write; a tool without it that reaches one is refused.
-	Asks string
-	// AsksEveryCall says Asks has no condition: every write is put to
-	// the person. Such a tool drops the requiresUserInteraction mark for
-	// a client that can ask (interactionHint), since the question is the
-	// confirmation then.
-	AsksEveryCall bool
+	// Marked puts Claude Code's requiresUserInteraction mark on the
+	// tool, so it asks the person on every call, in every mode. Only for
+	// a tool whose prompt is itself the point: deleting a whole space,
+	// and opening one to an audience (docs/architecture.md, "What a write
+	// may reach"). Never on a delete done many times in a row.
+	Marked bool
 }
 
 // annotations returns what a client shows for this kind.
@@ -110,48 +107,19 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	if d.Config.ReadOnly && sp.Kind != Read && sp.Kind != ReadWritesLocally {
 		return
 	}
-	description := sp.Description
-	if sp.Asks != "" {
-		description += " When the client can ask, the server also asks the person " + sp.Asks + "; a call they do not " +
-			"confirm is [blocked], changes nothing, and is not to be made again unless they ask."
-	}
 	tool := &mcp.Tool{
 		Name:         sp.Name,
-		Description:  description,
+		Description:  sp.Description,
 		Annotations:  sp.Kind.annotations(),
 		OutputSchema: outputSchema[Out](),
 	}
-	if (sp.Kind == Destructive || sp.Kind == Write) && !d.Config.SuppressInteractionHint {
-		// This asks the client to put a person in the loop, and how much
-		// that is worth depends entirely on the client. Two measurements,
-		// both against Claude Code:
-		//
-		// Interactive, 2026-09-05: auto permission mode ran send_message
-		// with no prompt at all. So it is not a guarantee.
-		//
-		// Headless, 2026-09-06: the opposite, and absolute. Every route
-		// refuses — the allowlist by server or by exact tool name,
-		// --permission-mode dontAsk and bypassPermissions, and the
-		// documented --permission-prompt-tool, which answers by name:
-		// "MCP tool requires user interaction; not supported via
-		// --permission-prompt-tool". An unattended client cannot write
-		// through this server at all while this is set, which is why
-		// GCM_INTERACTION_HINT exists: default on, and a deployer who
-		// runs unattended turns it off knowingly. What holds regardless
-		// is server side: GCM_READ_ONLY leaves the tool unregistered,
-		// and a dry run cannot write.
-		//
-		// It follows "irreversible, and other people see it" rather
-		// than "destroys something". Those are not the same ranking: a
-		// deleted sidebar section is private and reversible, while a
-		// posted message cannot be recalled from anyone's notifications
-		// and an invited member can read the whole space. Reversing the
-		// two would ask for a person on the safe one and not on the
-		// costly one.
-		//
-		// WriteIdempotent is left out on purpose: a reaction is
-		// trivially undone, and a new direct message stays invisible
-		// until something is posted in it, which asks here anyway.
+	if sp.Marked {
+		// Claude Code prompts for a marked tool on every call, and no
+		// allow rule or mode skips it; headless, it refuses the tool
+		// outright (measured 2026-09-06). That is the point for the few
+		// tools that carry it, and why nothing else does: every other
+		// write is the client's to approve (docs/architecture.md, "What a
+		// write may reach").
 		tool.Meta = mcp.Meta{interactionKey: true}
 	}
 	// A destructive tool is REGISTERED whether or not deletes are
@@ -168,21 +136,18 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	// cannot be undone, had the loosest default of the three.
 	//
 	// So the guard moved rather than appearing: it used to unregister
-	// four tools and now refuses four calls, and it is on by default
-	// instead of off.
+	// four tools and now refuses their calls, and set_space_audience's,
+	// and it is on by default instead of off.
 	refuse := ""
-	if sp.Kind == Destructive && d.Config.RefuseDeletes {
+	if sp.Kind == Destructive && d.Config.RefuseDestructive {
 		refuse = sp.Name
 	}
-	var a *asking
-	if sp.Asks != "" {
-		a = d.asking
-		if sp.AsksEveryCall {
-			a.always[sp.Name] = true
-		}
-	}
-	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse, sp.Name, a, d.Config.RequirePrompt))
+	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse))
 }
+
+// interactionKey is Claude Code's mark for a tool it prompts for on
+// every call.
+const interactionKey = "anthropic/requiresUserInteraction"
 
 // wrap is what every handler gets for free.
 //
@@ -191,48 +156,20 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 // reply carries its readable half as well as its structured one. All
 // belong here for the same reason the annotations do — a rule kept by
 // hand at fifty call sites is a rule that will be missed at one.
-func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse, name string, a *asking,
-	requirePrompt bool,
-) mcp.ToolHandlerFor[In, Out] {
+func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse string) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		if refuse != "" {
 			var zero Out
 			return nil, zero, fail(service.Failf(service.ClassUnsupported,
-				"%s deletes something, and this server was started with deletes refused. "+
-					"Nothing was changed. Set %sALLOW_DESTRUCTIVE=true to allow them; a deleted Chat "+
-					"message cannot be recovered, so decide that deliberately.",
+				"%s is refused: this server was started with deletes and other irreversible writes refused. "+
+					"Nothing was changed. Set %sALLOW_DESTRUCTIVE=true to allow them; what they do cannot "+
+					"be taken back, so decide that deliberately.",
 				refuse, config.EnvPrefix))
 		}
 		if dryRun >= 0 && reflect.ValueOf(in).Field(dryRun).Bool() {
 			ctx = service.Preview(ctx)
 		}
-		// The person is asked before a write whose tool asks, when the
-		// client can ask (docs/architecture.md, "The person confirms what
-		// cannot be taken back").
-		var p *askee
-		switch {
-		case a != nil:
-			var err error
-			if p, err = a.personFor(req, name, in, requirePrompt); err != nil {
-				var zero Out
-				return nil, zero, fail(err)
-			}
-			ctx = service.WithAsker(ctx, p)
-		case req != nil && req.Params != nil && (req.Params.RequestState != "" || len(req.Params.InputResponses) > 0):
-			var zero Out
-			return nil, zero, fail(service.Failf(service.ClassBlocked,
-				"%s asks the person nothing, and the call came with an answer; nothing was done. Call it again without one", name))
-		}
 		res, out, err := h(ctx, req, in)
-		if p != nil && p.asked != nil {
-			// The service stopped before its write; the question goes out.
-			setStage(ctx, stageWaiting)
-			var zero Out
-			return p.inputRequest(), zero, nil
-		}
-		if err == nil && stageOf(ctx) == stageWriting {
-			setStage(ctx, stageWritten)
-		}
 		if err != nil {
 			return res, out, fail(err)
 		}

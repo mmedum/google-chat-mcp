@@ -9,8 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // Deps are what the tools need.
@@ -18,10 +18,6 @@ type Deps struct {
 	Service *service.Service
 	Config  config.Config
 	Logger  *slog.Logger
-
-	// asking signs and redeems the questions this process asks;
-	// Register sets it once for every tool.
-	asking *asking
 }
 
 // Register adds every tool the configuration allows.
@@ -29,8 +25,6 @@ func Register(s *mcp.Server, d Deps) {
 	if d.Logger == nil {
 		d.Logger = slog.New(slog.DiscardHandler)
 	}
-	d.asking = newAsking(d.Logger)
-	s.AddReceivingMiddleware(interactionHint(d.asking))
 	registerSpaces(s, d)
 	registerSpaceState(s, d)
 	registerPresence(s, d)

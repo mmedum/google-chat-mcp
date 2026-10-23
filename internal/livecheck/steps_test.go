@@ -37,19 +37,13 @@ type step struct {
 var steps = []step{
 	{"the account is named", "whoami", func(d *driver) {
 		var out struct {
-			Email       string
-			DisplayName string `json:"display_name"`
+			Email string
 		}
 		d.into(d.must("whoami", nil), &out)
 		if out.Email == "" {
 			d.t.Error("whoami named no account")
 		}
 		d.email = out.Email
-		if out.DisplayName != "" {
-			d.person.mu.Lock()
-			d.person.names = append(d.person.names, out.DisplayName)
-			d.person.mu.Unlock()
-		}
 	}},
 
 	// Reads the directory and writes nothing. The account's own address
@@ -627,28 +621,30 @@ var steps = []step{
 		})
 	}},
 
-	// Opening a space asks the person; get_space is what says Google
+	// Opening a space widens who can read it, so update_space refuses it
+	// and set_space_audience does it; get_space is what says Google
 	// applied it, since the tool echoes what it asked for. The space is
 	// made private again before either state is judged: a failed run
 	// keeps its scratch space, and it must not keep it open to the
 	// organization.
-	{"the space opens to the organization and closes again", "update_space", func(d *driver) {
-		asked := d.person.expect(false)
-		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); res.IsError {
-			d.t.Errorf("opening the space: %s", d.redact(res.Text))
+	{"the space opens to the organization and closes again", "set_space_audience", func(d *driver) {
+		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("update_space opened the space, or refused it otherwise: %s", d.redact(res.Text))
 		}
-		if len(asked()) != 1 {
-			d.t.Errorf("opening the space put %d questions to the person, not 1", len(asked()))
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"confirm_space_id": d.space, "dry_run": true}); res.IsError {
+			d.t.Errorf("a dry run of opening the space: %s", d.redact(res.Text))
+		}
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"confirm_space_id": d.space}); res.IsError {
+			d.t.Errorf("opening the space: %s", d.redact(res.Text))
 		}
 		opened := d.accessOf(d.space)
 
-		asked = d.person.expect(false)
 		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "private"}); res.IsError {
 			d.t.Errorf("the scratch space may still be open to the organization; make it private by hand: %s",
 				d.redact(res.Text))
-		}
-		if len(asked()) != 0 {
-			d.t.Errorf("making the space private asked the person %d times", len(asked()))
 		}
 		closed := d.accessOf(d.space)
 
@@ -657,38 +653,6 @@ var steps = []step{
 		}
 		if closed != "PRIVATE" {
 			d.t.Errorf("after closing, access state = %q, want PRIVATE", d.redact(closed))
-		}
-	}},
-
-	// create_space sends the audience through spaces.setup, whose own
-	// reference does not name accessSettings; only the target-audience
-	// guide says setup takes it. This is what settles it. The space is
-	// deleted before its access is judged, so a failure there leaves
-	// nothing open to the organization.
-	{"a space is created open", "create_space", func(d *driver) {
-		var out struct {
-			SpaceID string `json:"space_id"`
-		}
-		asked := d.person.expect(false)
-		d.into(d.must("create_space", map[string]any{
-			"display_name": fmt.Sprintf("%s open %d (safe to delete)", spacePrefix, time.Now().Unix()),
-			"audience":     "default",
-		}), &out)
-		if out.SpaceID == "" {
-			d.t.Fatal("create_space returned no space_id")
-		}
-		open := out.SpaceID
-		d.record(open)
-		if len(asked()) != 1 {
-			d.t.Errorf("creating an open space put %d questions to the person, not 1", len(asked()))
-		}
-		state := d.accessOf(open)
-		if res := d.call("delete_space", map[string]any{"space_id": open, "confirm_space_id": open}); res.IsError {
-			d.t.Errorf("the open space was left behind: %s", d.redact(res.Text))
-		}
-		if state != "DISCOVERABLE" {
-			d.t.Errorf("a space created with an audience reads back as %q, want DISCOVERABLE: "+
-				"spaces.setup may not take accessSettings", d.redact(state))
 		}
 	}},
 
@@ -820,20 +784,6 @@ var steps = []step{
 	// message with 200 and a tombstone rather than 404, so a repeat
 	// delete that reads the status instead of the answer reports success
 	// twice. Every gate passed while it was broken.
-	// The server asks the person before a delete it cannot take back. A
-	// decline writes nothing and says so without claiming the person
-	// declined, since a client can answer by itself.
-	{"a declined delete deletes nothing", "delete_message", func(d *driver) {
-		asked := d.person.expect(true)
-		res := d.call("delete_message", map[string]any{"message_name": d.posted})
-		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") || len(asked()) != 1 {
-			d.t.Fatalf("a declined delete: %s; %d questions", d.redact(res.Text), len(asked()))
-		}
-		if q := asked()[0]; !strings.Contains(q, "delete_message: delete a message by") || !strings.Contains(q, searchTerm) {
-			d.t.Errorf("the question does not show the message: %s", d.redact(q))
-		}
-	}},
-
 	// The reply goes first: Google refuses to delete a message that has
 	// threaded replies unless forced, and force is a step of its own.
 	{"the thread reply deletes", "delete_message", func(d *driver) {
@@ -843,11 +793,7 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		asked := d.person.expect(false)
 		d.into(d.must("delete_message", map[string]any{"message_name": d.threadReply}), &out)
-		if len(asked()) != 1 {
-			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
-		}
 		if !out.Deleted {
 			d.t.Error("the reply's delete reported that it deleted nothing")
 		}
@@ -857,11 +803,7 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		asked := d.person.expect(false)
 		d.into(d.must("delete_message", map[string]any{"message_name": d.posted}), &out)
-		if len(asked()) != 1 {
-			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
-		}
 		if !out.Deleted {
 			d.t.Error("the first delete reported that it deleted nothing")
 		}
@@ -878,11 +820,7 @@ var steps = []step{
 	// That is precisely what happened, and only a live call can tell the
 	// two apart.
 	{"a repeat delete reports that it deleted nothing", "delete_message", func(d *driver) {
-		asked := d.person.expect(false)
 		res := d.call("delete_message", map[string]any{"message_name": d.posted})
-		if len(asked()) != 0 {
-			d.t.Errorf("deleting a message already gone asked the person %d times", len(asked()))
-		}
 		if res.IsError {
 			d.t.Fatalf("a repeat delete failed rather than being idempotent: %s", d.redact(res.Text))
 		}
@@ -896,19 +834,14 @@ var steps = []step{
 		}
 	}},
 
-	// A post that notifies everyone in the space asks first; an ordinary
-	// one does not. The scratch space holds only this account.
-	{"a post that mentions everyone asks first", "send_message", func(d *driver) {
-		asked := d.person.expect(false)
-		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
-		if qs := asked(); len(qs) != 1 || !strings.Contains(qs[0], "mentioning everyone in it") {
-			d.t.Errorf("a post to everyone put %d questions: %s", len(qs), d.redact(strings.Join(qs, " | ")))
+	// A post that notifies everyone in the space is refused; an ordinary
+	// one is not. The scratch space holds only this account.
+	{"a post that mentions everyone is refused", "send_message", func(d *driver) {
+		res := d.call("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("a post to everyone: %s", d.redact(res.Text))
 		}
-		asked = d.person.expect(false)
 		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck posts a plain line and will delete it"})
-		if len(asked()) != 0 {
-			d.t.Errorf("an ordinary post asked the person %d times", len(asked()))
-		}
 	}},
 
 	// Deleting the space needs the id twice. One argument would make a

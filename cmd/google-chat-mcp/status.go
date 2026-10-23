@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/redact"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v5/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v5/internal/version"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v6/internal/version"
 )
 
 // statusSchemaVersion is the version of the JSON object `status --json`
@@ -90,7 +90,7 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 		Scopes:        statusScopes{Granted: []string{}, Missing: []string{}},
 		Settings: statusSettings{
 			ReadOnly:    cfg.ReadOnly,
-			Destructive: !cfg.RefuseDeletes,
+			Destructive: !cfg.RefuseDestructive,
 			Toolsets:    toolsetList(cfg.Toolsets),
 			LocalDir:    orNil(cfg.LocalDir),
 			ChatAPIBase: cfg.ChatAPIBase,

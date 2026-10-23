@@ -49,7 +49,7 @@ internal/server        SDK session, tool and resource registration
    ▼
 internal/tools         decode the input, call the service, shape both halves of the reply
    │                   register() applies the annotations, the read-only gating,
-   │                   the interaction hint and the dry-run context
+   │                   the delete refusal and the dry-run context
    ▼
 internal/service       the rules worth testing, and the only place that
    │                   turns a Google failure into a [class] tool error
@@ -120,29 +120,24 @@ outage, which is exactly what happened here, twice.
 `dry_run` is not a promise each handler keeps. The flag puts the call on
 a context `internal/gchat` refuses to write under, so a tool that
 declares `dry_run` and forgets its own preview branch fails loudly
-instead of posting. 25 tools carry the flag. The staleness gate holds
+instead of posting. 26 tools carry the flag. The staleness gate holds
 that number to the shipped surface, because it had already drifted: the
 docs said thirteen when the server registered twenty-five.
 
-### One `Kind` decides four things
+### One `Kind` decides three things
 
 `register` takes a tool's `Kind` — read, write, idempotent write,
 destructive — and derives from it the MCP annotations, whether
-`GCM_READ_ONLY` leaves the tool registered, whether the client is asked
-to put a person in the loop, and that the reply is rendered. Four rules
-enforced by author discipline is four ways to be quietly wrong.
+`GCM_READ_ONLY` leaves the tool registered, and whether
+`GCM_ALLOW_DESTRUCTIVE` refuses the call. Three rules enforced by author
+discipline is three ways to be quietly wrong.
 
-The interaction hint follows "irreversible, and other people see it"
-rather than "destroys something". Those rank differently: a deleted
-sidebar section is private and reversible, while a posted message cannot
-be recalled from anyone's notifications and an invited member can read
-the whole space.
-
-It is a request, not a control. Claude Code in its auto permission mode
-was observed running `send_message` with no prompt, and the spec says
-clients must treat tool annotations as untrusted. What actually holds is
-server-side: `GCM_READ_ONLY` leaves the tool unregistered, and a dry run
-cannot write.
+Annotations are a request, not a control. Claude Code in its auto
+permission mode was observed running `send_message` with no prompt, and
+the spec says clients must treat tool annotations as untrusted. What
+actually holds is server-side: `GCM_READ_ONLY` leaves the tool
+unregistered, a refused delete changes nothing, and a dry run cannot
+write.
 
 **Recorded deviation.** The shared standard leaves destructive tools
 unregistered unless a flag enables them. This server keeps them
@@ -151,8 +146,7 @@ is the contract this server has to keep and a tool that vanishes is a
 broken client rather than a safer one: the model cannot tell "not
 permitted here" from "this server cannot do that". `GCM_READ_ONLY` is
 the same opt-in running the other way. (The 28 tools that number once
-referred to were the Python server's, before the port. This server
-registers 53.)
+referred to were the Python server's, before the port.)
 
 The guard is on by default. It was off until the first outside person
 installed all three of these servers in one sitting and asked why Chat
@@ -186,63 +180,49 @@ Each message carries a client-chosen id, so a retry after a timeout
 cannot post twice: Google answers `ALREADY_EXISTS`, and the server
 fetches what landed and returns that.
 
-### The person confirms what cannot be taken back
+### What a write may reach
 
-The interaction hint asks a client to put a person in the loop, and
-whether it does is the client's decision. So when the client supports
-MCP form elicitation, the server asks the person itself before eight
-writes: `delete_message`, `delete_space`, `delete_custom_emoji`,
-`add_member`, a `send_message` whose text mentions everyone in the
-space, `<users/all>`, an `update_message` that edits such a mention
-in, since an edit notifies whoever it newly mentions, and an
-`update_space` or `create_space` that opens a space to a target
-audience, since whoever is in it can read the space and making it
-private again does not take that back. The mention is
-matched regardless of case. `GCM_ASK_BEFORE_SEND=true` makes every post
-and every edit ask.
-The set is the rare, irreversible or wide-reaching writes, chosen by the
-maintainer on 2026-09-29; an ordinary post asks nothing by default,
-because a question asked dozens of times a day is answered without
-reading, and the rare ones need the attention.
+The server asks the person nothing. Approving a call is the client's:
+Claude Code's permission rules, and the prompt claude.ai, Codex and VS
+Code show from the annotations. Those clients approve a tool, never an
+argument, so a risky variant carried as an argument would ride along
+unseen once its tool is always allowed. So each one is refused in the
+ordinary tool, and where it is wanted at all it is a tool of its own.
 
-- **A second gate, not a replacement.** `GCM_ALLOW_DESTRUCTIVE`,
-  `confirm_space_id` and every other check come first; a call they
-  refuse asks nothing. A delete whose target reads as gone asks nothing
-  either, unless it is a forced `delete_message` of a message that is
-  not a reply: whether force still takes a deleted root's replies is
-  not established, so that asks about them (evidence log). A message
-  that cannot be read at all is
-  still asked about, by its resource name, without its text. The
-  question comes after the reads, just before
-  the write, so it shows what the write would do: the message's sender
-  and the start of its text, the space by name, the person added, the
-  post's text.
-- **Accepting is the confirmation.** The form has no fields. Anything
-  but an accept — decline, cancel, an error, an answer after its
-  question expired — is `[blocked]`, refused before anything runs, and
-  nothing is changed. The refusal never says the person declined: a
-  client can answer without showing anyone anything. Two clients accept
-  an empty form without a person choosing to, Codex under approval
-  policy `never` with full access and VS Code when the question is
-  skipped; a required choice would stop both, and was found slower and
-  less clear than Accept in Claude Code, so the form stays empty.
-- **No question possible.** A client that declares no form elicitation
-  gets no question, as before. `GCM_REQUIRE_PROMPT=true` refuses those
-  writes there instead. A dry run never asks.
-- **What the question quotes** stands in a code span, on one line:
-  format and control characters removed, backticks, grave and acute
-  marks and quote marks folded to a plain single quote, links broken,
-  cut at 120 characters and a post at 300. A client that draws the
-  question as Markdown, as VS Code does, shows a code span literally,
-  and a blank line between lines keeps them apart.
-- **The answer is bound to its question.** A signed, single-use state
-  carries the tool, a hash of the arguments and of the question, a nonce
-  and, where it travels through the client, a 5-minute expiry. The retry
-  reads again and is refused if what it would do changed.
-- **A failure after the answer is never "nothing changed".** A call the
-  person confirmed that then ends without a result is
-  `[ambiguous_outcome]`: it may have posted or deleted, and is not to be
-  made again.
+- **Mentioning everyone is refused.** A `send_message` whose text
+  mentions everyone in the space, `<users/all>`, is `[blocked]` before
+  anything is sent, a dry run included: it notifies every member. An
+  `update_message` that edits such a mention in is refused too, since an
+  edit notifies whoever it newly mentions; an edit of a message that
+  already mentioned everyone may keep it. The mention is matched
+  regardless of case. Google's own Chat MCP server prohibits it as well.
+- **A space is created private and stays private.** `create_space` and
+  `update_space` refuse a target audience, `[blocked]`, and
+  `update_space` still makes a space private. Opening a space is
+  `set_space_audience`: destructive, refused unless
+  `GCM_ALLOW_DESTRUCTIVE=true`, and `confirm_space_id` must repeat the
+  space. Whoever is in the audience can find the space, read it and
+  join, and making it private again does not take back what they read.
+- **`add_member` stays an ordinary write.** Whether a space admits
+  people outside the organization is Google's `externalUserAllowed`,
+  set when the space is created and output only afterward (discovery
+  revision 20261016: "Immutable"). This server never sets it, so who
+  may be added is decided by the space and the organization's policy,
+  not by an argument here.
+- **Deletes** are refused unless `GCM_ALLOW_DESTRUCTIVE=true`, and
+  `delete_space` also needs `confirm_space_id`.
+- **The mark goes on two tools.** `delete_space` and
+  `set_space_audience` carry `anthropic/requiresUserInteraction`, so
+  Claude Code asks on every call, in every mode, and refuses them
+  headless. They are the two whose prompt is itself the point: a space
+  goes with every message in it, and an audience reads what it reads.
+  No other tool carries it. A mark on `delete_message` would ask once
+  per message of a bulk delete, and a question answered dozens of times
+  in a row is answered without reading.
+
+The rule is the family's, decided by the maintainer on 2026-10-22; the
+evidence log says why the question went. A lint rule holds it: forbidigo
+refuses the SDK's `Elicit` and the input requests a result can carry.
 
 ### Idempotency is checked, not assumed
 
@@ -420,13 +400,14 @@ contradicted a document, which won.
 | The schema generator inlines a nested type everywhere it appears | `github.com/google/jsonschema-go` models `$defs` and `$ref` but `For[T]()` emits neither: it errors on a cycle and never de-duplicates. Read at v0.4.3, 2026-09-17. So a type used twice on one tool is serialized twice, and `quote` carrying links and attachments cost 16.5 KB across the four message tools. Hand-writing the schemas would buy that back at the price of schemas that can drift from the Go types they describe |
 | A reply carries both halves | The spec asks a tool returning structured content to also return the serialized JSON in a text block. They are never the same bytes here: `content` is a compact rendering, `structuredContent` the machine one |
 | Claude Code forwards only `structuredContent` | Measured 2026-09-06 by asking the client through its own transcript, after google-docs-mcp found the same. So the rendering is invisible in that client — and claude.ai and ChatGPT show the text half, which is why both are still sent |
-| `anthropic/requiresUserInteraction` is a vendor key, and an absolute one | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". In Claude Code the mark refuses every headless route, including the documented `--permission-prompt-tool`. Interactive auto mode, by contrast, prompts for nothing. `GCM_INTERACTION_HINT` is the way out for a deployment with nobody at the keyboard |
+| `anthropic/requiresUserInteraction` is a vendor key, and an absolute one | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". In Claude Code the mark refuses every headless route, including the documented `--permission-prompt-tool`. Interactive auto mode, by contrast, prompts for nothing. Since 2026-10-22 only `delete_space` and `set_space_audience` carry it, so a deployment with nobody at the keyboard loses those two and nothing else |
 | Strict inputs: a struct's schema refuses unknown properties | Which is right for a tool and wrong for a permission hook — a hook that refuses a payload it does not model fails in a place that implicates a different tool entirely |
 | A server can ask the person to confirm a write through form elicitation, on every protocol | The `ElicitRequestFormParams` type in the specification's `schema.ts` for 2025-06-18, 2025-11-25 and 2026-07-28, the 2026-07-28 multi-round-trip pattern, and the MCP Go SDK v1.8.0's `mcp/server.go`, read 2026-09-28. A result may carry `inputRequests` with a signed `requestState`; before 2026-07-28 the SDK sends `elicitation/create` itself and calls the handler again. `requestedSchema` may have no properties. The client answers "from the user or other sources", so an accept is never proof a person read anything. Held by tests on all three protocols |
 | A client draws an elicitation question as plain text | Refuted. VS Code builds it as `new MarkdownString(elicitation.message)`, untrusted, so emphasis, link text and HTML-like text draw and single line breaks join (`mcpElicitationService.ts`, `main` at 251bcf5f, 2026-09-29). Quoted text is a code span, and lines stand apart |
 | A required choice confirms better than an empty form | Declined for now. Codex accepts a form with no properties by itself under approval policy `never` with full access, and VS Code resolves a skipped question as `accept` (`codex-rs/codex-mcp/src/elicitation.rs` at c248f6d4; `mcpElicitationService.ts`). But in Claude Code 2.1.284 a choice list took the maintainer 60 seconds against 8 for the empty form, and read as confusing |
 | A tool the server confirms itself should carry the mark too | Refuted 2026-10-09, after the owner was asked twice for one delete in google-docs-mcp: the client prompted for the mark, then the server asked. No source recommends two hard gates for one call; GitHub's `delete_repository` and Supabase confirm with `destructiveHint` plus a form elicitation, and Claude Code's documentation scopes the mark to "tools whose permission prompt is itself the point". `tools/list` drops the mark, for a client that can ask, from the four tools that ask before every write (`AsksEveryCall`), and from `send_message` and `update_message` when `GCM_ASK_BEFORE_SEND` makes them ask every time. A send that asks only before `@all`, and a write that never asks, keep it, since there it is the only per-call prompt. The cost: outside auto mode, the mark stopped these four calls before they reached the server, with a prompt or, headless, a refusal. Now a Claude Code `Elicitation` hook that accepts confirms them alone, since such a hook can "respond programmatically, skipping the dialog entirely" (code.claude.com/docs/en/hooks, read 2026-10-09) |
-| `tools/list` and `tools/call` see the same client capabilities | Not on 2026-07-28; found by review 2026-10-09 and kept as a known limit. From that protocol a client sends its capabilities with each request, and the Go SDK v1.8.0 reads the request's `_meta` before the session's. So a client can declare form elicitation to `tools/list` and none to `tools/call`, and get neither the mark nor a question. That gives a misbehaving client nothing it lacked: one that declares form elicitation can answer the question itself and accept without a person. `GCM_REQUIRE_PROMPT=true` refuses such a call |
+| The server should confirm a write with the person itself, through form elicitation | **Refuted 2026-10-22**, on documents and source. The specification gives per-call approval to the client and never makes elicitation a consent control. Most servers confirm nothing themselves, and those that do confirm a few irreversible operations, with an off switch. Clients answer the question with nobody there (an `Elicitation` hook, Codex with full access), decline it without drawing it, or cut it to three lines, and an operator cannot govern it with permission rules; a question on every call expired mid-run during a 68-message delete. Clients approve per tool, never per argument, so a risky variant is a tool of its own. So the server asks nobody now; the four rows above describe the question this replaces |
+| `tools/list` and `tools/call` see the same client capabilities | Not on 2026-07-28; found by review 2026-10-09 and kept as a known limit. From that protocol a client sends its capabilities with each request, and the Go SDK v1.8.0 reads the request's `_meta` before the session's. So a client can declare form elicitation to `tools/list` and none to `tools/call`, and get neither the mark nor a question. That gives a misbehaving client nothing it lacked: one that declares form elicitation can answer the question itself and accept without a person. Moot since 2026-10-22: the server asks nobody |
 | Stdout carries JSON-RPC frames only | Spec, transports/stdio. One stray `fmt.Println` corrupts the protocol, which is what the smoke test guards |
 
 ### Releasing

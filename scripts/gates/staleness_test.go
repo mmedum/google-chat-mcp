@@ -34,6 +34,21 @@ func TestReadmeToolNamesReadsTheTableAndNothingElse(t *testing.T) {
 	}
 }
 
+// A rule under another server's name is not this server's to check,
+// and a tool named in prose is not a rule.
+func TestPermissionRuleToolsReadsOnlyThisServersRules(t *testing.T) {
+	const readme = "Call `mcp__google-chat__whoami` first.\n" +
+		"```json\n" +
+		`"ask": ["mcp__google-chat__send_message", "mcp__google-chat__delete_mesage",` + "\n" +
+		`  "mcp__gitlab__merge_merge_request"]` + "\n" +
+		"```\n"
+	got := permissionRuleTools(readme)
+	want := []string{"send_message", "delete_mesage"}
+	if !slices.Equal(got, want) {
+		t.Errorf("permissionRuleTools\n got %v\nwant %v", got, want)
+	}
+}
+
 // One scope is a prefix of another, and the shorter one is usually the
 // write scope: a page listing only chat.spaces.readonly would read as
 // documenting chat.spaces too, and that is the scope whose absence from

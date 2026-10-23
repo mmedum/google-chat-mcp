@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 const membershipPage = `{"memberships":[

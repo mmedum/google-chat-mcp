@@ -114,26 +114,18 @@ type Config struct {
 	LogLevel  LogLevel
 	LogFormat LogFormat
 	ReadOnly  bool
-	// RefuseDeletes is negative where its variable is positive. It used
-	// to keep the zero value registering all four delete tools, back
-	// when the flag decided registration; it decides only whether the
-	// call goes through now, so nothing is lost from the surface either
-	// way and the safe answer is the one a zero value should give.
+	// RefuseDestructive refuses every Destructive tool: the deletes, and
+	// set_space_audience, which cannot be taken back either. It is
+	// negative where its variable is positive. It used to keep the zero
+	// value registering all four delete tools, back when the flag decided
+	// registration; it decides only whether the call goes through now,
+	// so nothing is lost from the surface either way and the safe answer
+	// is the one a zero value should give.
 	//
 	// It is on by default: a deleted Chat message has no trash behind
 	// it, unlike the Drive and Docs servers whose deletes are
 	// recoverable and whose equivalent flags are off by default anyway.
-	RefuseDeletes bool
-	// SuppressInteractionHint is negative for the same reason as
-	// RefuseDeletes: the zero value has to be the ordinary server, which
-	// asks a client to put a person in front of a write.
-	SuppressInteractionHint bool
-	// RequirePrompt refuses the writes that ask the person when the
-	// client cannot ask them.
-	RequirePrompt bool
-	// AskBeforeSend asks before every send_message and update_message,
-	// not only one whose text mentions everyone in the space.
-	AskBeforeSend     bool
+	RefuseDestructive bool
 	Toolsets          []Toolset
 	HTTPTimeout       time.Duration
 	HTTPMaxRetries    int
@@ -161,9 +153,6 @@ type Settings struct {
 	LogFormat         string
 	ReadOnly          string
 	AllowDestructive  string
-	InteractionHint   string
-	RequirePrompt     string
-	AskBeforeSend     string
 	Toolsets          string
 	HTTPTimeout       string
 	HTTPMaxRetries    string
@@ -174,6 +163,35 @@ type Settings struct {
 	CloudIdentityBase string
 	ClientSecretPath  string
 	LocalDir          string
+	// removed are the settings a release took out, as the environment
+	// gives them, read only to refuse one still set.
+	removed map[string]string
+}
+
+// removedSettings are the settings that made the server ask the person,
+// each with what to do instead. Both were off by default, and off is
+// still accepted. On, or a value that is not a boolean, is refused at
+// start: ignored, it would quietly allow what its owner set it to stop.
+//
+// GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
+// marks than the server now sets, and on was every install's default.
+var removedSettings = []struct{ key, instead string }{
+	{"REQUIRE_PROMPT", "leave " + EnvPrefix + "ALLOW_DESTRUCTIVE off for a client that runs with nobody watching"},
+	{"ASK_BEFORE_SEND", "list send_message and update_message under your client's ask rules, as the README shows"},
+}
+
+// removedSet refuses each removed setting that is set to anything but
+// off.
+func (s *Settings) removedSet() []error {
+	var errs []error
+	for _, r := range removedSettings {
+		if on, err := parseBool(r.key, s.removed[r.key]); err == nil && !on {
+			continue
+		}
+		errs = append(errs, fmt.Errorf("%w: %s%s was removed: the server no longer asks the person, and the client's "+
+			"own approval decides each call. Unset it, and %s", ErrInvalid, EnvPrefix, r.key, r.instead))
+	}
+	return errs
 }
 
 // Defaults for the API endpoints. Overridable so tests can point the
@@ -188,7 +206,10 @@ const (
 // Define registers one flag per setting on fs, defaulting to the
 // matching GCM_* variable read through env.
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
-	s := &Settings{}
+	s := &Settings{removed: map[string]string{}}
+	for _, r := range removedSettings {
+		s.removed[r.key] = env(EnvPrefix + r.key)
+	}
 	def := func(p *string, name, key, fallback, usage string) {
 		v := env(EnvPrefix + key)
 		if v == "" {
@@ -202,12 +223,6 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.ReadOnly, "read-only", "READ_ONLY", "false", "register only the read-only tools")
 	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "false",
 		"allow the tools that delete things to actually delete; they stay registered either way")
-	def(&s.InteractionHint, "interaction-hint", "INTERACTION_HINT", "true",
-		"ask the client to put a person in front of every write")
-	def(&s.RequirePrompt, "require-prompt", "REQUIRE_PROMPT", "false",
-		"refuse the writes that ask the person when the client cannot ask them")
-	def(&s.AskBeforeSend, "ask-before-send", "ASK_BEFORE_SEND", "false",
-		"ask the person before every send_message and update_message, not only one that mentions everyone")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
@@ -285,20 +300,9 @@ func (s *Settings) Build() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	c.RefuseDeletes = !allowDestructive
+	c.RefuseDestructive = !allowDestructive
 
-	hint, err := parseBool("interaction-hint", s.InteractionHint)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	c.SuppressInteractionHint = !hint
-
-	if c.RequirePrompt, err = parseBool("require-prompt", s.RequirePrompt); err != nil {
-		errs = append(errs, err)
-	}
-	if c.AskBeforeSend, err = parseBool("ask-before-send", s.AskBeforeSend); err != nil {
-		errs = append(errs, err)
-	}
+	errs = append(errs, s.removedSet()...)
 
 	if c.Toolsets, err = parseToolsets(s.Toolsets); err != nil {
 		errs = append(errs, err)

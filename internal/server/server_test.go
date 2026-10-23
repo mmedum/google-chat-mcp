@@ -13,9 +13,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 func newServer(t *testing.T, cfg config.Config) *mcp.Server {
@@ -157,7 +157,7 @@ func TestInstructionsNameTheStartingPoints(t *testing.T) {
 	}{
 		{name: "default", cfg: config.Config{Toolsets: config.AllToolsets}},
 		{name: "read only", cfg: config.Config{Toolsets: config.AllToolsets, ReadOnly: true}},
-		{name: "deletes refused", cfg: config.Config{Toolsets: config.AllToolsets, RefuseDeletes: true}},
+		{name: "deletes refused", cfg: config.Config{Toolsets: config.AllToolsets, RefuseDestructive: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkInstructions(t, tc.cfg)

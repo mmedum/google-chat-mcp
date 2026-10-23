@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 type staticToken string
@@ -64,23 +64,11 @@ func sessionWithConfig(t *testing.T, handler http.HandlerFunc, cfg config.Config
 // logging test needs them; everything else discards.
 func sessionWithLogger(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger) *mcp.ClientSession {
 	t.Helper()
-	return connectClient(t, handler, cfg, log, nil, "")
+	return connectTo(t, testServer(t, handler, cfg, log))
 }
 
-// connectClient is the wiring under every session: a stub Google, the
-// service wired to it, and a client connected with co on protocol (the
-// SDK's newest when empty), the server carrying middleware after
-// AskFailures.
-func connectClient(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger, co *mcp.ClientOptions,
-	protocol string, middleware ...mcp.Middleware,
-) *mcp.ClientSession {
-	t.Helper()
-	return connectTo(t, testServer(t, handler, cfg, log, middleware...), co, protocol)
-}
-
-// testServer is every tool registered against a stub Google, carrying
-// middleware after AskFailures.
-func testServer(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger, middleware ...mcp.Middleware) *mcp.Server {
+// testServer is every tool registered against a stub Google.
+func testServer(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *slog.Logger) *mcp.Server {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -102,7 +90,6 @@ func testServer(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *
 		WriteLimiter:  rate.NewLimiter(rate.Inf, 1),
 	})
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	s.AddReceivingMiddleware(append([]mcp.Middleware{AskFailures()}, middleware...)...)
 	Register(s, Deps{
 		Service: service.New(client, directory.NewResolver(client, directory.NewCache("", time.Hour, log), log), cfg, log),
 		Config:  cfg,
@@ -111,9 +98,8 @@ func testServer(t *testing.T, handler http.HandlerFunc, cfg config.Config, log *
 	return s
 }
 
-// connectTo connects a new client to s with co, on protocol (the SDK's
-// newest when empty).
-func connectTo(t *testing.T, s *mcp.Server, co *mcp.ClientOptions, protocol string) *mcp.ClientSession {
+// connectTo connects a new client to s.
+func connectTo(t *testing.T, s *mcp.Server) *mcp.ClientSession {
 	t.Helper()
 	ct, st := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(context.Background(), st, nil)
@@ -122,8 +108,18 @@ func connectTo(t *testing.T, s *mcp.Server, co *mcp.ClientOptions, protocol stri
 	}
 	t.Cleanup(func() { _ = ss.Close() })
 
+	// The client can ask the person, and the server asks nobody
+	// (docs/architecture.md, "What a write may reach"): every tool is
+	// called through such a client, so a question from any of them fails
+	// the test that made the call.
+	co := &mcp.ClientOptions{
+		ElicitationHandler: func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			t.Errorf("the server asked the person: %q", req.Params.Message)
+			return &mcp.ElicitResult{Action: "decline"}, nil
+		},
+	}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, co).
-		Connect(context.Background(), ct, &mcp.ClientSessionOptions{ProtocolVersion: protocol})
+		Connect(context.Background(), ct, nil)
 	if err != nil {
 		t.Fatalf("connect client: %v", err)
 	}
@@ -183,7 +179,13 @@ func errorText(t *testing.T, res *mcp.CallToolResult) string {
 	if !res.IsError {
 		t.Fatal("expected a tool error")
 	}
-	return textOf(res)
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
 }
 
 func TestWhoamiThroughASession(t *testing.T) {
@@ -325,6 +327,7 @@ var toolArgs = map[string]map[string]any{
 	"remove_reaction":                   {"reaction_name": "spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreact1"},
 	"create_group_chat":                 {"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}},
 	"create_space":                      {"display_name": "Team standup", "member_emails": []string{"janedoe@example.com"}},
+	"set_space_audience":                {"space_id": "spaces/AAAAspace1", "audience": "default", "confirm_space_id": "spaces/AAAAspace1"},
 	"update_space":                      {"space_id": "spaces/AAAAspace1", "display_name": "Renamed"},
 	"add_member":                        {"space_id": "spaces/AAAAspace1", "user_email": "janedoe@example.com"},
 	"remove_member":                     {"membership_name": "spaces/AAAAspace1/members/AAAAmember1"},

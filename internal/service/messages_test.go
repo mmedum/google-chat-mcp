@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API
@@ -802,80 +802,9 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 	}
 }
 
-// declining is the asker of a person who says no: it records each
-// question and refuses it.
-type declining struct{ asked []Question }
-
-var errDeclined = errors.New("declined")
-
-func (d *declining) Ask(_ context.Context, q Question) error {
-	d.asked = append(d.asked, q)
-	return errDeclined
-}
-func (*declining) Asks() bool { return true }
-
-// A message that cannot be read is still asked about: that an account
-// cannot delete what it cannot read is a belief, and the question is
-// the only thing between the call and a delete nobody can undo. One
-// already gone asks nothing, unless force would still take the replies
-// a deleted thread root keeps.
-func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
-	deleted := ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)
-	for _, tc := range []struct {
-		name  string
-		read  http.HandlerFunc
-		force bool
-		asked string
-	}{
-		{"unreadable", status(403, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`), false,
-			"delete_message: delete the message `spaces/A/messages/1` for good?"},
-		{"readable", ok(`{"name":"spaces/A/messages/1","text":"hello"}`), false, "text: `hello`"},
-		{"gone", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), false, ""},
-		{"deleted", deleted, false, ""},
-		{"deleted, with its replies", deleted, true,
-			"the message `spaces/A/messages/1` is already deleted. Delete any reply still in its thread"},
-		{"a deleted reply, forced", ok(`{"name":"spaces/A/messages/1","threadReply":true,"deleteTime":"2026-10-01T00:00:00Z"}`),
-			true, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			deletes := 0
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodDelete {
-					deletes++
-					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprint(w, `{"error":{"status":"NOT_FOUND","message":"gone"}}`)
-					return
-				}
-				tc.read(w, r)
-			})
-			person := &declining{}
-			_, err := s.DeleteMessage(WithAsker(context.Background(), person),
-				DeleteMessageInput{Message: "spaces/A/messages/1", Force: tc.force})
-			if tc.asked == "" {
-				if err != nil || len(person.asked) != 0 || deletes != 1 {
-					t.Fatalf("err %v, asked %d, deletes %d; want no question and the delete sent", err, len(person.asked), deletes)
-				}
-				return
-			}
-			if !errors.Is(err, errDeclined) || deletes != 0 {
-				t.Fatalf("err %v, deletes %d; want the refusal and no delete", err, deletes)
-			}
-			if len(person.asked) != 1 || !strings.Contains(person.asked[0].Text, tc.asked) {
-				t.Fatalf("asked %+v, want one question saying %q", person.asked, tc.asked)
-			}
-		})
-	}
-}
-
-// accepting is the asker of a person who says yes to every question.
-type accepting struct{ asked int }
-
-func (a *accepting) Ask(context.Context, Question) error { a.asked++; return nil }
-func (*accepting) Asks() bool                            { return true }
-
-// Once the person accepts deleting a deleted root's replies, the delete
-// goes out with force, and the result says what Google answered: a
-// delete it carried out, or one that found nothing to take.
+// A forced delete of a deleted root goes out with force, and the result
+// says what Google answered: a delete it carried out, or one that found
+// nothing to take.
 func TestDeleteMessageForcedOnADeletedRootReportsGooglesAnswer(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -895,15 +824,13 @@ func TestDeleteMessageForcedOnADeletedRootReportsGooglesAnswer(t *testing.T) {
 				}
 				ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)(w, r)
 			})
-			person := &accepting{}
-			got, err := s.DeleteMessage(WithAsker(context.Background(), person),
-				DeleteMessageInput{Message: "spaces/A/messages/1", Force: true})
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", Force: true})
 			if err != nil {
 				t.Fatalf("DeleteMessage: %v", err)
 			}
-			if person.asked != 1 || force != "true" || got.Deleted != tc.wantDeleted || !got.Forced {
-				t.Errorf("asked %d, force %q, deleted %v, forced %v; want 1, %q, %v, true",
-					person.asked, force, got.Deleted, got.Forced, "true", tc.wantDeleted)
+			if force != "true" || got.Deleted != tc.wantDeleted || !got.Forced {
+				t.Errorf("force %q, deleted %v, forced %v; want %q, %v, true", force, got.Deleted, got.Forced, "true",
+					tc.wantDeleted)
 			}
 		})
 	}
@@ -1097,7 +1024,7 @@ func TestAReplyChoosesItsFallback(t *testing.T) {
 // caller is a person. So the body goes out with the mention exactly as
 // it arrived — no lookup, no rewriting, nothing appended.
 func TestAMentionIsPostedVerbatim(t *testing.T) {
-	const text = "<users/janedoe@example.com> can you look at this? cc <users/all>"
+	const text = "<users/janedoe@example.com> can you look at this? cc <users/johndoe@example.com>"
 	var sent string
 	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -1394,5 +1321,70 @@ func TestGetMessagesPrefersTheAddressChatSent(t *testing.T) {
 	}
 	if len(asked) != 1 || asked[0] != "people/AAAAuser2" {
 		t.Errorf("People was asked about %v, want only the sender Chat left empty", asked)
+	}
+}
+
+// A mention of everyone is found in Chat's syntax and in Markdown's,
+// however it is cased or quoted.
+func TestMentionsEveryone(t *testing.T) {
+	for text, want := range map[string]bool{
+		"hi <users/all>":                                  true,
+		"hi <USERS/All>":                                  true,
+		`hi <chat-user data-user="users/all">`:            true,
+		`hi <chat-user data-user='users/all'>`:            true,
+		`hi <chat-user data-user=users/all>`:              true,
+		`hi <CHAT-USER class="x" DATA-USER="USERS/ALL">`:  true,
+		"hi users/all":                                    false,
+		"hi":                                              false,
+		`hi <chat-user data-user="users/allison">`:        false,
+		`hi <chat-user data-user="users/123">`:            false,
+		`hi <chat-user data-email="janedoe@example.com">`: false,
+	} {
+		if mentionsEveryone(text) != want {
+			t.Errorf("mentionsEveryone(%q) = %v", text, !want)
+		}
+	}
+}
+
+// A post or an edit that newly mentions everyone in the space is refused
+// before anything is sent, a dry run included, since it notifies every
+// member. An edit of a message that already mentioned everyone may keep
+// the mention: it notifies nobody new.
+func TestAMentionOfEveryoneIsRefused(t *testing.T) {
+	everyone := "standup in five <users/all>"
+	s, rec := recorded(t, ok(`{"name":"spaces/AAAAspace1/messages/AAAAmsg1","text":"standup soon"}`))
+	for _, dry := range []bool{false, true} {
+		_, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/AAAAspace1", Text: everyone, DryRun: dry})
+		assertClass(t, err, ClassBlocked)
+		_, err = s.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+			Text: everyone, DryRun: dry})
+		assertClass(t, err, ClassBlocked)
+	}
+	for _, r := range rec.all() {
+		if r.Method != http.MethodGet {
+			t.Errorf("a refused broadcast sent %s %s", r.Method, r.Path)
+		}
+	}
+
+	// A message that is not there is reported as not there, not as a
+	// refused mention.
+	gone, rec := recorded(t, status(http.StatusNotFound,
+		`{"error":{"code":404,"status":"NOT_FOUND","message":"not found"}}`))
+	_, err := gone.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+		Text: everyone})
+	assertClass(t, err, ClassNotFound)
+	for _, r := range rec.all() {
+		if r.Method != http.MethodGet {
+			t.Errorf("an edit of a missing message sent %s %s", r.Method, r.Path)
+		}
+	}
+
+	kept, rec := recorded(t, ok(`{"name":"spaces/AAAAspace1/messages/AAAAmsg1","text":"standup <users/all>"}`))
+	if _, err := kept.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+		Text: everyone}); err != nil {
+		t.Fatalf("an edit that keeps the mention: %v", err)
+	}
+	if rec.last(t).Method != http.MethodPatch {
+		t.Errorf("the edit that keeps the mention was not sent")
 	}
 }

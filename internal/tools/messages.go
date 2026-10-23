@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // MessageOutput is one message in a listing.
@@ -485,13 +485,10 @@ type DeleteMessageOutput struct {
 func registerMessageWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "send_message",
-		Asks: "before a post that mentions everyone in the space, <users/all>, and before every post when GCM_ASK_BEFORE_SEND is set",
-		// With GCM_ASK_BEFORE_SEND, every post is asked about, so the
-		// question is the confirmation, as it is for a delete.
-		AsksEveryCall: d.Config.AskBeforeSend,
 		Description: "Post a text message to a Chat space, a group chat or a direct message. The body is posted " +
 			"exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put " +
-			"<users/their@address> in the text yourself. Pass thread_name to reply in an existing thread, which " +
+			"<users/their@address> in the text yourself; a mention of everyone in the space, <users/all>, is refused " +
+			"[blocked], since it notifies every member. Pass thread_name to reply in an existing thread, which " +
 			"every message carries as thread_id. Set dry_run to see the request body without posting. The post " +
 			"carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the " +
 			"tool again after an error can, because that is a new post. Read the space first if you are unsure. " +
@@ -517,12 +514,11 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 	})
 
 	register(s, d, spec{
-		Name:          "update_message",
-		Asks:          "before an edit that makes the text mention everyone in the space, <users/all>, and before every edit when GCM_ASK_BEFORE_SEND is set",
-		AsksEveryCall: d.Config.AskBeforeSend,
+		Name: "update_message",
 		Description: "Replace the text of a message you sent. Text only: cards and attachments are left untouched, " +
-			"and editing them needs an identity this server does not have. Set dry_run to see the patch body without " +
-			"applying it. Needs the restricted-tier chat.messages scope.",
+			"and editing them needs an identity this server does not have. An edit that newly mentions everyone in " +
+			"the space, <users/all>, is refused [blocked], since it notifies every member. Set dry_run to see the " +
+			"patch body without applying it. Needs the restricted-tier chat.messages scope.",
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMessageInput) (*mcp.CallToolResult, UpdateMessageOutput, error) {
 		got, err := d.Service.UpdateMessage(ctx, service.UpdateMessageInput{
@@ -541,7 +537,6 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_message",
-		Asks: "before it deletes", AsksEveryCall: true,
 		Description: "Delete a message by its resource name. A message that is already gone reports deleted false " +
 			"rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as " +
 			"a deletion that already happened. Needs the restricted-tier chat.messages scope.",

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v5.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v5)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v6.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v6)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -32,7 +32,7 @@ tools you are actually using need.
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v5/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -206,8 +206,9 @@ and the three tools that move them say so.
 | `add_reaction` | React to a message with a Unicode emoji | `chat.messages.reactions` |
 | `remove_reaction` | Remove a reaction, by resource name or by message, emoji and person | `chat.messages.reactions` |
 | `create_group_chat` | Start an unnamed group chat with 2 to 20 people | `chat.spaces.create` |
-| `create_space` | Create a named space with up to 20 people, private or open to a target audience | `chat.spaces.create` |
-| `update_space` | Rename a space, change its description, or open it to a target audience | `chat.spaces` |
+| `create_space` | Create a private named space with up to 20 people | `chat.spaces.create` |
+| `update_space` | Rename a space, change its description, or make it private | `chat.spaces` |
+| `set_space_audience` | Open a space to a target audience, with `GCM_ALLOW_DESTRUCTIVE` | `chat.spaces` |
 | `add_member` | Invite someone to a space by email | `chat.memberships` |
 | `remove_member` | Remove a membership. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
@@ -228,7 +229,7 @@ client that includes resources in its context:
 
 ## Safety
 
-- **`dry_run` on 25 write tools.** It returns the request body that
+- **`dry_run` on 26 write tools.** It returns the request body that
   would have been sent, and the call cannot write: the flag puts the
   request on a context the HTTP client refuses to write under, so a
   tool that forgot its own preview branch fails loudly instead of
@@ -238,25 +239,33 @@ client that includes resources in its context:
   that is not registered cannot be called, whatever permission mode the
   client is in or whatever a model asks for. It is set where you start
   the server, so it binds the whole session rather than one call.
-- **Annotations and an interaction hint.** Write and delete tools ask the
-  client to put a person in the loop. What that is worth is the client's
-  decision, and the two answers are further apart than they look. In
-  Claude Code interactively, auto mode has run a write with no prompt at
-  all. Headless, the same mark refuses every write outright — an allow
-  rule does not suppress it, and there is nobody to ask. So if you are
-  automating with nobody at the keyboard, `GCM_INTERACTION_HINT=false`
-  is the way to use the write tools at all, and it is a decision to make
-  on purpose. The tools the server asks you about itself on every call
-  drop the mark when your client can ask, so you answer once: the three
-  deletes and `add_member`, plus sends and edits under
-  `GCM_ASK_BEFORE_SEND`.
-- **The server asks you before what cannot be taken back.** When your
-  MCP client supports elicitation, it asks before deleting a message, a
-  space or a custom emoji, adding a member, opening a space to a target
-  audience, and a post or an edit that mentions everyone in a space;
-  only your accept writes.
-  `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
-  a client that cannot ask.
+- **Your client approves each call; the server asks you nothing.** A
+  client that prompts by a tool's annotations, as claude.ai, Codex and
+  VS Code do, prompts for the destructive tools. In Claude Code, list
+  the calls you want to approve one by one under `permissions.ask` in
+  your settings, with the name you gave the server in place of
+  `google-chat`. For example, the writes that post, invite or delete:
+
+  ```json
+  {
+    "permissions": {
+      "ask": [
+        "mcp__google-chat__send_message", "mcp__google-chat__update_message",
+        "mcp__google-chat__create_space", "mcp__google-chat__create_group_chat",
+        "mcp__google-chat__add_member", "mcp__google-chat__remove_member",
+        "mcp__google-chat__delete_message", "mcp__google-chat__delete_custom_emoji"
+      ]
+    }
+  }
+  ```
+
+  `delete_space` and `set_space_audience` ask in Claude Code on every
+  call without a rule, and are refused there headless.
+- **Nothing reaches the whole space or past it by default.** A post or
+  an edit that mentions everyone, `<users/all>`, is refused. A space is
+  created private, and `update_space` does not open one: opening a space
+  to a target audience is `set_space_audience`, refused unless
+  `GCM_ALLOW_DESTRUCTIVE=true`, with the space named twice.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no
   "sent by an assistant" footer.
 - **A retried post cannot land twice.** Each message carries a

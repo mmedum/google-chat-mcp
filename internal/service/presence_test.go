@@ -167,7 +167,8 @@ func TestCreateCustomEmojiSendsTheImageInline(t *testing.T) {
 }
 
 // Deleting a space destroys everyone's messages, so it asks twice and
-// refuses a confirmation that does not match.
+// refuses a confirmation that does not match. Either half may be a bare
+// id.
 func TestDeleteSpaceAsksTwice(t *testing.T) {
 	s := newService(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("an unconfirmed delete must not reach Google")
@@ -181,21 +182,25 @@ func TestDeleteSpaceAsksTwice(t *testing.T) {
 		assertClass(t, err, ClassInvalid)
 	}
 
-	var method, path string
-	live := newService(t, func(w http.ResponseWriter, r *http.Request) {
-		method, path = r.Method, r.URL.Path
-		fmt.Fprint(w, `{}`)
-	})
-	got, err := live.DeleteSpace(writeCtx(), DeleteSpaceInput{
-		Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace1",
-	})
-	if err != nil {
-		t.Fatalf("DeleteSpace: %v", err)
-	}
-	if method != http.MethodDelete || path != "/v1/spaces/AAAAspace1" {
-		t.Errorf("%s %s", method, path)
-	}
-	if !got.Deleted {
-		t.Errorf("result = %+v", got)
+	for _, in := range []DeleteSpaceInput{
+		{Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace1"},
+		{Space: "AAAAspace1", Confirm: " AAAAspace1 "},
+		{Space: "spaces/AAAAspace1", Confirm: "AAAAspace1"},
+	} {
+		var method, path string
+		live := newService(t, func(w http.ResponseWriter, r *http.Request) {
+			method, path = r.Method, r.URL.Path
+			fmt.Fprint(w, `{}`)
+		})
+		got, err := live.DeleteSpace(writeCtx(), in)
+		if err != nil {
+			t.Fatalf("DeleteSpace %+v: %v", in, err)
+		}
+		if method != http.MethodDelete || path != "/v1/spaces/AAAAspace1" {
+			t.Errorf("%+v: %s %s", in, method, path)
+		}
+		if !got.Deleted {
+			t.Errorf("%+v: result = %+v", in, got)
+		}
 	}
 }

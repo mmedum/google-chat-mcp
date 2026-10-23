@@ -50,9 +50,12 @@ was checked, against which source, and which live call contradicted it.
    reads the quoted message's timestamp. Do not add a preview that works
    by convention instead.
 6. **Every tool goes through `register`.** It decides the annotations,
-   the read-only gating, the interaction hint and the rendered reply from
-   one `Kind`. Four rules kept by hand at fifty call sites is four ways
-   to be quietly wrong.
+   the read-only gating, the destructive refusal and the rendered reply
+   from one `Kind`. Four rules kept by hand at fifty call sites is four
+   ways to be quietly wrong. The server asks the person nothing; the
+   `requiresUserInteraction` mark is on `delete_space` and
+   `set_space_audience` only (`docs/architecture.md`, "What a write may
+   reach").
 7. **A reply carries both halves.** `structuredContent` under the output
    schema, and a readable rendering in `content` — never the same JSON
    twice. `internal/tools/render.go` says why, with the sources.

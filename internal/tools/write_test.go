@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
 )
 
 // counter records how many requests a tool call made. A dry run's whole
@@ -75,6 +75,7 @@ func TestEveryDryRunReachesNothing(t *testing.T) {
 		{"position_section", map[string]any{"section_name": "users/me/sections/S", "relative_position": "START"}},
 		{"update_member_role", map[string]any{"membership_name": "spaces/A/members/M", "role": "MANAGER"}},
 		{"delete_space", map[string]any{"space_id": "spaces/A", "confirm_space_id": "spaces/A"}},
+		{"set_space_audience", map[string]any{"space_id": "spaces/A", "audience": "default", "confirm_space_id": "spaces/A"}},
 		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
 		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
 		{"mark_space_read", map[string]any{"space_id": "spaces/A"}},
@@ -272,33 +273,26 @@ func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
 	}
 }
 
-// The tools a person would want to be asked about are the ones whose
-// effect other people see and nobody can undo. delete_section is the
-// counter-example that makes the point: it is destructive, but it is
-// the caller's own sidebar.
-func TestTheOutwardFacingToolsAskForAPerson(t *testing.T) {
+// Claude Code asks on every call for exactly the tools whose prompt is
+// itself the point: deleting a whole space, and opening one to an
+// audience. Every other write is the client's to approve, sending and
+// deleting a message included, since a mark there would ask once per
+// message of a bulk delete.
+func TestOnlyTheMarkedSetAsksForAPerson(t *testing.T) {
 	cs := session(t, func(http.ResponseWriter, *http.Request) {})
 	list, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	asks := map[string]bool{}
+	var marked []string
 	for _, tool := range list.Tools {
-		_, ok := tool.Meta["anthropic/requiresUserInteraction"]
-		asks[tool.Name] = ok
-	}
-	for _, name := range []string{
-		"send_message", "update_message", "delete_message",
-		"add_member", "remove_member", "create_space", "create_group_chat", "update_space",
-	} {
-		if !asks[name] {
-			t.Errorf("%q writes where other people can see it and asks for nobody", name)
+		if _, ok := tool.Meta["anthropic/requiresUserInteraction"]; ok {
+			marked = append(marked, tool.Name)
 		}
 	}
-	for _, name := range []string{"list_spaces", "get_messages", "add_reaction", "find_direct_message"} {
-		if asks[name] {
-			t.Errorf("%q demands an interaction it does not need", name)
-		}
+	slices.Sort(marked)
+	if want := []string{"delete_space", "set_space_audience"}; !slices.Equal(marked, want) {
+		t.Errorf("marked %v, want %v", marked, want)
 	}
 }
 

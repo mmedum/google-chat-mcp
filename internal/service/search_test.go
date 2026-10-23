@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 func searchPage(messages ...string) string {

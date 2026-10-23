@@ -11,6 +11,26 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `set_space_audience` opens a space to a target audience. It is refused unless `GCM_ALLOW_DESTRUCTIVE=true`, takes the space twice, and Claude Code asks for it on every call.
+
+### Changed
+
+- **Breaking:** the server no longer asks you before a write; your client approves each call. In Claude Code, list the writes you want to approve under `permissions.ask`, as the README shows. Only `delete_space` and `set_space_audience` carry the `requiresUserInteraction` mark now, so Claude Code no longer asks for every other write, and headless it no longer refuses them.
+- **Breaking:** `send_message` and `update_message` refuse a text that mentions everyone in the space, `<users/all>`. Mention the people you mean.
+- **Breaking:** `create_space` and `update_space` no longer open a space to a target audience; use `set_space_audience`. `update_space` still makes a space private.
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v6`, as Go requires from v6 on; install with `go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest`.
+
+### Removed
+
+- **Breaking:** `GCM_REQUIRE_PROMPT`, `GCM_ASK_BEFORE_SEND` and `GCM_INTERACTION_HINT`, and their flags. The first two are refused at start unless `false`, and `GCM_INTERACTION_HINT` is ignored; unset them, and drop the flags from your client's arguments.
+- The `[ambiguous_outcome]` error class. Only a write the person had confirmed could end with it.
+
+### Fixed
+
+- `delete_space` accepts `confirm_space_id` as a bare id, like `space_id`. It refused the bare id it had just been given.
+
 ## [5.1.1] - 2026-10-10
 
 ### Fixed
