@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // The staleness gate fails when the documentation drifts from the code.
@@ -75,6 +75,14 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 					fail("%s lists %s, which the server does not register", readmePath, name)
 				}
 			}
+			// A Claude Code permission rule for a tool that does not exist
+			// matches nothing, so the person it was meant to ask is never
+			// asked.
+			for _, name := range permissionRuleTools(readme) {
+				if !slices.Contains(shipped, name) {
+					fail("%s gives a permission rule for %s, which the server does not register", readmePath, name)
+				}
+			}
 		}
 	}
 
@@ -85,7 +93,7 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// The configuration page must name every GCM_ variable the server
-	// reads.
+	// reads, a removed one it refuses included.
 	if configDoc, ok := load(configDocPath); ok {
 		for _, v := range configVars() {
 			if !strings.Contains(configDoc, v) {
@@ -146,6 +154,20 @@ func readmeToolNames(readme string) []string {
 	}
 	slices.Sort(names)
 	return slices.Compact(names)
+}
+
+// permissionRule is a Claude Code permission rule for one of this
+// server's tools, under the server name the README uses.
+var permissionRule = regexp.MustCompile(`"mcp__google-chat__([a-z0-9_]+)"`)
+
+// permissionRuleTools is every tool the README's permission rules name.
+func permissionRuleTools(readme string) []string {
+	matches := permissionRule.FindAllStringSubmatch(readme, -1)
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		names = append(names, m[1])
+	}
+	return names
 }
 
 // toolNamesIn is every tool a dump registers, sorted.

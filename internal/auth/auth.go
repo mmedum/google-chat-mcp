@@ -22,20 +22,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
-
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
 )
-
-// Scopes returns the scope set login requests. It is the full set
-// whether or not the server is read-only: asking for a narrower set
-// would force a second consent screen the day someone turns writes back
-// on, and GCM_READ_ONLY controls which tools are registered, which is
-// the enforcement that matters.
-//
-// The one scope that does vary is the administrator's, because it is
-// the one nobody but an administrator can use. admin comes from the
-// toolset of that name.
-func Scopes(admin bool) []string { return scopes.Requested(admin) }
 
 // ErrNotDesktopClient means the JSON is not a "Desktop app" OAuth client.
 var ErrNotDesktopClient = errors.New("auth: client secret JSON is not a Desktop app client (expected an \"installed\" section)")

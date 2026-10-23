@@ -16,12 +16,9 @@ else.
 | `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. Lowercase letters, digits, `_` and `-`, up to 64 characters. |
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
-| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. |
-| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Deletes are refused unless you set this to `true`. The four delete tools stay registered either way, so a model that reaches for one is told it is not permitted here and that nothing was changed, rather than being left to guess from a tool that is missing. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
-| `GCM_INTERACTION_HINT` | `--interaction-hint` | `true` | Marks every write tool as needing a person, which clients that read the mark honor by asking before the call. For a client that can ask the person itself, the four tools the server asks about on every call (`delete_message`, `delete_space`, `delete_custom_emoji`, `add_member`) go without it, so the person answers once. With `GCM_ASK_BEFORE_SEND`, `send_message` and `update_message` ask on every call too, and go without it as well. Turn it off only for a deployment with nobody at the keyboard: in Claude Code the mark is absolute — an allow rule does not suppress it, and headless there is nobody to ask, so every write is refused. Reads are unaffected either way. |
-| `GCM_REQUIRE_PROMPT` | `--require-prompt` | `false` | Refuse the writes that ask you — deleting a message, a space or a custom emoji, adding a member, and a post or an edit that mentions everyone — when your MCP client cannot ask. A client that can ask puts the question to you either way. |
-| `GCM_ASK_BEFORE_SEND` | `--ask-before-send` | `false` | Ask you before every `send_message` and `update_message`, not only one whose text mentions everyone in the space with `<users/all>`. Off by default: a question on every post is one people learn to click through. |
-| `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register, or `all`. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
+| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
+| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
+| `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register; `all` may be one of them. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named, as in `all,admin`: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
 | `GCM_HTTP_MAX_RETRIES` | `--http-max-retries` | `3` | Extra attempts after a 429 or 5xx, 0 to 10. A write is only retried when repeating it cannot post twice. |
 | `GCM_SEARCH_MAX_PAGES` | `--search-max-pages` | `10` | How many pages `search_messages` may scan before it stops and says the result is partial, 1 to 50. |
@@ -31,6 +28,25 @@ else.
 | `GCM_CLOUD_IDENTITY_API_BASE` | `--cloud-identity-api-base` | `https://cloudidentity.googleapis.com/v1` | Cloud Identity API root, same reason. |
 | `GCM_CLIENT_SECRET` | `--client-secret` | *(from the profile)* | Path to the OAuth Desktop client JSON. `login` records this in the profile, so it is normally only passed once. |
 | `GCM_LOCAL_DIR` | `--local-dir` | *(unset)* | The one directory attachments are downloaded to and uploaded from. Unset means no file transfer at all: `download_attachment` and `upload_attachment` refuse and say so. Must be an absolute path — a relative one would mean whatever directory the MCP client happened to launch the server from. A download never overwrites, and an upload outside this directory is refused with the symlinks resolved first. |
+
+### Removed settings
+
+The server no longer asks you before a write; your client approves each
+call. Three settings went with the question, and their flags are gone,
+so a flag left in your client's arguments stops the server from
+starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused at
+start unless `false`, their old default, because ignoring one would
+quietly allow what you set it to stop. `GCM_INTERACTION_HINT` is
+ignored: only `delete_space`, `set_space_audience` and
+`delete_custom_emoji` carry the mark now, and Claude Code refuses those
+three when nobody is at the keyboard. A headless run that set it to
+`false` to use them loses them.
+
+| Variable | Still accepted | Instead |
+|---|---|---|
+| `GCM_REQUIRE_PROMPT` | `false` | Leave `GCM_ALLOW_DESTRUCTIVE` off for a client that runs with nobody watching. |
+| `GCM_ASK_BEFORE_SEND` | `false` | List `send_message` and `update_message` under your client's ask rules. |
+| `GCM_INTERACTION_HINT` | any value, ignored | Nothing. |
 
 ## Credentials
 

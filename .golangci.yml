@@ -44,6 +44,15 @@ linters:
           msg: stdout carries only MCP JSON-RPC frames; write through the boundary helpers
         - pattern: ^os\.Stdout$
           msg: stdout carries only MCP JSON-RPC frames; take an io.Writer instead
+        # The server asks the person nothing; the client approves each
+        # call (docs/architecture.md, "What a write may reach"). These are
+        # the two ways to ask: a form elicitation, and the input requests
+        # a result carries from protocol 2026-07-28.
+        - pattern: \.Elicit$
+          pkg: ^github\.com/modelcontextprotocol/go-sdk/mcp$
+          msg: the server asks the person nothing; refuse the call, or make the risky variant its own tool
+        - pattern: ^mcp\.(ElicitParams|InputRequestMap)$
+          msg: the server asks the person nothing; refuse the call, or make the risky variant its own tool
     gocyclo:
       min-complexity: 25
     govet:

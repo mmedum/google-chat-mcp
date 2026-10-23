@@ -304,9 +304,6 @@ func (o CreateGroupChatOutput) Render() string {
 // Render says what space was created.
 func (o CreateSpaceOutput) Render() string {
 	who := count(o.MemberCount, "member", "members")
-	if o.Audience != nil {
-		who += ", open to " + *o.Audience
-	}
 	if o.DryRun {
 		return previewBody("create the space " + o.DisplayName + " with " + who)
 	}

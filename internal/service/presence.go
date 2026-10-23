@@ -12,7 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // Availability, custom emoji and deleting a space.
@@ -416,8 +417,11 @@ func (s *Service) CreateCustomEmoji(ctx context.Context, in CreateCustomEmojiInp
 
 // DeleteCustomEmojiInput names one to remove.
 type DeleteCustomEmojiInput struct {
-	Name   string
-	DryRun bool
+	Name string
+	// EmojiName is the :shortcode: the caller read for it: the witness
+	// that this is the emoji they mean.
+	EmojiName string
+	DryRun    bool
 }
 
 // DeleteCustomEmojiResult says whether anything was removed.
@@ -430,45 +434,47 @@ type DeleteCustomEmojiResult struct {
 // DeleteCustomEmoji removes one from the organization.
 //
 // It is gone for everyone, and any message already carrying it loses
-// the image. The tool says so; this only reports what happened.
+// the image. The emoji is read first, a dry run included, and held to
+// the shortcode the caller passed, so the call says which emoji goes.
 func (s *Service) DeleteCustomEmoji(ctx context.Context, in DeleteCustomEmojiInput) (*DeleteCustomEmojiResult, error) {
 	name, err := requireCustomEmoji("name", in.Name)
 	if err != nil {
 		return nil, err
 	}
 	out := &DeleteCustomEmojiResult{Name: name, DryRun: in.DryRun}
+	got, err := s.client.GetCustomEmoji(ctx, name)
+	switch {
+	case gchat.IsNotFound(err):
+		return out, nil
+	case err != nil:
+		return nil, needsScope(err, scopes.CustomEmojis)
+	}
+	if err := checkName("emoji_name", name, shortcode(got.EmojiName), shortcode(in.EmojiName)); err != nil {
+		return nil, err
+	}
 	if in.DryRun {
 		return out, nil
 	}
-	if asks(ctx) {
-		e, err := s.client.GetCustomEmoji(ctx, name)
-		switch {
-		case gchat.IsNotFound(err):
-		case err != nil:
-			return nil, Classify(err)
-		default:
-			if err := ask(ctx, askDeleteCustomEmoji(name, e.EmojiName)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	deleted, err := deleteIdempotent(ctx, name, s.client.DeleteCustomEmoji, nil)
-	if err != nil {
+	if out.Deleted, err = deleteIdempotent(ctx, name, s.client.DeleteCustomEmoji, nil); err != nil {
 		return nil, err
 	}
-	out.Deleted = deleted
 	return out, nil
 }
+
+// shortcode is an emoji's name without the colons around it, which a
+// caller may or may not have kept.
+func shortcode(name string) string { return strings.Trim(strings.TrimSpace(name), ":") }
 
 // DeleteSpaceInput names a space to delete.
 type DeleteSpaceInput struct {
 	Space string
-	// Confirm has to carry the space's own resource name. Google
-	// cascades the delete over every message and membership, and this
-	// is the one call in the surface that destroys other people's work
+	// DisplayName is what the caller read the space to be called: the
+	// witness that this is the space they mean. Google cascades the
+	// delete over every message and membership, and this is the one
+	// call in the surface that destroys other people's work
 	// irrecoverably.
-	Confirm string
-	DryRun  bool
+	DisplayName string
+	DryRun      bool
 }
 
 // DeleteSpaceResult says whether the space is gone.
@@ -484,32 +490,25 @@ func (s *Service) DeleteSpace(ctx context.Context, in DeleteSpaceInput) (*Delete
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(in.Confirm) != space {
-		return nil, Invalidf("deleting %s destroys every message and membership in it, and cannot be undone. "+
-			"Pass confirm_space_id with the same value as space_id to go ahead", space)
-	}
-
 	out := &DeleteSpaceResult{Space: space, DryRun: in.DryRun}
+	// Classify, not needsScope: chat.delete does not cover the read, so
+	// the scope to grant is the one the read names.
+	sp, err := s.client.GetSpace(ctx, space)
+	switch {
+	case gchat.IsNotFound(err):
+		return out, nil
+	case err != nil:
+		return nil, Classify(err)
+	}
+	if err := checkName("display_name", space, sp.DisplayName, in.DisplayName); err != nil {
+		return nil, err
+	}
 	if in.DryRun {
 		return out, nil
 	}
-	if asks(ctx) {
-		sp, err := s.client.GetSpace(ctx, space)
-		switch {
-		case gchat.IsNotFound(err):
-		case err != nil:
-			return nil, Classify(err)
-		default:
-			if err := ask(ctx, askDeleteSpace(space, sp.DisplayName)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	deleted, err := deleteIdempotent(ctx, space, s.client.DeleteSpace, nil)
-	if err != nil {
+	if out.Deleted, err = deleteIdempotent(ctx, space, s.client.DeleteSpace, nil); err != nil {
 		return nil, err
 	}
-	out.Deleted = deleted
 	return out, nil
 }
 

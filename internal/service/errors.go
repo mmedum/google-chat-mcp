@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Class is the leading tag on a tool error. The model reads these, so
@@ -48,15 +48,15 @@ const (
 	// not hold. No argument change helps, so the message says what
 	// would.
 	ClassUnsupported Class = "unsupported"
-	// ClassBlocked means a write was stopped before it was made: the
-	// person did not confirm it, or it could not be put to them.
-	// Nothing was changed, and the call is not to be made again unless
-	// the person asks.
+	// ClassBlocked means this server refuses what the write would reach:
+	// everyone in a space, an audience outside it, someone outside the
+	// organization or a new manager. Nothing was changed, and the same
+	// call is refused again.
 	ClassBlocked Class = "blocked"
-	// ClassAmbiguousOutcome means the person confirmed a write and the
-	// call ended before its result: it may have happened. The call is
-	// not to be made again; reading shows whether it took effect.
-	ClassAmbiguousOutcome Class = "ambiguous_outcome"
+	// ClassStale means the target was read and is not what the call
+	// said it was: a message's text, a space's or an emoji's name.
+	// Nothing was changed. Read it again and pass what it says now.
+	ClassStale Class = "stale"
 	// ClassUnexpected is a failure this server did not anticipate.
 	ClassUnexpected Class = "unexpected"
 )
@@ -114,8 +114,10 @@ func MissingScope(scope string, err error, also ...string) *Error {
 //
 // The scope on the error is the one the refused call needed, and that
 // is what a person should grant — with one exception: a read taken on
-// the way to a write. Granting what the read wanted gets them past this
-// call and refused by the next one. Its only caller says why it is one.
+// the way to a write, where the write's scope covers the read too.
+// Granting what the read wanted gets them past this call and refused by
+// the next one. A read whose write's scope does not cover it, such as
+// delete_space's, is classified as it is.
 func needsScope(err error, scope string) error {
 	if gchat.IsMissingScope(err) {
 		return MissingScope(scope, err)

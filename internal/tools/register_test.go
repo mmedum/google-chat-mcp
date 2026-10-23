@@ -3,14 +3,13 @@ package tools
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 type probeIn struct {
@@ -25,12 +24,20 @@ func (probeOut) Render() string { return "probe" }
 
 // registered lists the tools a spec produces under a configuration.
 // Every rule the wrapper enforces is checked here rather than per tool,
-// which is the point of having a wrapper: fifty-three tools is too many
+// which is the point of having a wrapper: fifty-eight tools is too many
 // for four rules kept by hand.
 func registered(t *testing.T, cfg config.Config, specs ...spec) map[string]*mcp.Tool {
 	t.Helper()
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	for _, sp := range specs {
+		// A destructive tool takes confirm and nothing else may.
+		if sp.Kind == Destructive {
+			register(s, Deps{Config: cfg}, sp,
+				func(context.Context, *mcp.CallToolRequest, deleteProbe) (*mcp.CallToolResult, probeOut, error) {
+					return nil, probeOut{}, nil
+				})
+			continue
+		}
 		register(s, Deps{Config: cfg}, sp,
 			func(context.Context, *mcp.CallToolRequest, probeIn) (*mcp.CallToolResult, probeOut, error) {
 				return nil, probeOut{}, nil
@@ -69,6 +76,7 @@ func allToolsets() config.Config { return config.Config{Toolsets: config.AllTool
 func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 	cfg := allToolsets()
 	cfg.ReadOnly = true
+	cfg.AllowDestructive = true
 	got := registered(t, cfg,
 		spec{Name: "a_read", Description: "d", Kind: Read},
 		spec{Name: "a_write", Description: "d", Kind: Write},
@@ -85,90 +93,92 @@ func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 	}
 }
 
-// Refusing deletes leaves every tool registered, including the deletes.
-//
-// The guard used to unregister them. It refuses the call instead, so the
-// model is told "not permitted here, and nothing was changed" rather
-// than being left to infer it from a tool that is not in the list — and
-// the released surface stays the same in every configuration, which is
-// what the schema diff holds.
-func TestRefusingDeletesLeavesEveryToolRegistered(t *testing.T) {
+// Read-only mode asks for read-only scopes, so a read that Google takes
+// only through a scope that can also write would fail on every call.
+func TestReadOnlyLeavesOutAReadThroughAWriteScope(t *testing.T) {
 	cfg := allToolsets()
-	cfg.RefuseDeletes = true
+	cfg.ReadOnly = true
 	got := registered(t, cfg,
 		spec{Name: "a_read", Description: "d", Kind: Read},
-		spec{Name: "a_write", Description: "d", Kind: Write},
-		spec{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
+		spec{Name: "a_read_through_a_write_scope", Description: "d", Kind: Read, WriteScope: true},
 	)
-	for _, name := range []string{"a_read", "a_write", "an_idempotent_write", "a_delete"} {
-		if _, ok := got[name]; !ok {
-			t.Errorf("%q was taken out; refusing a delete is a call-time answer, not a missing tool", name)
-		}
+	if _, ok := got["a_read"]; !ok {
+		t.Error("a read tool should survive read-only mode")
+	}
+	if _, ok := got["a_read_through_a_write_scope"]; ok {
+		t.Error("a read that needs a write scope is registered in read-only mode, which asks for none")
 	}
 }
 
-func TestWritesAreRegisteredByDefault(t *testing.T) {
-	got := registered(t, allToolsets(),
-		spec{Name: "a_write", Description: "d", Kind: Write},
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
-	)
-	if len(got) != 2 {
-		t.Errorf("%d tools, want both", len(got))
+// A destructive tool is not registered unless GCM_ALLOW_DESTRUCTIVE is
+// on: some mode of every widely used client runs a listed tool with
+// nobody approving the call, so a tool that must not run unattended is
+// not listed.
+func TestADestructiveToolIsRegisteredOnlyWhenAllowed(t *testing.T) {
+	specs := []spec{
+		{Name: "a_read", Description: "d", Kind: Read},
+		{Name: "a_write", Description: "d", Kind: Write},
+		{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
+		{Name: "a_delete", Description: "d", Kind: Destructive},
 	}
-}
-
-// A tool whose effect other people see, and cannot be undone, asks the
-// client to put a person in the loop. Annotations are advice; this is
-// the part with teeth, and attaching it by hand per tool is how one
-// gets forgotten.
-//
-// The cut is "irreversible and visible", not "destroys something": a
-// posted message cannot be recalled from anyone's notifications, while
-// a reaction is undone by removing it.
-func TestAnIrreversibleToolAsksForAPerson(t *testing.T) {
-	got := registered(t, allToolsets(),
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		spec{Name: "a_write", Description: "d", Kind: Write},
-		spec{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
-		spec{Name: "a_read", Description: "d", Kind: Read},
-	)
-	for _, name := range []string{"a_delete", "a_write"} {
-		if v, ok := got[name].Meta["anthropic/requiresUserInteraction"]; !ok || v != true {
-			t.Errorf("%s meta = %v, want a person asked for", name, got[name].Meta)
+	refused := registered(t, allToolsets(), specs...)
+	for _, name := range []string{"a_read", "a_write", "an_idempotent_write"} {
+		if _, ok := refused[name]; !ok {
+			t.Errorf("%q was taken out with the destructive tools", name)
 		}
 	}
-	for _, name := range []string{"an_idempotent_write", "a_read"} {
-		if _, ok := got[name].Meta["anthropic/requiresUserInteraction"]; ok {
-			t.Errorf("%s demands an interaction it does not need", name)
-		}
+	if _, ok := refused["a_delete"]; ok {
+		t.Error("a destructive tool is registered without GCM_ALLOW_DESTRUCTIVE")
 	}
-}
 
-// A deployer running unattended can turn the hint off, and then it is
-// off everywhere rather than on the tools somebody remembered.
-//
-// It is worth the setting because the mark is absolute in the client
-// that reads it: an allow rule does not suppress it, and headless there
-// is nobody to ask, so every write is refused. The spec puts the
-// confirmation on the application — "the protocol itself does not
-// mandate any specific user interaction model" — so a server that
-// demands one leaves a deployer no way out. Default is on; this is the
-// way out.
-func TestADeployerCanTurnTheHintOff(t *testing.T) {
 	cfg := allToolsets()
-	cfg.SuppressInteractionHint = true
-	got := registered(t, cfg,
-		spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		spec{Name: "a_write", Description: "d", Kind: Write},
-	)
-	if len(got) != 2 {
-		t.Fatalf("%d tools, want both still registered", len(got))
+	cfg.AllowDestructive = true
+	if _, ok := registered(t, cfg, specs...)["a_delete"]; !ok {
+		t.Error("a destructive tool is missing with GCM_ALLOW_DESTRUCTIVE on")
 	}
-	for name, tool := range got {
-		if _, ok := tool.Meta["anthropic/requiresUserInteraction"]; ok {
-			t.Errorf("%s still asks for a person after the hint was turned off", name)
-		}
+}
+
+// Registration refuses three mistakes outright, at start, rather than
+// leaving them to be found in a call: a destructive tool that cannot be
+// told confirm, a confirm on a tool that is not destructive, which would
+// refuse every call made without it, and the mark on a tool the
+// destructive flag does not gate.
+func TestRegistrationRefusesAnUnguardedDestructiveTool(t *testing.T) {
+	// The default, which registers no destructive tool: the spec is
+	// checked anyway.
+	cfg := allToolsets()
+	for _, tc := range []struct {
+		name string
+		add  func(s *mcp.Server)
+		want string
+	}{
+		{"a delete with no confirm", func(s *mcp.Server) {
+			register(s, Deps{Config: cfg}, spec{Name: "a_delete", Description: "d", Kind: Destructive},
+				func(context.Context, *mcp.CallToolRequest, dryRunProbe) (*mcp.CallToolResult, probeOut, error) {
+					return nil, probeOut{}, nil
+				})
+		}, "tools: a_delete: a confirm input goes with the Destructive kind and nowhere else"},
+		{"a write with confirm", func(s *mcp.Server) {
+			register(s, Deps{Config: cfg}, spec{Name: "a_write", Description: "d", Kind: Write},
+				func(context.Context, *mcp.CallToolRequest, deleteProbe) (*mcp.CallToolResult, probeOut, error) {
+					return nil, probeOut{}, nil
+				})
+		}, "tools: a_write: a confirm input goes with the Destructive kind and nowhere else"},
+		{"a marked write", func(s *mcp.Server) {
+			register(s, Deps{Config: cfg}, spec{Name: "a_write", Description: "d", Kind: Write, Marked: true},
+				func(context.Context, *mcp.CallToolRequest, dryRunProbe) (*mcp.CallToolResult, probeOut, error) {
+					return nil, probeOut{}, nil
+				})
+		}, "tools: a_write carries the mark and is not Destructive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if got := recover(); got != tc.want {
+					t.Errorf("panic = %v, want %q", got, tc.want)
+				}
+			}()
+			tc.add(mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil))
+		})
 	}
 }
 
@@ -213,13 +223,13 @@ type dryRunProbe struct {
 // The wrapper finds the flag by reflection, so a tool cannot declare
 // dry_run and also have to remember to honor it.
 func TestTheDryRunFlagIsFoundOnTheInputType(t *testing.T) {
-	if got := dryRunField[dryRunProbe](); got != 1 {
+	if got := boolField[dryRunProbe]("dry_run"); got != 1 {
 		t.Errorf("dry_run field = %d, want the second field", got)
 	}
-	if got := dryRunField[probeIn](); got != -1 {
+	if got := boolField[probeIn]("dry_run"); got != -1 {
 		t.Errorf("an input with no dry_run reported field %d", got)
 	}
-	if got := dryRunField[string](); got != -1 {
+	if got := boolField[string]("dry_run"); got != -1 {
 		t.Errorf("a non-struct input reported field %d", got)
 	}
 }
@@ -278,92 +288,63 @@ type noToken struct{}
 
 func (noToken) Token(context.Context) (string, error) { return "", errors.New("no credentials") }
 
-// The refusal has to reach the model as a tool error it can read, and
-// the handler must not run. A guard that merely returns an error the
-// SDK reports as a protocol failure teaches the model nothing, and one
-// that runs the handler first has already deleted the thing.
-func TestARefusedDeleteNeverReachesItsHandler(t *testing.T) {
-	cfg := allToolsets()
-	cfg.RefuseDeletes = true
-
-	ran := false
-	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	register(s, Deps{Config: cfg}, spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		func(context.Context, *mcp.CallToolRequest, probeIn) (*mcp.CallToolResult, probeOut, error) {
-			ran = true
-			return nil, probeOut{}, nil
-		})
-
-	ct, st := mcp.NewInMemoryTransports()
-	ss, err := s.Connect(context.Background(), st, nil)
-	if err != nil {
-		t.Fatalf("connect server: %v", err)
-	}
-	defer func() { _ = ss.Close() }()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).
-		Connect(context.Background(), ct, nil)
-	if err != nil {
-		t.Fatalf("connect client: %v", err)
-	}
-	defer func() { _ = cs.Close() }()
-
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "a_delete", Arguments: map[string]any{"name": "spaces/AAAAspace1/messages/AAAAmsg1"},
-	})
-	if err != nil {
-		t.Fatalf("the refusal must be a tool error the model can read, not a protocol failure: %v", err)
-	}
-	if ran {
-		t.Error("the handler ran; a refused delete must not reach the code that deletes")
-	}
-	if !res.IsError {
-		t.Error("a refused delete came back as a success")
-	}
-	var text string
-	for _, c := range res.Content {
-		if tc, ok := c.(*mcp.TextContent); ok {
-			text += tc.Text
-		}
-	}
-	for _, want := range []string{"[unsupported]", "Nothing was changed", "GCM_ALLOW_DESTRUCTIVE"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the refusal does not say %q:\n%s", want, text)
-		}
-	}
+// deleteProbe is a destructive tool's input: confirm and dry_run.
+type deleteProbe struct {
+	Name    string `json:"name"`
+	Confirm bool   `json:"confirm,omitempty"`
+	DryRun  bool   `json:"dry_run,omitempty"`
 }
 
-// With deletes allowed, the same call goes through.
-func TestAnAllowedDeleteReachesItsHandler(t *testing.T) {
+// A destructive call says confirm: true, or it never reaches its
+// handler. The refusal has to reach the model as a tool error it can
+// read, saying what to pass: one the SDK reports as a protocol failure
+// teaches the model nothing, and a guard that ran the handler first has
+// already deleted the thing. A dry run changes nothing and needs no
+// confirm.
+func TestADeleteRunsOnlyWithConfirm(t *testing.T) {
 	cfg := allToolsets()
-	cfg.RefuseDeletes = false
+	cfg.AllowDestructive = true
 
-	ran := false
+	ran := 0
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	register(s, Deps{Config: cfg}, spec{Name: "a_delete", Description: "d", Kind: Destructive},
-		func(context.Context, *mcp.CallToolRequest, probeIn) (*mcp.CallToolResult, probeOut, error) {
-			ran = true
+		func(context.Context, *mcp.CallToolRequest, deleteProbe) (*mcp.CallToolResult, probeOut, error) {
+			ran++
 			return nil, probeOut{}, nil
 		})
+	cs := connectTo(t, s)
 
-	ct, st := mcp.NewInMemoryTransports()
-	ss, err := s.Connect(context.Background(), st, nil)
-	if err != nil {
-		t.Fatalf("connect server: %v", err)
-	}
-	defer func() { _ = ss.Close() }()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).
-		Connect(context.Background(), ct, nil)
-	if err != nil {
-		t.Fatalf("connect client: %v", err)
-	}
-	defer func() { _ = cs.Close() }()
-
-	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "a_delete", Arguments: map[string]any{"name": "spaces/AAAAspace1/messages/AAAAmsg1"},
-	}); err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if !ran {
-		t.Error("the handler did not run with deletes allowed")
+	const refusal = "[invalid] a_delete cannot be taken back, so every call says so: pass confirm: true. " +
+		"Nothing was changed."
+	for _, tc := range []struct {
+		name     string
+		args     map[string]any
+		wantRun  bool
+		wantText string
+	}{
+		{"no confirm", map[string]any{"name": "x"}, false, refusal},
+		{"confirm false", map[string]any{"name": "x", "confirm": false}, false, refusal},
+		{"a dry run without confirm", map[string]any{"name": "x", "dry_run": true}, true, ""},
+		{"confirm true", map[string]any{"name": "x", "confirm": true}, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := ran
+			res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "a_delete", Arguments: tc.args})
+			if err != nil {
+				t.Fatalf("the refusal must be a tool error the model can read, not a protocol failure: %v", err)
+			}
+			if got := ran > before; got != tc.wantRun {
+				t.Errorf("handler ran = %v, want %v", got, tc.wantRun)
+			}
+			if tc.wantText == "" {
+				if res.IsError {
+					t.Errorf("refused: %s", errorText(t, res))
+				}
+				return
+			}
+			if got := errorText(t, res); got != tc.wantText {
+				t.Errorf("refusal = %q, want %q", got, tc.wantText)
+			}
+		})
 	}
 }

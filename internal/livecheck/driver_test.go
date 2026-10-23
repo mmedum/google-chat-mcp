@@ -25,12 +25,12 @@ package livecheck
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -43,14 +43,22 @@ const spacePrefix = "livecheck"
 
 // driver is a client of our own binary.
 type driver struct {
-	t   *testing.T
-	cs  *mcp.ClientSession
-	ctx context.Context
-	dir string // GCM_LOCAL_DIR: the one directory file transfer may touch
+	t testing.TB
+	// callTool reaches the binary. A unit test of the driver answers in
+	// its place.
+	callTool func(context.Context, *mcp.CallToolParams) (*mcp.CallToolResult, error)
+	ctx      context.Context
+	dir      string // GCM_LOCAL_DIR: the one directory file transfer may touch
 
 	// space is the scratch space every step works in, and the only
 	// identifier a report may print unredacted.
 	space string
+	// name is what the scratch space is called now, which the calls
+	// that open or delete it repeat as their witness.
+	name string
+	// opened says a step may have opened the scratch space to the
+	// organization, so cleanup makes it private before anything else.
+	opened bool
 	// made holds every resource name this run created, so redact can
 	// tell them from everything else.
 	made map[string]bool
@@ -71,60 +79,14 @@ type driver struct {
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string
+	// group is LIVE_GROUP_EMAIL, the Google Group find_group looks up.
+	group string
 	// event is one event name from the space's own feed, for get_space_event.
 	event string
 	// attached is the message carrying the uploaded file.
 	attached string
 	// uploadToken is spent by the post that carries it.
 	uploadToken string
-
-	// person answers the questions the server puts before a write that
-	// cannot be taken back.
-	person *livePerson
-}
-
-// livePerson answers the server's questions for the maintainer running
-// this suite, against a space the run made: accept, unless a step
-// declines. Each question is logged, redacted like everything else.
-type livePerson struct {
-	mu       sync.Mutex
-	declines bool
-	asked    []string
-	log      func(string)
-	// names are the account's own display names, which a question
-	// quotes as a message's sender and a report never prints.
-	names []string
-}
-
-func (p *livePerson) handle(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.asked = append(p.asked, req.Params.Message)
-	action := "accept"
-	if p.declines {
-		action = "decline"
-	}
-	if p.log != nil {
-		q := req.Params.Message
-		for _, n := range p.names {
-			q = strings.ReplaceAll(q, n, "<account>")
-		}
-		p.log("question put to the person, answered " + action + ":\n" + strings.TrimRight(q, "\n"))
-	}
-	return &mcp.ElicitResult{Action: action}, nil
-}
-
-// expect readies the person for one call and returns the questions it
-// was asked during it.
-func (p *livePerson) expect(declines bool) func() []string {
-	p.mu.Lock()
-	p.declines, p.asked = declines, nil
-	p.mu.Unlock()
-	return func() []string {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		return append([]string(nil), p.asked...)
-	}
 }
 
 func binPath(t *testing.T) string {
@@ -147,26 +109,22 @@ func connect(t *testing.T) *driver {
 	t.Helper()
 	dir := t.TempDir()
 	cmd := exec.Command(binPath(t))
-	// Deletes are allowed here on purpose. They are refused by default now
-	// — a deleted Chat message has no trash behind it — and this suite
-	// exercises them deliberately against a scratch space it made itself,
-	// then deletes that space to clean up. Without this the run would fail
-	// its delete steps AND leave the scratch space behind in a real account,
-	// which is worse than the failure.
+	// Deletes are allowed here on purpose. They are not registered by
+	// default — a deleted Chat message has no trash behind it — and this
+	// suite exercises them deliberately against a scratch space it made
+	// itself, then deletes that space to clean up. Without this the run
+	// would fail its delete steps AND leave the scratch space behind in a
+	// real account, which is worse than the failure.
 	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
 		"GCM_ALLOW_DESTRUCTIVE=true")
 	ctx := context.Background()
-	person := &livePerson{}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "livecheck", Version: "0"},
-		&mcp.ClientOptions{ElicitationHandler: person.handle}).
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "livecheck", Version: "0"}, nil).
 		Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(func() { _ = cs.Close() })
-	d := &driver{t: t, cs: cs, ctx: ctx, dir: dir, made: map[string]bool{}, person: person}
-	person.log = func(s string) { t.Log(d.redact(s)) }
-	return d
+	return &driver{t: t, callTool: cs.CallTool, ctx: ctx, dir: dir, made: map[string]bool{}}
 }
 
 // result is one tool call's answer, in both halves.
@@ -180,9 +138,20 @@ type result struct {
 // step that expects a refusal needs the refusal, not a failed test.
 func (d *driver) call(name string, args map[string]any) result {
 	d.t.Helper()
-	res, err := d.cs.CallTool(d.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	res, err := d.try(name, args)
 	if err != nil {
 		d.t.Fatalf("%s: transport: %s", name, d.redact(err.Error()))
+	}
+	return res
+}
+
+// try is call without stopping the run when the transport fails.
+// Cleanup uses it, because it must still say what it could not do once
+// the binary has gone.
+func (d *driver) try(name string, args map[string]any) (result, error) {
+	res, err := d.callTool(d.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		return result{}, err
 	}
 	var text strings.Builder
 	for _, c := range res.Content {
@@ -191,7 +160,7 @@ func (d *driver) call(name string, args map[string]any) result {
 		}
 	}
 	sc, _ := res.StructuredContent.(map[string]any)
-	return result{Structured: sc, Text: text.String(), IsError: res.IsError}
+	return result{Structured: sc, Text: text.String(), IsError: res.IsError}, nil
 }
 
 // must runs a tool that has to succeed. A failure here stops the run:
@@ -219,19 +188,31 @@ func (d *driver) into(sc map[string]any, v any) {
 }
 
 // seed makes the scratch space. Everything else this run does happens
-// inside it.
+// inside it. What the run needs from the environment is read first, so
+// a run that stops for want of it leaves nothing behind.
 func (d *driver) seed() {
 	d.t.Helper()
+	// A group cannot be named in this repository, so the person running
+	// the suite names one this account can see.
+	d.group = os.Getenv("LIVE_GROUP_EMAIL")
+	if d.group == "" {
+		d.t.Fatal("set LIVE_GROUP_EMAIL to a Google Group this account can see; find_group needs one. " +
+			"Nothing was created")
+	}
 	var out struct {
 		SpaceID string `json:"space_id"`
 	}
+	// audience private is the only audience create_space takes, and it
+	// sends what leaving it out does.
+	name := fmt.Sprintf("%s %d (safe to delete)", spacePrefix, time.Now().Unix())
 	d.into(d.must("create_space", map[string]any{
-		"display_name": fmt.Sprintf("%s %d (safe to delete)", spacePrefix, time.Now().Unix()),
+		"display_name": name,
+		"audience":     "private",
 	}), &out)
 	if out.SpaceID == "" {
 		d.t.Fatal("create_space returned no space_id")
 	}
-	d.space = out.SpaceID
+	d.space, d.name = out.SpaceID, name
 	d.record(out.SpaceID)
 }
 
@@ -240,10 +221,21 @@ func (d *driver) seed() {
 // it have a space to close or delete after it.
 func (d *driver) accessOf(space string) string {
 	d.t.Helper()
-	res := d.call("get_space", map[string]any{"space_id": space})
+	state, err := d.accessState(space)
+	if err != nil {
+		d.t.Errorf("get_space: %s", d.redact(err.Error()))
+	}
+	return state
+}
+
+// accessState is accessOf without the report, for cleanup to judge.
+func (d *driver) accessState(space string) (string, error) {
+	res, err := d.try("get_space", map[string]any{"space_id": space})
+	if err != nil {
+		return "", err
+	}
 	if res.IsError {
-		d.t.Errorf("get_space: %s", d.redact(res.Text))
-		return ""
+		return "", errors.New(res.Text)
 	}
 	var out struct {
 		AccessState *string `json:"access_state"`
@@ -252,11 +244,13 @@ func (d *driver) accessOf(space string) string {
 	if err == nil {
 		err = json.Unmarshal(raw, &out)
 	}
-	if err != nil || out.AccessState == nil {
-		d.t.Error("get_space reported no access state")
-		return ""
+	if err != nil {
+		return "", err
 	}
-	return *out.AccessState
+	if out.AccessState == nil {
+		return "", errors.New("no access state in the answer")
+	}
+	return *out.AccessState, nil
 }
 
 // record remembers a resource this run created, so redact will let it
@@ -268,21 +262,68 @@ func (d *driver) record(name string) {
 }
 
 // drop deletes the scratch space, which takes its messages with it. A
-// failed run keeps it, because the evidence is in it.
+// failed run keeps it, because the evidence is in it. Once a step may
+// have opened it, it is made private first, whatever stopped the run.
 func (d *driver) drop() {
 	d.t.Helper()
 	if d.space == "" {
 		return
 	}
+	if d.opened {
+		d.closeAudience()
+	}
 	if d.t.Failed() || os.Getenv("LIVE_KEEP") != "" {
-		d.t.Logf("space kept for inspection: %s", d.space)
+		d.t.Logf("space kept for inspection: %s", d.redact(d.space))
 		return
 	}
 	res := d.call("delete_space", map[string]any{
-		"space_id": d.space, "confirm_space_id": d.space,
+		"space_id": d.space, "display_name": d.name, "confirm": true,
 	})
 	if res.IsError {
 		d.t.Errorf("the scratch space was left behind: %s", d.redact(res.Text))
+	}
+}
+
+// closeAudience makes the scratch space private and reads it back. The
+// read decides: a refused close of a space that reads back private is
+// only logged. A space that does not read back private fails the run
+// loudly, and its id is masked like any other from then on: open to the
+// organization, the space and what is in it are no longer this run's
+// alone.
+func (d *driver) closeAudience() {
+	d.t.Helper()
+	var why []string
+	if res, err := d.try("update_space", map[string]any{"space_id": d.space, "audience": "private"}); err != nil {
+		why = append(why, "update_space: "+err.Error())
+	} else if res.IsError {
+		why = append(why, "update_space: "+res.Text)
+	}
+	state, err := d.accessState(d.space)
+	switch {
+	case err == nil && state == "PRIVATE":
+		if len(why) > 0 {
+			d.t.Logf("the space reads back private, after %s", d.redact(strings.Join(why, "; ")))
+		}
+		return
+	case err != nil:
+		why = append(why, "get_space: "+err.Error())
+	default:
+		why = append(why, "get_space reads its access state as "+state)
+	}
+	d.forget(d.space)
+	d.t.Errorf("\n\n!!! THE SCRATCH SPACE MAY STILL BE OPEN TO THE ORGANIZATION !!!\n"+
+		"%s did not read back private: %s\n"+
+		"Find the space whose name begins with livecheck in Chat and make it private, or delete it.\n",
+		d.redact(d.space), d.redact(strings.Join(why, "; ")))
+}
+
+// forget masks a space this run made, and everything in it, in every
+// report from here on.
+func (d *driver) forget(space string) {
+	for name := range d.made {
+		if name == space || strings.HasPrefix(name, space+"/") {
+			delete(d.made, name)
+		}
 	}
 }
 

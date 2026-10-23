@@ -11,6 +11,48 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-23
+
+### Added
+
+- `set_space_audience` opens a space to a target audience. It names the space by its display name, and Claude Code asks for it on every call.
+- `delete_thread` deletes a thread's first message and every reply under it, which `delete_message`'s `force` used to do.
+- `promote_member` makes someone a manager or an assistant manager of a space.
+- `add_external_member` invites someone from outside your organization, or adds a Google Group named by `group_name` and its address `group_email`, into a space that admits people from outside.
+- The `[stale]` error class, for a destructive call that names its target otherwise than the target reads.
+
+### Changed
+
+- **Breaking:** the server no longer asks you before a write; your client approves each call. In Claude Code, list the writes you want to approve under `permissions.ask`, as the README shows. Only `delete_space`, `set_space_audience` and `delete_custom_emoji` carry the `requiresUserInteraction` mark now, so Claude Code no longer asks for every other write, and headless it no longer refuses them.
+- **Breaking:** the tools that cannot be taken back are not registered unless `GCM_ALLOW_DESTRUCTIVE=true`: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. They used to be registered and refuse each call.
+- **Breaking:** every one of those tools takes `confirm: true` on each call, a dry run excepted.
+- **Breaking:** `delete_message` and `delete_thread` take `text_start`, how the message's text begins; `delete_space` and `set_space_audience` take the space's `display_name` in place of `confirm_space_id`; `delete_custom_emoji` takes `emoji_name`. The target is read first, a dry run included, and a call that names it otherwise is refused `[stale]`.
+- **Breaking:** `add_member` refuses `[blocked]` an address your organization's directory does not know, into a space that admits people from outside it. Use `add_external_member` for those.
+- **Breaking:** `add_member` refuses `[blocked]` every Google Group into a space that admits people from outside your organization, since the group brings in its outside members and anyone added to it later. Use `add_external_member`.
+- **Breaking:** `update_member_role` takes `MEMBER` alone; use `promote_member` to make someone a manager.
+- **Breaking:** under `GCM_READ_ONLY`, `login` asks for read-only scopes and `get_space_notification_setting` is not registered. Run `google-chat-mcp login` again after turning writes back on.
+- **Breaking:** `send_message` and `update_message` refuse a text that mentions everyone in the space, `<users/all>`. Mention the people you mean.
+- **Breaking:** `create_space` and `update_space` no longer open a space to a target audience; use `set_space_audience`. `update_space` still makes a space private.
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v6`, as Go requires from v6 on; install with `go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest`.
+- `unpin_message` and `remove_reaction` are ordinary writes: registered by default and no longer marked destructive.
+- `list_reactions` and the reaction types of `list_space_events` name `chat.messages.readonly` when a scope is missing, which a read-only login asks for.
+- `--dump-schemas` prints the full tool surface, whatever the settings that leave tools out say.
+
+### Removed
+
+- **Breaking:** `GCM_REQUIRE_PROMPT`, `GCM_ASK_BEFORE_SEND` and `GCM_INTERACTION_HINT`, and their flags. The first two are refused at start unless `false`, and `GCM_INTERACTION_HINT` is ignored; unset them, and drop the flags from your client's arguments. A headless run that set `GCM_INTERACTION_HINT=false` to call `delete_space` or `set_space_audience` can no longer call them.
+- **Breaking:** `delete_message`'s `force` argument; use `delete_thread`.
+- The `[ambiguous_outcome]` error class. Only a write the person had confirmed could end with it.
+
+### Fixed
+
+- `update_space` keeps a space's guidelines when it changes the description. It cleared them.
+- `GCM_TOOLSETS=all,admin` turns on every toolset, as the setup guide and `search_spaces` say. It refused to start.
+
+### Security
+
+- Built with Go 1.27.3, which fixes GO-2026-6809 in `crypto/x509`, which `govulncheck` found reachable: intermediate certificates known to be compromised are no longer trusted.
+
 ## [5.1.1] - 2026-10-10
 
 ### Fixed
@@ -694,7 +736,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0

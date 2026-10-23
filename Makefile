@@ -3,7 +3,7 @@
 GO       ?= go
 BIN      ?= ./google-chat-mcp
 VERSION  ?= dev
-PKG       = github.com/mmedum/google-chat-mcp/v5
+PKG       = github.com/mmedum/google-chat-mcp/v6
 LDFLAGS   = -s -w -X $(PKG)/internal/version.Version=$(VERSION)
 COVER_MIN ?= 80
 GOBIN    := $(shell $(GO) env GOPATH)/bin
@@ -139,11 +139,12 @@ evals: build ## Score a model driving these tools against a real account
 # what it registers, which needs no credentials, and fails on a tool that
 # no step exercises and no reason excuses. That is what keeps a tool
 # added tomorrow from being silently unexercised, and it is worth nothing
-# if it only runs when someone remembers to run the live suite.
+# if it only runs when someone remembers to run the live suite. The
+# driver's own unit tests run here too, its cleanup's among them: they
+# answer its calls with a fake, so everything but TestLive runs.
 .PHONY: live-surface
-live-surface: build ## Every tool and option is exercised by the live driver
-	@$(GO) test -tags=live ./internal/livecheck -count=1 \
-		-run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused' 
+live-surface: build ## Every tool and option is exercised by the live driver, and its cleanup holds
+	@$(GO) test -tags=live ./internal/livecheck -count=1 -skip '^TestLive$$'
 
 .PHONY: live
 live: build ## Drive the shipped binary against a real account

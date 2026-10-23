@@ -61,11 +61,11 @@ func TestEvals(t *testing.T) {
 				prompt = fmt.Sprintf(prompt, space)
 			}
 
-			// The evals are an unattended deployment, so they are exactly
-			// the case GCM_INTERACTION_HINT exists for. Without it every
-			// write is refused before it reaches Google and the trace
-			// reads like a model that would not act.
-			env := map[string]string{"GCM_LOCAL_DIR": s.dir, "GCM_INTERACTION_HINT": "false"}
+			// The evals are an unattended deployment. No task has the
+			// model call delete_space, set_space_audience or
+			// delete_custom_emoji, the three tools Claude Code refuses
+			// headless.
+			env := map[string]string{"GCM_LOCAL_DIR": s.dir}
 			for k, v := range tk.env {
 				env[k] = v
 			}
@@ -142,7 +142,7 @@ func TestWhichHalfTheClientForwards(t *testing.T) {
 
 	tr := runClaude(t, fmt.Sprintf("Call get_messages for the Google Chat space %s. "+
 		"Then repeat, word for word, the first 200 characters the tool gave back. Do not summarize it.",
-		space), map[string]string{"GCM_LOCAL_DIR": s.dir, "GCM_INTERACTION_HINT": "false"})
+		space), map[string]string{"GCM_LOCAL_DIR": s.dir})
 
 	calls := tr.callsTo("get_messages")
 	if len(calls) == 0 {

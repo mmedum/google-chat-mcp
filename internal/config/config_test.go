@@ -37,9 +37,9 @@ func TestDefaults(t *testing.T) {
 	if c.ReadOnly {
 		t.Error("read-only must default off")
 	}
-	if !c.RefuseDeletes {
-		t.Error("deletes must be refused by default: a deleted Chat message has no trash behind it, " +
-			"and the sibling Drive and Docs servers gate their recoverable deletes the same way")
+	if c.AllowDestructive {
+		t.Error("the destructive tools must be unregistered by default: a deleted Chat message has no trash " +
+			"behind it, and an opened space or a new manager cannot be taken back")
 	}
 	if !slices.Equal(c.Toolsets, defaultToolsets) {
 		t.Errorf("toolsets = %v, want every toolset but admin", c.Toolsets)
@@ -122,6 +122,10 @@ func TestToolsets(t *testing.T) {
 		{"all", "all", defaultToolsets},
 		{"empty means all", "", defaultToolsets},
 		{"admin is had by naming it", "admin", []Toolset{ToolsetCore, ToolsetAdmin}},
+		{"all and admin is everything", "all,admin", []Toolset{
+			ToolsetCore, ToolsetSections, ToolsetPins, ToolsetEmoji, ToolsetEvents,
+			ToolsetReadState, ToolsetSettings, ToolsetAvailability, ToolsetAdmin,
+		}},
 		{"named", "pins,emoji", []Toolset{ToolsetCore, ToolsetPins, ToolsetEmoji}},
 		{"core is implied", "pins", []Toolset{ToolsetCore, ToolsetPins}},
 		{"whitespace and case", " Pins , EMOJI ", []Toolset{ToolsetCore, ToolsetPins, ToolsetEmoji}},
@@ -173,6 +177,46 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 				t.Errorf("error %q does not mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// A removed setting that made the server ask starts when off and is
+// refused otherwise, saying what to do instead: ignored, it would
+// quietly allow what its owner set it to stop. GCM_INTERACTION_HINT is
+// not read at all. The flags are gone.
+func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
+	for _, env := range []map[string]string{
+		nil,
+		{"GCM_REQUIRE_PROMPT": "false", "GCM_ASK_BEFORE_SEND": " FALSE "},
+		{"GCM_REQUIRE_PROMPT": "0", "GCM_ASK_BEFORE_SEND": ""},
+		{"GCM_INTERACTION_HINT": "false"},
+		{"GCM_INTERACTION_HINT": "maybe"},
+	} {
+		if _, err := define(t, env).Build(); err != nil {
+			t.Errorf("%v: %v", env, err)
+		}
+	}
+	for _, tc := range []struct{ key, value, instead string }{
+		{"GCM_REQUIRE_PROMPT", "true", "GCM_ALLOW_DESTRUCTIVE off"},
+		{"GCM_REQUIRE_PROMPT", "maybe", "GCM_ALLOW_DESTRUCTIVE off"},
+		{"GCM_ASK_BEFORE_SEND", "true", "send_message and update_message"},
+	} {
+		_, err := define(t, map[string]string{tc.key: tc.value}).Build()
+		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.key+" was removed") ||
+			!strings.Contains(err.Error(), tc.instead) {
+			t.Errorf("%s=%s: %v", tc.key, tc.value, err)
+		}
+		if err != nil && strings.Contains(err.Error(), tc.value) {
+			t.Errorf("%s=%s: the refusal echoes the value: %v", tc.key, tc.value, err)
+		}
+	}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(&bytes.Buffer{})
+	Define(fs, func(string) string { return "" })
+	for _, name := range []string{"require-prompt", "ask-before-send", "interaction-hint"} {
+		if fs.Lookup(name) != nil {
+			t.Errorf("--%s is still a flag", name)
+		}
 	}
 }
 

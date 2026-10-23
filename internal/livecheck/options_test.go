@@ -42,7 +42,6 @@ import (
 // says that.
 var excusedOptions = map[string]string{
 	"create_space.member_emails":                     "would put a real colleague in a scratch space; a live run involves nobody else",
-	"delete_message.force":                           "deletes somebody else's message, which needs both a manager role and a message this run did not write",
 	"download_attachment.attachment_name":            "the by-name form of a download the step already makes by message",
 	"get_messages.since":                             "a time bound on a space minutes old, where every bound is degenerate",
 	"list_space_events.since":                        "same: the scratch space has no history to bound",
@@ -52,7 +51,6 @@ var excusedOptions = map[string]string{
 	"remove_reaction.reaction_name":                  "the by-name form of a removal the step already makes by emoji",
 	"search_people.sources":                          "narrows to one upstream; the step asserts a directory hit, which the default already reaches",
 	"send_message.reply_fallback":                    "needs a thread that has since been deleted to fall back from",
-	"update_space.description":                       "the same call the rename step makes, with a different field",
 	"update_space_notification_setting.mute_setting": "the same call the notification step makes, with a different field",
 	"upload_attachment.file_name":                    "renames an upload the step already makes under its own name",
 }
@@ -104,7 +102,7 @@ var excusedPatterns = []struct {
 }
 
 // callSites are the driver helpers that reach a tool.
-var callSites = map[string]bool{"must": true, "call": true}
+var callSites = map[string]bool{"must": true, "call": true, "try": true}
 
 // exercisedOptions reads this package's own source and reports which
 // arguments each tool is called with.

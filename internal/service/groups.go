@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Group is a Google Group as find_group and the member listings report

@@ -8,14 +8,14 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
-	"github.com/mmedum/google-chat-mcp/v5/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v5/internal/version"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v6/internal/version"
 )
 
 // deps is everything the server needs, assembled once at start.
@@ -119,7 +119,7 @@ func clientConfig(cfg config.Config, profile userconfig.Config) (*oauth2.Config,
 			return nil, err
 		}
 	}
-	return auth.LoadClientSecret(path, auth.Scopes(cfg.Enabled(config.ToolsetAdmin)))
+	return auth.LoadClientSecret(path, requestedScopes(cfg))
 }
 
 // credentialStore resolves the refresh token: the environment first for

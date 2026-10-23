@@ -5,7 +5,6 @@ package livecheck
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -37,19 +36,13 @@ type step struct {
 var steps = []step{
 	{"the account is named", "whoami", func(d *driver) {
 		var out struct {
-			Email       string
-			DisplayName string `json:"display_name"`
+			Email string
 		}
 		d.into(d.must("whoami", nil), &out)
 		if out.Email == "" {
 			d.t.Error("whoami named no account")
 		}
 		d.email = out.Email
-		if out.DisplayName != "" {
-			d.person.mu.Lock()
-			d.person.names = append(d.person.names, out.DisplayName)
-			d.person.mu.Unlock()
-		}
 	}},
 
 	// Reads the directory and writes nothing. The account's own address
@@ -64,22 +57,16 @@ var steps = []step{
 		}
 	}},
 
-	// A group cannot be named in this repository, so the person running
-	// the suite names one this account can see. Nothing is added to it:
-	// a live run involves nobody else.
+	// The group is LIVE_GROUP_EMAIL, which seed reads before it makes
+	// anything. Nothing is added to it: a live run involves nobody else.
 	{"a group's address turns into its id", "find_group", func(d *driver) {
-		email := os.Getenv("LIVE_GROUP_EMAIL")
-		if email == "" {
-			d.t.Error("set LIVE_GROUP_EMAIL to a Google Group this account can see; find_group needs one")
-			return
-		}
 		var out struct {
 			GroupName string  `json:"group_name"`
 			Email     string  `json:"email"`
 			Name      *string `json:"display_name"`
 		}
-		d.into(d.must("find_group", map[string]any{"email": email}), &out)
-		if !strings.HasPrefix(out.GroupName, "groups/") || out.Email != email {
+		d.into(d.must("find_group", map[string]any{"email": d.group}), &out)
+		if !strings.HasPrefix(out.GroupName, "groups/") || out.Email != d.group {
 			d.t.Errorf("find_group answered %s for the address it was given", d.redact(out.GroupName))
 		}
 		if out.Name == nil {
@@ -561,6 +548,55 @@ var steps = []step{
 		d.must("get_member", map[string]any{"membership_name": d.member})
 	}},
 
+	// A manager controls the space, so update_member_role makes nobody
+	// one. A dry run on this account's own membership: refused before
+	// anything is read or sent.
+	{"making a manager is refused", "update_member_role", func(d *driver) {
+		if d.member == "" {
+			d.t.Skip("no member to promote")
+		}
+		res := d.call("update_member_role", map[string]any{
+			"membership_name": d.member, "role": "MANAGER", "dry_run": true,
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("update_member_role made a manager, or refused it otherwise: %s", d.redact(res.Text))
+		}
+	}},
+
+	// add_member takes only people in the organization's directory, and
+	// no Google Group, into a space that says it admits anyone from
+	// outside it. Dry runs with an address no directory holds and a
+	// made-up group: nothing is sent either way. Whether the scratch
+	// space admits outsiders is the organization's policy, read off the
+	// space rather than assumed; where it says nothing, Google left a
+	// false out, refuses outsiders itself, and no lookup is made.
+	{"an invite from outside the organization is refused", "add_member", func(d *driver) {
+		var space struct {
+			ExternalUserAllowed *bool `json:"external_user_allowed"`
+		}
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &space)
+		res := d.call("add_member", map[string]any{
+			"space_id": d.space, "user_email": "livecheck-outsider@example.com", "dry_run": true,
+		})
+		group := d.call("add_member", map[string]any{
+			"space_id": d.space, "group_name": "groups/AAAAlivecheckgroup", "dry_run": true,
+		})
+		if space.ExternalUserAllowed == nil || !*space.ExternalUserAllowed {
+			d.t.Log("the scratch space does not say it admits anyone from outside, so no lookup is made")
+			if res.IsError || group.IsError {
+				d.t.Errorf("a dry run into a space that admits nobody from outside: %s %s",
+					d.redact(res.Text), d.redact(group.Text))
+			}
+			return
+		}
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("an address outside the directory was not refused: %s", d.redact(res.Text))
+		}
+		if !group.IsError || !strings.HasPrefix(group.Text, "[blocked]") {
+			d.t.Errorf("a group into a space that admits outsiders was not refused: %s", d.redact(group.Text))
+		}
+	}},
+
 	{"search finds the message in this space", "search_messages", func(d *driver) {
 		var out struct {
 			Matches []struct {
@@ -622,33 +658,57 @@ var steps = []step{
 	}},
 
 	{"the space renames", "update_space", func(d *driver) {
-		d.must("update_space", map[string]any{
-			"space_id": d.space, "display_name": spacePrefix + " renamed (safe to delete)",
-		})
+		name := spacePrefix + " renamed (safe to delete)"
+		d.must("update_space", map[string]any{"space_id": d.space, "display_name": name})
+		d.name = name
 	}},
 
-	// Opening a space asks the person; get_space is what says Google
-	// applied it, since the tool echoes what it asked for. The space is
-	// made private again before either state is judged: a failed run
-	// keeps its scratch space, and it must not keep it open to the
-	// organization.
-	{"the space opens to the organization and closes again", "update_space", func(d *driver) {
-		asked := d.person.expect(false)
-		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); res.IsError {
-			d.t.Errorf("opening the space: %s", d.redact(res.Text))
+	// A description edit masks all of spaceDetails, so the server reads
+	// the guidelines and sends them back. The scratch space has none to
+	// keep; what this settles is that the read before the patch and the
+	// patch with guidelines left out still land, and the description
+	// reads back.
+	{"the description changes", "update_space", func(d *driver) {
+		d.must("update_space", map[string]any{"space_id": d.space, "description": "livecheck scratch space"})
+		var out struct {
+			Description *string `json:"description"`
 		}
-		if len(asked()) != 1 {
-			d.t.Errorf("opening the space put %d questions to the person, not 1", len(asked()))
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+		if out.Description == nil || *out.Description != "livecheck scratch space" {
+			d.t.Error("the description did not read back as it was set")
+		}
+	}},
+
+	// Opening a space widens who can read it, so update_space refuses it
+	// and set_space_audience does it; get_space is what says Google
+	// applied it, since the tool echoes what it asked for. The space is
+	// made private again before either state is judged, and cleanup
+	// closes it again and reads it back, whatever stops the run from
+	// here: a failed run keeps its scratch space, and it must not keep
+	// it open to the organization.
+	{"the space opens to the organization and closes again", "set_space_audience", func(d *driver) {
+		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("update_space opened the space, or refused it otherwise: %s", d.redact(res.Text))
+		}
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"display_name": "a space this run did not make", "confirm": true}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Errorf("opening a space under another name was not refused as stale: %s", d.redact(res.Text))
+		}
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"display_name": d.name, "dry_run": true}); res.IsError {
+			d.t.Errorf("a dry run of opening the space: %s", d.redact(res.Text))
+		}
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"display_name": d.name, "confirm": true}); res.IsError {
+			d.t.Errorf("opening the space: %s", d.redact(res.Text))
 		}
 		opened := d.accessOf(d.space)
 
-		asked = d.person.expect(false)
 		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "private"}); res.IsError {
 			d.t.Errorf("the scratch space may still be open to the organization; make it private by hand: %s",
 				d.redact(res.Text))
-		}
-		if len(asked()) != 0 {
-			d.t.Errorf("making the space private asked the person %d times", len(asked()))
 		}
 		closed := d.accessOf(d.space)
 
@@ -657,38 +717,6 @@ var steps = []step{
 		}
 		if closed != "PRIVATE" {
 			d.t.Errorf("after closing, access state = %q, want PRIVATE", d.redact(closed))
-		}
-	}},
-
-	// create_space sends the audience through spaces.setup, whose own
-	// reference does not name accessSettings; only the target-audience
-	// guide says setup takes it. This is what settles it. The space is
-	// deleted before its access is judged, so a failure there leaves
-	// nothing open to the organization.
-	{"a space is created open", "create_space", func(d *driver) {
-		var out struct {
-			SpaceID string `json:"space_id"`
-		}
-		asked := d.person.expect(false)
-		d.into(d.must("create_space", map[string]any{
-			"display_name": fmt.Sprintf("%s open %d (safe to delete)", spacePrefix, time.Now().Unix()),
-			"audience":     "default",
-		}), &out)
-		if out.SpaceID == "" {
-			d.t.Fatal("create_space returned no space_id")
-		}
-		open := out.SpaceID
-		d.record(open)
-		if len(asked()) != 1 {
-			d.t.Errorf("creating an open space put %d questions to the person, not 1", len(asked()))
-		}
-		state := d.accessOf(open)
-		if res := d.call("delete_space", map[string]any{"space_id": open, "confirm_space_id": open}); res.IsError {
-			d.t.Errorf("the open space was left behind: %s", d.redact(res.Text))
-		}
-		if state != "DISCOVERABLE" {
-			d.t.Errorf("a space created with an audience reads back as %q, want DISCOVERABLE: "+
-				"spaces.setup may not take accessSettings", d.redact(state))
 		}
 	}},
 
@@ -816,26 +844,24 @@ var steps = []step{
 		}
 	}},
 
+	// A delete names the message by how its text begins, and the server
+	// reads the message to compare: text it does not begin with is
+	// [stale], and nothing goes.
+	{"a delete naming other text is refused", "delete_message", func(d *driver) {
+		res := d.call("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": "livecheck wrote something else here", "confirm": true,
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Errorf("a delete naming other text was not refused as stale: %s", d.redact(res.Text))
+		}
+	}},
+
 	// The bug this repository shipped once: Google answers a deleted
 	// message with 200 and a tombstone rather than 404, so a repeat
 	// delete that reads the status instead of the answer reports success
 	// twice. Every gate passed while it was broken.
-	// The server asks the person before a delete it cannot take back. A
-	// decline writes nothing and says so without claiming the person
-	// declined, since a client can answer by itself.
-	{"a declined delete deletes nothing", "delete_message", func(d *driver) {
-		asked := d.person.expect(true)
-		res := d.call("delete_message", map[string]any{"message_name": d.posted})
-		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") || len(asked()) != 1 {
-			d.t.Fatalf("a declined delete: %s; %d questions", d.redact(res.Text), len(asked()))
-		}
-		if q := asked()[0]; !strings.Contains(q, "delete_message: delete a message by") || !strings.Contains(q, searchTerm) {
-			d.t.Errorf("the question does not show the message: %s", d.redact(q))
-		}
-	}},
-
 	// The reply goes first: Google refuses to delete a message that has
-	// threaded replies unless forced, and force is a step of its own.
+	// threaded replies, and taking them is delete_thread's.
 	{"the thread reply deletes", "delete_message", func(d *driver) {
 		if d.threadReply == "" {
 			d.t.Skip("no reply was posted into the thread")
@@ -843,11 +869,9 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		asked := d.person.expect(false)
-		d.into(d.must("delete_message", map[string]any{"message_name": d.threadReply}), &out)
-		if len(asked()) != 1 {
-			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
-		}
+		d.into(d.must("delete_message", map[string]any{
+			"message_name": d.threadReply, "text_start": searchTerm + " replied in the thread", "confirm": true,
+		}), &out)
 		if !out.Deleted {
 			d.t.Error("the reply's delete reported that it deleted nothing")
 		}
@@ -857,11 +881,9 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		asked := d.person.expect(false)
-		d.into(d.must("delete_message", map[string]any{"message_name": d.posted}), &out)
-		if len(asked()) != 1 {
-			d.t.Errorf("the delete put %d questions to the person, not 1", len(asked()))
-		}
+		d.into(d.must("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": liveEditBody, "confirm": true,
+		}), &out)
 		if !out.Deleted {
 			d.t.Error("the first delete reported that it deleted nothing")
 		}
@@ -878,11 +900,9 @@ var steps = []step{
 	// That is precisely what happened, and only a live call can tell the
 	// two apart.
 	{"a repeat delete reports that it deleted nothing", "delete_message", func(d *driver) {
-		asked := d.person.expect(false)
-		res := d.call("delete_message", map[string]any{"message_name": d.posted})
-		if len(asked()) != 0 {
-			d.t.Errorf("deleting a message already gone asked the person %d times", len(asked()))
-		}
+		res := d.call("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": liveEditBody, "confirm": true,
+		})
 		if res.IsError {
 			d.t.Fatalf("a repeat delete failed rather than being idempotent: %s", d.redact(res.Text))
 		}
@@ -896,27 +916,81 @@ var steps = []step{
 		}
 	}},
 
-	// A post that notifies everyone in the space asks first; an ordinary
-	// one does not. The scratch space holds only this account.
-	{"a post that mentions everyone asks first", "send_message", func(d *driver) {
-		asked := d.person.expect(false)
-		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
-		if qs := asked(); len(qs) != 1 || !strings.Contains(qs[0], "mentioning everyone in it") {
-			d.t.Errorf("a post to everyone put %d questions: %s", len(qs), d.redact(strings.Join(qs, " | ")))
+	// A post that notifies everyone in the space is refused; an ordinary
+	// one is not. The scratch space holds only this account.
+	{"a post that mentions everyone is refused", "send_message", func(d *driver) {
+		res := d.call("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("a post to everyone: %s", d.redact(res.Text))
 		}
-		asked = d.person.expect(false)
 		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck posts a plain line and will delete it"})
-		if len(asked()) != 0 {
-			d.t.Errorf("an ordinary post asked the person %d times", len(asked()))
+	}},
+
+	// A message with replies goes only through delete_thread, which
+	// takes them too. Google refusing delete_message here is what
+	// delete_message's description promises; the thread then goes whole,
+	// and neither message is left in the space.
+	{"a thread deletes with its replies", "delete_thread", func(d *driver) {
+		var root, reply struct {
+			MessageID string `json:"message_id"`
+			ThreadID  string `json:"thread_id"`
+		}
+		d.into(d.must("send_message", map[string]any{"space_id": d.space, "text": liveThreadBody}), &root)
+		d.record(root.MessageID)
+		d.record(root.ThreadID)
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " replied and will go with the thread", "thread_name": root.ThreadID,
+		}), &reply)
+		d.record(reply.MessageID)
+
+		if res := d.call("delete_message", map[string]any{
+			"message_name": root.MessageID, "text_start": liveThreadBody, "confirm": true,
+		}); !res.IsError {
+			d.t.Error("delete_message deleted a message that has replies; Google was meant to refuse it")
+		}
+		if res := d.call("delete_thread", map[string]any{
+			"message_name": reply.MessageID, "text_start": searchTerm + " replied and will go", "confirm": true,
+		}); !res.IsError || !strings.HasPrefix(res.Text, "[invalid]") {
+			d.t.Errorf("delete_thread took a reply as a thread's first message: %s", d.redact(res.Text))
+		}
+		var out struct {
+			Deleted bool `json:"deleted"`
+			Forced  bool `json:"forced"`
+		}
+		d.into(d.must("delete_thread", map[string]any{
+			"message_name": root.MessageID, "text_start": liveThreadBody, "confirm": true,
+		}), &out)
+		if !out.Deleted {
+			d.t.Error("delete_thread reported that it deleted nothing")
+		}
+		if !out.Forced {
+			d.t.Error("delete_thread did not report taking the replies")
+		}
+
+		var left struct {
+			Result []struct {
+				MessageID string `json:"message_id"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{"space_id": d.space, "limit": 50}), &left)
+		for _, m := range left.Result {
+			if m.MessageID == root.MessageID || m.MessageID == reply.MessageID {
+				d.t.Errorf("%s is still in the space after delete_thread", d.redact(m.MessageID))
+			}
 		}
 	}},
 
-	// Deleting the space needs the id twice. One argument would make a
-	// mistyped call destroy other people's messages.
+	// Deleting the space names it and says confirm. Leaving either out
+	// changes nothing, and a name that is not the space's is [stale].
 	{"deleting a space without the confirmation is refused", "delete_space", func(d *driver) {
-		res := d.call("delete_space", map[string]any{"space_id": d.space})
-		if !res.IsError {
-			d.t.Fatal("delete_space ran without its confirmation argument")
+		if res := d.call("delete_space", map[string]any{"space_id": d.space, "display_name": d.name}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[invalid]") {
+			d.t.Fatalf("delete_space ran without confirm, or refused it otherwise: %s", d.redact(res.Text))
+		}
+		if res := d.call("delete_space", map[string]any{
+			"space_id": d.space, "display_name": "a space this run did not make", "confirm": true,
+		}); !res.IsError || !strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Fatalf("delete_space ran under another space's name, or refused it otherwise: %s", d.redact(res.Text))
 		}
 	}},
 }
@@ -930,31 +1004,43 @@ const (
 	liveMarkdownBody = "livecheck posted this **" + liveMarkdownBold + "** line and will delete it"
 	liveMarkdownBold = "markdown"
 	liveEditBody     = "livecheck edited this line and will delete it"
-	searchTerm       = "livecheck"
+	// liveThreadBody starts the thread delete_thread takes whole.
+	liveThreadBody = "livecheck started this thread and will delete all of it"
+	searchTerm     = "livecheck"
 )
 
 func TestLive(t *testing.T) {
 	d := connect(t)
+	// A cleanup rather than a defer: it runs when a step panics too.
+	t.Cleanup(d.drop)
 	d.seed()
-	defer d.drop()
 
 	for _, s := range steps {
-		if !t.Run(s.name, func(t *testing.T) {
-			inner := *d
-			inner.t = t
-			s.run(&inner)
-			// Everything the step wrote comes back, with the parent's
-			// testing.T put back on top. This was a hand-listed set of
-			// fields, and a field added for a new step was not on it:
-			// the id that step recorded was dropped between the write
-			// and the read, and the read skipped itself for want of it,
-			// green and having checked nothing.
-			inner.t = d.t
-			*d = inner
-		}) {
+		if !t.Run(s.name, func(t *testing.T) { d.runStep(t, s) }) {
 			t.Fatalf("stopping: later steps read what %q wrote", s.name)
 		}
 	}
+}
+
+// runStep runs one step on a copy of the driver that carries the step's
+// own testing.T.
+func (d *driver) runStep(t testing.TB, s step) {
+	// On the driver rather than the copy, and before the step runs: a
+	// step that stops part way leaves the space as open as it got, and
+	// its copy is not kept.
+	if s.tool == "set_space_audience" {
+		d.opened = true
+	}
+	inner := *d
+	inner.t = t
+	s.run(&inner)
+	// Everything the step wrote comes back, with the parent's testing.T
+	// put back on top. This was a hand-listed set of fields, and a field
+	// added for a new step was not on it: the id that step recorded was
+	// dropped between the write and the read, and the read skipped
+	// itself for want of it, green and having checked nothing.
+	inner.t = d.t
+	*d = inner
 }
 
 // messageURL is the link Copy link puts on the clipboard in Chat: the

@@ -231,6 +231,24 @@ documented and does happen, so the server handles both, but a
 successful `add_member` means "they are in the space now", not "they
 were not before".
 
+## `add_member` refuses a colleague as outside the organization
+
+In a space that admits people from outside your organization,
+`add_member` looks the address up in your organization's directory and
+refuses `[blocked]` when no member there has it, or when the directory
+declines to answer. Two things make a colleague miss: an administrator
+turned directory sharing off, and a personal Google account, which has
+no directory, so everyone counts as outside. `search_people` with `sources: ["DIRECTORY"]` shows what the
+directory answers, contacts an administrator shared included, which
+count as outside. Where the person really is outside, or the lookup
+cannot see them, `add_external_member` invites them; it needs
+`GCM_ALLOW_DESTRUCTIVE=true`.
+
+A Google Group is refused there whoever is in it, because the group's
+members from outside join with it, and so does anyone added to the
+group later. `add_external_member` adds a group too, given its address
+as `group_email` beside `group_name`.
+
 ## `remove_reaction` reports nothing removed, but the reaction is there
 
 The by-triple form — message, emoji, person — has to resolve each
@@ -244,8 +262,8 @@ and pass that.
 
 It should not, any more. Google answers a read of a deleted message with
 a 200 tombstone rather than a 404, so a naive "is it gone?" check reads
-an ordinary repeat delete as a refusal. The server checks for the
-tombstone.
+an ordinary repeat delete as a refusal. The server reads the message
+before it deletes, and a tombstone there means nothing is sent.
 
 If you do see a delete refused: a 403 that is not about scopes means you
 may not delete that message. You can only delete your own.

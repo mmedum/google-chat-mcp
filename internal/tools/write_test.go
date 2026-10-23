@@ -10,20 +10,21 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
 )
 
-// counter records how many requests a tool call made. A dry run's whole
-// promise is that the answer is zero.
+// counter records the method of every request a tool call made. A dry
+// run's whole promise is that none of them writes, and most make none
+// at all.
 type counter struct {
-	mu sync.Mutex
-	n  int
+	mu      sync.Mutex
+	methods []string
 }
 
 func (c *counter) wrap(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
-		c.n++
+		c.methods = append(c.methods, r.Method)
 		c.mu.Unlock()
 		h(w, r)
 	}
@@ -32,7 +33,14 @@ func (c *counter) wrap(h http.HandlerFunc) http.HandlerFunc {
 func (c *counter) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.n
+	return len(c.methods)
+}
+
+// writes is every request that was not a read.
+func (c *counter) writes() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.DeleteFunc(slices.Clone(c.methods), func(m string) bool { return m == http.MethodGet })
 }
 
 func TestSendMessageThroughASession(t *testing.T) {
@@ -52,46 +60,52 @@ func TestSendMessageThroughASession(t *testing.T) {
 	}
 }
 
-// A dry run makes no request and shows the body a real post would send.
+// A dry run writes nothing and shows the body a real post would send.
 // One test per tool, because a tool that quietly posted anyway is the
-// failure this flag exists to rule out.
-func TestEveryDryRunReachesNothing(t *testing.T) {
+// failure this flag exists to rule out. Most make no request at all.
+// The ones marked reads look first, because the call would be refused
+// on what they read: a delete's witness, an invite from outside the
+// organization. Those may read and must not write.
+func TestEveryDryRunWritesNothing(t *testing.T) {
 	covered := map[string]bool{}
 	for _, tc := range []struct {
-		tool string
-		args map[string]any
+		tool  string
+		args  map[string]any
+		reads bool
 	}{
-		{"send_message", map[string]any{"space_id": "spaces/A", "text": "hello"}},
-		{"update_message", map[string]any{"message_name": "spaces/A/messages/1", "text": "edited"}},
-		{"delete_message", map[string]any{"message_name": "spaces/A/messages/1"}},
-		{"create_group_chat", map[string]any{"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}}},
-		{"create_space", map[string]any{"display_name": "Team", "member_emails": []string{"janedoe@example.com"}}},
-		{"update_space", map[string]any{"space_id": "spaces/A", "display_name": "Renamed"}},
-		{"add_member", map[string]any{"space_id": "spaces/A", "user_email": "janedoe@example.com"}},
-		{"remove_member", map[string]any{"membership_name": "spaces/A/members/M"}},
-		{"create_section", map[string]any{"display_name": "Clients"}},
-		{"rename_section", map[string]any{"section_name": "users/me/sections/S", "display_name": "Clients"}},
-		{"delete_section", map[string]any{"section_name": "users/me/sections/S"}},
-		{"position_section", map[string]any{"section_name": "users/me/sections/S", "relative_position": "START"}},
-		{"update_member_role", map[string]any{"membership_name": "spaces/A/members/M", "role": "MANAGER"}},
-		{"delete_space", map[string]any{"space_id": "spaces/A", "confirm_space_id": "spaces/A"}},
-		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
-		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}},
-		{"mark_space_read", map[string]any{"space_id": "spaces/A"}},
-		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "from_time": "2026-01-02T03:04:05Z"}},
-		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "mute_setting": "MUTED"}},
-		{"set_availability", map[string]any{"state": "AWAY"}},
-		{"set_custom_status", map[string]any{"text": "in a workshop", "emoji": "🎉"}},
-		{"create_custom_emoji", map[string]any{"emoji_name": ":team-flag:", "image_path": "emoji.png"}},
-		{"delete_custom_emoji", map[string]any{"name": "customEmojis/AAAAemoji1"}},
-		{"upload_attachment", map[string]any{"space_id": "spaces/A", "local_path": "emoji.png"}},
+		{"send_message", map[string]any{"space_id": "spaces/A", "text": "hello"}, false},
+		{"update_message", map[string]any{"message_name": "spaces/A/messages/1", "text": "edited"}, false},
+		{"delete_message", map[string]any{"message_name": "spaces/A/messages/1", "text_start": "the standup moved to 10"}, true},
+		{"delete_thread", map[string]any{"message_name": "spaces/A/messages/1", "text_start": "the standup moved to 10"}, true},
+		{"create_group_chat", map[string]any{"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}}, false},
+		{"create_space", map[string]any{"display_name": "Team", "member_emails": []string{"janedoe@example.com"}}, false},
+		{"update_space", map[string]any{"space_id": "spaces/A", "display_name": "Renamed"}, false},
+		{"add_member", map[string]any{"space_id": "spaces/A", "user_email": "janedoe@example.com"}, true},
+		{"add_external_member", map[string]any{"space_id": "spaces/A", "user_email": "guest@example.org"}, false},
+		{"remove_member", map[string]any{"membership_name": "spaces/A/members/M"}, false},
+		{"create_section", map[string]any{"display_name": "Clients"}, false},
+		{"rename_section", map[string]any{"section_name": "users/me/sections/S", "display_name": "Clients"}, false},
+		{"delete_section", map[string]any{"section_name": "users/me/sections/S"}, false},
+		{"position_section", map[string]any{"section_name": "users/me/sections/S", "relative_position": "START"}, false},
+		{"update_member_role", map[string]any{"membership_name": "spaces/A/members/M", "role": "MEMBER"}, false},
+		{"promote_member", map[string]any{"membership_name": "spaces/A/members/M", "role": "MANAGER"}, false},
+		{"delete_space", map[string]any{"space_id": "spaces/A", "display_name": "Team standup"}, true},
+		{"set_space_audience", map[string]any{"space_id": "spaces/A", "audience": "default", "display_name": "Team standup"}, true},
+		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
+		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
+		{"mark_space_read", map[string]any{"space_id": "spaces/A"}, false},
+		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "from_time": "2026-01-02T03:04:05Z"}, false},
+		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "mute_setting": "MUTED"}, false},
+		{"set_availability", map[string]any{"state": "AWAY"}, false},
+		{"set_custom_status", map[string]any{"text": "in a workshop", "emoji": "🎉"}, false},
+		{"create_custom_emoji", map[string]any{"emoji_name": ":team-flag:", "image_path": "emoji.png"}, false},
+		{"delete_custom_emoji", map[string]any{"name": "customEmojis/AAAAemoji1", "emoji_name": ":test-emoji:"}, true},
+		{"upload_attachment", map[string]any{"space_id": "spaces/A", "local_path": "emoji.png"}, false},
 	} {
 		covered[tc.tool] = true
 		t.Run(tc.tool, func(t *testing.T) {
 			c := &counter{}
-			cs := session(t, c.wrap(func(w http.ResponseWriter, _ *http.Request) {
-				fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
-			}))
+			cs := session(t, c.wrap(everyEndpoint))
 			args := map[string]any{"dry_run": true}
 			for k, v := range tc.args {
 				args[k] = v
@@ -100,8 +114,14 @@ func TestEveryDryRunReachesNothing(t *testing.T) {
 			if res.IsError {
 				t.Fatalf("%s: %s", tc.tool, errorText(t, res))
 			}
-			if c.count() != 0 {
-				t.Errorf("a dry run made %d requests", c.count())
+			if n := c.count(); !tc.reads && n != 0 {
+				t.Errorf("a dry run made %d requests", n)
+			}
+			if tc.reads && c.count() == 0 {
+				t.Error("a dry run that checks what it reads read nothing")
+			}
+			if w := c.writes(); len(w) != 0 {
+				t.Errorf("a dry run wrote: %v", w)
 			}
 			var out struct {
 				DryRun bool `json:"dry_run"`
@@ -130,18 +150,14 @@ func TestEveryDryRunReachesNothing(t *testing.T) {
 	}
 }
 
-// move_space_to_section is the one dry run that reads: the preview says
-// which section the space would leave, and that has to be looked up.
-// What it must not do is write.
+// move_space_to_section's preview says which section the space would
+// leave, and that has to be looked up, so its dry run reads, in a shape
+// the table's stub does not answer. What it must not do is write.
 func TestTheMoveDryRunReadsButDoesNotWrite(t *testing.T) {
-	var methods []string
-	var mu sync.Mutex
-	cs := session(t, func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		methods = append(methods, r.Method)
-		mu.Unlock()
+	c := &counter{}
+	cs := session(t, c.wrap(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`)
-	})
+	}))
 	var out MoveSpaceToSectionOutput
 	call(t, cs, "move_space_to_section", map[string]any{
 		"space_id": "spaces/A", "section_name": "users/123/sections/T", "dry_run": true,
@@ -149,12 +165,8 @@ func TestTheMoveDryRunReadsButDoesNotWrite(t *testing.T) {
 	if out.Moved || out.FromSection != "users/123/sections/S" {
 		t.Errorf("result = %+v", out)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	for _, m := range methods {
-		if m != "GET" {
-			t.Errorf("a dry run made a %s request", m)
-		}
+	if w := c.writes(); len(w) != 0 {
+		t.Errorf("a dry run wrote: %v", w)
 	}
 }
 
@@ -166,12 +178,52 @@ func TestDeleteMessageReportsAnAlreadyGoneMessage(t *testing.T) {
 		fmt.Fprint(w, `{"error":{"status":"NOT_FOUND","message":"gone"}}`)
 	})
 	var out DeleteMessageOutput
-	res := call(t, cs, "delete_message", map[string]any{"message_name": "spaces/A/messages/1"}, &out)
+	res := call(t, cs, "delete_message", map[string]any{
+		"message_name": "spaces/A/messages/1", "text_start": "the standup moved", "confirm": true,
+	}, &out)
 	if res.IsError {
 		t.Fatalf("a repeat delete should not fail: %s", errorText(t, res))
 	}
 	if out.Deleted {
 		t.Error("deleted = true for a message that was already gone")
+	}
+}
+
+// A group in a space that admits people from outside goes through
+// add_external_member, which takes group_name and the group's address;
+// add_member refuses it.
+func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
+	var sent []map[string]any
+	cs := session(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/cloudidentity/") {
+			fmt.Fprint(w, `{"name":"groups/AAAAgroup1","groupKey":{"id":"team@example.com"}}`)
+			return
+		}
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","externalUserAllowed":true}`)
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		sent = append(sent, body)
+		fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
+	})
+	args := map[string]any{"space_id": "spaces/A", "group_name": "groups/AAAAgroup1"}
+	res := call(t, cs, "add_member", args, nil)
+	if !res.IsError || !strings.HasPrefix(errorText(t, res), "[blocked]") {
+		t.Fatalf("add_member added a group to a space that admits outsiders: %+v", res)
+	}
+	args["confirm"], args["group_email"] = true, "team@example.com"
+	var out AddMemberOutput
+	if res := call(t, cs, "add_external_member", args, &out); res.IsError {
+		t.Fatalf("add_external_member: %s", errorText(t, res))
+	}
+	if len(sent) != 1 {
+		t.Fatalf("%d writes, want the one group add", len(sent))
+	}
+	group, _ := sent[0]["groupMember"].(map[string]any)
+	if group["name"] != "groups/AAAAgroup1" || out.GroupName != "groups/AAAAgroup1" {
+		t.Errorf("sent %v and reported %+v, want groups/AAAAgroup1 added", sent[0], out)
 	}
 }
 
@@ -212,17 +264,7 @@ func TestPositionSectionRefusesBothWaysAtOnce(t *testing.T) {
 // registeredNames lists what Register puts on a server under cfg.
 func registeredNames(t *testing.T, cfg config.Config) []string {
 	t.Helper()
-	cs := sessionWithConfig(t, func(http.ResponseWriter, *http.Request) {}, cfg)
-	list, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("ListTools: %v", err)
-	}
-	names := make([]string, 0, len(list.Tools))
-	for _, tool := range list.Tools {
-		names = append(names, tool.Name)
-	}
-	slices.Sort(names)
-	return names
+	return toolNames(t, sessionWithConfig(t, func(http.ResponseWriter, *http.Request) {}, cfg))
 }
 
 // GCM_READ_ONLY is the flag a person sets when they want this server
@@ -234,8 +276,12 @@ func registeredNames(t *testing.T, cfg config.Config) []string {
 // download_attachment is the one tool here that is not in readTools:
 // it reads Chat and writes a file, so it is not marked read-only, and
 // GCM_READ_ONLY still registers it because that flag is about Chat.
+// get_space_notification_setting is the one read left out: Google takes
+// it only through a scope that can also write, which read-only mode does
+// not ask for.
 func TestReadOnlyRegistersExactlyTheReadTools(t *testing.T) {
 	want := append([]string{"download_attachment"}, readTools...)
+	want = slices.DeleteFunc(want, func(name string) bool { return name == "get_space_notification_setting" })
 	slices.Sort(want)
 	cfg := config.Config{Toolsets: config.AllToolsets, ReadOnly: true}
 	if got := registeredNames(t, cfg); !slices.Equal(got, want) {
@@ -256,49 +302,58 @@ func TestFindDirectMessageCountsAsAWrite(t *testing.T) {
 	}
 }
 
-// Every write is registered by default: read-only is opt-in, and the
-// released surface is a floor a change may add to, never drop from.
+// Every write but the destructive ones is registered by default:
+// read-only is opt-in, and GCM_ALLOW_DESTRUCTIVE adds the rest.
 // internal/server holds the whole baseline against the schema dump;
-// this holds the count here, where a tool is registered.
+// this holds the split here, where a tool is registered.
 func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
-	got := registeredNames(t, config.Config{Toolsets: config.AllToolsets})
-	if len(got) < 53 {
-		t.Errorf("%d tools registered, fewer than the 53 of the released surface: %v", len(got), got)
+	destructive := []string{
+		"add_external_member", "delete_custom_emoji", "delete_message", "delete_section", "delete_space",
+		"delete_thread", "promote_member", "remove_member", "set_space_audience",
 	}
-	for _, name := range []string{"send_message", "delete_message", "move_space_to_section", "update_space"} {
+	got := registeredNames(t, config.Config{Toolsets: config.AllToolsets})
+	for _, name := range []string{"send_message", "add_member", "move_space_to_section", "update_space", "unpin_message", "remove_reaction"} {
 		if !slices.Contains(got, name) {
-			t.Errorf("%q is not registered", name)
+			t.Errorf("%q is not registered by default", name)
+		}
+	}
+	for _, name := range destructive {
+		if slices.Contains(got, name) {
+			t.Errorf("%q is registered without GCM_ALLOW_DESTRUCTIVE", name)
+		}
+	}
+	all := registeredNames(t, config.Config{}.FullSurface())
+	if want := len(got) + len(destructive); len(all) != want {
+		t.Errorf("%d tools with GCM_ALLOW_DESTRUCTIVE, want %d: the default surface and the %d destructive tools",
+			len(all), want, len(destructive))
+	}
+	for _, name := range destructive {
+		if !slices.Contains(all, name) {
+			t.Errorf("%q is missing with GCM_ALLOW_DESTRUCTIVE", name)
 		}
 	}
 }
 
-// The tools a person would want to be asked about are the ones whose
-// effect other people see and nobody can undo. delete_section is the
-// counter-example that makes the point: it is destructive, but it is
-// the caller's own sidebar.
-func TestTheOutwardFacingToolsAskForAPerson(t *testing.T) {
+// Claude Code asks on every call for exactly the tools whose prompt is
+// itself the point: deleting a whole space or an emoji every message
+// shares, and opening a space to an audience. Every other write is the
+// client's to approve, sending and deleting a message included, since a
+// mark there would ask once per message of a bulk delete.
+func TestOnlyTheMarkedSetAsksForAPerson(t *testing.T) {
 	cs := session(t, func(http.ResponseWriter, *http.Request) {})
 	list, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	asks := map[string]bool{}
+	var marked []string
 	for _, tool := range list.Tools {
-		_, ok := tool.Meta["anthropic/requiresUserInteraction"]
-		asks[tool.Name] = ok
-	}
-	for _, name := range []string{
-		"send_message", "update_message", "delete_message",
-		"add_member", "remove_member", "create_space", "create_group_chat", "update_space",
-	} {
-		if !asks[name] {
-			t.Errorf("%q writes where other people can see it and asks for nobody", name)
+		if _, ok := tool.Meta["anthropic/requiresUserInteraction"]; ok {
+			marked = append(marked, tool.Name)
 		}
 	}
-	for _, name := range []string{"list_spaces", "get_messages", "add_reaction", "find_direct_message"} {
-		if asks[name] {
-			t.Errorf("%q demands an interaction it does not need", name)
-		}
+	slices.Sort(marked)
+	if want := []string{"delete_custom_emoji", "delete_space", "set_space_audience"}; !slices.Equal(marked, want) {
+		t.Errorf("marked %v, want %v", marked, want)
 	}
 }
 

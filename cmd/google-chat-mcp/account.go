@@ -6,7 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mmedum/google-chat-mcp/v5/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v6/internal/redact"
 	"io"
 	"os"
 	"slices"
@@ -15,14 +15,14 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v5/internal/doctor"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
-	"github.com/mmedum/google-chat-mcp/v5/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v6/internal/doctor"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
 )
 
 // cmdLogin runs the loopback OAuth flow and stores the refresh token.
@@ -49,8 +49,8 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 			"or set %sCLIENT_SECRET. docs/gcp-setup.md walks through creating one.", config.EnvPrefix)
 	}
 
-	admin := cfg.Enabled(config.ToolsetAdmin)
-	oauthCfg, err := auth.LoadClientSecret(path, auth.Scopes(admin))
+	requested := requestedScopes(cfg)
+	oauthCfg, err := auth.LoadClientSecret(path, requested)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
@@ -82,7 +82,7 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, "%v", err)
 	}
 
-	granted := grantedScopes(token, admin)
+	granted := grantedScopes(token, requested)
 	profile := userconfig.Config{
 		ClientSecretPath: path,
 		TokenStore:       string(source),
@@ -97,7 +97,7 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 
 	_, _ = fmt.Fprintf(stdout, "Signed in%s. Refresh token stored in the %s.\n",
 		accountSuffix(profile.AccountEmail), source)
-	if missing := scopes.Missing(granted, admin); len(missing) > 0 {
+	if missing := scopes.Missing(granted, requested); len(missing) > 0 {
 		_, _ = fmt.Fprintf(stdout, "\n%d scope(s) were not granted, so some tools will report a [scope] error:\n", len(missing))
 		for _, s := range missing {
 			_, _ = fmt.Fprintf(stdout, "  %s\n", s)
@@ -242,13 +242,22 @@ const doctorTimeout = 2 * time.Minute
 // revokeTimeout bounds the one network call `logout` makes.
 const revokeTimeout = 30 * time.Second
 
+// requestedScopes is the scope set login asks for under cfg: the
+// administrator's scope only with the toolset of that name, since
+// nobody but an administrator can use it, and the read-only scopes
+// alone under GCM_READ_ONLY, so a read-only server holds a token that
+// cannot write; turning writes back on costs a second login.
+func requestedScopes(cfg config.Config) []string {
+	return scopes.Requested(cfg.Enabled(config.ToolsetAdmin), cfg.ReadOnly)
+}
+
 // grantedScopes reads the scopes Google actually granted, which can be
 // fewer than were asked for. A response that names none is taken at its
 // word: everything asked for was granted.
-func grantedScopes(token *oauth2.Token, admin bool) []string {
+func grantedScopes(token *oauth2.Token, requested []string) []string {
 	raw, _ := token.Extra("scope").(string)
 	if raw == "" {
-		return scopes.Canonical(scopes.Requested(admin))
+		return scopes.Canonical(requested)
 	}
 	return scopes.Canonical(strings.Fields(raw))
 }

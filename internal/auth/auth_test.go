@@ -7,20 +7,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 const desktopJSON = `{"installed":{"client_id":"cid.apps.googleusercontent.com","client_secret":"sec","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","redirect_uris":["http://localhost"]}}`
 
 func TestParseClientSecret(t *testing.T) {
-	cfg, err := ParseClientSecret([]byte(desktopJSON), Scopes(false))
+	cfg, err := ParseClientSecret([]byte(desktopJSON), scopes.All)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,15 +42,6 @@ func TestParseClientSecret(t *testing.T) {
 	if _, err := LoadClientSecret("/nonexistent/client.json", nil); err == nil {
 		t.Fatal("missing file should fail")
 	}
-	if got := Scopes(false); len(got) != len(scopes.All) {
-		t.Fatalf("Scopes(false) = %d scopes, want %d", len(got), len(scopes.All))
-	}
-	// The admin scope is the one login asks for conditionally, so the
-	// consent screen of someone who never turns the admin toolset on
-	// never carries it.
-	if got := Scopes(true); len(got) != len(scopes.All)+1 || !slices.Contains(got, scopes.AdminSpacesReadonly) {
-		t.Errorf("Scopes(true) = %v, want the admin scope added", got)
-	}
 }
 
 // fakeGoogle plays the authorization and token endpoints.
@@ -69,7 +59,7 @@ func fakeGoogle(t *testing.T) (*httptest.Server, *oauth2.Config) {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	cfg := &oauth2.Config{ClientID: "cid", ClientSecret: "sec", Scopes: Scopes(false),
+	cfg := &oauth2.Config{ClientID: "cid", ClientSecret: "sec", Scopes: scopes.All,
 		Endpoint: oauth2.Endpoint{AuthURL: srv.URL + "/auth", TokenURL: srv.URL + "/token", AuthStyle: oauth2.AuthStyleInParams}}
 	return srv, cfg
 }

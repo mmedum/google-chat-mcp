@@ -38,10 +38,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v5/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -279,6 +279,11 @@ type dump struct {
 		OutputSchema struct {
 			Properties map[string]json.RawMessage `json:"properties"`
 		} `json:"outputSchema"`
+		Description string `json:"description"`
+		// Annotations and Meta are what a client decides its prompt on:
+		// destructiveHint and the requiresUserInteraction mark.
+		Annotations any `json:"annotations"`
+		Meta        any `json:"_meta"`
 	} `json:"tools"`
 }
 
@@ -310,9 +315,9 @@ func parseDump(b []byte, source string) (*dump, error) {
 // seam is what the shell wrappers had: one dumped the schemas and
 // another compared them, and nothing said they were the same dump.
 //
-// It dumps the default surface. A GCM_ setting in the shell running the
-// gate, such as read-only mode, changes what registers, and the profile
-// in the real config directory is none of the dump's business.
+// The binary dumps its full surface whatever the settings say, and the
+// environment is isolated anyway: the profile in the real config
+// directory is none of the dump's business.
 func runDumpSchemas(bin string) ([]byte, error) {
 	configDir, err := os.MkdirTemp("", "gates-dump-")
 	if err != nil {
@@ -334,7 +339,10 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // that a caller written against it keeps working: every tool comes back
 // under the same name, with the same output fields. A reshaped input is
 // reported rather than failed, because a schema can gain an optional
-// argument without breaking anyone.
+// argument without breaking anyone. So is a changed description,
+// annotation or _meta key: no caller breaks, but a client decides from
+// the annotations and the mark whether to ask the person, so a reviewer
+// has to see the change.
 //
 // want is the version the baseline has to be, from baselineVersion, or
 // empty when there is none yet. A baseline from an older release fails,
@@ -352,14 +360,13 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 		return 2
 	}
 
-	type entry struct {
-		input  any
-		output map[string]json.RawMessage
-	}
-	index := func(d *dump) map[string]entry {
-		m := make(map[string]entry, len(d.Tools))
+	index := func(d *dump) map[string]toolEntry {
+		m := make(map[string]toolEntry, len(d.Tools))
 		for _, t := range d.Tools {
-			m[t.Name] = entry{input: t.InputSchema, output: t.OutputSchema.Properties}
+			m[t.Name] = toolEntry{
+				input: t.InputSchema, output: t.OutputSchema.Properties,
+				description: t.Description, annotations: t.Annotations, meta: t.Meta,
+			}
 		}
 		return m
 	}
@@ -372,7 +379,7 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 	}
 
 	var missing, extra, reshaped []string
-	lost := map[string][]string{}
+	lost, changed := map[string][]string{}, map[string][]string{}
 	for name := range old {
 		if _, ok := built[name]; !ok {
 			missing = append(missing, name)
@@ -394,6 +401,9 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 		if !reflect.DeepEqual(old[name].input, built[name].input) {
 			reshaped = append(reshaped, name)
 		}
+		if parts := changedParts(old[name], built[name]); len(parts) > 0 {
+			changed[name] = parts
+		}
 	}
 	for name := range built {
 		if _, ok := old[name]; !ok {
@@ -406,6 +416,12 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 
 	if len(reshaped) > 0 {
 		_, _ = fmt.Fprintf(stdout, "\ninputs reshaped, look at these (%d): %s\n", len(reshaped), strings.Join(reshaped, ", "))
+	}
+	if len(changed) > 0 {
+		_, _ = fmt.Fprintf(stdout, "\ndescription, annotations or _meta changed, look at these (%d):\n", len(changed))
+		for _, name := range slices.Sorted(maps.Keys(changed)) {
+			_, _ = fmt.Fprintf(stdout, "  %s: %s\n", name, strings.Join(changed[name], ", "))
+		}
 	}
 
 	failed := false
@@ -440,6 +456,31 @@ func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer
 		return 1
 	}
 	return 0
+}
+
+// toolEntry is one tool of a dump, as schemaDiff compares it.
+type toolEntry struct {
+	input       any
+	output      map[string]json.RawMessage
+	description string
+	annotations any
+	meta        any
+}
+
+// changedParts names what changed of a tool beyond its input and output
+// fields: its description, its annotations and its _meta.
+func changedParts(was, now toolEntry) []string {
+	var parts []string
+	if was.description != now.description {
+		parts = append(parts, "description")
+	}
+	if !reflect.DeepEqual(was.annotations, now.annotations) {
+		parts = append(parts, "annotations")
+	}
+	if !reflect.DeepEqual(was.meta, now.meta) {
+		parts = append(parts, "_meta")
+	}
+	return parts
 }
 
 // toolNames prints the tools in a dump, one per line, sorted. The

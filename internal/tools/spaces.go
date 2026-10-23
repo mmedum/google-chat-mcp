@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // Output types are deliberate shadows of the wire types, not embeds of
@@ -276,7 +276,7 @@ type CreateGroupChatInput struct {
 type CreateSpaceInput struct {
 	DisplayName  string   `json:"display_name" jsonschema:"what to call the space, 1 to 128 characters"`
 	MemberEmails []string `json:"member_emails,omitempty" jsonschema:"up to 20 email addresses, not counting you; Google adds the signed-in account itself. Omit it for a space of your own, which you can invite people to later with add_member"`
-	Audience     string   `json:"audience,omitempty" jsonschema:"open the space to a target audience, who can then find it, read it and join without an invitation: default for the organization's default audience, or audiences/{id} for one an administrator set up. Omit it, or pass private, for a private space"`
+	Audience     string   `json:"audience,omitempty" jsonschema:"private, or omit it: a space is created private. Opening one to a target audience is set_space_audience's, and anything else here is refused"`
 	DryRun       bool     `json:"dry_run,omitempty" jsonschema:"return the request body without creating anything"`
 }
 
@@ -297,7 +297,7 @@ type CreateSpaceOutput struct {
 	SpaceID         *string          `json:"space_id" jsonschema:"the new space's resource name; null after a dry run, because Google assigns it"`
 	DisplayName     string           `json:"display_name" jsonschema:"what it is called"`
 	MemberCount     int              `json:"member_count" jsonschema:"how many people were asked for, not counting you"`
-	Audience        *string          `json:"audience" jsonschema:"the target audience the space was opened to; null for a private space"`
+	Audience        *string          `json:"audience" jsonschema:"always null: a space is created private, and set_space_audience opens one"`
 	DryRun          bool             `json:"dry_run" jsonschema:"true when nothing was created"`
 	RenderedPayload *RenderedPayload `json:"rendered_payload" jsonschema:"on a dry run, the exact body that would have been sent; null on a real create"`
 }
@@ -308,8 +308,17 @@ type UpdateSpaceInput struct {
 	SpaceID     string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}"`
 	DisplayName *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
 	Description *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
-	Audience    string  `json:"audience,omitempty" jsonschema:"who can find the space, read it and join without an invitation: default for the organization's default target audience, audiences/{id} for one an administrator set up, or private to make the space private again. Omit it to leave access alone. Change it in a call of its own"`
+	Audience    string  `json:"audience,omitempty" jsonschema:"private to make the space private again; omit it to leave access alone. Opening a space to a target audience is set_space_audience's, and anything else here is refused. Change it in a call of its own"`
 	DryRun      bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
+}
+
+// SetSpaceAudienceInput opens a space to a target audience.
+type SetSpaceAudienceInput struct {
+	SpaceID     string `json:"space_id" jsonschema:"the space to open, spaces/{id}"`
+	Audience    string `json:"audience" jsonschema:"who can then find the space, read it and join without an invitation: default for the organization's default target audience, or audiences/{id} for one an administrator set up"`
+	DisplayName string `json:"display_name" jsonschema:"what the space is called, as get_space reports it. The space is read first, and opening a space called something else is refused [stale]"`
+	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: whoever is in the audience can read the space from then on, and making it private again does not take that back"`
+	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
 
 // UpdateSpaceOutput is what the edit asked for.
@@ -363,10 +372,9 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Name: "create_space",
 		Description: "Create a named space, with up to 20 initial members or none at all. Leave yourself out of " +
 			"member_emails: Google adds the signed-in account. A space of your own is fine — invite people later " +
-			"with add_member. A space is private unless audience opens it to the organization or to a target " +
-			"audience. Set dry_run to see the request body without creating anything.",
+			"with add_member. A space is created private; set_space_audience opens one to an audience. Set dry_run " +
+			"to see the request body without creating anything.",
 		Kind: Write,
-		Asks: "before it creates a space open to a target audience",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in CreateSpaceInput) (*mcp.CallToolResult, CreateSpaceOutput, error) {
 		got, err := d.Service.CreateSpace(ctx, service.CreateSpaceInput{
 			DisplayName: in.DisplayName, MemberEmails: in.MemberEmails, Audience: in.Audience, DryRun: in.DryRun,
@@ -378,7 +386,6 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			SpaceID:         nullable(got.Name),
 			DisplayName:     got.DisplayName,
 			MemberCount:     got.MemberCount,
-			Audience:        nullable(got.Audience),
 			DryRun:          got.DryRun,
 			RenderedPayload: rendered(got.Rendered),
 		}, nil
@@ -386,14 +393,13 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "update_space",
-		Description: "Rename a space, change its description, or set who can find and join it. Pass at least one; " +
-			"an empty edit is refused. Editing the description clears the space's guidelines, because Google's " +
-			"mask covers both at once, so edit a space that has guidelines in the Chat interface instead. " +
-			"audience opens a named space to the organization or a target audience, and private makes it " +
-			"private again; Google takes it only on its own, from a space manager. Set dry_run to see the patch " +
-			"body first. Needs the restricted-tier chat.spaces scope.",
+		Description: "Rename a space, change its description, or make it private again. Pass at least one; " +
+			"an empty edit is refused. Editing the description keeps the space's guidelines: Google's mask " +
+			"covers both at once, so the server reads them and sends them back unchanged. audience private " +
+			"makes a space private; Google takes it only on its own, from a space manager. Opening a space to " +
+			"an audience is set_space_audience's. Set dry_run to see the patch body first. Needs the " +
+			"restricted-tier chat.spaces scope.",
 		Kind: Write,
-		Asks: "before it opens a space to a target audience",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
 			Space: in.SpaceID, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,
@@ -402,14 +408,39 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		if err != nil {
 			return nil, UpdateSpaceOutput{}, err
 		}
-		return nil, UpdateSpaceOutput{
-			SpaceID:         got.Space,
-			DisplayName:     got.DisplayName,
-			Description:     got.Description,
-			Audience:        got.Audience,
-			UpdateMask:      nullable(got.UpdateMask),
-			DryRun:          got.DryRun,
-			RenderedPayload: rendered(got.Rendered),
-		}, nil
+		return nil, updateSpaceOutput(got), nil
 	})
+
+	register(s, d, spec{
+		Name: "set_space_audience",
+		Description: "Open a named space to the organization or to a target audience: whoever is in it can then " +
+			"find the space, read it and join without an invitation, and making it private again with " +
+			"update_space does not take back what they read. Pass the space's display_name, as get_space " +
+			"reports it, and confirm: true; the space is read first and the call refused [stale] when it is " +
+			"called something else. Google takes it only from a space manager. Set dry_run to see the patch " +
+			"body first. Needs the restricted-tier chat.spaces scope.",
+		Kind:   Destructive,
+		Marked: true,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SetSpaceAudienceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
+		got, err := d.Service.SetSpaceAudience(ctx, service.SetSpaceAudienceInput{
+			Space: in.SpaceID, Audience: in.Audience, DisplayName: in.DisplayName, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, UpdateSpaceOutput{}, err
+		}
+		return nil, updateSpaceOutput(got), nil
+	})
+}
+
+// updateSpaceOutput is what update_space and set_space_audience report.
+func updateSpaceOutput(got *service.UpdateSpaceResult) UpdateSpaceOutput {
+	return UpdateSpaceOutput{
+		SpaceID:         got.Space,
+		DisplayName:     got.DisplayName,
+		Description:     got.Description,
+		Audience:        got.Audience,
+		UpdateMask:      nullable(got.UpdateMask),
+		DryRun:          got.DryRun,
+		RenderedPayload: rendered(got.Rendered),
+	}
 }

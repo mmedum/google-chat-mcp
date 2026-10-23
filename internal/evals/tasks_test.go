@@ -184,17 +184,14 @@ var tasks = []task{
 					found = true
 				}
 			}
-			forced := false
-			for _, c := range tr.callsTo("delete_message") {
-				if b, _ := c.Input["force"].(bool); b {
-					forced = true
-				}
-			}
+			used, calls := usedTool(tr, "delete_thread")
 			return []check{
 				{"the message is gone", !found, "it is still there"},
-				{"used force, which is the only way Google allows it", forced, traceInputs(tr, "delete_message")},
+				{"used delete_thread, the one tool that takes the replies", used, calls},
 			}
 		},
+		// delete_thread is registered only with the destructive tools.
+		env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "true"},
 	},
 	{
 		name: "react-then-clear",
@@ -296,7 +293,7 @@ var tasks = []task{
 			return []check{{"the space is filed under the section", in, "section " + section}}
 		},
 		cleanup: func(s *server, space string) {
-			s.must("delete_section", map[string]any{"section_name": seeded[space].MessageID})
+			s.must("delete_section", map[string]any{"section_name": seeded[space].MessageID, "confirm": true})
 		},
 	},
 	{

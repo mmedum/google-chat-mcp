@@ -1,13 +1,16 @@
 package service
 
 import (
-	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's
@@ -351,12 +354,29 @@ type UpdateMemberRoleResult struct {
 	Rendered map[string]any
 }
 
-// UpdateMemberRole changes what someone may do in a space.
+// UpdateMemberRole makes someone an ordinary member of a space, and
+// nothing else.
+//
+// Making someone a manager hands them control of the space: its
+// settings and its members. A client approves a tool and never an
+// argument, so that is PromoteMember's, behind its own tool registered
+// only with the destructive ones.
+func (s *Service) UpdateMemberRole(ctx context.Context, in UpdateMemberRoleInput) (*UpdateMemberRoleResult, error) {
+	return s.updateMemberRole(ctx, in, false)
+}
+
+// PromoteMember makes someone a manager or an assistant manager.
+func (s *Service) PromoteMember(ctx context.Context, in UpdateMemberRoleInput) (*UpdateMemberRoleResult, error) {
+	return s.updateMemberRole(ctx, in, true)
+}
+
+// updateMemberRole patches a membership's role, a manager's only when
+// promote is set.
 //
 // Role is the only field Google lets a user-authenticated caller patch,
 // so there is no mask to choose and nothing else can be changed by
 // accident.
-func (s *Service) UpdateMemberRole(ctx context.Context, in UpdateMemberRoleInput) (*UpdateMemberRoleResult, error) {
+func (s *Service) updateMemberRole(ctx context.Context, in UpdateMemberRoleInput, promote bool) (*UpdateMemberRoleResult, error) {
 	name, err := requireMembership(in.Membership)
 	if err != nil {
 		return nil, err
@@ -364,6 +384,15 @@ func (s *Service) UpdateMemberRole(ctx context.Context, in UpdateMemberRoleInput
 	role, err := requireRole("role", in.Role)
 	if err != nil {
 		return nil, err
+	}
+	switch {
+	case promote && role == gchat.RoleMember:
+		return nil, Invalidf("promote_member makes someone a manager or an assistant manager; " +
+			"update_member_role makes them an ordinary member")
+	case !promote && role != gchat.RoleMember:
+		return nil, Failf(ClassBlocked, "a manager controls the space, its settings and its members, so "+
+			"update_member_role does not make one; nothing was sent. promote_member does, when "+
+			"%sALLOW_DESTRUCTIVE=true", config.EnvPrefix)
 	}
 
 	out := &UpdateMemberRoleResult{Name: name, Role: in.Role, DryRun: in.DryRun}
@@ -393,8 +422,11 @@ type AddMemberInput struct {
 	Email string
 	// Group is "groups/{id}", whose id comes from the Cloud Identity
 	// API. Exactly one of Email and Group.
-	Group  string
-	DryRun bool
+	Group string
+	// GroupEmail is the group's address, which AddExternalMember
+	// requires with Group and compares with what Cloud Identity reads.
+	GroupEmail string
+	DryRun     bool
 }
 
 // AddMemberResult is the membership that was made.
@@ -412,13 +444,28 @@ type AddMemberResult struct {
 	Rendered map[string]any
 }
 
-// AddMember invites someone into a space by email address.
+// AddMember invites someone inside the organization into a space by
+// email address, or adds a Google Group to a space that admits nobody
+// from outside.
+func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
+	return s.addMember(ctx, in, false)
+}
+
+// AddExternalMember invites someone the organization's directory need
+// not know, by email address, or adds a Google Group to any space.
+func (s *Service) AddExternalMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
+	return s.addMember(ctx, in, true)
+}
+
+// addMember makes the membership, refusing someone from outside the
+// organization, and any group where outsiders are admitted, unless
+// outside is set.
 //
 // Someone already in the space is reported rather than passed off as a
 // success. Google usually answers the duplicate with the existing
 // membership, which belongs to whoever invited them first: returning it
 // would say this call added them when it did not.
-func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
+func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool) (*AddMemberResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
 		return nil, err
@@ -431,8 +478,18 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 	switch {
 	case in.Email != "" && in.Group != "":
 		return nil, Invalidf("pass user_email or group_name, not both")
+	case in.GroupEmail != "" && in.Group == "":
+		return nil, Invalidf("group_email goes with group_name: it is the group's address")
 	case in.Group != "":
 		group, err := requireGroup(in.Group)
+		if err != nil {
+			return nil, err
+		}
+		if outside {
+			err = s.checkGroup(ctx, group, in.GroupEmail)
+		} else {
+			err = s.refuseGroup(ctx, space, group)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -444,6 +501,13 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 		email, err := requireEmail("user_email", in.Email)
 		if err != nil {
 			return nil, err
+		}
+		if !outside {
+			// Before the dry run returns, so a preview is refused as the
+			// invite would be.
+			if err := s.refuseOutsider(ctx, space, email); err != nil {
+				return nil, err
+			}
 		}
 		out.Email = email
 		body = gchat.BuildAddMember(email, "")
@@ -457,16 +521,6 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 		return out, nil
 	}
 
-	if asks(ctx) {
-		sp, err := s.client.GetSpace(ctx, space)
-		if err != nil {
-			return nil, Classify(err)
-		}
-		who := cmp.Or(out.Email, out.Group)
-		if err := ask(ctx, askAddMember(space, sp.DisplayName, who, out.Group != "")); err != nil {
-			return nil, err
-		}
-	}
 	membership, err := s.client.AddMember(ctx, space, body)
 	if err != nil {
 		subject := out.Email
@@ -485,6 +539,126 @@ func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberR
 	// reports the truth rather than the request.
 	out.Role = membership.Role
 	return out, nil
+}
+
+// refuseOutsider refuses inviting someone from outside the organization
+// into a space that admits them.
+//
+// Someone added to a space can read what is already in it. Widening
+// that past the organization is its own tool, registered only with the
+// destructive ones (docs/architecture.md, "What a write may reach").
+// Only a space that says it admits people from outside is checked
+// (admitsOutsiders). The address is looked up in the organization's
+// directory, its members only, since a contact an administrator shared
+// is someone outside. A directory that cannot be read cannot vouch for
+// anyone, which fails closed: a personal account has none, so everyone
+// counts as outside.
+func (s *Service) refuseOutsider(ctx context.Context, space, email string) error {
+	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
+		return err
+	}
+	found, err := s.client.SearchDirectoryPeople(ctx, email, 10, true)
+	if err != nil {
+		if failed := Classify(err); worthReporting(failed) {
+			return failed
+		}
+		return outsiderRefused(email, space, " Your organization's directory could not be read to tell.")
+	}
+	for _, p := range found.People {
+		for _, addr := range p.EmailAddrs {
+			if strings.EqualFold(strings.TrimSpace(addr.Value), email) {
+				return nil
+			}
+		}
+	}
+	return outsiderRefused(email, space, "")
+}
+
+// refuseGroup refuses adding a Google Group to a space that admits
+// people from outside the organization, whatever the directory says of
+// the group.
+//
+// Google invites a group's outside members into such a space, and
+// carries every later change to the group's membership into it
+// (docs/architecture.md, evidence log). So a group the organization owns
+// can bring in outsiders after the add, and no check at add time holds.
+// In a space that admits nobody from outside, Google leaves them out.
+func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
+	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
+		return err
+	}
+	return Failf(ClassBlocked, "%s admits people from outside the organization, and a Google Group added to it "+
+		"brings in its members from outside, and anyone added to the group later. add_member adds a group only "+
+		"to a space that admits nobody from outside; nothing was sent. add_external_member adds %s, when "+
+		"%sALLOW_DESTRUCTIVE=true", space, group, config.EnvPrefix)
+}
+
+// checkGroup reads a group and refuses [stale] when its address is not
+// the one the call carries.
+//
+// groups/{id} tells the person approving add_external_member nothing,
+// and the address does, so the call carries both. The group's actual
+// address is not quoted back, which would let a caller copy it in
+// without anyone having meant that group. A group this account cannot
+// read cannot be compared, so the add is refused.
+func (s *Service) checkGroup(ctx context.Context, group, witness string) error {
+	if strings.TrimSpace(witness) == "" {
+		return Invalidf("pass group_email with group_name: the group's address, as find_group reports it, so the " +
+			"call shows which group it adds")
+	}
+	email, err := requireEmail("group_email", witness)
+	if err != nil {
+		return err
+	}
+	g, err := s.client.GetGroup(ctx, group)
+	if err != nil {
+		class := ClassNotFound
+		switch {
+		case gchat.IsForbidden(err):
+			class = ClassForbidden
+		case !gchat.IsNotFound(err):
+			return Classify(err)
+		}
+		return Failf(class, "%s cannot be read from Cloud Identity, so its address cannot be compared with "+
+			"group_email; nothing was sent. Only a group this account can see can be added here.", group)
+	}
+	if !strings.EqualFold(strings.TrimSpace(g.GroupKey.ID), email) {
+		return Failf(ClassStale, "%s is not the group at %s, so it is not the one this call meant; nothing was "+
+			"sent. Run find_group with the address you mean and pass both as it reports them", group, email)
+	}
+	return nil
+}
+
+// admitsOutsiders reports whether a space says it admits people from
+// outside the organization. Google leaves a false boolean out of its
+// JSON, so a space that says nothing admits nobody from outside, and
+// Google refuses an outsider there itself.
+func (s *Service) admitsOutsiders(ctx context.Context, space string) (bool, error) {
+	sp, err := s.client.GetSpace(ctx, space)
+	if err != nil {
+		return false, Classify(err)
+	}
+	return sp.ExternalUser != nil && *sp.ExternalUser, nil
+}
+
+// worthReporting reports whether a failed directory lookup is passed on
+// as it failed, because a later call or a new login could succeed: a
+// missing scope, a sign-in, a rate or a failure on Google's side.
+// Anything else is the directory declining to say, which vouches for
+// nobody.
+func worthReporting(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && slices.Contains([]Class{
+		ClassAuth, ClassScope, ClassRateLimited, ClassQuota, ClassServer, ClassUnexpected,
+	}, e.Class)
+}
+
+// outsiderRefused is add_member's refusal of someone from outside.
+func outsiderRefused(email, space, why string) error {
+	return Failf(ClassBlocked, "%s is not in your organization's directory, and %s admits people from outside the "+
+		"organization, who can read what is already in it.%s add_member adds only people inside the "+
+		"organization; nothing was sent. add_external_member adds someone from outside, when "+
+		"%sALLOW_DESTRUCTIVE=true", email, space, why, config.EnvPrefix)
 }
 
 // membershipRemoved reports whether a membership Google handed back is

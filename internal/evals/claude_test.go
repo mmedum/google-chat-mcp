@@ -5,7 +5,7 @@ package evals
 import (
 	"encoding/json"
 	"errors"
-	redactpkg "github.com/mmedum/google-chat-mcp/v5/internal/redact"
+	redactpkg "github.com/mmedum/google-chat-mcp/v6/internal/redact"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,14 +101,14 @@ func runClaude(t *testing.T, prompt string, extraEnv map[string]string) *trace {
 		// mcp__<server>, and a `*` suffix is a Bash-pattern thing that an
 		// MCP tool name does not match.
 		"--allowedTools", "mcp__" + mcpName, "mcp__" + mcpName + "__*",
-		// The allowlist is not enough while a tool carries
+		// The allowlist is not enough for a tool that carries
 		// `anthropic/requiresUserInteraction`, which this client treats
 		// as "a person, or nothing": headless, the call is refused
-		// whatever the allowlist says, under bypassPermissions too. The
-		// approver cannot answer for such a tool either (approver/main.go),
-		// so the runs set GCM_INTERACTION_HINT=false (evals_test.go). It
-		// stays wired to answer any other prompt and record what it
-		// approved.
+		// whatever the allowlist says, under bypassPermissions too, and
+		// the approver cannot answer for it either (approver/main.go).
+		// Only delete_space, set_space_audience and delete_custom_emoji
+		// carry it, and no task has the model call them. The approver stays wired to answer
+		// any other prompt and record what it approved.
 		"--permission-prompt-tool", "mcp__approver__approve",
 		// Nothing but this server. `--strict-mcp-config` keeps other MCP
 		// servers out; these keep the built-in tools away from the

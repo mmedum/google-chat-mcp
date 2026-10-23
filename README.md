@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v5.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v5)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v6.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v6)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -25,14 +25,14 @@ app with your name on it.
 That also puts the user-scoped half of Chat in reach, which an app
 identity cannot get to at all: your sidebar sections, how far you have
 read in a space or a thread, your availability and custom status, and
-your organization's custom emoji. Fifty-five tools cover it, every write
-takes `dry_run`, and nothing is requested at login beyond the scopes the
+your organization's custom emoji. Fifty-eight tools cover it, most writes
+take `dry_run`, and nothing is requested at login beyond the scopes the
 tools you are actually using need.
 
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v5/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -150,8 +150,9 @@ binary's absolute path there if it is not on the app's `PATH`, or install
 the `.mcpb` bundle above and edit nothing.
 
 Every setting is an environment variable, listed in
-[`docs/configuration.md`](docs/configuration.md). The three worth
+[`docs/configuration.md`](docs/configuration.md). The four worth
 knowing now: `GCM_READ_ONLY=true` leaves out every tool that changes anything in Chat,
+`GCM_ALLOW_DESTRUCTIVE=true` adds the tools that cannot be taken back,
 `GCM_PROFILE` lets one machine hold a work account and a personal one,
 and `GCM_LOCAL_DIR` names the one directory files may be written to and
 read from. Without that last one the server touches no files at all,
@@ -176,8 +177,9 @@ and the three tools that move them say so.
 | `find_group` | Turn a Google Group's email address into the id `add_member` takes | `cloud-identity.groups.readonly` |
 | `list_members` | Who is in a space, people and groups resolved to names and addresses, and on request who is in each group | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
-| `update_member_role` | Make someone a member, manager or assistant manager | `chat.memberships` |
-| `list_reactions` | Reactions on a message | `chat.messages.reactions` |
+| `update_member_role` | Make a manager an ordinary member again | `chat.memberships` |
+| `promote_member` | Make someone a manager or an assistant manager, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships` |
+| `list_reactions` | Reactions on a message | `chat.messages.readonly` |
 | `list_pinned_messages` | What a space has pinned | `chat.spaces.pins.readonly` |
 | `pin_message` | Pin a message, which everyone in the space sees | `chat.spaces.pins` |
 | `unpin_message` | Remove a pin | `chat.spaces.pins` |
@@ -187,7 +189,7 @@ and the three tools that move them say so.
 | `mark_space_unread` | Rewind your read mark, for you only | `chat.users.readstate` |
 | `list_space_events` | What changed in a space over the last 28 days | the read scope of each event type asked for |
 | `get_space_event` | One of those changes by resource name | `chat.spaces.readonly` |
-| `get_space_notification_setting` | What Chat tells you about a space | `chat.users.spacesettings` |
+| `get_space_notification_setting` | What Chat tells you about a space; not under `GCM_READ_ONLY` | `chat.users.spacesettings` |
 | `update_space_notification_setting` | Change it, or mute the space | `chat.users.spacesettings` |
 | `get_availability` | Your own presence and custom status | `chat.users.availability.readonly` |
 | `set_availability` | Active, away, or do not disturb until a time | `chat.users.availability` |
@@ -195,24 +197,27 @@ and the three tools that move them say so.
 | `list_custom_emojis` | Your organization's own emoji | `chat.customemojis.readonly` |
 | `get_custom_emoji` | One of them by resource name | `chat.customemojis.readonly` |
 | `create_custom_emoji` | Add one from a local image | `chat.customemojis` |
-| `delete_custom_emoji` | Remove one, for everyone | `chat.customemojis` |
-| `delete_space` | Delete a space and everything in it | `chat.delete` |
+| `delete_custom_emoji` | Remove one, for everyone, with `GCM_ALLOW_DESTRUCTIVE` | `chat.customemojis` |
+| `delete_space` | Delete a space and everything in it, with `GCM_ALLOW_DESTRUCTIVE` | `chat.delete` |
 | `list_sections` | Your own sidebar sections | `chat.users.sections.readonly` |
 | `list_section_items` | What a section holds, or which section a space sits in | `chat.users.sections.readonly` |
 | `send_message` | Post text, exactly as given, in Chat's syntax or Markdown. Optionally into a thread, quoting a message, or carrying an uploaded file | `chat.messages.create`; `chat.messages.readonly` to quote |
 | `upload_attachment` | Send a local file to a space and get the token that attaches it | `chat.messages.create` |
 | `update_message` | Edit the text of a message you sent | `chat.messages` |
-| `delete_message` | Delete a message. Already gone counts as success | `chat.messages` |
+| `delete_message` | Delete one message, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.messages` |
+| `delete_thread` | Delete a thread's first message and every reply, with `GCM_ALLOW_DESTRUCTIVE` | `chat.messages` |
 | `add_reaction` | React to a message with a Unicode emoji | `chat.messages.reactions` |
 | `remove_reaction` | Remove a reaction, by resource name or by message, emoji and person | `chat.messages.reactions` |
 | `create_group_chat` | Start an unnamed group chat with 2 to 20 people | `chat.spaces.create` |
-| `create_space` | Create a named space with up to 20 people, private or open to a target audience | `chat.spaces.create` |
-| `update_space` | Rename a space, change its description, or open it to a target audience | `chat.spaces` |
-| `add_member` | Invite someone to a space by email | `chat.memberships` |
-| `remove_member` | Remove a membership. Already gone counts as success | `chat.memberships` |
+| `create_space` | Create a private named space with up to 20 people | `chat.spaces.create` |
+| `update_space` | Rename a space, change its description, or make it private | `chat.spaces` |
+| `set_space_audience` | Open a space to a target audience, with `GCM_ALLOW_DESTRUCTIVE` | `chat.spaces` |
+| `add_member` | Invite someone in your organization to a space by email, or add a Google Group to a space that admits nobody from outside | `chat.memberships`; `chat.spaces.readonly`, `directory.readonly` to check the address |
+| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships`; `cloud-identity.groups.readonly` to check a group's address |
+| `remove_member` | Remove a membership, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
 | `rename_section` | Rename a sidebar section | `chat.users.sections` |
-| `delete_section` | Delete a sidebar section; its spaces fall back to the defaults | `chat.users.sections` |
+| `delete_section` | Delete a sidebar section, with `GCM_ALLOW_DESTRUCTIVE`; its spaces fall back to the defaults | `chat.users.sections` |
 | `position_section` | Reorder a section, by absolute rank or by moving it to the start or end | `chat.users.sections` |
 | `move_space_to_section` | File a space under a section. A space already there is left alone | `chat.users.sections` |
 
@@ -228,35 +233,68 @@ client that includes resources in its context:
 
 ## Safety
 
-- **`dry_run` on 25 write tools.** It returns the request body that
+- **`dry_run` on 29 write tools.** It returns the request body that
   would have been sent, and the call cannot write: the flag puts the
   request on a context the HTTP client refuses to write under, so a
   tool that forgot its own preview branch fails loudly instead of
-  posting. A preview may still read what it shows, such as the quoted
-  message a quote names.
+  posting. A preview may still read what it shows or checks, such as the
+  quoted message a quote names or the text a delete repeats.
 - **`GCM_READ_ONLY=true` leaves the write tools unregistered.** A tool
   that is not registered cannot be called, whatever permission mode the
   client is in or whatever a model asks for. It is set where you start
-  the server, so it binds the whole session rather than one call.
-- **Annotations and an interaction hint.** Write and delete tools ask the
-  client to put a person in the loop. What that is worth is the client's
-  decision, and the two answers are further apart than they look. In
-  Claude Code interactively, auto mode has run a write with no prompt at
-  all. Headless, the same mark refuses every write outright — an allow
-  rule does not suppress it, and there is nobody to ask. So if you are
-  automating with nobody at the keyboard, `GCM_INTERACTION_HINT=false`
-  is the way to use the write tools at all, and it is a decision to make
-  on purpose. The tools the server asks you about itself on every call
-  drop the mark when your client can ask, so you answer once: the three
-  deletes and `add_member`, plus sends and edits under
-  `GCM_ASK_BEFORE_SEND`.
-- **The server asks you before what cannot be taken back.** When your
-  MCP client supports elicitation, it asks before deleting a message, a
-  space or a custom emoji, adding a member, opening a space to a target
-  audience, and a post or an edit that mentions everyone in a space;
-  only your accept writes.
-  `GCM_ASK_BEFORE_SEND` makes every post and edit ask, and `GCM_REQUIRE_PROMPT` refuses those writes in
-  a client that cannot ask.
+  the server, so it binds the whole session rather than one call. A
+  `google-chat-mcp login` run with it set asks for read-only scopes, so
+  that token cannot write either. A token from an earlier login keeps
+  its write scopes until you log in again, and turning writes back on
+  takes another login.
+- **What cannot be taken back is not registered unless you say so.**
+  The deletes, `delete_thread`, `set_space_audience`, `promote_member`
+  and `add_external_member` exist only with `GCM_ALLOW_DESTRUCTIVE=true`.
+  Each call then says `confirm: true`. `delete_message`,
+  `delete_thread`, `delete_space`, `delete_custom_emoji` and
+  `set_space_audience` also repeat what they act on: how the message
+  begins, or the space's or the emoji's name. The server reads the target
+  first and refuses `[stale]` when it differs, so the call your client
+  shows you says which message or space goes.
+- **Your client approves each call; the server asks you nothing.**
+  Claude Code asks for the tools you list under `permissions.ask`.
+  claude.ai and Codex prompt for a tool marked `destructiveHint`, which
+  every tool in the list above that needs `GCM_ALLOW_DESTRUCTIVE`
+  carries. VS Code prompts for every tool that changes anything,
+  `download_attachment` included. In Claude Code, put the writes that
+  post, invite, share or delete under `permissions.ask` in your settings,
+  with the name you gave the server in place of `google-chat`:
+
+  ```json
+  {
+    "permissions": {
+      "ask": [
+        "mcp__google-chat__send_message", "mcp__google-chat__update_message",
+        "mcp__google-chat__upload_attachment",
+        "mcp__google-chat__create_space", "mcp__google-chat__create_group_chat",
+        "mcp__google-chat__find_direct_message",
+        "mcp__google-chat__add_member", "mcp__google-chat__add_external_member",
+        "mcp__google-chat__update_member_role", "mcp__google-chat__promote_member",
+        "mcp__google-chat__remove_member", "mcp__google-chat__update_space",
+        "mcp__google-chat__pin_message", "mcp__google-chat__create_custom_emoji",
+        "mcp__google-chat__delete_message", "mcp__google-chat__delete_thread",
+        "mcp__google-chat__delete_section"
+      ]
+    }
+  }
+  ```
+
+  `delete_space`, `set_space_audience` and `delete_custom_emoji` need no
+  rule: they carry Claude Code's `requiresUserInteraction` mark, so Claude
+  Code 2.1.199 or later asks on every call in every interactive mode, and
+  refuses them where nobody can be asked.
+- **Nothing reaches the whole space or past it by default.** A post or
+  an edit that mentions everyone, `<users/all>`, is refused. A space is
+  created private, and `update_space` does not open one. In a space that
+  admits people from outside your organization, `add_member` refuses an
+  address your organization's directory does not know and every Google
+  Group, and `update_member_role` makes nobody a manager: those are
+  `add_external_member` and `promote_member`.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no
   "sent by an assistant" footer.
 - **A retried post cannot land twice.** Each message carries a

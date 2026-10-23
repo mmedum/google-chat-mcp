@@ -9,20 +9,20 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a
-// client shows a person, whether the tool is registered at all under
-// GCM_READ_ONLY and GCM_ALLOW_DESTRUCTIVE, and whether the client is
-// asked to put a person in the loop first.
+// client shows a person, whether the tool is registered under
+// GCM_READ_ONLY, and whether it needs GCM_ALLOW_DESTRUCTIVE to be
+// registered at all.
 //
-// It is one field per tool rather than four, because four rules
-// enforced by author discipline is four ways to be quietly wrong: a
-// destructive tool with no interaction hint, a write tool still
-// registered in read-only mode, a timestamped output that lost its
-// format annotation. Fifty-three tools is too many for that.
+// It is one field per tool rather than three, because three rules
+// enforced by author discipline is three ways to be quietly wrong: a
+// destructive tool annotated as safe, a write tool still registered in
+// read-only mode, a timestamped output that lost its format annotation.
+// Fifty-eight tools is too many for that.
 type Kind int
 
 // Tool kinds.
@@ -43,9 +43,13 @@ const (
 	Write
 	// WriteIdempotent additionally lands the same way twice.
 	WriteIdempotent
-	// Destructive removes something. Idempotent by nature here: a
-	// second delete of the same thing is a no-op, not a second
-	// deletion.
+	// Destructive cannot be taken back: it removes something, opens a
+	// space to an audience, makes someone a manager or adds someone from
+	// outside the organization. It is registered only under
+	// GCM_ALLOW_DESTRUCTIVE, and every call says confirm: true.
+	// Idempotent by nature here: a second delete of the same thing is a
+	// no-op, not a second deletion, and opening a space twice sets the
+	// same audience.
 	Destructive
 )
 
@@ -59,15 +63,19 @@ type spec struct {
 	// Toolset is the group this tool belongs to. The zero value is
 	// ToolsetCore, which is always registered.
 	Toolset config.Toolset
-	// Asks, when set, says when the tool asks the person before it
-	// writes, as the end of a sentence: "before it deletes". The service
-	// asks at its write; a tool without it that reaches one is refused.
-	Asks string
-	// AsksEveryCall says Asks has no condition: every write is put to
-	// the person. Such a tool drops the requiresUserInteraction mark for
-	// a client that can ask (interactionHint), since the question is the
-	// confirmation then.
-	AsksEveryCall bool
+	// Marked puts Claude Code's requiresUserInteraction mark on the
+	// tool, so it asks the person on every call, in every interactive
+	// mode. Only for a tool whose prompt is itself the point: deleting a
+	// whole space or an emoji every message shares, and opening a space
+	// to an audience (docs/architecture.md, "What a write may reach").
+	// Never on a delete done many times in a row. Only a Destructive
+	// tool may set it: the flag that registers the tool is the control,
+	// and the mark is one client's prompt on top of it.
+	Marked bool
+	// WriteScope says the tool reads through a scope that can also
+	// write, because Google offers no read-only one for it. Read-only
+	// mode asks for read-only scopes, so it leaves the tool out.
+	WriteScope bool
 }
 
 // annotations returns what a client shows for this kind.
@@ -96,143 +104,92 @@ func (k Kind) annotations() *mcp.ToolAnnotations {
 // readable half of its reply. See render.go for why both halves are
 // sent.
 func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHandlerFor[In, Out]) {
+	// The spec is checked whatever the configuration, so a mistake fails
+	// at start in every one, not only where the tool is registered.
+	// confirm is the destructive kind's witness, and wrap refuses a call
+	// without it wherever the input has one, so the two go together.
+	confirm := boolField[In]("confirm")
+	if (sp.Kind == Destructive) != (confirm >= 0) {
+		panic("tools: " + sp.Name + ": a confirm input goes with the Destructive kind and nowhere else")
+	}
+	if sp.Marked && sp.Kind != Destructive {
+		panic("tools: " + sp.Name + " carries the mark and is not Destructive")
+	}
+	if !registers(sp, d.Config) {
+		return
+	}
+	tool := &mcp.Tool{
+		Name:         sp.Name,
+		Description:  sp.Description,
+		Annotations:  sp.Kind.annotations(),
+		OutputSchema: outputSchema[Out](),
+	}
+	if sp.Marked {
+		// Claude Code (2.1.199 or later) prompts for a marked tool on
+		// every call in every interactive mode, and denies it where no
+		// prompt can be drawn. That is the point for the few tools that
+		// carry it, and why nothing else does: every other write is the
+		// client's to approve (docs/architecture.md, "What a write may
+		// reach").
+		tool.Meta = mcp.Meta{interactionKey: true}
+	}
+	mcp.AddTool(s, tool, wrap(h, boolField[In]("dry_run"), confirm, sp.Name))
+}
+
+// registers reports whether a tool is registered under cfg.
+//
+// A Destructive tool is left out unless GCM_ALLOW_DESTRUCTIVE is on.
+// Whatever a client does with a tool it lists, some mode of every
+// widely used client runs it with nobody approving the call, so a tool
+// that must not run unattended is not listed. It used to be registered
+// and refused at call time, which left Claude Code prompting for a
+// marked tool the server then refused.
+func registers(sp spec, cfg config.Config) bool {
 	toolset := sp.Toolset
 	if toolset == "" {
 		toolset = config.ToolsetCore
 	}
-	if toolset != config.ToolsetCore && !d.Config.Enabled(toolset) {
-		return
+	if toolset != config.ToolsetCore && !cfg.Enabled(toolset) {
+		return false
 	}
 	// GCM_READ_ONLY is about Chat. A tool that only writes into the
 	// server's own local directory is still registered under it — and
 	// that directory is opt-in, so a server with neither setting writes
 	// nothing anywhere.
-	if d.Config.ReadOnly && sp.Kind != Read && sp.Kind != ReadWritesLocally {
-		return
+	if cfg.ReadOnly && ((sp.Kind != Read && sp.Kind != ReadWritesLocally) || sp.WriteScope) {
+		return false
 	}
-	description := sp.Description
-	if sp.Asks != "" {
-		description += " When the client can ask, the server also asks the person " + sp.Asks + "; a call they do not " +
-			"confirm is [blocked], changes nothing, and is not to be made again unless they ask."
-	}
-	tool := &mcp.Tool{
-		Name:         sp.Name,
-		Description:  description,
-		Annotations:  sp.Kind.annotations(),
-		OutputSchema: outputSchema[Out](),
-	}
-	if (sp.Kind == Destructive || sp.Kind == Write) && !d.Config.SuppressInteractionHint {
-		// This asks the client to put a person in the loop, and how much
-		// that is worth depends entirely on the client. Two measurements,
-		// both against Claude Code:
-		//
-		// Interactive, 2026-09-05: auto permission mode ran send_message
-		// with no prompt at all. So it is not a guarantee.
-		//
-		// Headless, 2026-09-06: the opposite, and absolute. Every route
-		// refuses — the allowlist by server or by exact tool name,
-		// --permission-mode dontAsk and bypassPermissions, and the
-		// documented --permission-prompt-tool, which answers by name:
-		// "MCP tool requires user interaction; not supported via
-		// --permission-prompt-tool". An unattended client cannot write
-		// through this server at all while this is set, which is why
-		// GCM_INTERACTION_HINT exists: default on, and a deployer who
-		// runs unattended turns it off knowingly. What holds regardless
-		// is server side: GCM_READ_ONLY leaves the tool unregistered,
-		// and a dry run cannot write.
-		//
-		// It follows "irreversible, and other people see it" rather
-		// than "destroys something". Those are not the same ranking: a
-		// deleted sidebar section is private and reversible, while a
-		// posted message cannot be recalled from anyone's notifications
-		// and an invited member can read the whole space. Reversing the
-		// two would ask for a person on the safe one and not on the
-		// costly one.
-		//
-		// WriteIdempotent is left out on purpose: a reaction is
-		// trivially undone, and a new direct message stays invisible
-		// until something is posted in it, which asks here anyway.
-		tool.Meta = mcp.Meta{interactionKey: true}
-	}
-	// A destructive tool is REGISTERED whether or not deletes are
-	// allowed, and refuses at call time instead.
-	//
-	// Registered, because a tool that vanishes is a broken client rather
-	// than a safer one: the model cannot tell "not permitted on this
-	// server" from "this server cannot do that", and the released
-	// surface is a contract the schema diff holds. Refused by default,
-	// because a deleted Chat message has nothing behind it. The first
-	// outside person to install all three of these servers in one
-	// sitting said it plainly — Drive and Docs gate deletes behind a
-	// variable that is off by default, and Chat, the one where a delete
-	// cannot be undone, had the loosest default of the three.
-	//
-	// So the guard moved rather than appearing: it used to unregister
-	// four tools and now refuses four calls, and it is on by default
-	// instead of off.
-	refuse := ""
-	if sp.Kind == Destructive && d.Config.RefuseDeletes {
-		refuse = sp.Name
-	}
-	var a *asking
-	if sp.Asks != "" {
-		a = d.asking
-		if sp.AsksEveryCall {
-			a.always[sp.Name] = true
-		}
-	}
-	mcp.AddTool(s, tool, wrap(h, dryRunField[In](), refuse, sp.Name, a, d.Config.RequirePrompt))
+	return sp.Kind != Destructive || cfg.AllowDestructive
 }
+
+// interactionKey is Claude Code's mark for a tool it prompts for on
+// every call.
+const interactionKey = "anthropic/requiresUserInteraction"
 
 // wrap is what every handler gets for free.
 //
-// Three rules that were each a line in every handler: a dry run may not
-// write, an error reaches the model with its class on the front, and a
-// reply carries its readable half as well as its structured one. All
-// belong here for the same reason the annotations do — a rule kept by
-// hand at fifty call sites is a rule that will be missed at one.
-func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refuse, name string, a *asking,
-	requirePrompt bool,
-) mcp.ToolHandlerFor[In, Out] {
+// Four rules that were each a line in every handler: a dry run may not
+// write, a Destructive call says confirm: true, an error reaches the
+// model with its class on the front, and a reply carries its readable
+// half as well as its structured one. All belong here for the same
+// reason the annotations do — a rule kept by hand at fifty call sites is
+// a rule that will be missed at one.
+func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun, confirm int, name string) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
-		if refuse != "" {
+		v := reflect.ValueOf(in)
+		dry := dryRun >= 0 && v.Field(dryRun).Bool()
+		if confirm >= 0 && !dry && !v.Field(confirm).Bool() {
+			// A witness that the caller meant this call, never an
+			// approval: the model sets it. A dry run needs none, since it
+			// changes nothing.
 			var zero Out
-			return nil, zero, fail(service.Failf(service.ClassUnsupported,
-				"%s deletes something, and this server was started with deletes refused. "+
-					"Nothing was changed. Set %sALLOW_DESTRUCTIVE=true to allow them; a deleted Chat "+
-					"message cannot be recovered, so decide that deliberately.",
-				refuse, config.EnvPrefix))
+			return nil, zero, fail(service.Invalidf("%s cannot be taken back, so every call says so: pass "+
+				"confirm: true. Nothing was changed.", name))
 		}
-		if dryRun >= 0 && reflect.ValueOf(in).Field(dryRun).Bool() {
+		if dry {
 			ctx = service.Preview(ctx)
 		}
-		// The person is asked before a write whose tool asks, when the
-		// client can ask (docs/architecture.md, "The person confirms what
-		// cannot be taken back").
-		var p *askee
-		switch {
-		case a != nil:
-			var err error
-			if p, err = a.personFor(req, name, in, requirePrompt); err != nil {
-				var zero Out
-				return nil, zero, fail(err)
-			}
-			ctx = service.WithAsker(ctx, p)
-		case req != nil && req.Params != nil && (req.Params.RequestState != "" || len(req.Params.InputResponses) > 0):
-			var zero Out
-			return nil, zero, fail(service.Failf(service.ClassBlocked,
-				"%s asks the person nothing, and the call came with an answer; nothing was done. Call it again without one", name))
-		}
 		res, out, err := h(ctx, req, in)
-		if p != nil && p.asked != nil {
-			// The service stopped before its write; the question goes out.
-			setStage(ctx, stageWaiting)
-			var zero Out
-			return p.inputRequest(), zero, nil
-		}
-		if err == nil && stageOf(ctx) == stageWriting {
-			setStage(ctx, stageWritten)
-		}
 		if err != nil {
 			return res, out, fail(err)
 		}
@@ -249,22 +206,23 @@ func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun int, refus
 	}
 }
 
-// dryRunField is where an input type keeps its dry_run flag, or -1 when
-// it has none. It is resolved once, at registration.
+// boolField is where an input type keeps the boolean named name in
+// JSON, or -1 when it has none. It is resolved once, at registration.
 //
-// Finding it by reflection rather than asking each tool to declare it
-// is the point: a tool that offers dry_run cannot also have to remember
-// to honor it. The flag puts the call on a context internal/gchat
-// refuses to write under, so a handler that forgets its own preview
-// branch fails loudly instead of posting.
-func dryRunField[In any]() int {
+// Finding dry_run by reflection rather than asking each tool to declare
+// it is the point: a tool that offers dry_run cannot also have to
+// remember to honor it. The flag puts the call on a context
+// internal/gchat refuses to write under, so a handler that forgets its
+// own preview branch fails loudly instead of posting. confirm is found
+// the same way, so a Destructive tool cannot forget to require it.
+func boolField[In any](name string) int {
 	t := reflect.TypeFor[In]()
 	if t.Kind() != reflect.Struct {
 		return -1
 	}
 	for i := range t.NumField() {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
-		if name == "dry_run" && t.Field(i).Type.Kind() == reflect.Bool {
+		tag, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if tag == name && t.Field(i).Type.Kind() == reflect.Bool {
 			return i
 		}
 	}

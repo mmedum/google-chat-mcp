@@ -82,10 +82,11 @@ var loggedPlain = map[string]string{
 	// This server's own surface, not a person's content.
 	"e.Name()": "a package name from the coverage list",
 
-	// clip's own test, over a literal address. The values ARE clip's
-	// output; the gate cannot see that through a variable, which is the
-	// one thing it checks structurally rather than semantically.
-	"got":                              "the output of clip in clip's own test",
+	// A unit test's own output: clip's, over a literal address, and the
+	// live driver's cleanup, over a fake. The gate cannot see that
+	// through a variable, which is the one thing it checks structurally
+	// rather than semantically.
+	"got":                              "the output under test, in clip's own test or the live driver's",
 	"cut":                              "as got",
 	"strings.Join(missing, \"\\n  \")": "tool or option names the sweep did not reach",
 	"strings.Join(tr.toolNames(), \" → \")": "the sequence of tool names a task called",

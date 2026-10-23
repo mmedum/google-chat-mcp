@@ -10,7 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
 )
 
 // The rule this file enforces: a log line may say when a call happened,
@@ -36,6 +36,7 @@ const (
 	canaryQuery  = "CANARY-search-term"
 	canaryDrift  = "CANARY-unknown-field-value"
 	canaryReason = "CANARY-refusal-detail"
+	canaryEmoji  = ":canary-emoji-never-log-this:"
 )
 
 // forbidden is every canary, with what putting it in a log would give
@@ -49,6 +50,7 @@ var forbidden = map[string]string{
 	canaryQuery:  "what the caller searched for",
 	canaryDrift:  "the value behind an unknown field",
 	canaryReason: "Google's refusal detail, which quotes the request",
+	canaryEmoji:  "a custom emoji's name",
 }
 
 // canaryGoogle answers every endpoint these tools reach with a payload
@@ -116,7 +118,7 @@ func canaryGoogle(t *testing.T) http.HandlerFunc {
 func TestLogsNeverCarryThePayload(t *testing.T) {
 	var logs bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	cs := sessionWithLogger(t, canaryGoogle(t), config.Config{Toolsets: config.AllToolsets}, log)
+	cs := sessionWithLogger(t, canaryGoogle(t), config.Config{Toolsets: config.AllToolsets, AllowDestructive: true}, log)
 
 	// Every registered tool, not a hand-picked few: a tool that logs a
 	// message body is caught whether or not anyone remembered to add it
@@ -173,7 +175,7 @@ func withCanaries(args map[string]any) map[string]any {
 	out := make(map[string]any, len(args))
 	for k, v := range args {
 		switch k {
-		case "text", "regex":
+		case "text", "regex", "text_start":
 			out[k] = canaryText
 		case "query":
 			out[k] = canaryQuery
@@ -181,6 +183,8 @@ func withCanaries(args map[string]any) map[string]any {
 			out[k] = canaryEmail
 		case "display_name":
 			out[k] = canarySpace
+		case "emoji_name":
+			out[k] = canaryEmoji
 		default:
 			out[k] = v
 		}

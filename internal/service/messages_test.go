@@ -6,14 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API
@@ -724,16 +725,84 @@ func TestUpdateMessageRejectsBadInput(t *testing.T) {
 	}
 }
 
+// liveMessage is a message as a read before a delete finds it.
+const liveMessage = `{"name":"spaces/A/messages/1","text":"the standup moved to ten tomorrow"}`
+
+// liveStart is how liveMessage begins, which is what a delete repeats.
+const liveStart = "the standup moved to"
+
 // A message that is already gone is the state the caller asked for, so
-// a repeat is a success that changed nothing.
+// a repeat is a success that changed nothing. The read before the delete
+// finds that out, and nothing is sent: Google answers a deleted message
+// with a 404 or with a tombstone.
 func TestDeleteMessageIsIdempotent(t *testing.T) {
-	s := newService(t, status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`))
-	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
-	if err != nil {
-		t.Fatalf("a second delete is not a failure: %v", err)
+	for _, tc := range []struct {
+		name string
+		read http.HandlerFunc
+	}{
+		{"not found", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`)},
+		{"a tombstone", ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-01-02T04:00:00Z"}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, tc.read)
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart})
+			if err != nil {
+				t.Fatalf("a second delete is not a failure: %v", err)
+			}
+			if got.Deleted {
+				t.Error("deleted = true, want false for something that was already gone")
+			}
+			if n := rec.count(http.MethodDelete); n != 0 {
+				t.Errorf("%d DELETE requests for a message that was already gone", n)
+			}
+		})
 	}
-	if got.Deleted {
-		t.Error("deleted = true, want false for something that was already gone")
+}
+
+// The witness is how the message begins, read back before anything is
+// deleted, so the client's prompt says which message goes. A mismatch is
+// [stale], and nothing reaches the delete.
+func TestDeleteMessageHoldsItsTextToTheWitness(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		text    string
+		witness string
+		wantErr Class
+	}{
+		{"the start of the text", "the standup moved to ten tomorrow", "the standup moved to", ""},
+		{"the whole of a short text", "lunch?", "lunch?", ""},
+		{"the start with its spacing changed", "the standup\nmoved to ten tomorrow", "the  standup moved to", ""},
+		{"no text, and no witness", "", "", ""},
+		{"another message", "the standup moved to ten tomorrow", "the release moved to", ClassStale},
+		{"the start of a word that differs", "the standup moved to ten tomorrow", "the standup moved to ten today", ClassStale},
+		{"a case that differs", "the standup moved to ten tomorrow", "The standup moved to", ClassStale},
+		{"no witness for a text", "the standup moved to ten tomorrow", "", ClassInvalid},
+		{"too little of a long text", "the standup moved to ten tomorrow", "the standup", ClassInvalid},
+		{"a witness for a message with no text", "", "the standup moved to", ClassStale},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprintf(w, `{"name":"spaces/A/messages/1","text":%q}`, tc.text)
+					return
+				}
+				fmt.Fprint(w, `{}`)
+			})
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: tc.witness})
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				if n := rec.count(http.MethodDelete); n != 0 {
+					t.Errorf("a refused delete sent %d DELETE requests", n)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteMessage: %v", err)
+			}
+			if !got.Deleted || rec.count(http.MethodDelete) != 1 {
+				t.Errorf("deleted = %v after %d DELETE requests, want true after 1", got.Deleted, rec.count(http.MethodDelete))
+			}
+		})
 	}
 }
 
@@ -751,7 +820,7 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 	}{
 		{
 			name: "the message is still there, so the refusal stands",
-			read: ok(`{"name":"spaces/A/messages/1","text":"still here"}`),
+			read: ok(liveMessage),
 			// A refusal that stands is a permission problem, not an
 			// unclassified upstream failure: retrying will not fix it,
 			// and someone who administers the space can.
@@ -779,15 +848,20 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			deleted := false
 			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == "DELETE" {
+				switch {
+				case r.Method == http.MethodDelete:
+					deleted = true
 					w.WriteHeader(http.StatusForbidden)
 					fmt.Fprint(w, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`)
-					return
+				case deleted:
+					tc.read(w, r)
+				default:
+					fmt.Fprint(w, liveMessage)
 				}
-				tc.read(w, r)
 			})
-			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart})
 			if tc.wantErr != "" {
 				assertClass(t, err, tc.wantErr)
 				return
@@ -802,155 +876,105 @@ func TestDeleteMessageChecksWhatARefusalMeant(t *testing.T) {
 	}
 }
 
-// declining is the asker of a person who says no: it records each
-// question and refuses it.
-type declining struct{ asked []Question }
-
-var errDeclined = errors.New("declined")
-
-func (d *declining) Ask(_ context.Context, q Question) error {
-	d.asked = append(d.asked, q)
-	return errDeclined
-}
-func (*declining) Asks() bool { return true }
-
-// A message that cannot be read is still asked about: that an account
-// cannot delete what it cannot read is a belief, and the question is
-// the only thing between the call and a delete nobody can undo. One
-// already gone asks nothing, unless force would still take the replies
-// a deleted thread root keeps.
-func TestDeleteMessageAsksWhenItCannotShowTheMessage(t *testing.T) {
-	deleted := ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)
-	for _, tc := range []struct {
-		name  string
-		read  http.HandlerFunc
-		force bool
-		asked string
-	}{
-		{"unreadable", status(403, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`), false,
-			"delete_message: delete the message `spaces/A/messages/1` for good?"},
-		{"readable", ok(`{"name":"spaces/A/messages/1","text":"hello"}`), false, "text: `hello`"},
-		{"gone", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), false, ""},
-		{"deleted", deleted, false, ""},
-		{"deleted, with its replies", deleted, true,
-			"the message `spaces/A/messages/1` is already deleted. Delete any reply still in its thread"},
-		{"a deleted reply, forced", ok(`{"name":"spaces/A/messages/1","threadReply":true,"deleteTime":"2026-10-01T00:00:00Z"}`),
-			true, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			deletes := 0
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodDelete {
-					deletes++
-					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprint(w, `{"error":{"status":"NOT_FOUND","message":"gone"}}`)
-					return
-				}
-				tc.read(w, r)
-			})
-			person := &declining{}
-			_, err := s.DeleteMessage(WithAsker(context.Background(), person),
-				DeleteMessageInput{Message: "spaces/A/messages/1", Force: tc.force})
-			if tc.asked == "" {
-				if err != nil || len(person.asked) != 0 || deletes != 1 {
-					t.Fatalf("err %v, asked %d, deletes %d; want no question and the delete sent", err, len(person.asked), deletes)
-				}
-				return
-			}
-			if !errors.Is(err, errDeclined) || deletes != 0 {
-				t.Fatalf("err %v, deletes %d; want the refusal and no delete", err, deletes)
-			}
-			if len(person.asked) != 1 || !strings.Contains(person.asked[0].Text, tc.asked) {
-				t.Fatalf("asked %+v, want one question saying %q", person.asked, tc.asked)
-			}
-		})
-	}
-}
-
-// accepting is the asker of a person who says yes to every question.
-type accepting struct{ asked int }
-
-func (a *accepting) Ask(context.Context, Question) error { a.asked++; return nil }
-func (*accepting) Asks() bool                            { return true }
-
-// Once the person accepts deleting a deleted root's replies, the delete
-// goes out with force, and the result says what Google answered: a
-// delete it carried out, or one that found nothing to take.
-func TestDeleteMessageForcedOnADeletedRootReportsGooglesAnswer(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		answer      http.HandlerFunc
-		wantDeleted bool
-	}{
-		{"Google deletes", ok(`{}`), true},
-		{"Google finds nothing", status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`), false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var force string
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodDelete {
-					force = r.URL.Query().Get("force")
-					tc.answer(w, r)
-					return
-				}
-				ok(`{"name":"spaces/A/messages/1","deleteTime":"2026-10-01T00:00:00Z"}`)(w, r)
-			})
-			person := &accepting{}
-			got, err := s.DeleteMessage(WithAsker(context.Background(), person),
-				DeleteMessageInput{Message: "spaces/A/messages/1", Force: true})
-			if err != nil {
-				t.Fatalf("DeleteMessage: %v", err)
-			}
-			if person.asked != 1 || force != "true" || got.Deleted != tc.wantDeleted || !got.Forced {
-				t.Errorf("asked %d, force %q, deleted %v, forced %v; want 1, %q, %v, true",
-					person.asked, force, got.Deleted, got.Forced, "true", tc.wantDeleted)
-			}
-		})
-	}
-}
-
 // The one 403 that must not read as "already gone": the caller was told
 // the delete succeeded when what they needed was a prompt to grant a
 // scope.
 func TestDeleteMessageDoesNotSwallowAMissingScope(t *testing.T) {
 	s := newService(t, status(403,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
-	_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+	_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart})
 	assertClass(t, err, ClassScope)
 }
 
-func TestDeleteMessageDeletes(t *testing.T) {
-	s, rec := recorded(t, ok(`{}`))
-	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+// delete_message takes one message and never its replies: force goes out
+// false, and the result says no replies went.
+func TestDeleteMessageDeletesOneMessage(t *testing.T) {
+	s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, liveMessage)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	})
+	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart})
 	if err != nil {
 		t.Fatalf("DeleteMessage: %v", err)
 	}
-	if !got.Deleted {
-		t.Error("deleted = false after a delete that worked")
+	if !got.Deleted || got.Forced {
+		t.Errorf("deleted %v, forced %v; want true, false", got.Deleted, got.Forced)
 	}
-	if sent := rec.last(t); sent.Method != "DELETE" {
-		t.Errorf("method = %s", sent.Method)
+	sent := rec.last(t)
+	if q, _ := url.ParseQuery(sent.Query); sent.Method != http.MethodDelete || q.Get("force") != "false" {
+		t.Errorf("sent %s ?%s, want DELETE with force=false", sent.Method, sent.Query)
 	}
 }
 
-// A dry run deletes nothing, and says whether it would have taken the
-// replies too, because that is the difference between one message and a
-// conversation.
+// A dry run reads, so it is refused as the delete would be, and deletes
+// nothing.
 func TestDeleteMessageDryRunDeletesNothing(t *testing.T) {
-	for _, force := range []bool{false, true} {
-		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
-			s, rec := recorded(t, ok(`{}`))
-			got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
-				Message: "spaces/A/messages/1", Force: force, DryRun: true,
+	s, rec := recorded(t, ok(liveMessage))
+	got, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart, DryRun: true})
+	if err != nil {
+		t.Fatalf("DeleteMessage: %v", err)
+	}
+	if n := rec.count(http.MethodDelete); n != 0 {
+		t.Errorf("a dry run sent %d DELETE requests", n)
+	}
+	if got.Deleted || !got.DryRun || got.Forced {
+		t.Errorf("result = %+v, want a dry run of one message", got)
+	}
+	if _, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
+		Message: "spaces/A/messages/1", TextStart: "the release moved to", DryRun: true,
+	}); err == nil {
+		t.Error("a dry run with the wrong text was not refused")
+	}
+}
+
+// delete_thread takes the first message with its replies: force goes out
+// true and the result says so. A reply is not a thread's first message.
+// A first message already deleted still holds its replies, which is what
+// the call is for, and has no text left to compare, so whatever the
+// caller read for it goes.
+func TestDeleteThreadTakesTheReplies(t *testing.T) {
+	tombstone := `{"name":"spaces/A/messages/1","deleteTime":"2026-01-02T04:00:00Z"}`
+	for _, tc := range []struct {
+		name        string
+		read        string
+		witness     string
+		wantErr     Class
+		wantDeletes int
+	}{
+		{"a first message", liveMessage, liveStart, "", 1},
+		{"a first message under another text", liveMessage, "the release moved to", ClassStale, 0},
+		{"a reply", `{"name":"spaces/A/messages/1","text":"the standup moved to ten tomorrow","threadReply":true}`,
+			liveStart, ClassInvalid, 0},
+		{"a first message already deleted", tombstone, "", "", 1},
+		{"a first message already deleted, repeated with its old text", tombstone, liveStart, "", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprint(w, tc.read)
+					return
+				}
+				fmt.Fprint(w, `{}`)
 			})
+			got, err := s.DeleteThread(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: tc.witness})
+			if n := rec.count(http.MethodDelete); n != tc.wantDeletes {
+				t.Errorf("%d DELETE requests, want %d", n, tc.wantDeletes)
+			}
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				return
+			}
 			if err != nil {
-				t.Fatalf("DeleteMessage: %v", err)
+				t.Fatalf("DeleteThread: %v", err)
 			}
-			if rec.len() != 0 {
-				t.Errorf("a dry run made %d requests", rec.len())
+			if q, _ := url.ParseQuery(rec.last(t).Query); q.Get("force") != "true" {
+				t.Errorf("sent ?%s, want force=true", rec.last(t).Query)
 			}
-			if got.Deleted || !got.DryRun || got.Forced != force {
-				t.Errorf("result = %+v, want a dry run with forced %v", got, force)
+			if !got.Deleted || !got.Forced {
+				t.Errorf("deleted %v, forced %v; want true, true", got.Deleted, got.Forced)
 			}
 		})
 	}
@@ -975,7 +999,7 @@ func TestMessageWritesNameTheirScopes(t *testing.T) {
 			return err
 		}, scopes.Messages},
 		{"delete", func() error {
-			_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+			_, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart})
 			return err
 		}, scopes.Messages},
 	} {
@@ -997,25 +1021,40 @@ func TestSendMessageRefusesABlankThreadRatherThanStartingANewOne(t *testing.T) {
 	}
 }
 
-// The repeat delete a caller actually makes. Google answers the second
-// one with a 403, and the message reads back as a tombstone rather than
-// a 404 — so treating "readable" as "still there" reported an ordinary
-// idempotent delete as a refusal. Found in the Phase 2 smoke.
-func TestDeletingTwiceIsNotAnError(t *testing.T) {
-	var deletes int
+// A refused thread delete is reported as Google gave it. Its first
+// message reading as deleted afterward says nothing of the replies, so
+// it is never taken as proof the thread is gone.
+func TestDeleteThreadReportsARefusal(t *testing.T) {
 	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == "DELETE" && deletes == 0:
-			deletes++
-			fmt.Fprint(w, `{}`)
-		case r.Method == "DELETE":
+		if r.Method == http.MethodDelete {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprint(w, `{"error":{"status":"PERMISSION_DENIED","message":"Permission denied to perform the requested action on the specified resource, or the resource doesn't exist."}}`)
-		default:
+			fmt.Fprint(w, `{"error":{"status":"PERMISSION_DENIED","message":"no access"}}`)
+			return
+		}
+		fmt.Fprint(w, `{"name":"spaces/A/messages/1","deleteTime":"2026-01-02T04:00:00Z"}`)
+	})
+	_, err := s.DeleteThread(writeCtx(), DeleteMessageInput{Message: "spaces/A/messages/1"})
+	assertClass(t, err, ClassForbidden)
+}
+
+// The repeat delete a caller actually makes. The second call reads the
+// message back as a tombstone, not a 404, and sends nothing: treating
+// "readable" as "still there" reported an ordinary repeat as a refusal
+// once. Found in the Phase 2 smoke.
+func TestDeletingTwiceIsNotAnError(t *testing.T) {
+	deleted := false
+	s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete:
+			deleted = true
+			fmt.Fprint(w, `{}`)
+		case deleted:
 			fmt.Fprint(w, `{"name":"spaces/A/messages/1","createTime":"2026-01-02T03:04:05Z","deleteTime":"2026-01-02T04:00:00Z"}`)
+		default:
+			fmt.Fprint(w, liveMessage)
 		}
 	})
-	in := DeleteMessageInput{Message: "spaces/A/messages/1"}
+	in := DeleteMessageInput{Message: "spaces/A/messages/1", TextStart: liveStart}
 
 	first, err := s.DeleteMessage(writeCtx(), in)
 	if err != nil || !first.Deleted {
@@ -1028,36 +1067,8 @@ func TestDeletingTwiceIsNotAnError(t *testing.T) {
 	if second.Deleted {
 		t.Error("the second delete claims to have deleted something")
 	}
-}
-
-// The replies to a message are other people's, so Google refuses to
-// delete a message that has any unless the caller says otherwise. The
-// flag has to reach Google, and the answer has to say it was used.
-func TestDeleteMessageCarriesForce(t *testing.T) {
-	for _, force := range []bool{false, true} {
-		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
-			var got string
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
-				got = r.URL.Query().Get("force")
-				fmt.Fprint(w, `{}`)
-			})
-			out, err := s.DeleteMessage(writeCtx(), DeleteMessageInput{
-				Message: "spaces/AAAAspace1/messages/AAAAmsg1", Force: force,
-			})
-			if err != nil {
-				t.Fatalf("DeleteMessage: %v", err)
-			}
-			want := "false"
-			if force {
-				want = "true"
-			}
-			if got != want {
-				t.Errorf("force = %q, want %q", got, want)
-			}
-			if out.Forced != force {
-				t.Errorf("forced = %v, want %v", out.Forced, force)
-			}
-		})
+	if n := rec.count(http.MethodDelete); n != 1 {
+		t.Errorf("%d DELETE requests over two calls, want 1", n)
 	}
 }
 
@@ -1097,7 +1108,7 @@ func TestAReplyChoosesItsFallback(t *testing.T) {
 // caller is a person. So the body goes out with the mention exactly as
 // it arrived — no lookup, no rewriting, nothing appended.
 func TestAMentionIsPostedVerbatim(t *testing.T) {
-	const text = "<users/janedoe@example.com> can you look at this? cc <users/all>"
+	const text = "<users/janedoe@example.com> can you look at this? cc <users/johndoe@example.com>"
 	var sent string
 	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -1394,5 +1405,70 @@ func TestGetMessagesPrefersTheAddressChatSent(t *testing.T) {
 	}
 	if len(asked) != 1 || asked[0] != "people/AAAAuser2" {
 		t.Errorf("People was asked about %v, want only the sender Chat left empty", asked)
+	}
+}
+
+// A mention of everyone is found in Chat's syntax and in Markdown's,
+// however it is cased or quoted.
+func TestMentionsEveryone(t *testing.T) {
+	for text, want := range map[string]bool{
+		"hi <users/all>":                                  true,
+		"hi <USERS/All>":                                  true,
+		`hi <chat-user data-user="users/all">`:            true,
+		`hi <chat-user data-user='users/all'>`:            true,
+		`hi <chat-user data-user=users/all>`:              true,
+		`hi <CHAT-USER class="x" DATA-USER="USERS/ALL">`:  true,
+		"hi users/all":                                    false,
+		"hi":                                              false,
+		`hi <chat-user data-user="users/allison">`:        false,
+		`hi <chat-user data-user="users/123">`:            false,
+		`hi <chat-user data-email="janedoe@example.com">`: false,
+	} {
+		if mentionsEveryone(text) != want {
+			t.Errorf("mentionsEveryone(%q) = %v", text, !want)
+		}
+	}
+}
+
+// A post or an edit that newly mentions everyone in the space is refused
+// before anything is sent, a dry run included, since it notifies every
+// member. An edit of a message that already mentioned everyone may keep
+// the mention: it notifies nobody new.
+func TestAMentionOfEveryoneIsRefused(t *testing.T) {
+	everyone := "standup in five <users/all>"
+	s, rec := recorded(t, ok(`{"name":"spaces/AAAAspace1/messages/AAAAmsg1","text":"standup soon"}`))
+	for _, dry := range []bool{false, true} {
+		_, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/AAAAspace1", Text: everyone, DryRun: dry})
+		assertClass(t, err, ClassBlocked)
+		_, err = s.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+			Text: everyone, DryRun: dry})
+		assertClass(t, err, ClassBlocked)
+	}
+	for _, r := range rec.all() {
+		if r.Method != http.MethodGet {
+			t.Errorf("a refused broadcast sent %s %s", r.Method, r.Path)
+		}
+	}
+
+	// A message that is not there is reported as not there, not as a
+	// refused mention.
+	gone, rec := recorded(t, status(http.StatusNotFound,
+		`{"error":{"code":404,"status":"NOT_FOUND","message":"not found"}}`))
+	_, err := gone.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+		Text: everyone})
+	assertClass(t, err, ClassNotFound)
+	for _, r := range rec.all() {
+		if r.Method != http.MethodGet {
+			t.Errorf("an edit of a missing message sent %s %s", r.Method, r.Path)
+		}
+	}
+
+	kept, rec := recorded(t, ok(`{"name":"spaces/AAAAspace1/messages/AAAAmsg1","text":"standup <users/all>"}`))
+	if _, err := kept.UpdateMessage(writeCtx(), UpdateMessageInput{Message: "spaces/AAAAspace1/messages/AAAAmsg1",
+		Text: everyone}); err != nil {
+		t.Fatalf("an edit that keeps the mention: %v", err)
+	}
+	if rec.last(t).Method != http.MethodPatch {
+		t.Errorf("the edit that keeps the mention was not sent")
 	}
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // PinOutput is one pinned message.
@@ -151,7 +151,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Name: "unpin_message",
 		Description: "Remove a message's pin. Takes the message, not the pin: Google gives a pin the message's " +
 			"own id. A message that was not pinned reports unpinned false rather than failing.",
-		Kind:    Destructive,
+		Kind:    WriteIdempotent,
 		Toolset: config.ToolsetPins,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PinMessageInput) (*mcp.CallToolResult, PinMessageOutput, error) {
 		got, err := d.Service.UnpinMessage(ctx, service.PinInput{Message: in.MessageName, DryRun: in.DryRun})
@@ -225,6 +225,9 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 			"space is muted. Your own setting, not the space's.",
 		Kind:    Read,
 		Toolset: config.ToolsetSettings,
+		// chat.users.spacesettings is the only scope Google takes for
+		// it, and it writes the setting too.
+		WriteScope: true,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetSpaceNotificationSettingInput) (*mcp.CallToolResult, NotificationSettingOutput, error) {
 		got, err := d.Service.GetSpaceNotificationSetting(ctx, in.SpaceID)
 		if err != nil {

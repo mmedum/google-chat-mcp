@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 type staticToken string
@@ -381,9 +381,9 @@ type call struct{ Method, Path, Query, Body string }
 // calls records what a write actually sent.
 //
 // The lock is not ceremony: the tests run with the race detector and
-// the handler runs on the test server's own goroutine. Every dry-run
-// test in this package asserts on len, because "made no request at all"
-// is the whole promise.
+// the handler runs on the test server's own goroutine. A dry-run test
+// asserts on len, because "made no request at all" is the whole promise,
+// or on writes where a preview reads what it checks.
 type calls struct {
 	mu  sync.Mutex
 	got []call
@@ -407,6 +407,20 @@ func (c *calls) all() []call {
 }
 
 func (c *calls) len() int { return len(c.all()) }
+
+// count is how many requests of one method reached Google.
+func (c *calls) count(method string) int {
+	n := 0
+	for _, got := range c.all() {
+		if got.Method == method {
+			n++
+		}
+	}
+	return n
+}
+
+// writes is how many requests that were not reads reached Google.
+func (c *calls) writes() int { return c.len() - c.count(http.MethodGet) }
 
 // last is the request the call under test ended on.
 func (c *calls) last(t *testing.T) call {
@@ -762,36 +776,142 @@ func TestUpdateSpaceRejectsAnEmptyEdit(t *testing.T) {
 	}
 }
 
-// An audience is its own patch: a bare id is taken as an audience's, and
-// private masks it with no value, which is how Google removes it.
-func TestUpdateSpaceSetsTheAudienceAlone(t *testing.T) {
+// update_space makes a space private, masking the audience with no
+// value, which is how Google removes it, and refuses to open one: that is
+// set_space_audience's.
+func TestUpdateSpaceMakesASpacePrivateAndNeverOpensOne(t *testing.T) {
+	for _, audience := range []string{"private", " Private "} {
+		s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+		got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: audience})
+		if err != nil {
+			t.Fatalf("UpdateSpace %q: %v", audience, err)
+		}
+		sent := rec.last(t)
+		if m := sent.mask(t); m != "accessSettings.audience" || sent.Body != `{"accessSettings":{}}` {
+			t.Errorf("%q: mask %q, body %s", audience, m, sent.Body)
+		}
+		if got.Audience == nil || *got.Audience != "private" {
+			t.Errorf("%q: reported audience = %v", audience, got.Audience)
+		}
+	}
+	s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+	for _, audience := range []string{"default", "audiences/AAAAaudience1"} {
+		_, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: audience})
+		assertClass(t, err, ClassBlocked)
+	}
+	if rec.len() != 0 {
+		t.Errorf("a refused opening reached Google %d times", rec.len())
+	}
+}
+
+// teamStandup answers a read of a space with one called Team standup,
+// and a write with an empty body.
+func teamStandup(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","displayName":"Team standup"}`)
+		return
+	}
+	fmt.Fprint(w, `{"name":"spaces/A"}`)
+}
+
+// set_space_audience opens a space, a bare id taken as an audience's,
+// once the space reads as called what the call says; it does not make
+// one private.
+func TestSetSpaceAudienceOpensASpace(t *testing.T) {
 	for _, tc := range []struct {
-		audience string
-		wantBody string
-		want     string
+		space, audience, wantBody, want string
 	}{
-		{"default", `{"accessSettings":{"audience":"audiences/default"}}`, "audiences/default"},
-		{" audiences/AAAAaudience1 ", `{"accessSettings":{"audience":"audiences/AAAAaudience1"}}`, "audiences/AAAAaudience1"},
-		{"private", `{"accessSettings":{}}`, "private"},
-		{" Private ", `{"accessSettings":{}}`, "private"},
+		{"spaces/A", "default", `{"accessSettings":{"audience":"audiences/default"}}`, "audiences/default"},
+		{"AAAAspace1", "default", `{"accessSettings":{"audience":"audiences/default"}}`, "audiences/default"},
+		{"spaces/A", " audiences/AAAAaudience1 ", `{"accessSettings":{"audience":"audiences/AAAAaudience1"}}`,
+			"audiences/AAAAaudience1"},
 	} {
-		t.Run(tc.audience, func(t *testing.T) {
-			s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
-			got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: tc.audience})
-			if err != nil {
-				t.Fatalf("UpdateSpace: %v", err)
-			}
-			sent := rec.last(t)
-			if m := sent.mask(t); m != "accessSettings.audience" {
-				t.Errorf("mask = %q", m)
-			}
-			if sent.Body != tc.wantBody {
-				t.Errorf("body = %s, want %s", sent.Body, tc.wantBody)
-			}
-			if got.Audience == nil || *got.Audience != tc.want {
-				t.Errorf("reported audience = %v, want %q", got.Audience, tc.want)
+		s, rec := recorded(t, teamStandup)
+		got, err := s.SetSpaceAudience(writeCtx(), SetSpaceAudienceInput{Space: tc.space, Audience: tc.audience,
+			DisplayName: "Team standup"})
+		if err != nil {
+			t.Fatalf("SetSpaceAudience %s %q: %v", tc.space, tc.audience, err)
+		}
+		sent := rec.last(t)
+		if m := sent.mask(t); m != "accessSettings.audience" || sent.Body != tc.wantBody {
+			t.Errorf("%q: mask %q, body %s, want %s", tc.audience, m, sent.Body, tc.wantBody)
+		}
+		if got.Audience == nil || *got.Audience != tc.want {
+			t.Errorf("%q: reported audience = %v, want %q", tc.audience, got.Audience, tc.want)
+		}
+	}
+}
+
+// Opening a space widens who reads it for good, so a call that does not
+// name the space as it reads changes nothing.
+func TestSetSpaceAudienceRefusesAnotherSpace(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   SetSpaceAudienceInput
+		want Class
+	}{
+		{"no name", SetSpaceAudienceInput{Space: "spaces/A", Audience: "default"}, ClassInvalid},
+		{"another space's name", SetSpaceAudienceInput{Space: "spaces/A", Audience: "default", DisplayName: "Release planning"},
+			ClassStale},
+		{"another space's name in a dry run", SetSpaceAudienceInput{Space: "spaces/A", Audience: "default",
+			DisplayName: "Release planning", DryRun: true}, ClassStale},
+		{"private", SetSpaceAudienceInput{Space: "spaces/A", Audience: "private", DisplayName: "Team standup"}, ClassInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, teamStandup)
+			_, err := s.SetSpaceAudience(writeCtx(), tc.in)
+			assertClass(t, err, tc.want)
+			if n := rec.writes(); n != 0 {
+				t.Errorf("a refused call sent %d writes", n)
 			}
 		})
+	}
+}
+
+// Google's mask covers all of spaceDetails, so a description sent alone
+// would clear the guidelines. They are read and sent back as they were,
+// a dry run included, and a rename reads nothing.
+func TestUpdateSpaceKeepsTheGuidelines(t *testing.T) {
+	description, name := "What this room is for", "Renamed"
+	for _, tc := range []struct {
+		label    string
+		in       UpdateSpaceInput
+		wantBody string
+		wantGets int
+	}{
+		{"a new description", UpdateSpaceInput{Space: "spaces/A", Description: &description},
+			`{"spaceDetails":{"description":"What this room is for","guidelines":"Be kind"}}`, 1},
+		{"a rename", UpdateSpaceInput{Space: "spaces/A", DisplayName: &name}, `{"displayName":"Renamed"}`, 0},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprint(w, `{"name":"spaces/A","spaceDetails":{"description":"Old","guidelines":"Be kind"}}`)
+					return
+				}
+				fmt.Fprint(w, `{"name":"spaces/A"}`)
+			})
+			if _, err := s.UpdateSpace(writeCtx(), tc.in); err != nil {
+				t.Fatalf("UpdateSpace: %v", err)
+			}
+			if sent := rec.last(t); sent.Method != http.MethodPatch || sent.Body != tc.wantBody {
+				t.Errorf("sent %s %s, want PATCH %s", sent.Method, sent.Body, tc.wantBody)
+			}
+			if gets := rec.count(http.MethodGet); gets != tc.wantGets {
+				t.Errorf("%d reads, want %d", gets, tc.wantGets)
+			}
+		})
+	}
+
+	s, rec := recorded(t, ok(`{"name":"spaces/A","spaceDetails":{"guidelines":"Be kind"}}`))
+	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Description: &description, DryRun: true})
+	if err != nil {
+		t.Fatalf("UpdateSpace dry run: %v", err)
+	}
+	details, _ := got.Rendered["spaceDetails"].(map[string]any)
+	if details["guidelines"] != "Be kind" || rec.last(t).Method != http.MethodGet {
+		t.Errorf("a dry run rendered %v after a %s; want the guidelines kept, after a read alone",
+			got.Rendered, rec.last(t).Method)
 	}
 }
 
@@ -839,30 +959,22 @@ func TestUpdateSpaceTakesABlankAudienceAsLeftAlone(t *testing.T) {
 	}
 }
 
-func TestCreateSpaceOpensToAnAudience(t *testing.T) {
+// A space is created private: an audience is set_space_audience's.
+func TestCreateSpaceRefusesAnAudience(t *testing.T) {
 	s, rec := recorded(t, ok(`{"name":"spaces/NEW","spaceType":"SPACE","displayName":"Team"}`))
-	got, err := s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: "default"})
-	if err != nil {
-		t.Fatalf("CreateSpace: %v", err)
-	}
-	if got.Audience != "audiences/default" {
-		t.Errorf("audience = %q", got.Audience)
-	}
-	if body := rec.last(t).Body; !strings.Contains(body, `"accessSettings":{"audience":"audiences/default"}`) {
-		t.Errorf("body = %s", body)
-	}
-
+	_, err := s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: "default"})
+	assertClass(t, err, ClassBlocked)
 	_, err = s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: "audiences/"})
 	assertClass(t, err, ClassInvalid)
-	if rec.len() != 1 {
-		t.Errorf("a misshapen audience reached Google")
+	if rec.len() != 0 {
+		t.Errorf("a refused create reached Google %d times", rec.len())
 	}
 
 	// Blank and private both make a private space.
 	for _, audience := range []string{"  ", "private"} {
-		got, err = s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: audience})
-		if err != nil || got.Audience != "" || strings.Contains(rec.last(t).Body, "accessSettings") {
-			t.Errorf("audience %q: %v, %+v, body %s", audience, err, got, rec.last(t).Body)
+		_, err := s.CreateSpace(writeCtx(), CreateSpaceInput{DisplayName: "Team", Audience: audience})
+		if err != nil || strings.Contains(rec.last(t).Body, "accessSettings") {
+			t.Errorf("audience %q: %v, body %s", audience, err, rec.last(t).Body)
 		}
 	}
 }
@@ -908,13 +1020,5 @@ func TestSpaceWritesNameTheirScopes(t *testing.T) {
 	}
 }
 
-// passing is the asker of a client that cannot ask: every write goes
-// ahead unasked, as it does there. The asking itself is held by the
-// tools layer's tests, over a real session.
-type passing struct{}
-
-func (passing) Ask(context.Context, Question) error { return nil }
-func (passing) Asks() bool                          { return false }
-
 // writeCtx is a context a write may be made under.
-func writeCtx() context.Context { return WithAsker(context.Background(), passing{}) }
+func writeCtx() context.Context { return context.Background() }

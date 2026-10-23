@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/config"
-	"github.com/mmedum/google-chat-mcp/v5/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v5/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
 )
 
 // Service turns tool intent into Chat API calls and applies the rules
@@ -182,6 +182,58 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 		}
 		return deleted(got)
 	}
+}
+
+// A witness is what a destructive call repeats of its target: a
+// message's text, a space's or an emoji's name. The client's prompt
+// shows only the arguments, and an opaque resource name tells the
+// person approving it nothing, so the call carries what the target says
+// and the server reads the target and compares (docs/architecture.md,
+// "What a write may reach"). A mismatch is [stale] and changes nothing.
+
+// minTextWitness is how much of a message's text a delete repeats:
+// enough for the prompt to say which message goes. A shorter message is
+// repeated whole.
+const minTextWitness = 20
+
+// words folds every run of whitespace to one space and trims the ends,
+// so a witness copied out of a reply matches whatever line breaks it
+// lost on the way.
+func words(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// checkText refuses a delete whose text_start is not how the message's
+// text begins. An empty text_start matches only a message with no text,
+// such as one that is only a file.
+func checkText(name, text, witness string) error {
+	have, want := words(text), words(witness)
+	switch {
+	case want == "" && have == "":
+		return nil
+	case want == "":
+		return Invalidf("pass text_start: how the text of %s begins, as get_message reports it", name)
+	case !strings.HasPrefix(have, want):
+		return Failf(ClassStale, "the text of %s does not begin with text_start, so it is not the message this "+
+			"call meant; nothing was deleted. Read it with get_message and pass how its text begins", name)
+	case utf8.RuneCountInString(want) < min(minTextWitness, utf8.RuneCountInString(have)):
+		return Invalidf("text_start has to carry at least the first %d characters of the text, or all of it when "+
+			"it is shorter, so the call shows which message goes; nothing was deleted", minTextWitness)
+	}
+	return nil
+}
+
+// checkName refuses a destructive call whose witness is not the
+// target's name. Case and spacing are not compared: they are not what
+// tells one space or emoji from another.
+func checkName(field, target, name, witness string) error {
+	have, want := words(name), words(witness)
+	switch {
+	case want == "":
+		return Invalidf("pass %s: what %s is called, so the call shows which one it is", field, target)
+	case !strings.EqualFold(have, want):
+		return Failf(ClassStale, "%s is not called %q, so it is not the one this call meant; nothing was changed. "+
+			"Read it again and pass %s as it reads now", target, want, field)
+	}
+	return nil
 }
 
 // resolvePeople turns Chat users into people.

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // Userinfo returns the OpenID Connect profile of the token's owner.
@@ -191,9 +191,6 @@ type SetupSpace struct {
 	// allowed is decided in internal/service, and dropping it here
 	// would hide the mistake rather than report it.
 	DisplayName string `json:"displayName,omitempty"`
-	// Access is set only when the space opens to a target audience; a
-	// space made without it is private.
-	Access *AudienceRequest `json:"accessSettings,omitempty"`
 }
 
 // AudienceRequest is the accessSettings half of a create or patch body:
@@ -242,9 +239,11 @@ type UpdateSpaceRequest struct {
 //
 // Description carries no omitempty, unlike the response type: clearing
 // a description is a real edit, and omitting the field would send an
-// empty object that changes nothing.
+// empty object that changes nothing. Guidelines are only ever what the
+// space already had, resent so the patch does not clear them.
 type UpdateSpaceDetails struct {
 	Description string `json:"description"`
+	Guidelines  string `json:"guidelines,omitempty"`
 }
 
 // BuildUpdateSpace renders a space patch and the mask that goes with
@@ -252,9 +251,9 @@ type UpdateSpaceDetails struct {
 //
 // Google's updateMask takes only top-level paths here, so editing the
 // description masks the whole spaceDetails object and clears anything
-// else in it that was not resent. update_space says so; there is no
-// mask that would avoid it.
-func BuildUpdateSpace(displayName, description *string) (*UpdateSpaceRequest, string) {
+// else in it that was not resent. guidelines is what the space has, and
+// goes with the description so they stay; it is ignored without one.
+func BuildUpdateSpace(displayName, description *string, guidelines string) (*UpdateSpaceRequest, string) {
 	body := &UpdateSpaceRequest{}
 	mask := make([]string, 0, 2)
 	if displayName != nil {
@@ -262,7 +261,7 @@ func BuildUpdateSpace(displayName, description *string) (*UpdateSpaceRequest, st
 		mask = append(mask, "displayName")
 	}
 	if description != nil {
-		body.Details = &UpdateSpaceDetails{Description: *description}
+		body.Details = &UpdateSpaceDetails{Description: *description, Guidelines: guidelines}
 		mask = append(mask, "spaceDetails")
 	}
 	return body, strings.Join(mask, ",")

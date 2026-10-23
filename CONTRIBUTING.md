@@ -48,9 +48,10 @@ Four of those are worth knowing about before they fail on you:
 - **The schema diff** compares the built binary with
   `testdata/schemas-baseline.json`. A renamed tool or a dropped output
   field breaks every caller and fails the build. A reshaped input is
-  reported and allowed. The baseline holds the surface of the
-  CHANGELOG's newest release, and the diff fails when it holds any
-  other. With nothing under `[Unreleased]`, the build is that release,
+  reported and allowed, and so is a changed description, annotation or
+  `_meta` key, since a client decides from those whether to ask. The
+  baseline holds the surface of the CHANGELOG's newest release, and the
+  diff fails when it holds any other. With nothing under `[Unreleased]`, the build is that release,
   so its tools must match the baseline exactly. The release commit
   records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
   refuses a build that drops a tool or an output field. It also refuses
@@ -160,8 +161,10 @@ Release cutting is maintainer-only:
    Set `LIVE_GROUP_EMAIL` to a Google Group the account can see first.
    `find_group` needs a real one, and none may be named in this
    repository; the run only looks it up and adds it nowhere. Without it
-   that step fails and says so. `LIVE_KEEP=1` keeps the scratch space
-   after a run.
+   the run stops before it makes the scratch space. `LIVE_KEEP=1` keeps
+   the scratch space after a run. Once the run has opened the space to
+   the organization, it makes it private and reads it back before it
+   keeps or deletes it, and fails loudly if it cannot.
 
    Run `make api-diff` at the same time. It is the only thing here that
    reaches Google's own documentation, and a manual target nobody runs is
@@ -238,8 +241,8 @@ every release pull request, since CI runs before the tag exists.
   never rejected. Drift must be observable, not fatal — rejecting it cost
   the previous implementation two total outages.
 - Every tool is registered through `internal/tools.register`, which
-  derives the annotations, the read-only gating, the interaction hint and
-  the rendered reply from one `Kind`.
+  derives the annotations, the read-only and destructive gating,
+  `confirm` and the rendered reply from one `Kind`.
 - Logs record the call, never the payload. `docs/architecture.md` says
   what that means and where the non-obvious leak was.
 

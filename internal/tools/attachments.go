@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v5/internal/service"
+	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
 
 // DownloadAttachmentInput names one attachment on one message.
@@ -55,8 +55,7 @@ func registerAttachments(s *mcp.Server, d Deps) {
 		}, nil
 	})
 
-	// Write, so a person is asked first: this reads a file off the
-	// machine and hands it to Google. Nobody in the space sees it until
+	// Write: this reads a file off the machine and hands it to Google. Nobody in the space sees it until
 	// send_message carries the token.
 	register(s, d, spec{
 		Name: "upload_attachment",
