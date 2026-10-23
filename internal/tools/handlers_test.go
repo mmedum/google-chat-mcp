@@ -47,7 +47,7 @@ func sessionWithToolsets(t *testing.T, handler http.HandlerFunc, toolsets ...con
 	// harness that could not drive them would leave them untested. The
 	// destructive tools are on for the same reason: off, they are not
 	// registered at all.
-	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t), AllowDestructive: true}
+	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t), EnableDestructive: true}
 	if len(toolsets) > 0 && toolsets[0] != "" {
 		cfg.Toolsets = toolsets
 	}

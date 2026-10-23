@@ -118,7 +118,7 @@ func canaryGoogle(t *testing.T) http.HandlerFunc {
 func TestLogsNeverCarryThePayload(t *testing.T) {
 	var logs bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	cs := sessionWithLogger(t, canaryGoogle(t), config.Config{Toolsets: config.AllToolsets, AllowDestructive: true}, log)
+	cs := sessionWithLogger(t, canaryGoogle(t), config.Config{Toolsets: config.AllToolsets, EnableDestructive: true}, log)
 
 	// Every registered tool, not a hand-picked few: a tool that logs a
 	// message body is caught whether or not anyone remembered to add it

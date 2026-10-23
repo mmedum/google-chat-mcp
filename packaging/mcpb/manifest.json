@@ -5,7 +5,7 @@
   "display_name": "Google Chat",
   "version": "0.0.0-dev",
   "description": "Google Chat as MCP tools: read, search and write to your spaces, direct messages and sidebar.",
-  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. macOS, Windows and Linux, on both architectures each. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nEvery other setting keeps its default. Attachment transfer stays off until `GCM_LOCAL_DIR` names a directory, which takes the manual client configuration in the README.",
+  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. macOS, Windows and Linux, on both architectures each. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nThe bundle asks for the same settings as a client's configuration file, each off or empty unless you set it. The tools that cannot be taken back stay unregistered until you turn them on, and attachment transfer stays off until you pick a folder.",
   "author": {
     "name": "mmedum",
     "url": "https://github.com/mmedum"
@@ -24,18 +24,26 @@
     "google-workspace",
     "stdio"
   ],
+  "privacy_policies": [
+    "https://policies.google.com/privacy"
+  ],
   "server": {
     "type": "binary",
-    "entry_point": "server/google-chat-mcp",
+    "entry_point": "server/google-chat-mcp-darwin",
     "mcp_config": {
-      "command": "${__dirname}/server/google-chat-mcp",
+      "command": "${__dirname}/server/google-chat-mcp-darwin",
       "args": [],
       "env": {
-        "GCM_CLIENT_SECRET": "${user_config.client_secret}"
+        "GCM_CLIENT_SECRET": "${user_config.client_secret}",
+        "GCM_PROFILE": "${user_config.profile}",
+        "GCM_READ_ONLY": "${user_config.read_only}",
+        "GCM_ENABLE_DESTRUCTIVE": "${user_config.enable_destructive}",
+        "GCM_TOOLSETS": "${user_config.toolsets}",
+        "GCM_LOCAL_DIR": "${user_config.local_dir}"
       },
       "platform_overrides": {
         "linux": {
-          "command": "${__dirname}/server/linux-launch.sh"
+          "command": "${__dirname}/server/launch-linux.sh"
         },
         "win32": {
           "command": "${__dirname}/server/google-chat-mcp.exe"
@@ -49,9 +57,45 @@
       "title": "OAuth client JSON",
       "description": "The client_secret JSON you downloaded when you created the Desktop OAuth client. The same file you passed to `google-chat-mcp login`.",
       "required": true
+    },
+    "profile": {
+      "type": "string",
+      "title": "Profile",
+      "description": "Which stored login to use. Separate profiles keep separate tokens, such as a work account and a personal one, and each is logged in to with `google-chat-mcp login --profile <name>`. Leave it empty for the default profile.",
+      "default": "",
+      "required": false
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only",
+      "description": "Register only the tools that change nothing in Chat. For Google to refuse a write as well, log in with `google-chat-mcp login --read-only=true`, which asks for read-only scopes. Turning writes back on takes another login.",
+      "default": false,
+      "required": false
+    },
+    "enable_destructive": {
+      "type": "boolean",
+      "title": "Deleting, and what cannot be taken back",
+      "description": "Register the tools that delete messages, threads, spaces, sections and custom emoji, remove a member, open a space to an audience, make someone a manager and add someone from outside your organization. Each call also needs confirm: true. Off by default. This server asks nobody before a call, so Claude Desktop's approval of each tool is then the only check.",
+      "default": false,
+      "required": false
+    },
+    "toolsets": {
+      "type": "string",
+      "title": "Toolsets",
+      "description": "Comma-separated tool groups to register: core, sections, pins, emoji, events, readstate, settings, availability and admin, or all. core is always on. Leave it empty for every group but admin. Only a Workspace administrator can use admin, and its scope needs a login run with `--toolsets all,admin`.",
+      "default": "",
+      "required": false
+    },
+    "local_dir": {
+      "type": "directory",
+      "title": "Attachment folder",
+      "description": "The one folder attachments are downloaded to and uploaded from. Leave it empty and this server touches no files.",
+      "default": "",
+      "required": false
     }
   },
   "compatibility": {
+    "claude_desktop": ">=0.10.0",
     "platforms": [
       "darwin",
       "linux",

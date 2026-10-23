@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
 	"github.com/mmedum/google-chat-mcp/v6/internal/server"
 )
 
@@ -150,6 +152,13 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 		}
 	}
 
+	if m.Compatibility.ClaudeDesktop != ">=0.10.0" {
+		t.Errorf("compatibility.claude_desktop is %q, want the family's >=0.10.0", m.Compatibility.ClaudeDesktop)
+	}
+	for _, p := range settingProblems(m) {
+		t.Error(p)
+	}
+
 	if refs := m.references(); len(refs) == 0 {
 		t.Error("the manifest substitutes no user configuration; the client secret should come from it")
 	}
@@ -177,7 +186,7 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 	if !ok {
 		t.Fatal("no linux override: Linux would run the macOS binary")
 	}
-	if !strings.HasSuffix(linux.Command, "linux-launch.sh") {
+	if !strings.HasSuffix(linux.Command, "launch-linux.sh") {
 		t.Errorf("linux command %q, expected the launcher — a single named binary "+
 			"is wrong for one of the two architectures Claude Desktop for Linux supports",
 			linux.Command)
@@ -362,7 +371,7 @@ func TestPackWritesWhatTheManifestNames(t *testing.T) {
 	// both. All three have to be in the bundle or the override names a
 	// file that is not there.
 	for _, name := range []string{
-		"server/linux-launch.sh", "server/google-chat-mcp-amd64", "server/google-chat-mcp-arm64",
+		"server/launch-linux.sh", "server/google-chat-mcp-linux-amd64", "server/google-chat-mcp-linux-arm64",
 	} {
 		entry, ok := packed[name]
 		if !ok {
@@ -475,20 +484,20 @@ func TestPackRefusesTwoCandidates(t *testing.T) {
 // packs, installs cleanly, and then does nothing.
 func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 	packed := []bundleFile{
-		{name: "server/google-chat-mcp"},
+		{name: "server/google-chat-mcp-darwin"},
 		{name: "server/google-chat-mcp.exe"},
-		{name: "server/linux-launch.sh"},
+		{name: "server/launch-linux.sh"},
 	}
 	// good is the shape that has to keep passing, as JSON, so each case
 	// below is one edit away from it.
 	const good = `{
 	  "server": {
-	    "entry_point": "server/google-chat-mcp",
+	    "entry_point": "server/google-chat-mcp-darwin",
 	    "mcp_config": {
-	      "command": "${__dirname}/server/google-chat-mcp",
+	      "command": "${__dirname}/server/google-chat-mcp-darwin",
 	      "env": {"GCM_CLIENT_SECRET": "${user_config.client_secret}"},
 	      "platform_overrides": {
-	        "linux": {"command": "${__dirname}/server/linux-launch.sh"},
+	        "linux": {"command": "${__dirname}/server/launch-linux.sh"},
 	        "win32": {"command": "${__dirname}/server/google-chat-mcp.exe"}
 	      }
 	    }
@@ -505,7 +514,7 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 		{
 			name: "an entry point nothing packs",
 			edit: func(s string) string {
-				return strings.Replace(s, `"entry_point": "server/google-chat-mcp"`,
+				return strings.Replace(s, `"entry_point": "server/google-chat-mcp-darwin"`,
 					`"entry_point": "server/google-chat-mcp-x64"`, 1)
 			},
 			want: "entry_point names server/google-chat-mcp-x64",
@@ -513,7 +522,7 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 		{
 			name: "no entry point at all",
 			edit: func(s string) string {
-				return strings.Replace(s, `"entry_point": "server/google-chat-mcp",`, "", 1)
+				return strings.Replace(s, `"entry_point": "server/google-chat-mcp-darwin",`, "", 1)
 			},
 			want: "declares no entry_point",
 		},
@@ -530,14 +539,14 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 		{
 			name: "a linux override naming a file nothing packs",
 			edit: func(s string) string {
-				return strings.Replace(s, "server/linux-launch.sh", "server/launch.sh", 1)
+				return strings.Replace(s, "server/launch-linux.sh", "server/launch.sh", 1)
 			},
 			want: "the linux command names server/launch.sh",
 		},
 		{
 			name: "a command outside the bundle",
 			edit: func(s string) string {
-				return strings.Replace(s, "${__dirname}/server/google-chat-mcp\"",
+				return strings.Replace(s, "${__dirname}/server/google-chat-mcp-darwin\"",
 					"/usr/local/bin/google-chat-mcp\"", 1)
 			},
 			want: "not under ${__dirname}",
@@ -699,5 +708,182 @@ func TestTheVendoredSchemaIsNotBelowTheFormatWeTarget(t *testing.T) {
 		t.Errorf("vendored schema pins manifest_version to %q, below the %d.%d this server targets: "+
 			"a manifest moved down with the copy it validates against still agrees with itself",
 			got, floorMajor, floorMinor)
+	}
+}
+
+// editedManifest is the committed manifest with one edit applied, read
+// back the way the gate reads it.
+func editedManifest(t *testing.T, edit func(map[string]any)) bundleManifest {
+	t.Helper()
+	_, doc := readManifest(t)
+	edit(doc)
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m bundleManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// dig is the object at a path in a decoded manifest.
+func dig(doc map[string]any, path ...string) map[string]any {
+	for _, key := range path {
+		doc = doc[key].(map[string]any)
+	}
+	return doc
+}
+
+// Each rule settingProblems keeps, broken once in the committed
+// manifest, and the shape that ships passing.
+func TestSettingProblemsRefuseEachBreak(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(map[string]any)
+		want string
+	}{
+		{name: "the shape that ships", edit: func(map[string]any) {}},
+		{"no privacy policy", func(d map[string]any) { delete(d, "privacy_policies") }, "privacy_policies is empty"},
+		{"an empty privacy policy list", func(d map[string]any) { d["privacy_policies"] = []any{} },
+			"privacy_policies is empty"},
+		{"a switch the bundle turns on", func(d map[string]any) {
+			dig(d, "user_config", "enable_destructive")["default"] = true
+		}, "user_config.enable_destructive is a boolean defaulting to true; GCM_ENABLE_DESTRUCTIVE is a switch " +
+			"the server defaults to false"},
+		{"a switch asked as text", func(d map[string]any) {
+			dig(d, "user_config", "read_only")["type"] = "string"
+			dig(d, "user_config", "read_only")["default"] = "false"
+		}, `user_config.read_only is a string defaulting to "false"; GCM_READ_ONLY is a switch`},
+		{"a switch with no default", func(d map[string]any) {
+			delete(dig(d, "user_config", "read_only"), "default")
+		}, "user_config.read_only is a boolean defaulting to null"},
+		{"a setting the bundle no longer asks for", func(d map[string]any) {
+			delete(dig(d, "user_config"), "local_dir")
+			delete(dig(d, "server", "mcp_config", "env"), "GCM_LOCAL_DIR")
+		}, "user_config does not ask for local_dir, which sets GCM_LOCAL_DIR"},
+		{"a setting spent under another key", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_PROFILE"] = "${user_config.toolsets}"
+		}, `mcp_config.env.GCM_PROFILE is "${user_config.toolsets}", want "${user_config.profile}"`},
+		{"the destructive switch's old name", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_ALLOW_DESTRUCTIVE"] = "${user_config.enable_destructive}"
+		}, "mcp_config.env sets GCM_ALLOW_DESTRUCTIVE, whose name is now GCM_ENABLE_DESTRUCTIVE"},
+		{"the destructive switch's old key", func(d map[string]any) {
+			uc := dig(d, "user_config")
+			uc["allow_destructive"] = uc["enable_destructive"]
+			delete(uc, "enable_destructive")
+			dig(d, "server", "mcp_config", "env")["GCM_ENABLE_DESTRUCTIVE"] = "${user_config.allow_destructive}"
+		}, "user_config does not ask for enable_destructive"},
+		{"a setting the bundle does not carry", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_LOG_LEVEL"] = "debug"
+		}, "mcp_config.env sets GCM_LOG_LEVEL, which the bundle does not ask for"},
+		{"a default that configures something", func(d map[string]any) {
+			dig(d, "user_config", "toolsets")["default"] = "all,admin"
+		}, "the bundle's defaults configure the server otherwise than no environment does"},
+		{"an optional setting with no default", func(d map[string]any) {
+			delete(dig(d, "user_config", "profile"), "default")
+		}, "the environment the bundle's defaults give the server is refused: config: invalid: profile " +
+			`"${user_config.profile}"`},
+		{"a key no setting has", func(d map[string]any) {
+			dig(d, "user_config")["verbose"] = map[string]any{"type": "boolean", "title": "t", "description": "d"}
+		}, "user_config asks for verbose, which is no setting's key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			problems := settingProblems(editedManifest(t, tc.edit))
+			if tc.want == "" {
+				if len(problems) > 0 {
+					t.Fatalf("the shape that ships was reported: %s", strings.Join(problems, "; "))
+				}
+				return
+			}
+			if !slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, tc.want) }) {
+				t.Errorf("problems %q\nwant one containing %q", problems, tc.want)
+			}
+		})
+	}
+}
+
+// Every variable the server reads is asked for by the bundle or left
+// out with a reason, so a setting added later is a decision about the
+// bundle rather than a gap in it.
+func TestEverySettingHasABundleVerdict(t *testing.T) {
+	// A renamed or removed setting takes its verdict from config.
+	derived := map[string]bool{}
+	for _, v := range config.Vars() {
+		derived[v.Name] = v.ReplacedBy != "" || v.Removed
+	}
+	read := configVars()
+	if len(read) < 20 {
+		t.Fatalf("the server reads %d variables; this would be checking a stub", len(read))
+	}
+	for _, name := range read {
+		_, leftOut := bundleLeftOut[name]
+		asked := slices.Contains(bundleVars, name)
+		switch n := btoi(asked) + btoi(leftOut) + btoi(derived[name]); {
+		case n == 0:
+			t.Errorf("%s has no bundle verdict: ask for it in bundleVars or say in bundleLeftOut why not", name)
+		case n > 1:
+			t.Errorf("%s is asked for %t, left out %t, and renamed or removed %t: it takes one verdict",
+				name, asked, leftOut, derived[name])
+		}
+	}
+	for name := range bundleLeftOut {
+		if !slices.Contains(read, name) {
+			t.Errorf("bundleLeftOut names %s, which the server does not read", name)
+		}
+	}
+	for _, name := range bundleVars {
+		if !slices.Contains(read, name) {
+			t.Errorf("bundleVars names %s, which the server does not read", name)
+		}
+	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// The launcher picks between binaries no manifest names, so renaming a
+// staged one would pass every check above and ship a bundle that starts
+// nothing on Linux. Its install hint names the module path, which moved
+// at v6 and was left behind once.
+func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
+	script := readRepoFile(t, launcherSource)
+	files, err := bundleLayout(fakeDist(t, true, true, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var staged []string
+	for _, f := range files {
+		if strings.HasPrefix(f.name, serverDir+server.Name+"-linux-") {
+			staged = append(staged, strings.TrimPrefix(f.name, serverDir))
+		}
+	}
+	var named []string
+	for _, m := range regexp.MustCompile(`bin=\$dir/(\S+)`).FindAllStringSubmatch(script, -1) {
+		named = append(named, m[1])
+	}
+	slices.Sort(named)
+	if len(staged) != 2 || !slices.Equal(named, staged) {
+		t.Errorf("the launcher runs %v and the packer stages %v", named, staged)
+	}
+
+	mod := regexp.MustCompile(`(?m)^module\s+(\S+)\s*$`).FindStringSubmatch(readRepoFile(t, "go.mod"))
+	if mod == nil {
+		t.Fatal("go.mod names no module")
+	}
+	want := "go install " + mod[1] + "/cmd/" + server.Name + "@latest"
+	hints := regexp.MustCompile(`go install [^\s"]+`).FindAllString(script, -1)
+	if len(hints) == 0 {
+		t.Fatal("the launcher gives no install hint for an architecture the bundle does not carry")
+	}
+	for _, hint := range hints {
+		if hint != want {
+			t.Errorf("the launcher says %q, want %q", hint, want)
+		}
 	}
 }

@@ -303,7 +303,7 @@ func TestFindDirectMessageCountsAsAWrite(t *testing.T) {
 }
 
 // Every write but the destructive ones is registered by default:
-// read-only is opt-in, and GCM_ALLOW_DESTRUCTIVE adds the rest.
+// read-only is opt-in, and GCM_ENABLE_DESTRUCTIVE adds the rest.
 // internal/server holds the whole baseline against the schema dump;
 // this holds the split here, where a tool is registered.
 func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
@@ -319,17 +319,17 @@ func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
 	}
 	for _, name := range destructive {
 		if slices.Contains(got, name) {
-			t.Errorf("%q is registered without GCM_ALLOW_DESTRUCTIVE", name)
+			t.Errorf("%q is registered without GCM_ENABLE_DESTRUCTIVE", name)
 		}
 	}
 	all := registeredNames(t, config.Config{}.FullSurface())
 	if want := len(got) + len(destructive); len(all) != want {
-		t.Errorf("%d tools with GCM_ALLOW_DESTRUCTIVE, want %d: the default surface and the %d destructive tools",
+		t.Errorf("%d tools with GCM_ENABLE_DESTRUCTIVE, want %d: the default surface and the %d destructive tools",
 			len(all), want, len(destructive))
 	}
 	for _, name := range destructive {
 		if !slices.Contains(all, name) {
-			t.Errorf("%q is missing with GCM_ALLOW_DESTRUCTIVE", name)
+			t.Errorf("%q is missing with GCM_ENABLE_DESTRUCTIVE", name)
 		}
 	}
 }

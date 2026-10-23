@@ -114,12 +114,12 @@ type Config struct {
 	LogLevel  LogLevel
 	LogFormat LogFormat
 	ReadOnly  bool
-	// AllowDestructive registers the Destructive tools: the deletes,
+	// EnableDestructive registers the Destructive tools: the deletes,
 	// opening a space to an audience, making someone a manager and adding
 	// someone from outside the organization. Off, they are not registered
 	// at all, so no client mode and no model can call them
 	// (docs/architecture.md, "What a write may reach").
-	AllowDestructive  bool
+	EnableDestructive bool
 	Toolsets          []Toolset
 	HTTPTimeout       time.Duration
 	HTTPMaxRetries    int
@@ -134,6 +134,23 @@ type Config struct {
 	// default: a server that can read and write anywhere on the machine
 	// is a different thing from one that can talk to Chat.
 	LocalDir string
+	// Deprecated is each old setting name this run was given, for the
+	// caller to warn about once it has a logger.
+	Deprecated []Rename
+}
+
+// Rename is a setting that took a new name and still answers to the
+// old one, as a variable and as a flag.
+type Rename struct {
+	Old, New         string
+	OldFlag, NewFlag string
+}
+
+// renamedDestructive is the destructive switch's name until 6.1.0,
+// renamed to match the sibling servers.
+var renamedDestructive = Rename{
+	Old: EnvPrefix + "ALLOW_DESTRUCTIVE", New: EnvPrefix + "ENABLE_DESTRUCTIVE",
+	OldFlag: "--allow-destructive", NewFlag: "--enable-destructive",
 }
 
 // Enabled reports whether a toolset's tools should be registered.
@@ -145,7 +162,7 @@ func (c Config) Enabled(t Toolset) bool { return slices.Contains(c.Toolsets, t) 
 // a tool a setting leaves out is no less part of the contract.
 func (c Config) FullSurface() Config {
 	c.ReadOnly = false
-	c.AllowDestructive = true
+	c.EnableDestructive = true
 	c.Toolsets = slices.Clone(AllToolsets)
 	return c
 }
@@ -157,6 +174,8 @@ type Settings struct {
 	LogLevel          string
 	LogFormat         string
 	ReadOnly          string
+	EnableDestructive string
+	// AllowDestructive is EnableDestructive's old name, still read.
 	AllowDestructive  string
 	Toolsets          string
 	HTTPTimeout       string
@@ -171,6 +190,24 @@ type Settings struct {
 	// removed are the settings a release took out, as the environment
 	// gives them, read only to refuse one still set.
 	removed map[string]string
+	// vars is every setting Define reads, in order.
+	vars []Var
+}
+
+// Var is one setting Define reads.
+type Var struct {
+	// Name is the environment variable.
+	Name string
+	// Default is what the server uses when neither it nor its flag is
+	// set, written as a person would set it.
+	Default string
+	// Switch marks a setting that is on or off.
+	Switch bool
+	// ReplacedBy names the variable that took this one's place. The old
+	// name still works, and nothing should offer it.
+	ReplacedBy string
+	// Removed marks a setting a release took out, read only to refuse it.
+	Removed bool
 }
 
 // removedSettings are the settings that made the server ask the person,
@@ -181,7 +218,7 @@ type Settings struct {
 // GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
 // marks than the server now sets, and on was every install's default.
 var removedSettings = []struct{ key, instead string }{
-	{"REQUIRE_PROMPT", "leave " + EnvPrefix + "ALLOW_DESTRUCTIVE off for a client that runs with nobody watching"},
+	{"REQUIRE_PROMPT", "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
 	{"ASK_BEFORE_SEND", "list send_message and update_message under your client's ask rules, as the README shows"},
 }
 
@@ -214,20 +251,32 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	s := &Settings{removed: map[string]string{}}
 	for _, r := range removedSettings {
 		s.removed[r.key] = env(EnvPrefix + r.key)
+		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
+	}
+	bind := func(p *string, name, fallback, usage string, v Var) {
+		value := env(v.Name)
+		if value == "" {
+			value = fallback
+		}
+		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
+		s.vars = append(s.vars, v)
 	}
 	def := func(p *string, name, key, fallback, usage string) {
-		v := env(EnvPrefix + key)
-		if v == "" {
-			v = fallback
-		}
-		fs.StringVar(p, name, v, usage+" [env "+EnvPrefix+key+"]")
+		bind(p, name, fallback, usage, Var{Name: EnvPrefix + key, Default: fallback})
+	}
+	// A switch is registered empty rather than "false", so Build can
+	// tell one nobody set from one set off. Empty is off.
+	defSwitch := func(p *string, name, key, replacedBy, usage string) {
+		bind(p, name, "", usage, Var{Name: EnvPrefix + key, Default: "false", Switch: true, ReplacedBy: replacedBy})
 	}
 	def(&s.Profile, "profile", "PROFILE", "default", "named configuration profile")
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
-	def(&s.ReadOnly, "read-only", "READ_ONLY", "false", "register only the read-only tools")
-	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "false",
+	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "", "register only the read-only tools")
+	defSwitch(&s.EnableDestructive, "enable-destructive", "ENABLE_DESTRUCTIVE", "",
 		"register the tools that delete, open a space, make a manager or add someone from outside the organization")
+	defSwitch(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", renamedDestructive.New,
+		"deprecated: the old name of --enable-destructive, which still works")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
@@ -239,6 +288,15 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.ClientSecretPath, "client-secret", "CLIENT_SECRET", "", "path to the OAuth Desktop client JSON (overrides the stored profile setting)")
 	def(&s.LocalDir, "local-dir", "LOCAL_DIR", "", "the one directory attachments are downloaded to and uploaded from (unset turns file transfer off)")
 	return s
+}
+
+// Vars is every setting Define reads, sorted by variable.
+func Vars() []Var {
+	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	vars := Define(fs, func(string) string { return "" }).vars
+	slices.SortFunc(vars, func(a, b Var) int { return strings.Compare(a.Name, b.Name) })
+	return vars
 }
 
 // EnvVars is every GCM_ variable Define reads, sorted.
@@ -301,8 +359,11 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, err)
 	}
 
-	if c.AllowDestructive, err = parseBool("allow-destructive", s.AllowDestructive); err != nil {
+	if c.EnableDestructive, err = s.enableDestructive(); err != nil {
 		errs = append(errs, err)
+	}
+	if strings.TrimSpace(s.AllowDestructive) != "" {
+		c.Deprecated = append(c.Deprecated, renamedDestructive)
 	}
 
 	errs = append(errs, s.removedSet()...)
@@ -376,6 +437,26 @@ func (s *Settings) Build() (Config, error) {
 		return Config{}, errors.Join(errs...)
 	}
 	return c, nil
+}
+
+// enableDestructive reads the destructive switch under its name and
+// under its old one. Either alone decides. Both set have to agree,
+// because a run that took one over the other would turn on or leave
+// off what its owner set the other to say.
+func (s *Settings) enableDestructive() (bool, error) {
+	on, err := parseBool("enable-destructive", s.EnableDestructive)
+	if err != nil || strings.TrimSpace(s.AllowDestructive) == "" {
+		return on, err
+	}
+	old, err := parseBool("allow-destructive", s.AllowDestructive)
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(s.EnableDestructive) != "" && old != on {
+		return false, fmt.Errorf("%w: %s is %t and %s, its old name, is %t: unset %s",
+			ErrInvalid, renamedDestructive.New, on, renamedDestructive.Old, old, renamedDestructive.Old)
+	}
+	return old, nil
 }
 
 // parseToolsets accepts a comma-separated list of names, any of which may

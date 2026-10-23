@@ -97,7 +97,18 @@ func loadConfig(name string, args []string, stderr io.Writer, extra func(*flag.F
 	if err := fs.Parse(args); err != nil {
 		return config.Config{}, err
 	}
-	return settings.Build()
+	cfg, err := settings.Build()
+	if err != nil {
+		return cfg, err
+	}
+	if len(cfg.Deprecated) > 0 {
+		log := config.NewLogger(cfg, stderr)
+		for _, r := range cfg.Deprecated {
+			log.Warn("a setting was renamed; the old name still works",
+				"old", r.Old, "new", r.New, "old_flag", r.OldFlag, "new_flag", r.NewFlag)
+		}
+	}
+	return cfg, nil
 }
 
 // cmdServe runs the MCP server on stdio until stdin closes.

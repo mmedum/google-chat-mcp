@@ -15,7 +15,7 @@ import (
 
 // Kind is what a tool does to the world. It decides the annotations a
 // client shows a person, whether the tool is registered under
-// GCM_READ_ONLY, and whether it needs GCM_ALLOW_DESTRUCTIVE to be
+// GCM_READ_ONLY, and whether it needs GCM_ENABLE_DESTRUCTIVE to be
 // registered at all.
 //
 // It is one field per tool rather than three, because three rules
@@ -46,7 +46,7 @@ const (
 	// Destructive cannot be taken back: it removes something, opens a
 	// space to an audience, makes someone a manager or adds someone from
 	// outside the organization. It is registered only under
-	// GCM_ALLOW_DESTRUCTIVE, and every call says confirm: true.
+	// GCM_ENABLE_DESTRUCTIVE, and every call says confirm: true.
 	// Idempotent by nature here: a second delete of the same thing is a
 	// no-op, not a second deletion, and opening a space twice sets the
 	// same audience.
@@ -138,7 +138,7 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 
 // registers reports whether a tool is registered under cfg.
 //
-// A Destructive tool is left out unless GCM_ALLOW_DESTRUCTIVE is on.
+// A Destructive tool is left out unless GCM_ENABLE_DESTRUCTIVE is on.
 // Whatever a client does with a tool it lists, some mode of every
 // widely used client runs it with nobody approving the call, so a tool
 // that must not run unattended is not listed. It used to be registered
@@ -159,7 +159,7 @@ func registers(sp spec, cfg config.Config) bool {
 	if cfg.ReadOnly && ((sp.Kind != Read && sp.Kind != ReadWritesLocally) || sp.WriteScope) {
 		return false
 	}
-	return sp.Kind != Destructive || cfg.AllowDestructive
+	return sp.Kind != Destructive || cfg.EnableDestructive
 }
 
 // interactionKey is Claude Code's mark for a tool it prompts for on

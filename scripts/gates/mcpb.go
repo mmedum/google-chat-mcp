@@ -5,16 +5,23 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
 )
 
 // The Claude Desktop bundle.
@@ -31,6 +38,8 @@ import (
 // declares. All three produce a bundle that packs, installs cleanly, and
 // then does nothing. Those three are checked here against the tree about
 // to be packed; the schema is checked by a test, against a vendored copy.
+// What the bundle asks for is checked against the server's own
+// settings, by the packer and on every commit.
 
 // schemaRef is the $schema a manifest may name: anthropics/mcpb at a
 // tag, never at a branch.
@@ -85,7 +94,7 @@ func schemaRefProblem(m bundleManifest) string {
 var manifestSource = filepath.Join("packaging", "mcpb", "manifest.json")
 
 // launcherSource is the Linux launcher.
-var launcherSource = filepath.Join("packaging", "mcpb", "linux-launch.sh")
+var launcherSource = filepath.Join("packaging", "mcpb", "launch-linux.sh")
 
 // manifestName is where the manifest sits inside the bundle. The
 // installer looks at the root and nowhere else.
@@ -146,7 +155,8 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 	if p := schemaRefProblem(m); p != "" {
 		return fail("%s", p)
 	}
-	if problems := checkManifest(m, files); len(problems) > 0 {
+	problems := append(checkManifest(m, files), settingProblems(m)...)
+	if len(problems) > 0 {
 		for _, p := range problems {
 			_, _ = fmt.Fprintln(stderr, "gates: mcpb-pack: "+p)
 		}
@@ -176,15 +186,15 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 // Linux binaries and a launcher that picks between them at start.
 func bundleLayout(dist string) ([]bundleFile, error) {
 	files := []bundleFile{
-		{name: serverDir + "linux-launch.sh", from: launcherSource},
+		{name: serverDir + "launch-linux.sh", from: launcherSource},
 		{name: "LICENSE", from: "LICENSE"},
 		{name: "README.md", from: "README.md"},
 	}
 	for _, b := range []struct{ name, glob, what string }{
-		{serverDir + "google-chat-mcp", "*darwin_all*/google-chat-mcp", "darwin universal binary"},
+		{serverDir + "google-chat-mcp-darwin", "*darwin_all*/google-chat-mcp", "darwin universal binary"},
 		{serverDir + "google-chat-mcp.exe", "*windows_amd64*/google-chat-mcp.exe", "windows amd64 binary"},
-		{serverDir + "google-chat-mcp-amd64", "*linux_amd64*/google-chat-mcp", "linux amd64 binary"},
-		{serverDir + "google-chat-mcp-arm64", "*linux_arm64*/google-chat-mcp", "linux arm64 binary"},
+		{serverDir + "google-chat-mcp-linux-amd64", "*linux_amd64*/google-chat-mcp", "linux amd64 binary"},
+		{serverDir + "google-chat-mcp-linux-arm64", "*linux_arm64*/google-chat-mcp", "linux arm64 binary"},
 	} {
 		from, err := only(dist, b.glob, b.what)
 		if err != nil {
@@ -400,11 +410,12 @@ func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
 
 // bundleManifest is the part of the manifest these gates read.
 type bundleManifest struct {
-	Schema          string `json:"$schema"`
-	ManifestVersion string `json:"manifest_version"`
-	Name            string `json:"name"`
-	Version         string `json:"version"`
-	Description     string `json:"description"`
+	Schema          string   `json:"$schema"`
+	ManifestVersion string   `json:"manifest_version"`
+	Name            string   `json:"name"`
+	Version         string   `json:"version"`
+	Description     string   `json:"description"`
+	PrivacyPolicies []string `json:"privacy_policies"`
 	Server          struct {
 		Type       string `json:"type"`
 		EntryPoint string `json:"entry_point"`
@@ -425,7 +436,8 @@ type bundleManifest struct {
 		Default  any    `json:"default"`
 	} `json:"user_config"`
 	Compatibility struct {
-		Platforms []string `json:"platforms"`
+		ClaudeDesktop string   `json:"claude_desktop"`
+		Platforms     []string `json:"platforms"`
 	} `json:"compatibility"`
 }
 
@@ -470,4 +482,161 @@ func (m bundleManifest) references() []string {
 	}
 	slices.Sort(refs)
 	return slices.Compact(refs)
+}
+
+// bundleVars are the settings the bundle asks for at install: what a
+// person sets in another client's configuration. Each is asked under
+// its name without the prefix, lowercased, which is what gives the
+// sibling servers' bundles the same keys.
+var bundleVars = []string{
+	config.EnvPrefix + "CLIENT_SECRET",
+	config.EnvPrefix + "PROFILE",
+	config.EnvPrefix + "READ_ONLY",
+	config.EnvPrefix + "ENABLE_DESTRUCTIVE",
+	config.EnvPrefix + "TOOLSETS",
+	config.EnvPrefix + "LOCAL_DIR",
+}
+
+// Why bundleLeftOut leaves a setting out.
+const (
+	diagnostics = "diagnostics, set by hand while chasing a problem"
+	tuning      = "tuning, whose default suits an install"
+	localServer = "a development override, for a test pointing at a local server"
+)
+
+// bundleLeftOut is every other setting the server reads, with why the
+// bundle does not ask for it. A renamed or removed setting is left out
+// without an entry, because config says which it is.
+var bundleLeftOut = map[string]string{
+	config.EnvPrefix + "LOG_LEVEL":                   diagnostics,
+	config.EnvPrefix + "LOG_FORMAT":                  diagnostics,
+	config.EnvPrefix + "HTTP_TIMEOUT_SECONDS":        tuning,
+	config.EnvPrefix + "HTTP_MAX_RETRIES":            tuning,
+	config.EnvPrefix + "SEARCH_MAX_PAGES":            tuning,
+	config.EnvPrefix + "DIRECTORY_CACHE_TTL_SECONDS": tuning,
+	config.EnvPrefix + "CHAT_API_BASE":               localServer,
+	config.EnvPrefix + "PEOPLE_API_BASE":             localServer,
+	config.EnvPrefix + "CLOUD_IDENTITY_API_BASE":     localServer,
+	userconfig.EnvDir:                                "a development override, which tests move the profile with",
+	userconfig.EnvAllowOutsideHome:                   "goes with " + userconfig.EnvDir,
+	credentials.EnvVar:                               "a credential for automation; a bundle install uses the login's keyring entry",
+}
+
+// bundleKey is the user_config key a setting is asked under.
+func bundleKey(name string) string {
+	return strings.ToLower(strings.TrimPrefix(name, config.EnvPrefix))
+}
+
+// settingProblems holds what the bundle asks for to the server's own
+// settings, and reports everything wrong rather than the first thing.
+//
+// Every setting in bundleVars is asked for and reaches its variable,
+// and nothing else is. A switch defaults to the server's own default,
+// compared as JSON so a text "false" is refused: a bundle install may
+// turn on nothing an unconfigured server leaves off, because in Claude
+// Desktop the only other guard is its approval of each tool, which a
+// person can set to always allow. The environment the defaults give
+// the server configures it as no environment does. And privacy_policies
+// is not empty, which the manifest specification requires of a server
+// that talks to a service processing user data, and which neither the
+// schema nor `mcpb validate` enforces.
+func settingProblems(m bundleManifest) []string {
+	vars := map[string]config.Var{}
+	for _, v := range config.Vars() {
+		vars[v.Name] = v
+	}
+
+	var problems []string
+	if len(m.PrivacyPolicies) == 0 {
+		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
+			"server that connects to a service processing user data, as this one does to Google")
+	}
+	asked := map[string]bool{}
+	for _, name := range bundleVars {
+		key := bundleKey(name)
+		asked[key] = true
+		opt, declared := m.UserConfig[key]
+		if !declared {
+			problems = append(problems, fmt.Sprintf("user_config does not ask for %s, which sets %s", key, name))
+			continue
+		}
+		if got, want := m.Server.MCPConfig.Env[name], "${user_config."+key+"}"; got != want {
+			problems = append(problems, fmt.Sprintf("mcp_config.env.%s is %q, want %q", name, got, want))
+		}
+		v := vars[name]
+		if !v.Switch {
+			continue
+		}
+		got, err := json.Marshal(opt.Default)
+		if err != nil || string(got) != v.Default {
+			problems = append(problems, fmt.Sprintf("user_config.%s is a %s defaulting to %s; %s is a switch the "+
+				"server defaults to %s, and a bundle install may turn on nothing an unconfigured server leaves off",
+				key, cmp.Or(opt.Type, "field"), got, name, v.Default))
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(m.UserConfig)) {
+		if !asked[key] {
+			problems = append(problems, fmt.Sprintf("user_config asks for %s, which is no setting's key", key))
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(m.Server.MCPConfig.Env)) {
+		switch {
+		case vars[name].ReplacedBy != "":
+			problems = append(problems, fmt.Sprintf("mcp_config.env sets %s, whose name is now %s; offer the new one",
+				name, vars[name].ReplacedBy))
+		case !slices.Contains(bundleVars, name):
+			problems = append(problems, fmt.Sprintf("mcp_config.env sets %s, which the bundle does not ask for", name))
+		}
+	}
+	if p := defaultsProblem(m); p != "" {
+		problems = append(problems, p)
+	}
+	return problems
+}
+
+// defaultsProblem reports a bundle whose defaults configure the server
+// otherwise than no environment does.
+//
+// The environment is built as the reference host builds it: a boolean
+// becomes "true" or "false", a "" default stays "", and a reference
+// with no default is passed through as written. A required setting is
+// left out, since the person supplies it and it is theirs either way.
+func defaultsProblem(m bundleManifest) string {
+	env := map[string]string{}
+	for name, value := range m.Server.MCPConfig.Env {
+		required := false
+		env[name] = userConfigRef.ReplaceAllStringFunc(value, func(ref string) string {
+			opt := m.UserConfig[userConfigRef.FindStringSubmatch(ref)[1]]
+			required = required || opt.Required
+			switch d := opt.Default.(type) {
+			case bool:
+				return strconv.FormatBool(d)
+			case string:
+				return d
+			case float64:
+				return strconv.FormatFloat(d, 'f', -1, 64)
+			}
+			return ref
+		})
+		if required {
+			delete(env, name)
+		}
+	}
+	build := func(env map[string]string) (config.Config, error) {
+		fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		return config.Define(fs, func(name string) string { return env[name] }).Build()
+	}
+	got, err := build(env)
+	if err != nil {
+		return fmt.Sprintf("the environment the bundle's defaults give the server is refused: %v", err)
+	}
+	want, err := build(nil)
+	if err != nil {
+		return fmt.Sprintf("an unconfigured server is refused: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Sprintf("the bundle's defaults configure the server otherwise than no environment does: %v", env)
+	}
+	return ""
 }
