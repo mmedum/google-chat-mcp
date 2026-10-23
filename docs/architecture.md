@@ -343,9 +343,12 @@ dropped because a name could not be resolved.
 
 Under `GCM_READ_ONLY`, login asks for the read-only scopes alone: the
 OpenID Connect ones and every `.readonly` scope in the set, derived from
-the names. A read-only server then holds a token that cannot write
-either, whatever tools it registers. Turning writes back on costs a
-second login, which the `[scope]` error names. Google reads a space's
+the names. A read-only server logged in that way holds a token that
+cannot write either, whatever tools it registers. A token from an
+earlier login keeps its write scopes until the next login: nothing
+narrows a token already granted, so the docs say to log in again.
+Turning writes back on costs a second login, which the `[scope]` error
+names. Google reads a space's
 notification setting only through `chat.users.spacesettings`, which
 writes it too, so read-only mode leaves `get_space_notification_setting`
 out. Every other read names a scope that login asks for: reactions and

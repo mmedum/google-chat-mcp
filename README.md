@@ -242,9 +242,11 @@ client that includes resources in its context:
 - **`GCM_READ_ONLY=true` leaves the write tools unregistered.** A tool
   that is not registered cannot be called, whatever permission mode the
   client is in or whatever a model asks for. It is set where you start
-  the server, so it binds the whole session rather than one call. Login
-  then asks for read-only scopes, so the token cannot write either;
-  turning writes back on takes another `google-chat-mcp login`.
+  the server, so it binds the whole session rather than one call. A
+  `google-chat-mcp login` run with it set asks for read-only scopes, so
+  that token cannot write either. A token from an earlier login keeps
+  its write scopes until you log in again, and turning writes back on
+  takes another login.
 - **What cannot be taken back is not registered unless you say so.**
   The deletes, `delete_thread`, `set_space_audience`, `promote_member`
   and `add_external_member` exist only with `GCM_ALLOW_DESTRUCTIVE=true`.
