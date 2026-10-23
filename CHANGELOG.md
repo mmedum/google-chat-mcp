@@ -44,6 +44,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Fixed
 
 - `update_space` keeps a space's guidelines when it changes the description. It cleared them.
+- `GCM_TOOLSETS=all,admin` turns on every toolset, as the setup guide and `search_spaces` say. It refused to start.
 
 ## [5.1.1] - 2026-10-10
 

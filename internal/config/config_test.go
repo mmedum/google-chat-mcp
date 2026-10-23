@@ -122,6 +122,10 @@ func TestToolsets(t *testing.T) {
 		{"all", "all", defaultToolsets},
 		{"empty means all", "", defaultToolsets},
 		{"admin is had by naming it", "admin", []Toolset{ToolsetCore, ToolsetAdmin}},
+		{"all and admin is everything", "all,admin", []Toolset{
+			ToolsetCore, ToolsetSections, ToolsetPins, ToolsetEmoji, ToolsetEvents,
+			ToolsetReadState, ToolsetSettings, ToolsetAvailability, ToolsetAdmin,
+		}},
 		{"named", "pins,emoji", []Toolset{ToolsetCore, ToolsetPins, ToolsetEmoji}},
 		{"core is implied", "pins", []Toolset{ToolsetCore, ToolsetPins}},
 		{"whitespace and case", " Pins , EMOJI ", []Toolset{ToolsetCore, ToolsetPins, ToolsetEmoji}},

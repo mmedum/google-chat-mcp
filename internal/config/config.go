@@ -378,12 +378,13 @@ func (s *Settings) Build() (Config, error) {
 	return c, nil
 }
 
-// parseToolsets accepts "all", or a comma-separated list of names. Core
-// is always included: without it there is no server worth running.
-// "all" is every set but admin, which is named to be had.
+// parseToolsets accepts a comma-separated list of names, any of which may
+// be "all". Core is always included: without it there is no server worth
+// running. "all" is every set but admin, which is named to be had, so
+// "all,admin" is everything.
 func parseToolsets(v string) ([]Toolset, error) {
 	raw := strings.TrimSpace(v)
-	if raw == "" || strings.EqualFold(raw, "all") {
+	if raw == "" {
 		return slices.Clone(defaultToolsets), nil
 	}
 	seen := map[Toolset]bool{ToolsetCore: true}
@@ -391,6 +392,12 @@ func parseToolsets(v string) ([]Toolset, error) {
 	for _, part := range strings.Split(raw, ",") {
 		name := Toolset(strings.ToLower(strings.TrimSpace(part)))
 		if name == "" {
+			continue
+		}
+		if name == "all" {
+			for _, t := range defaultToolsets {
+				seen[t] = true
+			}
 			continue
 		}
 		if !slices.Contains(AllToolsets, name) {
