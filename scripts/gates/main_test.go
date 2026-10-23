@@ -49,6 +49,41 @@ func TestSchemaDiffClean(t *testing.T) {
 	}
 }
 
+// A client decides from the annotations and the _meta mark whether to ask
+// the person, so a change to either is reported, though it breaks no
+// caller. A tool that kept them is not named.
+func TestSchemaDiffReportsAnnotationsAndMeta(t *testing.T) {
+	old := `{"version":"0.9.0","tools":[
+      {"name":"get_space","description":"Read a space.","inputSchema":{"type":"object"},
+       "annotations":{"readOnlyHint":true},"outputSchema":{"properties":{"space_id":{}}}},
+      {"name":"unpin_message","description":"Unpin.","inputSchema":{"type":"object"},
+       "annotations":{"destructiveHint":true},"_meta":{"anthropic/requiresUserInteraction":true},
+       "outputSchema":{"properties":{"message_id":{}}}},
+      {"name":"send_message","description":"Send.","inputSchema":{"type":"object"},
+       "outputSchema":{"properties":{"message_id":{}}}}
+    ]}`
+	current := `{"version":"2.0.0","tools":[
+      {"name":"get_space","description":"Read a space.","inputSchema":{"type":"object"},
+       "annotations":{"readOnlyHint":true},"outputSchema":{"properties":{"space_id":{}}}},
+      {"name":"unpin_message","description":"Unpin.","inputSchema":{"type":"object"},
+       "annotations":{"destructiveHint":false},
+       "outputSchema":{"properties":{"message_id":{}}}},
+      {"name":"send_message","description":"Send a message.","inputSchema":{"type":"object"},
+       "outputSchema":{"properties":{"message_id":{}}}}
+    ]}`
+	var out, errOut bytes.Buffer
+	code := schemaDiff(write(t, "old.json", old), write(t, "new.json", current), "", &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d, want 0: %s", code, out.String())
+	}
+	want := "description, annotations or _meta changed, look at these (2):\n" +
+		"  send_message: description\n" +
+		"  unpin_message: annotations, _meta\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("want %q in output, got: %s", want, out.String())
+	}
+}
+
 // A build on another SDK says so, since a reshaped input may then be the
 // SDK's; one on the same SDK says nothing about it.
 func TestSchemaDiffNamesAnSDKChange(t *testing.T) {

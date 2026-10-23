@@ -48,9 +48,10 @@ Four of those are worth knowing about before they fail on you:
 - **The schema diff** compares the built binary with
   `testdata/schemas-baseline.json`. A renamed tool or a dropped output
   field breaks every caller and fails the build. A reshaped input is
-  reported and allowed. The baseline holds the surface of the
-  CHANGELOG's newest release, and the diff fails when it holds any
-  other. With nothing under `[Unreleased]`, the build is that release,
+  reported and allowed, and so is a changed description, annotation or
+  `_meta` key, since a client decides from those whether to ask. The
+  baseline holds the surface of the CHANGELOG's newest release, and the
+  diff fails when it holds any other. With nothing under `[Unreleased]`, the build is that release,
   so its tools must match the baseline exactly. The release commit
   records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
   refuses a build that drops a tool or an output field. It also refuses
