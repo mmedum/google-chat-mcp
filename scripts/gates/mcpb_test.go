@@ -872,7 +872,7 @@ func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
 		t.Errorf("the launcher runs %v and the packer stages %v", named, staged)
 	}
 
-	mod := regexp.MustCompile(`(?m)^module (\S+)$`).FindStringSubmatch(readRepoFile(t, "go.mod"))
+	mod := regexp.MustCompile(`(?m)^module\s+(\S+)\s*$`).FindStringSubmatch(readRepoFile(t, "go.mod"))
 	if mod == nil {
 		t.Fatal("go.mod names no module")
 	}
