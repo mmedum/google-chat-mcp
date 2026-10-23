@@ -213,7 +213,7 @@ and the three tools that move them say so.
 | `update_space` | Rename a space, change its description, or make it private | `chat.spaces` |
 | `set_space_audience` | Open a space to a target audience, with `GCM_ALLOW_DESTRUCTIVE` | `chat.spaces` |
 | `add_member` | Invite someone in your organization to a space by email, or add a Google Group to a space that admits nobody from outside | `chat.memberships`; `chat.spaces.readonly`, `directory.readonly` to check the address |
-| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships` |
+| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships`; `cloud-identity.groups.readonly` to check a group's address |
 | `remove_member` | Remove a membership, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
 | `rename_section` | Rename a sidebar section | `chat.users.sections` |

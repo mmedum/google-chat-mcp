@@ -190,10 +190,15 @@ func TestDeleteMessageReportsAnAlreadyGoneMessage(t *testing.T) {
 }
 
 // A group in a space that admits people from outside goes through
-// add_external_member, which takes group_name; add_member refuses it.
+// add_external_member, which takes group_name and the group's address;
+// add_member refuses it.
 func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
 	var sent []map[string]any
 	cs := session(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/cloudidentity/") {
+			fmt.Fprint(w, `{"name":"groups/AAAAgroup1","groupKey":{"id":"team@example.com"}}`)
+			return
+		}
 		if r.Method == http.MethodGet {
 			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","externalUserAllowed":true}`)
 			return
@@ -208,7 +213,7 @@ func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
 	if !res.IsError || !strings.HasPrefix(errorText(t, res), "[blocked]") {
 		t.Fatalf("add_member added a group to a space that admits outsiders: %+v", res)
 	}
-	args["confirm"] = true
+	args["confirm"], args["group_email"] = true, "team@example.com"
 	var out AddMemberOutput
 	if res := call(t, cs, "add_external_member", args, &out); res.IsError {
 		t.Fatalf("add_external_member: %s", errorText(t, res))

@@ -147,8 +147,11 @@ type AddExternalMemberInput struct {
 	SpaceID   string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization"`
 	UserEmail string `json:"user_email,omitempty" jsonschema:"their email address. Whoever it is can read what is already in the space. Pass this or group_name, not both"`
 	GroupName string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Its members from outside the organization join with it, and so does anyone added to the group later"`
-	Confirm   bool   `json:"confirm,omitempty" jsonschema:"must be true: someone outside the organization can read the space's history, and removing them does not take back what they read"`
-	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
+	// GroupEmail is the witness: groups/{id} tells the person approving
+	// the call nothing, and the address does.
+	GroupEmail string `json:"group_email,omitempty" jsonschema:"required with group_name: the group's email address, as find_group reports it. The group is read first, a dry run included, and the call is refused [stale] when its address differs"`
+	Confirm    bool   `json:"confirm,omitempty" jsonschema:"must be true: someone outside the organization can read the space's history, and removing them does not take back what they read"`
+	DryRun     bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
 }
 
 // UpdateMemberRoleOutput is the membership as it now stands.
@@ -208,15 +211,15 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "add_external_member",
 		Description: "Invite someone from outside your organization into a space that admits them, by email " +
-			"address, or add a Google Group to such a space, which brings in the group's members from outside " +
-			"and anyone added to the group later. They can read what is already in the space, and removing them " +
-			"later does not take that back. Pass confirm: true. add_member is the tool for anyone inside the " +
-			"organization, and for a group in a space that admits nobody from outside. Set dry_run to see the " +
-			"request body without inviting anyone.",
+			"address, or add a Google Group to such a space by group_name and group_email, which brings in the " +
+			"group's members from outside and anyone added to the group later. They can read what is already in " +
+			"the space, and removing them later does not take that back. Pass confirm: true. add_member is the " +
+			"tool for anyone inside the organization, and for a group in a space that admits nobody from " +
+			"outside. Set dry_run to see the request body without inviting anyone.",
 		Kind: Destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddExternalMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
 		got, err := d.Service.AddExternalMember(ctx, service.AddMemberInput{
-			Space: in.SpaceID, Email: in.UserEmail, Group: in.GroupName, DryRun: in.DryRun,
+			Space: in.SpaceID, Email: in.UserEmail, Group: in.GroupName, GroupEmail: in.GroupEmail, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, AddMemberOutput{}, err

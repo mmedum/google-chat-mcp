@@ -246,7 +246,8 @@ cannot see them, `add_external_member` invites them; it needs
 
 A Google Group is refused there whoever is in it, because the group's
 members from outside join with it, and so does anyone added to the
-group later. `add_external_member` adds a group too.
+group later. `add_external_member` adds a group too, given its address
+as `group_email` beside `group_name`.
 
 ## `remove_reaction` reports nothing removed, but the reaction is there
 

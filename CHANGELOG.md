@@ -16,7 +16,7 @@ upgrading are marked **Breaking:** and say what to do.
 - `set_space_audience` opens a space to a target audience. It names the space by its display name, and Claude Code asks for it on every call.
 - `delete_thread` deletes a thread's first message and every reply under it, which `delete_message`'s `force` used to do.
 - `promote_member` makes someone a manager or an assistant manager of a space.
-- `add_external_member` invites someone from outside your organization, or adds a Google Group, into a space that admits people from outside.
+- `add_external_member` invites someone from outside your organization, or adds a Google Group named by `group_name` and its address `group_email`, into a space that admits people from outside.
 - The `[stale]` error class, for a destructive call that names its target otherwise than the target reads.
 
 ### Changed

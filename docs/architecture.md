@@ -268,7 +268,10 @@ tool of its own, registered only with the destructive ones.
   `delete_section`, `promote_member` and `add_external_member` take
   `confirm` alone: what they act on is a membership or a section named as
   `list_members` and `list_sections` show it, or an address the call
-  already carries.
+  already carries. A group is the exception: `add_external_member` takes
+  its `groups/{id}` and its address, `group_email`, reads the group from
+  Cloud Identity and refuses `[stale]` when the address differs. A group
+  this account cannot read cannot be added there.
 - **`update_space` keeps the guidelines.** Google's mask covers all of
   `spaceDetails`, so a description sent alone clears the guidelines. The
   server reads them first and sends them back unchanged.

@@ -449,16 +449,14 @@ func TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		space     string
-		external  bool
 		dryRun    bool
 		wantErr   Class
 		wantReads int
 	}{
-		{"a space that admits outsiders", `{"externalUserAllowed":true}`, false, false, ClassBlocked, 1},
-		{"a space that admits outsiders, in a dry run", `{"externalUserAllowed":true}`, false, true, ClassBlocked, 1},
-		{"a space that does not say", `{}`, false, false, "", 1},
-		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, false, false, "", 1},
-		{"through add_external_member", `{"externalUserAllowed":true}`, true, false, "", 0},
+		{"a space that admits outsiders", `{"externalUserAllowed":true}`, false, ClassBlocked, 1},
+		{"a space that admits outsiders, in a dry run", `{"externalUserAllowed":true}`, true, ClassBlocked, 1},
+		{"a space that does not say", `{}`, false, "", 1},
+		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, false, "", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, rec := recorded(t, route(func(w http.ResponseWriter, r *http.Request) {
@@ -468,11 +466,7 @@ func TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted(t *testing.T) {
 				}
 				fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
 			}, known))
-			add := s.AddMember
-			if tc.external {
-				add = s.AddExternalMember
-			}
-			_, err := add(writeCtx(), AddMemberInput{Space: "spaces/A", Group: "groups/AAAAgroup1", DryRun: tc.dryRun})
+			_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Group: "groups/AAAAgroup1", DryRun: tc.dryRun})
 			if reads := rec.count(http.MethodGet); reads != tc.wantReads {
 				t.Errorf("%d reads, want %d", reads, tc.wantReads)
 			}
@@ -489,6 +483,68 @@ func TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("add: %v", err)
+			}
+			if writes != 1 {
+				t.Errorf("%d writes, want the group added", writes)
+			}
+		})
+	}
+}
+
+// add_external_member names a group by groups/{id}, which tells the
+// person approving nothing, so the call also carries the group's address.
+// The group is read, a dry run included, and the add is refused [stale]
+// when the address differs and refused outright when the group cannot be
+// read. The space is not read: any space may take the group here.
+func TestAddExternalMemberHoldsAGroupToItsAddress(t *testing.T) {
+	group := `{"name":"groups/AAAAgroup1","groupKey":{"id":"team@example.com"},"displayName":"Team"}`
+	hidden := `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"no"}}`
+	gone := `{"error":{"code":404,"status":"NOT_FOUND","message":"no"}}`
+	for _, tc := range []struct {
+		name      string
+		witness   string
+		read      http.HandlerFunc
+		dryRun    bool
+		wantErr   Class
+		wantReads int
+	}{
+		{"the group's address, in another case", " Team@Example.com ", ok(group), false, "", 1},
+		{"another address", "other@example.com", ok(group), false, ClassStale, 1},
+		{"another address, in a dry run", "other@example.com", ok(group), true, ClassStale, 1},
+		{"no address", "", ok(group), false, ClassInvalid, 0},
+		{"a group this account cannot see", "team@example.com", status(403, hidden), false, ClassForbidden, 1},
+		{"a group that is gone", "team@example.com", status(404, gone), false, ClassNotFound, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasPrefix(r.URL.Path, "/cloudidentity/"):
+					tc.read(w, r)
+				case r.Method == http.MethodGet:
+					t.Errorf("read %s, want only the group read", r.URL.Path)
+				default:
+					fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
+				}
+			})
+			_, err := s.AddExternalMember(writeCtx(), AddMemberInput{
+				Space: "spaces/A", Group: "groups/AAAAgroup1", GroupEmail: tc.witness, DryRun: tc.dryRun,
+			})
+			if reads := rec.count(http.MethodGet); reads != tc.wantReads {
+				t.Errorf("%d reads, want %d", reads, tc.wantReads)
+			}
+			writes := rec.writes()
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				if writes != 0 {
+					t.Errorf("a refused group add sent %d writes", writes)
+				}
+				if strings.Contains(err.Error(), "team@example.com") {
+					t.Errorf("error = %q quotes the group's address, which a caller could copy in", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddExternalMember: %v", err)
 			}
 			if writes != 1 {
 				t.Errorf("%d writes, want the group added", writes)

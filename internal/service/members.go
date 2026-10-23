@@ -422,8 +422,11 @@ type AddMemberInput struct {
 	Email string
 	// Group is "groups/{id}", whose id comes from the Cloud Identity
 	// API. Exactly one of Email and Group.
-	Group  string
-	DryRun bool
+	Group string
+	// GroupEmail is the group's address, which AddExternalMember
+	// requires with Group and compares with what Cloud Identity reads.
+	GroupEmail string
+	DryRun     bool
 }
 
 // AddMemberResult is the membership that was made.
@@ -475,15 +478,20 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 	switch {
 	case in.Email != "" && in.Group != "":
 		return nil, Invalidf("pass user_email or group_name, not both")
+	case in.GroupEmail != "" && in.Group == "":
+		return nil, Invalidf("group_email goes with group_name: it is the group's address")
 	case in.Group != "":
 		group, err := requireGroup(in.Group)
 		if err != nil {
 			return nil, err
 		}
-		if !outside {
-			if err := s.refuseGroup(ctx, space, group); err != nil {
-				return nil, err
-			}
+		if outside {
+			err = s.checkGroup(ctx, group, in.GroupEmail)
+		} else {
+			err = s.refuseGroup(ctx, space, group)
+		}
+		if err != nil {
+			return nil, err
 		}
 		// Google's own rule, and worth saying here: a group cannot join
 		// a group chat or a direct message, only a named space.
@@ -583,6 +591,42 @@ func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
 		"brings in its members from outside, and anyone added to the group later. add_member adds a group only "+
 		"to a space that admits nobody from outside; nothing was sent. add_external_member adds %s, when "+
 		"%sALLOW_DESTRUCTIVE=true", space, group, config.EnvPrefix)
+}
+
+// checkGroup reads a group and refuses [stale] when its address is not
+// the one the call carries.
+//
+// groups/{id} tells the person approving add_external_member nothing,
+// and the address does, so the call carries both. The group's actual
+// address is not quoted back, which would let a caller copy it in
+// without anyone having meant that group. A group this account cannot
+// read cannot be compared, so the add is refused.
+func (s *Service) checkGroup(ctx context.Context, group, witness string) error {
+	if strings.TrimSpace(witness) == "" {
+		return Invalidf("pass group_email with group_name: the group's address, as find_group reports it, so the " +
+			"call shows which group it adds")
+	}
+	email, err := requireEmail("group_email", witness)
+	if err != nil {
+		return err
+	}
+	g, err := s.client.GetGroup(ctx, group)
+	if err != nil {
+		class := ClassNotFound
+		switch {
+		case gchat.IsForbidden(err):
+			class = ClassForbidden
+		case !gchat.IsNotFound(err):
+			return Classify(err)
+		}
+		return Failf(class, "%s cannot be read from Cloud Identity, so its address cannot be compared with "+
+			"group_email; nothing was sent. Only a group this account can see can be added here.", group)
+	}
+	if !strings.EqualFold(strings.TrimSpace(g.GroupKey.ID), email) {
+		return Failf(ClassStale, "%s is not the group at %s, so it is not the one this call meant; nothing was "+
+			"sent. Run find_group with the address you mean and pass both as it reports them", group, email)
+	}
+	return nil
 }
 
 // admitsOutsiders reports whether a space says it admits people from
