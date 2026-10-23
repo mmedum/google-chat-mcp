@@ -102,7 +102,7 @@ var excusedPatterns = []struct {
 }
 
 // callSites are the driver helpers that reach a tool.
-var callSites = map[string]bool{"must": true, "call": true}
+var callSites = map[string]bool{"must": true, "call": true, "try": true}
 
 // exercisedOptions reads this package's own source and reports which
 // arguments each tool is called with.

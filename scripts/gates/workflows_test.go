@@ -594,7 +594,7 @@ var ciRunsForTarget = map[string]string{
 	"parity":       "TestMakeCheckAndCIRunTheSameGates",
 	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",
-	"live-surface": "TestEveryToolIsExercisedOrExcused",
+	"live-surface": "-skip '^TestLive$'",
 	"staleness":    "gates staleness",
 }
 

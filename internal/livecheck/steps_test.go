@@ -5,7 +5,6 @@ package livecheck
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -58,22 +57,16 @@ var steps = []step{
 		}
 	}},
 
-	// A group cannot be named in this repository, so the person running
-	// the suite names one this account can see. Nothing is added to it:
-	// a live run involves nobody else.
+	// The group is LIVE_GROUP_EMAIL, which seed reads before it makes
+	// anything. Nothing is added to it: a live run involves nobody else.
 	{"a group's address turns into its id", "find_group", func(d *driver) {
-		email := os.Getenv("LIVE_GROUP_EMAIL")
-		if email == "" {
-			d.t.Error("set LIVE_GROUP_EMAIL to a Google Group this account can see; find_group needs one")
-			return
-		}
 		var out struct {
 			GroupName string  `json:"group_name"`
 			Email     string  `json:"email"`
 			Name      *string `json:"display_name"`
 		}
-		d.into(d.must("find_group", map[string]any{"email": email}), &out)
-		if !strings.HasPrefix(out.GroupName, "groups/") || out.Email != email {
+		d.into(d.must("find_group", map[string]any{"email": d.group}), &out)
+		if !strings.HasPrefix(out.GroupName, "groups/") || out.Email != d.group {
 			d.t.Errorf("find_group answered %s for the address it was given", d.redact(out.GroupName))
 		}
 		if out.Name == nil {
@@ -689,9 +682,10 @@ var steps = []step{
 	// Opening a space widens who can read it, so update_space refuses it
 	// and set_space_audience does it; get_space is what says Google
 	// applied it, since the tool echoes what it asked for. The space is
-	// made private again before either state is judged: a failed run
-	// keeps its scratch space, and it must not keep it open to the
-	// organization.
+	// made private again before either state is judged, and cleanup
+	// closes it again and reads it back, whatever stops the run from
+	// here: a failed run keeps its scratch space, and it must not keep
+	// it open to the organization.
 	{"the space opens to the organization and closes again", "set_space_audience", func(d *driver) {
 		if res := d.call("update_space", map[string]any{"space_id": d.space, "audience": "default"}); !res.IsError ||
 			!strings.HasPrefix(res.Text, "[blocked]") {
@@ -1017,26 +1011,36 @@ const (
 
 func TestLive(t *testing.T) {
 	d := connect(t)
+	// A cleanup rather than a defer: it runs when a step panics too.
+	t.Cleanup(d.drop)
 	d.seed()
-	defer d.drop()
 
 	for _, s := range steps {
-		if !t.Run(s.name, func(t *testing.T) {
-			inner := *d
-			inner.t = t
-			s.run(&inner)
-			// Everything the step wrote comes back, with the parent's
-			// testing.T put back on top. This was a hand-listed set of
-			// fields, and a field added for a new step was not on it:
-			// the id that step recorded was dropped between the write
-			// and the read, and the read skipped itself for want of it,
-			// green and having checked nothing.
-			inner.t = d.t
-			*d = inner
-		}) {
+		if !t.Run(s.name, func(t *testing.T) { d.runStep(t, s) }) {
 			t.Fatalf("stopping: later steps read what %q wrote", s.name)
 		}
 	}
+}
+
+// runStep runs one step on a copy of the driver that carries the step's
+// own testing.T.
+func (d *driver) runStep(t testing.TB, s step) {
+	// On the driver rather than the copy, and before the step runs: a
+	// step that stops part way leaves the space as open as it got, and
+	// its copy is not kept.
+	if s.tool == "set_space_audience" {
+		d.opened = true
+	}
+	inner := *d
+	inner.t = t
+	s.run(&inner)
+	// Everything the step wrote comes back, with the parent's testing.T
+	// put back on top. This was a hand-listed set of fields, and a field
+	// added for a new step was not on it: the id that step recorded was
+	// dropped between the write and the read, and the read skipped
+	// itself for want of it, green and having checked nothing.
+	inner.t = d.t
+	*d = inner
 }
 
 // messageURL is the link Copy link puts on the clipboard in Chat: the

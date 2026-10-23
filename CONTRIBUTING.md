@@ -161,8 +161,10 @@ Release cutting is maintainer-only:
    Set `LIVE_GROUP_EMAIL` to a Google Group the account can see first.
    `find_group` needs a real one, and none may be named in this
    repository; the run only looks it up and adds it nowhere. Without it
-   that step fails and says so. `LIVE_KEEP=1` keeps the scratch space
-   after a run.
+   the run stops before it makes the scratch space. `LIVE_KEEP=1` keeps
+   the scratch space after a run. Once the run has opened the space to
+   the organization, it makes it private and reads it back before it
+   keeps or deletes it, and fails loudly if it cannot.
 
    Run `make api-diff` at the same time. It is the only thing here that
    reaches Google's own documentation, and a manual target nobody runs is

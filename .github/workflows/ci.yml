@@ -181,11 +181,12 @@ jobs:
         run: go run ./scripts/gates schema-diff ./google-chat-mcp
       # The live driver cannot run here — it needs a login and writes to
       # a real account — but its surface gate can: it reads what the
-      # built binary registers, which needs no credentials.
-      - name: every tool and option is exercised, and every print is redacted
+      # built binary registers, which needs no credentials. So can the
+      # driver's own unit tests, which answer its calls with a fake.
+      - name: every tool and option is exercised, and the driver's cleanup holds
         run: >
           go test -tags=live ./internal/livecheck -count=1
-          -run 'TestEveryToolIsExercisedOrExcused|TestEveryToolOptionIsExercisedOrExcused' 
+          -skip '^TestLive$'
       - name: docs match the code
         run: go run ./scripts/gates staleness ./google-chat-mcp
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
