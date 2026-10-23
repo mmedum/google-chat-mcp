@@ -44,8 +44,10 @@ func sessionWithToolsets(t *testing.T, handler http.HandlerFunc, toolsets ...con
 	// test a configuration nobody runs.
 	// A local directory per test, so the file-transfer tools are on.
 	// Leaving it unset would make every one of them refuse, and a
-	// harness that could not drive them would leave them untested.
-	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t)}
+	// harness that could not drive them would leave them untested. The
+	// destructive tools are on for the same reason: off, they are not
+	// registered at all.
+	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t), AllowDestructive: true}
 	if len(toolsets) > 0 && toolsets[0] != "" {
 		cfg.Toolsets = toolsets
 	}
@@ -295,9 +297,9 @@ var toolArgs = map[string]map[string]any{
 	"set_custom_status":                 {"text": "in a workshop", "emoji": "🛠", "dry_run": true},
 	"list_custom_emojis":                {},
 	"get_custom_emoji":                  {"name": "customEmojis/AAAAemoji1"},
-	"delete_custom_emoji":               {"name": "customEmojis/AAAAemoji1", "dry_run": true},
+	"delete_custom_emoji":               {"name": "customEmojis/AAAAemoji1", "emoji_name": ":test-emoji:", "dry_run": true},
 	"create_custom_emoji":               {"emoji_name": ":test-emoji:", "image_path": "emoji.png", "dry_run": true},
-	"delete_space":                      {"space_id": "spaces/AAAAspace1", "confirm_space_id": "spaces/AAAAspace1", "dry_run": true},
+	"delete_space":                      {"space_id": "spaces/AAAAspace1", "display_name": "Team standup", "dry_run": true},
 	"pin_message":                       {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "dry_run": true},
 	"unpin_message":                     {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "dry_run": true},
 	"get_space_read_state":              {"space_id": "spaces/AAAAspace1"},
@@ -306,7 +308,8 @@ var toolArgs = map[string]map[string]any{
 	"mark_space_unread":                 {"space_id": "spaces/AAAAspace1", "from_time": "2026-01-02T03:04:05Z", "dry_run": true},
 	"get_space_notification_setting":    {"space_id": "spaces/AAAAspace1"},
 	"update_space_notification_setting": {"space_id": "spaces/AAAAspace1", "mute_setting": "MUTED", "dry_run": true},
-	"update_member_role":                {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MANAGER", "dry_run": true},
+	"update_member_role":                {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MEMBER", "dry_run": true},
+	"promote_member":                    {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MANAGER", "confirm": true},
 	"find_group_chats":                  {"member_emails": []any{"janedoe@example.com"}},
 	"find_group":                        {"email": "team@example.com"},
 	"get_space":                         {"space_id": "spaces/AAAAspace1"},
@@ -322,18 +325,20 @@ var toolArgs = map[string]map[string]any{
 	"list_section_items":                {"section_name": "users/me/sections/AAAAsection1"},
 	"send_message":                      {"space_id": "spaces/AAAAspace1", "text": "hello"},
 	"update_message":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text": "edited"},
-	"delete_message":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1"},
+	"delete_message":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text_start": "the standup moved to 10", "confirm": true},
+	"delete_thread":                     {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text_start": "the standup moved to 10", "confirm": true},
 	"add_reaction":                      {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "emoji": "👍"},
 	"remove_reaction":                   {"reaction_name": "spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreact1"},
 	"create_group_chat":                 {"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}},
 	"create_space":                      {"display_name": "Team standup", "member_emails": []string{"janedoe@example.com"}},
-	"set_space_audience":                {"space_id": "spaces/AAAAspace1", "audience": "default", "confirm_space_id": "spaces/AAAAspace1"},
+	"set_space_audience":                {"space_id": "spaces/AAAAspace1", "audience": "default", "display_name": "Team standup", "confirm": true},
 	"update_space":                      {"space_id": "spaces/AAAAspace1", "display_name": "Renamed"},
 	"add_member":                        {"space_id": "spaces/AAAAspace1", "user_email": "janedoe@example.com"},
-	"remove_member":                     {"membership_name": "spaces/AAAAspace1/members/AAAAmember1"},
+	"add_external_member":               {"space_id": "spaces/AAAAspace1", "user_email": "guest@example.org", "confirm": true},
+	"remove_member":                     {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "confirm": true},
 	"create_section":                    {"display_name": "Clients"},
 	"rename_section":                    {"section_name": "users/me/sections/AAAAsection1", "display_name": "Clients"},
-	"delete_section":                    {"section_name": "users/me/sections/AAAAsection1"},
+	"delete_section":                    {"section_name": "users/me/sections/AAAAsection1", "confirm": true},
 	"position_section":                  {"section_name": "users/me/sections/AAAAsection1", "relative_position": "START"},
 	"move_space_to_section":             {"space_id": "spaces/AAAAspace1", "section_name": "users/me/sections/AAAAsection1", "item_name": "users/me/sections/AAAAsection1/items/AAAAitem1"},
 }

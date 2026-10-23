@@ -92,8 +92,10 @@ type CreateCustomEmojiOutput struct {
 
 // DeleteCustomEmojiInput names one to remove.
 type DeleteCustomEmojiInput struct {
-	Name   string `json:"name" jsonschema:"the emoji's resource name, customEmojis/{emoji}"`
-	DryRun bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without deleting anything"`
+	Name      string `json:"name" jsonschema:"the emoji's resource name, customEmojis/{emoji}"`
+	EmojiName string `json:"emoji_name" jsonschema:"the emoji's :shortcode:, as list_custom_emojis reports it. The emoji is read first, and a delete of one called something else is refused [stale]"`
+	Confirm   bool   `json:"confirm,omitempty" jsonschema:"must be true: the emoji goes for the whole organization, and nothing restores it"`
+	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"check the arguments, the shortcode included, without deleting anything"`
 }
 
 // DeleteCustomEmojiOutput says whether it went.
@@ -105,9 +107,10 @@ type DeleteCustomEmojiOutput struct {
 
 // DeleteSpaceInput names a space to destroy.
 type DeleteSpaceInput struct {
-	SpaceID        string `json:"space_id" jsonschema:"the space to delete, spaces/{id}"`
-	ConfirmSpaceID string `json:"confirm_space_id" jsonschema:"the same value as space_id. Deleting a space destroys every message and membership in it for everyone, and cannot be undone, so this call asks twice"`
-	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without deleting anything"`
+	SpaceID     string `json:"space_id" jsonschema:"the space to delete, spaces/{id}"`
+	DisplayName string `json:"display_name" jsonschema:"what the space is called, as get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]"`
+	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: deleting a space destroys every message and membership in it for everyone, and cannot be undone"`
+	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"check the arguments, the name included, without deleting anything"`
 }
 
 // DeleteSpaceOutput says whether the space is gone.
@@ -235,13 +238,16 @@ func registerPresence(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_custom_emoji",
-		Description: "Remove a custom emoji from your organization. It goes for everyone, and messages that " +
-			"already use it lose the image.",
+		Description: "Remove a custom emoji from your organization. It goes for everyone, messages and " +
+			"reactions that already use it lose the image, and nothing restores it. Pass its :shortcode: as " +
+			"emoji_name and confirm: true; the emoji is read first and the delete refused [stale] when it is " +
+			"called something else.",
 		Kind:    Destructive,
 		Toolset: config.ToolsetEmoji,
+		Marked:  true,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteCustomEmojiInput) (*mcp.CallToolResult, DeleteCustomEmojiOutput, error) {
 		got, err := d.Service.DeleteCustomEmoji(ctx, service.DeleteCustomEmojiInput{
-			Name: in.Name, DryRun: in.DryRun,
+			Name: in.Name, EmojiName: in.EmojiName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, DeleteCustomEmojiOutput{}, err
@@ -252,14 +258,14 @@ func registerPresence(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "delete_space",
 		Description: "Delete a space, and with it every message and membership in it, for everyone. Google " +
-			"always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. " +
-			"This is the most destructive call in this server: read the space first, and ask the person " +
-			"before using it.",
+			"always cascades and there is no undo. Pass the space's display_name, as get_space reports it, " +
+			"and confirm: true; the space is read first and the delete refused [stale] when it is called " +
+			"something else.",
 		Kind:   Destructive,
 		Marked: true,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteSpaceInput) (*mcp.CallToolResult, DeleteSpaceOutput, error) {
 		got, err := d.Service.DeleteSpace(ctx, service.DeleteSpaceInput{
-			Space: in.SpaceID, Confirm: in.ConfirmSpaceID, DryRun: in.DryRun,
+			Space: in.SpaceID, DisplayName: in.DisplayName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, DeleteSpaceOutput{}, err

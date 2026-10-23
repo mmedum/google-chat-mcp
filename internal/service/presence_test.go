@@ -166,41 +166,96 @@ func TestCreateCustomEmojiSendsTheImageInline(t *testing.T) {
 	}
 }
 
-// Deleting a space destroys everyone's messages, so it asks twice and
-// refuses a confirmation that does not match. Either half may be a bare
-// id.
-func TestDeleteSpaceAsksTwice(t *testing.T) {
-	s := newService(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("an unconfirmed delete must not reach Google")
-	})
-	for _, in := range []DeleteSpaceInput{
-		{Space: "spaces/AAAAspace1"},
-		{Space: "spaces/AAAAspace1", Confirm: "yes"},
-		{Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace2"},
+// Deleting a space destroys everyone's messages, so the call names the
+// space by what it is called, and the space is read and compared before
+// anything is deleted. Case and spacing do not tell one space from
+// another; a different name does, and is [stale].
+func TestDeleteSpaceHoldsItsNameToTheWitness(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		witness     string
+		wantErr     Class
+		wantDeletes int
+	}{
+		{"the space's name", "Team standup", "", 1},
+		{"the name in another case and spacing", " team  STANDUP ", "", 1},
+		{"another space's name", "Release planning", ClassStale, 0},
+		{"no name", "", ClassInvalid, 0},
 	} {
-		_, err := s.DeleteSpace(writeCtx(), in)
-		assertClass(t, err, ClassInvalid)
-	}
-
-	for _, in := range []DeleteSpaceInput{
-		{Space: "spaces/AAAAspace1", Confirm: "spaces/AAAAspace1"},
-		{Space: "AAAAspace1", Confirm: " AAAAspace1 "},
-		{Space: "spaces/AAAAspace1", Confirm: "AAAAspace1"},
-	} {
-		var method, path string
-		live := newService(t, func(w http.ResponseWriter, r *http.Request) {
-			method, path = r.Method, r.URL.Path
-			fmt.Fprint(w, `{}`)
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, teamStandup)
+			got, err := s.DeleteSpace(writeCtx(), DeleteSpaceInput{Space: "AAAAspace1", DisplayName: tc.witness})
+			if n := rec.count(http.MethodDelete); n != tc.wantDeletes {
+				t.Errorf("%d DELETE requests, want %d", n, tc.wantDeletes)
+			}
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteSpace: %v", err)
+			}
+			if sent := rec.last(t); sent.Path != "/v1/spaces/AAAAspace1" || !got.Deleted {
+				t.Errorf("sent %s, deleted %v; want /v1/spaces/AAAAspace1, true", sent.Path, got.Deleted)
+			}
 		})
-		got, err := live.DeleteSpace(writeCtx(), in)
-		if err != nil {
-			t.Fatalf("DeleteSpace %+v: %v", in, err)
-		}
-		if method != http.MethodDelete || path != "/v1/spaces/AAAAspace1" {
-			t.Errorf("%+v: %s %s", in, method, path)
-		}
-		if !got.Deleted {
-			t.Errorf("%+v: result = %+v", in, got)
-		}
+	}
+}
+
+// A space that is already gone is what the caller asked for, and nothing
+// is sent.
+func TestDeleteSpaceOfAGoneSpaceSendsNothing(t *testing.T) {
+	s, rec := recorded(t, status(404, `{"error":{"status":"NOT_FOUND","message":"gone"}}`))
+	got, err := s.DeleteSpace(writeCtx(), DeleteSpaceInput{Space: "spaces/AAAAspace1", DisplayName: "Team standup"})
+	if err != nil {
+		t.Fatalf("DeleteSpace: %v", err)
+	}
+	if got.Deleted || rec.count(http.MethodDelete) != 0 {
+		t.Errorf("deleted %v after %d DELETE requests, want false after none", got.Deleted, rec.count(http.MethodDelete))
+	}
+}
+
+// A custom emoji goes for the whole organization, so the call names it by
+// its shortcode, with or without the colons, and the emoji is read and
+// compared before anything is deleted.
+func TestDeleteCustomEmojiHoldsItsShortcodeToTheWitness(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		witness     string
+		dryRun      bool
+		wantErr     Class
+		wantDeletes int
+	}{
+		{"the shortcode", ":party-parrot:", false, "", 1},
+		{"the shortcode without colons", "party-parrot", false, "", 1},
+		{"another emoji", ":party-hat:", false, ClassStale, 0},
+		{"another emoji in a dry run", ":party-hat:", true, ClassStale, 0},
+		{"no shortcode", "", false, ClassInvalid, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprint(w, `{"name":"customEmojis/AAAAemoji1","emojiName":":party-parrot:"}`)
+					return
+				}
+				fmt.Fprint(w, `{}`)
+			})
+			got, err := s.DeleteCustomEmoji(writeCtx(), DeleteCustomEmojiInput{
+				Name: "customEmojis/AAAAemoji1", EmojiName: tc.witness, DryRun: tc.dryRun,
+			})
+			if n := rec.count(http.MethodDelete); n != tc.wantDeletes {
+				t.Errorf("%d DELETE requests, want %d", n, tc.wantDeletes)
+			}
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteCustomEmoji: %v", err)
+			}
+			if !got.Deleted {
+				t.Error("deleted = false after a delete that worked")
+			}
+		})
 	}
 }

@@ -48,8 +48,8 @@ internal/server        SDK session, tool and resource registration
    │
    ▼
 internal/tools         decode the input, call the service, shape both halves of the reply
-   │                   register() applies the annotations, the read-only gating,
-   │                   the delete refusal and the dry-run context
+   │                   register() applies the annotations, the read-only and
+   │                   destructive gating, confirm and the dry-run context
    ▼
 internal/service       the rules worth testing, and the only place that
    │                   turns a Google failure into a [class] tool error
@@ -120,7 +120,9 @@ outage, which is exactly what happened here, twice.
 `dry_run` is not a promise each handler keeps. The flag puts the call on
 a context `internal/gchat` refuses to write under, so a tool that
 declares `dry_run` and forgets its own preview branch fails loudly
-instead of posting. 26 tools carry the flag. The staleness gate holds
+instead of posting. A preview may read what it has to show or check:
+a delete's witness, an invite's directory lookup. 29 tools carry the
+flag. The staleness gate holds
 that number to the shipped surface, because it had already drifted: the
 docs said thirteen when the server registered twenty-five.
 
@@ -128,27 +130,36 @@ docs said thirteen when the server registered twenty-five.
 
 `register` takes a tool's `Kind` — read, write, idempotent write,
 destructive — and derives from it the MCP annotations, whether
-`GCM_READ_ONLY` leaves the tool registered, and whether
-`GCM_ALLOW_DESTRUCTIVE` refuses the call. Three rules enforced by author
-discipline is three ways to be quietly wrong.
+`GCM_READ_ONLY` leaves the tool registered, and whether it needs
+`GCM_ALLOW_DESTRUCTIVE` to be registered at all. Three rules enforced by
+author discipline is three ways to be quietly wrong. Two more are held
+at start, by a panic: a destructive tool takes `confirm`, and only a
+destructive tool carries the mark.
 
-Annotations are a request, not a control. Claude Code in its auto
-permission mode was observed running `send_message` with no prompt, and
-the spec says clients must treat tool annotations as untrusted. What
-actually holds is server-side: `GCM_READ_ONLY` leaves the tool
-unregistered, a refused delete changes nothing, and a dry run cannot
-write.
+Annotations decide what a client prompts for, so they are exact.
+`readOnlyHint` goes only on a tool that changes nothing in Chat, since
+VS Code ignores `destructiveHint` and prompts on every tool without
+`readOnlyHint`. `destructiveHint` is true on the destructive kind and
+nowhere else: Codex prompts by it, and claude.ai and ChatGPT document
+that it decides theirs. But an annotation is a request, not a control.
+The spec says clients must treat annotations as untrusted, and every
+widely used client has a mode or a setting that runs a listed tool with
+nobody approving the call: Claude Code's auto and bypassPermissions
+modes and its allow rules among them. What holds is server-side: a tool
+that is not registered cannot be called, a dry run cannot write, and a
+witness that does not match changes nothing.
 
-**Recorded deviation.** The shared standard leaves destructive tools
-unregistered unless a flag enables them. This server keeps them
-registered and refuses the *call* instead, because the released surface
-is the contract this server has to keep and a tool that vanishes is a
-broken client rather than a safer one: the model cannot tell "not
-permitted here" from "this server cannot do that". `GCM_READ_ONLY` is
-the same opt-in running the other way. (The 28 tools that number once
-referred to were the Python server's, before the port.)
+So the destructive tools are not registered unless
+`GCM_ALLOW_DESTRUCTIVE=true`. Until 6.0.0 they were registered and
+refused at call time, a recorded deviation from the standard: a tool
+that vanished was held to be a broken client rather than a safer one.
+That left Claude Code prompting for a marked tool the server then
+refused, and the standard now says to assume every registered tool can
+run unattended, so the deviation is gone. `--dump-schemas` still writes
+them: the schema diff holds every released tool to the build, and a
+delete the flag leaves out is no less part of the contract.
 
-The guard is on by default. It was off until the first outside person
+The flag is off by default. It was on until the first outside person
 installed all three of these servers in one sitting and asked why Chat
 was the loose one — Drive and Docs gate deletes behind a variable that
 starts off, and Chat is the one of the three where the delete cannot be
@@ -183,11 +194,15 @@ fetches what landed and returns that.
 ### What a write may reach
 
 The server asks the person nothing. Approving a call is the client's:
-Claude Code's permission rules, and the prompt claude.ai, Codex and VS
-Code show from the annotations. Those clients approve a tool, never an
-argument, so a risky variant carried as an argument would ride along
-unseen once its tool is always allowed. So each one is refused in the
-ordinary tool, and where it is wanted at all it is a tool of its own.
+Claude Code's permission rules, and the prompt other clients draw from
+the annotations — Codex by `destructiveHint`, claude.ai and ChatGPT by
+what they document of it, VS Code on every tool without `readOnlyHint`.
+A remembered approval covers a whole tool, never an argument value;
+argument-level control exists only where an operator writes it, in a
+hook or a Gemini CLI policy rule. So a risky variant carried as an
+argument rides along unseen once its tool is always allowed. Each one
+is refused in the ordinary tool, and where it is wanted at all it is a
+tool of its own, registered only with the destructive ones.
 
 - **Mentioning everyone is refused.** A `send_message` whose text
   mentions everyone in the space, `<users/all>`, is `[blocked]` before
@@ -195,34 +210,92 @@ ordinary tool, and where it is wanted at all it is a tool of its own.
   `update_message` that edits such a mention in is refused too, since an
   edit notifies whoever it newly mentions; an edit of a message that
   already mentioned everyone may keep it. The mention is matched
-  regardless of case. Google's own Chat MCP server prohibits it as well.
+  regardless of case. Google's own Chat MCP server tells the model, in
+  `send_message`'s description, that mentioning all users "is strictly
+  prohibited".
 - **A space is created private and stays private.** `create_space` and
   `update_space` refuse a target audience, `[blocked]`, and
   `update_space` still makes a space private. Opening a space is
-  `set_space_audience`: destructive, refused unless
-  `GCM_ALLOW_DESTRUCTIVE=true`, and `confirm_space_id` must repeat the
-  space. Whoever is in the audience can find the space, read it and
-  join, and making it private again does not take back what they read.
-- **`add_member` stays an ordinary write.** Whether a space admits
-  people outside the organization is Google's `externalUserAllowed`,
-  set when the space is created and output only afterward (discovery
-  revision 20261016: "Immutable"). This server never sets it, so who
-  may be added is decided by the space and the organization's policy,
-  not by an argument here.
-- **Deletes** are refused unless `GCM_ALLOW_DESTRUCTIVE=true`, and
-  `delete_space` also needs `confirm_space_id`.
-- **The mark goes on two tools.** `delete_space` and
-  `set_space_audience` carry `anthropic/requiresUserInteraction`, so
-  Claude Code asks on every call, in every mode, and refuses them
-  headless. They are the two whose prompt is itself the point: a space
-  goes with every message in it, and an audience reads what it reads.
-  No other tool carries it. A mark on `delete_message` would ask once
-  per message of a bulk delete, and a question answered dozens of times
-  in a row is answered without reading.
+  `set_space_audience`, a destructive tool. Whoever is in the audience
+  can find the space, read it and join, and making it private again does
+  not take back what they read.
+- **`add_member` invites only people inside the organization into a
+  space that admits outsiders.** Someone added can read what is already
+  in the space. Whether a space admits people from outside the
+  organization is Google's `externalUserAllowed`, set when the space is
+  created and output only afterward (discovery revision 20261016:
+  "Immutable"). Where a space says it admits them, an address the
+  organization's directory does not list among its members is refused
+  `[blocked]`, before anything is sent, a dry run included. A directory
+  that declines to answer vouches for nobody: a personal account has
+  none, so everyone counts as outside there. `add_external_member`
+  invites someone from outside, and is destructive. A space that says
+  nothing admits nobody from outside, since Google leaves a false
+  boolean out of its JSON, and needs no lookup: Google refuses the
+  invite there itself. A Google Group added by `group_name` is not
+  looked up, though a group can hold people from outside.
+  `create_space`, `create_group_chat` and `find_direct_message` stay
+  ordinary writes: a new conversation shows nobody what was already
+  there.
+- **Only `promote_member` makes a manager.** A manager can change the
+  space's settings and remove people, which is a new owner in the
+  standard's words. `update_member_role` takes `MEMBER` alone and refuses
+  the other roles `[blocked]`.
+- **Deletes are registered only under `GCM_ALLOW_DESTRUCTIVE=true`, and
+  each call says `confirm: true`.** That argument is a witness that the
+  caller meant the call, never an approval: the model sets it. The same
+  holds for every destructive tool. `delete_message` deletes one message.
+  Its replies are other people's, and go only through `delete_thread`,
+  which was `delete_message`'s `force` until 6.0.0. `unpin_message` and
+  `remove_reaction` are ordinary writes, since one call puts a pin or a
+  reaction back.
+- **A destructive call repeats what it acts on.** The client's prompt
+  shows the arguments, and a resource name tells the person approving
+  nothing. So `delete_message` and `delete_thread` take how the message's
+  text begins, at least its first 20 characters; `delete_space` and
+  `set_space_audience` take the space's display name; and
+  `delete_custom_emoji` takes the emoji's shortcode. The server reads the
+  target first, a dry run included, and refuses `[stale]` when it
+  differs. A message this account cannot read cannot be deleted here,
+  because what cannot be read cannot be compared. A thread whose first
+  message is already deleted is the exception: there is no text left to
+  compare, and the replies under it still go. `remove_member`,
+  `delete_section`, `promote_member` and `add_external_member` take
+  `confirm` alone: what they act on is a membership or a section named as
+  `list_members` and `list_sections` show it, or an address the call
+  already carries.
+- **`update_space` keeps the guidelines.** Google's mask covers all of
+  `spaceDetails`, so a description sent alone clears the guidelines. The
+  server reads them first and sends them back unchanged.
+- **The mark goes on three tools.** `delete_space`,
+  `set_space_audience` and `delete_custom_emoji` carry
+  `anthropic/requiresUserInteraction`. Claude Code 2.1.199 or later
+  prompts for them on every call in every interactive mode, with no
+  "don't ask again" from 2.1.246, and denies them where no prompt can be
+  drawn: dontAsk, `-p` without a permission host,
+  `--permission-prompt-tool`. An Agent SDK host's `canUseTool` can
+  approve them. They are the three whose prompt is itself the point: a
+  space goes with every message in it, an emoji goes from every message
+  and reaction across the organization, and an audience reads what it
+  reads. The mark is per tool, so on `set_space_audience` it covers an
+  administrator's `audiences/{id}` as well as the organization's
+  default, though such an audience may be narrower than the domain. No
+  other tool carries it: a mark on `delete_message` would ask once per
+  message of a bulk delete, and a question answered dozens of times in a
+  row is answered without reading. No client but Claude Code reads it, so
+  the flag that registers these tools is the control.
+- **No tool widens the server's own reach.** No tool turns a toolset on,
+  lifts a refusal or edits a setting; only the operator does, outside
+  the conversation. `TestNoToolCanWriteTheServersSettings` holds that no
+  package a tool reaches imports `internal/userconfig` or
+  `internal/credentials` or sets an environment variable, and
+  `TestNoToolChangesWhatIsRegistered` that calling every tool leaves the
+  registered surface as it was.
 
-The rule is the family's, decided by the maintainer on 2026-10-22; the
-evidence log says why the question went. A lint rule holds it: forbidigo
-refuses the SDK's `Elicit` and the input requests a result can carry.
+The rule is the family's, decided by the maintainer on 2026-10-22 and
+ported here on 2026-10-23; the evidence log says why the question went.
+A lint rule holds it: forbidigo refuses the SDK's `Elicit` and the input
+requests a result can carry.
 
 ### Idempotency is checked, not assumed
 
@@ -231,7 +304,9 @@ different: Google spells "already deleted, and this space keeps no
 history" and "you may not delete this" the same way, so the refusal path
 reads the target back and only a not-found answer counts as gone. An
 earlier version assumed otherwise, and so reported a refused delete as
-one that had already happened.
+one that had already happened. `delete_message` also reads the message
+before it deletes, to compare its witness, so a repeat that finds a
+tombstone sends nothing at all.
 
 `delete_section` succeeds on 404 only. Its 403 is a system section
 refusing deletion, and that is worth reporting.
@@ -257,6 +332,17 @@ back without email addresses; a list is never emptied and a row is never
 dropped because a name could not be resolved.
 
 ### Scopes are named exactly
+
+Under `GCM_READ_ONLY`, login asks for the read-only scopes alone: the
+OpenID Connect ones and every `.readonly` scope in the set, derived from
+the names. A read-only server then holds a token that cannot write
+either, whatever tools it registers. Turning writes back on costs a
+second login, which the `[scope]` error names. Google reads a space's
+notification setting only through `chat.users.spacesettings`, which
+writes it too, so read-only mode leaves `get_space_notification_setting`
+out. Every other read names a scope that login asks for: reactions and
+reaction events name `chat.messages.readonly`, which discovery lists for
+both, and `TestEveryCallNamesItsScope` holds it.
 
 A missing-scope 403 becomes a `[scope]` error naming the scope URL and
 the command that fixes it, because Google's own message does not.
@@ -360,7 +446,7 @@ contradicted a document, which won.
 | A forward names the space it came from, and a DM by the other person | `forwardedMetadata` carried the source space and its display name on a real forward, 2026-09-17; for a direct message that name is the other participant, as the reference says. Whether a forward also carries the links and files the reference promises is still unverified: the one forwarded here had neither |
 | A quote's snapshot is filled differently for a reply and a forward | A REPLY carries `sender` and `text` only; `formattedText`, `annotations` and `attachments` are documented as populated for FORWARD alone, and `forwardedMetadata` only for a forward. Reference, 2026-09-17. So an empty link list on a reply-quote is Google saying nothing, not the quoted message having no links, and the tool schemas say which is which. For a forward the snapshot is the only copy a caller can reach: the source space is usually one they are not in |
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
-| A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too; whether Chat's own client can leave it is not probed here either. So a forced delete of a deleted message that is not a `threadReply` asks about the replies, and the result reports Google's answer. Asking where nothing goes costs one question; not asking could delete replies nobody saw. 2026-10-10 |
+| A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too. So `delete_thread` takes a first message that reads as deleted, without comparing its witness, sends `force=true` and reports Google's answer, a refusal included: the replies left under it are what the call is for, and the deleted first message says nothing of them. `delete_message` always sends `force=false`. 2026-10-23 |
 | A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
 | `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
@@ -400,13 +486,16 @@ contradicted a document, which won.
 | The schema generator inlines a nested type everywhere it appears | `github.com/google/jsonschema-go` models `$defs` and `$ref` but `For[T]()` emits neither: it errors on a cycle and never de-duplicates. Read at v0.4.3, 2026-09-17. So a type used twice on one tool is serialized twice, and `quote` carrying links and attachments cost 16.5 KB across the four message tools. Hand-writing the schemas would buy that back at the price of schemas that can drift from the Go types they describe |
 | A reply carries both halves | The spec asks a tool returning structured content to also return the serialized JSON in a text block. They are never the same bytes here: `content` is a compact rendering, `structuredContent` the machine one |
 | Claude Code forwards only `structuredContent` | Measured 2026-09-06 by asking the client through its own transcript, after google-docs-mcp found the same. So the rendering is invisible in that client — and claude.ai and ChatGPT show the text half, which is why both are still sent |
-| `anthropic/requiresUserInteraction` is a vendor key, and an absolute one | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". In Claude Code the mark refuses every headless route, including the documented `--permission-prompt-tool`. Interactive auto mode, by contrast, prompts for nothing. Since 2026-10-22 only `delete_space` and `set_space_audience` carry it, so a deployment with nobody at the keyboard loses those two and nothing else |
+| `anthropic/requiresUserInteraction` is a vendor key, and Claude Code holds it in every interactive mode | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". Claude Code 2.1.199 or later prompts for a marked tool on every call in every interactive mode (default, acceptEdits, plan, auto, bypassPermissions), allow rules and hooks do not skip it, and from 2.1.246 it offers no "don't ask again". Where no prompt can be drawn it denies the call: dontAsk, `-p` without a permission host, `--permission-prompt-tool`. An Agent SDK host's `canUseTool` can approve it. Anthropic documents it for "tools whose permission prompt is itself the point". No other client reads it. Corrected 2026-10-23 from the family's approval evidence; this row said auto mode prompted for nothing, which was true before 2.1.199 |
+| VS Code prompts by `readOnlyHint`, not by `destructiveHint` | VS Code never reads `destructiveHint`: it prompts on every tool without `readOnlyHint: true`. Codex prompts by `destructiveHint` in its default tool mode, at source; claude.ai and ChatGPT document that it decides theirs. Family approval evidence, 2026-10-23. So `readOnlyHint` goes only on a tool that changes nothing, and `download_attachment`, which writes a local file, does not carry it |
+| A remembered approval covers a tool, never an argument | claude.ai, Codex, VS Code and Copilot remember "always allow" per tool or per server, and Claude Code's permission rules match an MCP argument only in a `--disallowedTools` deny rule. Hooks in Claude Code, Codex, VS Code and Copilot CLI see arguments and can deny or force a prompt, and Gemini CLI policy rules match them, but only where an operator writes one. Family approval evidence, 2026-10-23. So `force`, an outside invite and a manager role are tools of their own here |
+| A client can run a registered tool with nobody approving it | In every widely used client examined but ChatGPT a mode or a setting does: Claude Code's bypassPermissions, allow rules and auto mode, claude.ai's Always allow, Codex `--yolo`, VS Code's Allow all, Copilot CLI `--yolo`, Gemini CLI YOLO, Cursor's Run Everything. Only a tool carrying the mark is held in Claude Code. Family approval evidence, 2026-10-23. So the destructive tools are not registered unless the operator turns them on |
 | Strict inputs: a struct's schema refuses unknown properties | Which is right for a tool and wrong for a permission hook — a hook that refuses a payload it does not model fails in a place that implicates a different tool entirely |
 | A server can ask the person to confirm a write through form elicitation, on every protocol | The `ElicitRequestFormParams` type in the specification's `schema.ts` for 2025-06-18, 2025-11-25 and 2026-07-28, the 2026-07-28 multi-round-trip pattern, and the MCP Go SDK v1.8.0's `mcp/server.go`, read 2026-09-28. A result may carry `inputRequests` with a signed `requestState`; before 2026-07-28 the SDK sends `elicitation/create` itself and calls the handler again. `requestedSchema` may have no properties. The client answers "from the user or other sources", so an accept is never proof a person read anything. Held by tests on all three protocols |
 | A client draws an elicitation question as plain text | Refuted. VS Code builds it as `new MarkdownString(elicitation.message)`, untrusted, so emphasis, link text and HTML-like text draw and single line breaks join (`mcpElicitationService.ts`, `main` at 251bcf5f, 2026-09-29). Quoted text is a code span, and lines stand apart |
 | A required choice confirms better than an empty form | Declined for now. Codex accepts a form with no properties by itself under approval policy `never` with full access, and VS Code resolves a skipped question as `accept` (`codex-rs/codex-mcp/src/elicitation.rs` at c248f6d4; `mcpElicitationService.ts`). But in Claude Code 2.1.284 a choice list took the maintainer 60 seconds against 8 for the empty form, and read as confusing |
-| A tool the server confirms itself should carry the mark too | Refuted 2026-10-09, after the owner was asked twice for one delete in google-docs-mcp: the client prompted for the mark, then the server asked. No source recommends two hard gates for one call; GitHub's `delete_repository` and Supabase confirm with `destructiveHint` plus a form elicitation, and Claude Code's documentation scopes the mark to "tools whose permission prompt is itself the point". `tools/list` drops the mark, for a client that can ask, from the four tools that ask before every write (`AsksEveryCall`), and from `send_message` and `update_message` when `GCM_ASK_BEFORE_SEND` makes them ask every time. A send that asks only before `@all`, and a write that never asks, keep it, since there it is the only per-call prompt. The cost: outside auto mode, the mark stopped these four calls before they reached the server, with a prompt or, headless, a refusal. Now a Claude Code `Elicitation` hook that accepts confirms them alone, since such a hook can "respond programmatically, skipping the dialog entirely" (code.claude.com/docs/en/hooks, read 2026-10-09) |
-| The server should confirm a write with the person itself, through form elicitation | **Refuted 2026-10-22**, on documents and source. The specification gives per-call approval to the client and never makes elicitation a consent control. Most servers confirm nothing themselves, and those that do confirm a few irreversible operations, with an off switch. Clients answer the question with nobody there (an `Elicitation` hook, Codex with full access), decline it without drawing it, or cut it to three lines, and an operator cannot govern it with permission rules; a question on every call expired mid-run during a 68-message delete. Clients approve per tool, never per argument, so a risky variant is a tool of its own. So the server asks nobody now; the four rows above describe the question this replaces |
+| A tool the server confirms itself should carry the mark too | Refuted 2026-10-09, after the owner was asked twice for one delete in google-docs-mcp: the client prompted for the mark, then the server asked. No source recommends two hard gates for one call; GitHub's `delete_repository` and Supabase confirm with `destructiveHint` plus a form elicitation, and Claude Code's documentation scopes the mark to "tools whose permission prompt is itself the point". `tools/list` drops the mark, for a client that can ask, from the four tools that ask before every write (`AsksEveryCall`), and from `send_message` and `update_message` when `GCM_ASK_BEFORE_SEND` makes them ask every time. A send that asks only before `@all`, and a write that never asks, keep it, since there it is the only per-call prompt. The cost: outside auto mode, the mark stopped these four calls before they reached the server, with a prompt or, headless, a refusal. Now a Claude Code `Elicitation` hook that accepts confirms them alone, since such a hook can "respond programmatically, skipping the dialog entirely" (code.claude.com/docs/en/hooks, read 2026-10-09). Superseded by the row below; its "outside auto mode" is refuted for Claude Code 2.1.199 or later, which prompts for a marked tool in auto mode too |
+| The server should confirm a write with the person itself, through form elicitation | **Refuted 2026-10-22**, on documents and source, and the wording corrected 2026-10-23 against the family's approval evidence. The specification gives per-call approval to the client and never makes elicitation a consent control: the client may gather the answer "from the user or other sources". The servers that do confirm each pick their own class, from GitHub's one tool to Azure's 145 or so commands to every write in AWS Redshift's write mode, and GitHub, AWS's SAP server and the archived Dynatrace server have no off switch. The question is unreliable: a Claude Code `Elicitation` hook, once someone installs one, answers it with no dialog, and Codex in full access accepts a form with no fields by itself. By open user reports Anthropic has not answered, Claude Desktop's Code tab and the VS Code extension decline it without drawing it, Cowork leaves it undrawn until the call times out, and the Claude Code terminal shows the first three lines of its message (one report, against 2.1.301). No client's permission rules decide a question one by one: Claude Code reaches it only through hooks and `--permission-prompts none`, Codex governs elicitations as a class through its approval policy, and VS Code not at all. In the maintainers' own run of 2026-10-15, a question asked on every call expired while a chat server deleted 68 messages. So the server asks nobody now; the four rows above describe the question this replaces |
 | `tools/list` and `tools/call` see the same client capabilities | Not on 2026-07-28; found by review 2026-10-09 and kept as a known limit. From that protocol a client sends its capabilities with each request, and the Go SDK v1.8.0 reads the request's `_meta` before the session's. So a client can declare form elicitation to `tools/list` and none to `tools/call`, and get neither the mark nor a question. That gives a misbehaving client nothing it lacked: one that declares form elicitation can answer the question itself and accept without a person. Moot since 2026-10-22: the server asks nobody |
 | Stdout carries JSON-RPC frames only | Spec, transports/stdio. One stray `fmt.Println` corrupts the protocol, which is what the smoke test guards |
 

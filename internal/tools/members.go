@@ -128,8 +128,25 @@ type GetMemberInput struct {
 // UpdateMemberRoleInput names a membership and the role it should hold.
 type UpdateMemberRoleInput struct {
 	MembershipName string `json:"membership_name" jsonschema:"the membership to change, spaces/{space}/members/{member}, from list_members"`
-	Role           string `json:"role" jsonschema:"MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can change a space's settings and remove people, so promoting someone gives away control of the space"`
+	Role           string `json:"role" jsonschema:"MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's"`
 	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"return the request body without changing anything"`
+}
+
+// PromoteMemberInput names a membership and the manager role it should
+// hold.
+type PromoteMemberInput struct {
+	MembershipName string `json:"membership_name" jsonschema:"the membership to promote, spaces/{space}/members/{member}, from list_members"`
+	Role           string `json:"role" jsonschema:"MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people"`
+	Confirm        bool   `json:"confirm,omitempty" jsonschema:"must be true: a manager can act on the space before anyone takes the role back"`
+	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"return the request body without changing anything"`
+}
+
+// AddExternalMemberInput invites someone from outside the organization.
+type AddExternalMemberInput struct {
+	SpaceID   string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization"`
+	UserEmail string `json:"user_email" jsonschema:"their email address. Whoever it is can read what is already in the space"`
+	Confirm   bool   `json:"confirm,omitempty" jsonschema:"must be true: someone outside the organization can read the space's history, and removing them does not take back what they read"`
+	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
 }
 
 // UpdateMemberRoleOutput is the membership as it now stands.
@@ -154,6 +171,7 @@ type AddMemberOutput struct {
 // RemoveMemberInput names a membership to delete.
 type RemoveMemberInput struct {
 	MembershipName string `json:"membership_name" jsonschema:"the membership to remove, spaces/{space}/members/{member}, from list_members"`
+	Confirm        bool   `json:"confirm,omitempty" jsonschema:"must be true: someone removed has to be invited again, and a removed group takes everyone in it"`
 	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without removing anyone"`
 }
 
@@ -167,11 +185,12 @@ type RemoveMemberOutput struct {
 func registerMemberWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "add_member",
-		Description: "Invite someone into a space by email address, or add a Google Group. Someone already in " +
+		Description: "Invite someone in your organization into a space by email address, or add a Google Group. " +
+			"In a space that admits people from outside the organization, an address the organization's " +
+			"directory does not know is refused [blocked]: add_external_member invites those. Someone already in " +
 			"the space is reported as an error rather than as a success, because the membership that exists " +
 			"belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role " +
-			"given here, silently, so use update_member_role afterward to make someone a manager. Set dry_run " +
-			"to see the request body without inviting anyone.",
+			"given here, silently. Set dry_run to see the request body without inviting anyone.",
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
 		got, err := d.Service.AddMember(ctx, service.AddMemberInput{
@@ -180,15 +199,24 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 		if err != nil {
 			return nil, AddMemberOutput{}, err
 		}
-		return nil, AddMemberOutput{
-			MembershipName:  nullable(got.Name),
-			SpaceID:         got.Space,
-			UserEmail:       got.Email,
-			GroupName:       got.Group,
-			Role:            got.Role,
-			DryRun:          got.DryRun,
-			RenderedPayload: rendered(got.Rendered),
-		}, nil
+		return nil, addedMember(got), nil
+	})
+
+	register(s, d, spec{
+		Name: "add_external_member",
+		Description: "Invite someone from outside your organization into a space that admits them, by email " +
+			"address. They can read what is already in the space, and removing them later does not take that " +
+			"back. Pass confirm: true. add_member is the tool for anyone inside the organization. Set dry_run " +
+			"to see the request body without inviting anyone.",
+		Kind: Destructive,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddExternalMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
+		got, err := d.Service.AddExternalMember(ctx, service.AddMemberInput{
+			Space: in.SpaceID, Email: in.UserEmail, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, AddMemberOutput{}, err
+		}
+		return nil, addedMember(got), nil
 	})
 
 	register(s, d, spec{
@@ -208,10 +236,10 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "update_member_role",
-		Description: "Change what someone may do in a space: MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can " +
-			"change the space's settings and remove people, so promoting someone gives away control of the space " +
-			"and demoting the last manager may leave nobody able to administer it. Role is the only thing this " +
-			"changes. Set dry_run to see the request body without sending it.",
+		Description: "Make a manager or an assistant manager an ordinary member of a space again: role MEMBER. " +
+			"Demoting the last manager may leave nobody able to administer the space. Making someone a manager " +
+			"is refused [blocked] here; promote_member does it. Role is the only thing this changes. Set dry_run " +
+			"to see the request body without sending it.",
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMemberRoleInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
 		got, err := d.Service.UpdateMemberRole(ctx, service.UpdateMemberRoleInput{
@@ -220,12 +248,24 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 		if err != nil {
 			return nil, UpdateMemberRoleOutput{}, err
 		}
-		return nil, UpdateMemberRoleOutput{
-			MembershipName:  got.Name,
-			Role:            got.Role,
-			DryRun:          got.DryRun,
-			RenderedPayload: rendered(got.Rendered),
-		}, nil
+		return nil, memberRole(got), nil
+	})
+
+	register(s, d, spec{
+		Name: "promote_member",
+		Description: "Make someone a MANAGER or an ASSISTANT_MANAGER of a space. A manager can change the " +
+			"space's settings and remove people, so this gives away control of it. Pass confirm: true. " +
+			"update_member_role makes a manager an ordinary member again. Set dry_run to see the request body " +
+			"without sending it.",
+		Kind: Destructive,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PromoteMemberInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
+		got, err := d.Service.PromoteMember(ctx, service.UpdateMemberRoleInput{
+			Membership: in.MembershipName, Role: in.Role, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, UpdateMemberRoleOutput{}, err
+		}
+		return nil, memberRole(got), nil
 	})
 
 	register(s, d, spec{
@@ -234,7 +274,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"Check what the membership is first: a membership can name a Google Group, and removing that one " +
 			"removes everyone in the group from the space. list_members reports the kind. " +
 			"A membership that is already gone reports removed false rather than failing, so a repeat is safe; a " +
-			"membership you may not remove is reported as an error instead. There " +
+			"membership you may not remove is reported as an error instead. Pass confirm: true. There " +
 			"is no by-email shape: the People API stays silent about people the caller cannot see, so a miss would " +
 			"read as already gone while the person is still in the space.",
 		Kind: Destructive,
@@ -251,4 +291,27 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			DryRun:         got.DryRun,
 		}, nil
 	})
+}
+
+// addedMember is what add_member and add_external_member report.
+func addedMember(got *service.AddMemberResult) AddMemberOutput {
+	return AddMemberOutput{
+		MembershipName:  nullable(got.Name),
+		SpaceID:         got.Space,
+		UserEmail:       got.Email,
+		GroupName:       got.Group,
+		Role:            got.Role,
+		DryRun:          got.DryRun,
+		RenderedPayload: rendered(got.Rendered),
+	}
+}
+
+// memberRole is what update_member_role and promote_member report.
+func memberRole(got *service.UpdateMemberRoleResult) UpdateMemberRoleOutput {
+	return UpdateMemberRoleOutput{
+		MembershipName:  got.Name,
+		Role:            got.Role,
+		DryRun:          got.DryRun,
+		RenderedPayload: rendered(got.Rendered),
+	}
 }

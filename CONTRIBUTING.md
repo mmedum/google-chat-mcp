@@ -238,8 +238,8 @@ every release pull request, since CI runs before the tag exists.
   never rejected. Drift must be observable, not fatal — rejecting it cost
   the previous implementation two total outages.
 - Every tool is registered through `internal/tools.register`, which
-  derives the annotations, the read-only gating, the interaction hint and
-  the rendered reply from one `Kind`.
+  derives the annotations, the read-only and destructive gating,
+  `confirm` and the rendered reply from one `Kind`.
 - Logs record the call, never the payload. `docs/architecture.md` says
   what that means and where the non-obvious leak was.
 

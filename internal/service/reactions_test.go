@@ -57,17 +57,15 @@ func TestListReactionsPagesAndBounds(t *testing.T) {
 	}
 }
 
-// The re-consent prompt names the sensitive-tier reactions scope, not
-// the restricted umbrella: a deployer who declined that tier should not
-// be pushed back into it by the message telling them what to grant.
+// The re-consent prompt names a sensitive-tier read scope, not the
+// restricted umbrella: a deployer who declined that tier should not be
+// pushed back into it by the message telling them what to grant. It is
+// chat.messages.readonly, the one a read-only login asks for too.
 func TestListReactionsNamesTheGranularScope(t *testing.T) {
 	s := newService(t, status(http.StatusForbidden,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	_, err := s.ListReactions(context.Background(), ListReactionsInput{Message: "spaces/A/messages/1"})
-	assertClass(t, err, ClassScope)
-	if !strings.Contains(err.Error(), "chat.messages.reactions") {
-		t.Errorf("error = %v, want the reactions scope named", err)
-	}
+	assertScope(t, err, scopes.MessagesReadonly)
 }
 
 func TestAddReactionReacts(t *testing.T) {

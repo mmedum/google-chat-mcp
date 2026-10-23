@@ -90,7 +90,7 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 		Scopes:        statusScopes{Granted: []string{}, Missing: []string{}},
 		Settings: statusSettings{
 			ReadOnly:    cfg.ReadOnly,
-			Destructive: !cfg.RefuseDestructive,
+			Destructive: cfg.AllowDestructive,
 			Toolsets:    toolsetList(cfg.Toolsets),
 			LocalDir:    orNil(cfg.LocalDir),
 			ChatAPIBase: cfg.ChatAPIBase,
@@ -114,7 +114,7 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 	r.Account = orNil(redact.Account(stored.AccountEmail))
 	r.Credentials.ClientSecretPath = orNil(stored.ClientSecretPath)
 	r.Scopes.Granted = orEmpty(stored.Scopes)
-	r.Scopes.Missing = orEmpty(scopes.Missing(stored.Scopes, cfg.Enabled(config.ToolsetAdmin)))
+	r.Scopes.Missing = orEmpty(scopes.Missing(stored.Scopes, requestedScopes(cfg)))
 
 	store, err := credentialStore(cfg, nil)
 	if err != nil {

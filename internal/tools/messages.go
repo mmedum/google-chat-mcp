@@ -433,13 +433,13 @@ func messageLinks(links []service.MessageLink) []MessageLinkOutput {
 // SendMessageInput is one message to post.
 type SendMessageInput struct {
 	SpaceID         string `json:"space_id" jsonschema:"the space to post in, spaces/{id}, from list_spaces or find_direct_message"`
-	Text            string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. <users/all> mentions and notifies EVERYONE in the space, so use it only when asked to"`
+	Text            string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. A mention of everyone in the space, <users/all>, is refused"`
 	ThreadName      string `json:"thread_name,omitempty" jsonschema:"reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one"`
 	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
 	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
 	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
 	QuoteMessage    string `json:"quote_message,omitempty" jsonschema:"quote this message above the text, as a reply to it: spaces/{space}/messages/{message}, in the same space. Google refuses to forward a message under a person's sign-in, so one from another space cannot be quoted"`
-	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">, and <chat-user data-user=\"users/all\"> mentions and notifies EVERYONE"`
+	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">; a mention of everyone in the space is refused here too"`
 	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
 
@@ -467,18 +467,20 @@ type UpdateMessageOutput struct {
 	RenderedPayload *RenderedPayload `json:"rendered_payload" jsonschema:"on a dry run, the exact patch body; null on a real edit"`
 }
 
-// DeleteMessageInput names a message to delete.
+// DeleteMessageInput names a message to delete, and repeats how it
+// begins so the client's prompt shows which message goes.
 type DeleteMessageInput struct {
 	MessageName string `json:"message_name" jsonschema:"the message to delete, spaces/{space}/messages/{message}"`
-	Force       bool   `json:"force,omitempty" jsonschema:"also delete the threaded replies to this message, which are other people's. Without it Google refuses to delete a message that has replies, and refusing is the safe answer: ask the person before setting this"`
-	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without deleting anything"`
+	TextStart   string `json:"text_start" jsonschema:"how the message's text begins, as get_message reports it: at least its first 20 characters, or all of it when it is shorter, and empty for a message with no text. The message is read first, and a delete whose text_start does not match is refused [stale]"`
+	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: a deleted message cannot be restored"`
+	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"check the arguments, the text included, without deleting anything"`
 }
 
 // DeleteMessageOutput says whether anything was deleted.
 type DeleteMessageOutput struct {
 	MessageName string `json:"message_name" jsonschema:"the message that was named"`
-	Deleted     bool   `json:"deleted" jsonschema:"true only when this call deleted the message. False means nothing was deleted: a dry run, a message that was already gone, or Google refusing — those last two are not told apart, so do not report the message as deleted on false"`
-	Forced      bool   `json:"forced" jsonschema:"true when the call also deleted the message's threaded replies"`
+	Deleted     bool   `json:"deleted" jsonschema:"true only when this call deleted the message. False means nothing was deleted: a dry run, or a message that was already gone"`
+	Forced      bool   `json:"forced" jsonschema:"true when the call took the message's threaded replies as well, which only delete_thread does"`
 	DryRun      bool   `json:"dry_run" jsonschema:"true when nothing was deleted"`
 }
 
@@ -537,22 +539,47 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "delete_message",
-		Description: "Delete a message by its resource name. A message that is already gone reports deleted false " +
-			"rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as " +
-			"a deletion that already happened. Needs the restricted-tier chat.messages scope.",
+		Description: "Delete one message by its resource name. Pass text_start, how its text begins, and " +
+			"confirm: true; the message is read first and the delete refused [stale] when its text begins " +
+			"otherwise. Google refuses to delete a message that has threaded replies, which are other " +
+			"people's; delete_thread deletes those. A message that is already gone reports deleted false " +
+			"rather than failing, so a repeat is safe. Needs the restricted-tier chat.messages scope.",
 		Kind: Destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteMessageInput) (*mcp.CallToolResult, DeleteMessageOutput, error) {
 		got, err := d.Service.DeleteMessage(ctx, service.DeleteMessageInput{
-			Message: in.MessageName, Force: in.Force, DryRun: in.DryRun,
+			Message: in.MessageName, TextStart: in.TextStart, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, DeleteMessageOutput{}, err
 		}
-		return nil, DeleteMessageOutput{
-			MessageName: got.Name,
-			Deleted:     got.Deleted,
-			Forced:      got.Forced,
-			DryRun:      got.DryRun,
-		}, nil
+		return nil, deletedMessage(got), nil
 	})
+
+	register(s, d, spec{
+		Name: "delete_thread",
+		Description: "Delete a thread: its first message and every reply under it, other people's included. " +
+			"Pass the first message as message_name, how its text begins as text_start, and confirm: true; the " +
+			"message is read first and the delete refused [stale] when its text begins otherwise. A first message " +
+			"that is already deleted has no text left to compare, and the replies left under it still go. " +
+			"Nothing restores a deleted thread. Needs the restricted-tier chat.messages scope.",
+		Kind: Destructive,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteMessageInput) (*mcp.CallToolResult, DeleteMessageOutput, error) {
+		got, err := d.Service.DeleteThread(ctx, service.DeleteMessageInput{
+			Message: in.MessageName, TextStart: in.TextStart, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, DeleteMessageOutput{}, err
+		}
+		return nil, deletedMessage(got), nil
+	})
+}
+
+// deletedMessage is what delete_message and delete_thread report.
+func deletedMessage(got *service.DeleteMessageResult) DeleteMessageOutput {
+	return DeleteMessageOutput{
+		MessageName: got.Name,
+		Deleted:     got.Deleted,
+		Forced:      got.Forced,
+		DryRun:      got.DryRun,
+	}
 }

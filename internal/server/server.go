@@ -68,6 +68,12 @@ const readInstructions = "Google Chat tools. Start with list_spaces to find a sp
 const writeInstructions = "Write with send_message, which posts the text exactly as given, and find_direct_message " +
 	"to reach one person. Most write tools take dry_run, which returns the request body without sending it."
 
+// destructiveInstructions follow them when GCM_ALLOW_DESTRUCTIVE
+// registers the tools they describe.
+const destructiveInstructions = "The writes that cannot be taken back take confirm: true and repeat what they act " +
+	"on, a message's text or a space's or an emoji's name. The target is read first, and a call that names it " +
+	"otherwise is refused [stale]."
+
 // readOnlyInstructions replace them, because "no write tool is here" is
 // worth a sentence: without it the model discovers the same absence one
 // failed call at a time.
@@ -83,8 +89,11 @@ const tailInstructions = "Every space, message and thread is addressed by its re
 // instructionsFor is the instruction string for one configuration.
 func instructionsFor(cfg config.Config) string {
 	middle := writeInstructions
-	if cfg.ReadOnly {
+	switch {
+	case cfg.ReadOnly:
 		middle = readOnlyInstructions
+	case cfg.AllowDestructive:
+		middle += " " + destructiveInstructions
 	}
 	return readInstructions + " " + middle + " " + tailInstructions
 }

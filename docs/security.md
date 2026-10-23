@@ -34,10 +34,19 @@ deployment, and nobody else's tokens.
 ## Adversaries
 
 **A malicious MCP client, or a model driving an honest one.** It can
-call any tool, under your valid credentials. The server does not police
-what the client asks for — Google's per-scope authorization is the
-bound, and `GCM_READ_ONLY` is yours. This is the trust model, not a gap
-in it: a client that can start the server can also read its token.
+call any registered tool, under your valid credentials. The server holds
+a few lines whatever the client approves: it refuses a post or an edit
+that mentions everyone, a space opened to an audience outside
+`set_space_audience`, a manager made outside `promote_member`, and an
+invite from outside the organization outside `add_external_member`.
+Those three and every delete are not registered unless you set
+`GCM_ALLOW_DESTRUCTIVE=true`, and each of their calls says
+`confirm: true`. The message, space and emoji deletes and
+`set_space_audience` also repeat what they act on, and are refused when
+that differs. Past that, Google's per-scope
+authorization is the bound, and `GCM_READ_ONLY` is yours. This is the
+trust model, not a gap in it: a client that can start the server can
+also read its token.
 
 **A co-resident process on your machine.** It cannot take the login
 socket. It can set environment variables, which is why the two that
@@ -140,8 +149,10 @@ never recorded, and a live run reads back only what it wrote.
 - **The scopes you grant.** The consent screen lists them individually.
   Granting fewer means some tools return a `[scope]` error naming what
   is missing; that is a supported state, not a broken one.
-- **Where you point an unattended agent.** `GCM_READ_ONLY=true` is the
-  control that a client cannot override.
+- **Where you point an unattended agent.** `GCM_READ_ONLY=true`, and
+  leaving `GCM_ALLOW_DESTRUCTIVE` off, are the controls a client cannot
+  override. Under `GCM_READ_ONLY` login asks for read-only scopes, so the
+  token cannot write either.
 - **Keeping the client secret file out of version control.** It is
   yours, it is read from wherever you put it, and this repository never
   copies it anywhere.

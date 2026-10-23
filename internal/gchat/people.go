@@ -74,15 +74,18 @@ const (
 //
 // The sources are required: without them Google answers 400. Both are
 // sent so one call covers Workspace members and the external contacts
-// an administrator shared with the domain.
-func (c *Client) SearchDirectoryPeople(ctx context.Context, query string, limit int) (*SearchDirectoryPeopleResponse, error) {
+// an administrator shared with the domain. membersOnly sends the first
+// alone, for a question about who is in the organization, which a
+// shared contact is not.
+func (c *Client) SearchDirectoryPeople(ctx context.Context, query string, limit int, membersOnly bool) (*SearchDirectoryPeopleResponse, error) {
+	sources := []string{"DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE", "DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT"}
+	if membersOnly {
+		sources = sources[:1]
+	}
 	q := url.Values{
 		"query":    {query},
 		"readMask": {personFields},
-		"sources": {
-			"DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE",
-			"DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT",
-		},
+		"sources":  sources,
 	}
 	q.Set("pageSize", strconv.Itoa(min(limit, maxDirectoryPageSize)))
 	var out SearchDirectoryPeopleResponse

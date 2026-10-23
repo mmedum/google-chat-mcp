@@ -61,7 +61,7 @@ const (
 )
 
 // Toolset names a group of tools that can be registered or left out.
-// Fifty-three tools is a lot for a client that loads them all, so a
+// Fifty-eight tools is a lot for a client that loads them all, so a
 // person can narrow the surface without losing the binary.
 type Toolset string
 
@@ -114,18 +114,12 @@ type Config struct {
 	LogLevel  LogLevel
 	LogFormat LogFormat
 	ReadOnly  bool
-	// RefuseDestructive refuses every Destructive tool: the deletes, and
-	// set_space_audience, which cannot be taken back either. It is
-	// negative where its variable is positive. It used to keep the zero
-	// value registering all four delete tools, back when the flag decided
-	// registration; it decides only whether the call goes through now,
-	// so nothing is lost from the surface either way and the safe answer
-	// is the one a zero value should give.
-	//
-	// It is on by default: a deleted Chat message has no trash behind
-	// it, unlike the Drive and Docs servers whose deletes are
-	// recoverable and whose equivalent flags are off by default anyway.
-	RefuseDestructive bool
+	// AllowDestructive registers the Destructive tools: the deletes,
+	// opening a space to an audience, making someone a manager and adding
+	// someone from outside the organization. Off, they are not registered
+	// at all, so no client mode and no model can call them
+	// (docs/architecture.md, "What a write may reach").
+	AllowDestructive  bool
 	Toolsets          []Toolset
 	HTTPTimeout       time.Duration
 	HTTPMaxRetries    int
@@ -144,6 +138,17 @@ type Config struct {
 
 // Enabled reports whether a toolset's tools should be registered.
 func (c Config) Enabled(t Toolset) bool { return slices.Contains(c.Toolsets, t) }
+
+// FullSurface is c with every tool registrable: writes on, every
+// toolset, and the destructive tools. --dump-schemas writes this
+// surface, because the schema diff holds every released tool to it and
+// a tool a setting leaves out is no less part of the contract.
+func (c Config) FullSurface() Config {
+	c.ReadOnly = false
+	c.AllowDestructive = true
+	c.Toolsets = slices.Clone(AllToolsets)
+	return c
+}
 
 // Settings holds the raw string values before validation. Flags and the
 // environment both feed it; Build turns it into a Config.
@@ -222,7 +227,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
 	def(&s.ReadOnly, "read-only", "READ_ONLY", "false", "register only the read-only tools")
 	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "false",
-		"allow the tools that delete things to actually delete; they stay registered either way")
+		"register the tools that delete, open a space, make a manager or add someone from outside the organization")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
@@ -296,11 +301,9 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, err)
 	}
 
-	allowDestructive, err := parseBool("allow-destructive", s.AllowDestructive)
-	if err != nil {
+	if c.AllowDestructive, err = parseBool("allow-destructive", s.AllowDestructive); err != nil {
 		errs = append(errs, err)
 	}
-	c.RefuseDestructive = !allowDestructive
 
 	errs = append(errs, s.removedSet()...)
 

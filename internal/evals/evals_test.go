@@ -62,8 +62,9 @@ func TestEvals(t *testing.T) {
 			}
 
 			// The evals are an unattended deployment. No task has the
-			// model call delete_space or set_space_audience, the two
-			// tools Claude Code refuses headless.
+			// model call delete_space, set_space_audience or
+			// delete_custom_emoji, the three tools Claude Code refuses
+			// headless.
 			env := map[string]string{"GCM_LOCAL_DIR": s.dir}
 			for k, v := range tk.env {
 				env[k] = v

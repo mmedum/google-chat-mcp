@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // Message limits. These are this server's, not Google's: the tool
@@ -772,10 +773,10 @@ func messageDeleted(m *gchat.Message) bool {
 // DeleteMessageInput names a message to delete.
 type DeleteMessageInput struct {
 	Message string
-	// Force also deletes the message's threaded replies. Without it
-	// Google refuses to delete a message that has any.
-	Force  bool
-	DryRun bool
+	// TextStart is how the message's text begins, as the caller read
+	// it: the witness that this is the message they mean.
+	TextStart string
+	DryRun    bool
 }
 
 // DeleteMessageResult says whether anything was deleted.
@@ -784,37 +785,86 @@ type DeleteMessageResult struct {
 	// Deleted is false when the message was already gone, and after a
 	// dry run.
 	Deleted bool
-	// Forced repeats what was asked for, because it is the difference
-	// between deleting one message and deleting a conversation.
+	// Forced says the call was for a thread, the message with its
+	// threaded replies, rather than one message: true for every
+	// delete_thread result and false for every delete_message one.
 	Forced bool
 	DryRun bool
 }
 
-// DeleteMessage removes a message, and succeeds when it was already
-// gone.
-//
-// A refusal is checked rather than assumed. Google reports an
-// already-deleted message as a 403 when the space keeps no history, and
-// uses the same 403 for a message the caller may not delete — someone
-// else's. Reading the message back tells the two apart, so a caller is
-// never told a message is gone while it is still there.
+// DeleteMessage removes one message, and succeeds when it was already
+// gone. Google refuses it for a message with threaded replies, which
+// are other people's; DeleteThread takes those.
 func (s *Service) DeleteMessage(ctx context.Context, in DeleteMessageInput) (*DeleteMessageResult, error) {
+	return s.deleteMessage(ctx, in, false)
+}
+
+// DeleteThread removes a thread's first message and every reply under
+// it.
+//
+// It was delete_message's force argument. A client approves a tool and
+// never an argument, so once delete_message was always allowed, force
+// rode along unseen; a tool of its own is registered only where the
+// destructive tools are.
+func (s *Service) DeleteThread(ctx context.Context, in DeleteMessageInput) (*DeleteMessageResult, error) {
+	return s.deleteMessage(ctx, in, true)
+}
+
+// deleteMessage reads the message, holds it to the caller's witness,
+// and deletes it, with its replies when thread is set.
+//
+// The read comes first, a dry run included, so a preview is refused as
+// the delete would be. It also answers the repeat: a message that reads
+// as gone, or as a tombstone, was already deleted, and nothing is sent.
+// A thread is the exception to the tombstone: a deleted first message
+// can still hold replies, and taking them is what the call is for. It
+// has no text left to compare, so its witness is not checked.
+//
+// A refusal on the delete of one message is still checked rather than
+// assumed. Google reports an already-deleted message as a 403 when the
+// space keeps no history, and uses the same 403 for a message the
+// caller may not delete. Reading the message back tells the two apart,
+// so a caller is never told a message is gone while it is still there.
+// A thread's refusal stands as Google gave it: its first message reading
+// as deleted says nothing of the replies under it.
+func (s *Service) deleteMessage(ctx context.Context, in DeleteMessageInput, thread bool) (*DeleteMessageResult, error) {
 	name, err := requireMessage(in.Message)
 	if err != nil {
 		return nil, err
 	}
-	if in.DryRun {
-		return &DeleteMessageResult{Name: name, Forced: in.Force, DryRun: true}, nil
+	out := &DeleteMessageResult{Name: name, Forced: thread, DryRun: in.DryRun}
+	msg, err := s.client.GetMessage(ctx, name)
+	switch {
+	case gchat.IsNotFound(err):
+		return out, nil
+	case err != nil:
+		return nil, needsScope(err, scopes.Messages)
+	case thread && msg.ThreadReply:
+		return nil, Invalidf("%s is a reply, not the first message of its thread. delete_thread takes the "+
+			"first message; delete_message deletes a reply on its own", name)
+	case !messageDeleted(msg):
+		if err := checkText(name, msg.Text, in.TextStart); err != nil {
+			return nil, err
+		}
+	case !thread:
+		return out, nil
 	}
-	deleted, err := deleteIdempotent(ctx, name,
+	if in.DryRun {
+		return out, nil
+	}
+	var gone func(context.Context, string) bool
+	if !thread {
+		gone = confirmGone(s.client.GetMessage, messageDeleted)
+	}
+	out.Deleted, err = deleteIdempotent(ctx, name,
 		func(ctx context.Context, name string) error {
-			return s.client.DeleteMessage(ctx, name, in.Force)
+			return s.client.DeleteMessage(ctx, name, thread)
 		},
-		confirmGone(s.client.GetMessage, messageDeleted))
+		gone)
 	if err != nil {
 		return nil, err
 	}
-	return &DeleteMessageResult{Name: name, Deleted: deleted, Forced: in.Force}, nil
+	return out, nil
 }
 
 // sendFailure classifies a failed send. When Google did not confirm the

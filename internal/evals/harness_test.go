@@ -159,7 +159,11 @@ func (s *server) drop(space string, failed bool) {
 		s.t.Logf("space kept for inspection: %s", space)
 		return
 	}
-	s.must("delete_space", map[string]any{"space_id": space, "confirm_space_id": space})
+	var sp struct {
+		DisplayName string `json:"display_name"`
+	}
+	s.into(s.must("get_space", map[string]any{"space_id": space}), &sp)
+	s.must("delete_space", map[string]any{"space_id": space, "display_name": sp.DisplayName, "confirm": true})
 }
 
 type message struct {

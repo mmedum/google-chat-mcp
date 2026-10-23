@@ -97,6 +97,29 @@ func TestDumpSchemasNeedsNoCredentials(t *testing.T) {
 	}
 }
 
+// The dump is the whole registrable surface, which the schema diff holds
+// the released tools to. A setting that leaves tools out does not shape
+// it: a dump that followed read-only mode, a narrowed toolset or the
+// default without the destructive tools would report released tools as
+// lost.
+func TestDumpSchemasCarriesTheWholeSurface(t *testing.T) {
+	tempProfile(t)
+	t.Setenv("GCM_ALLOW_DESTRUCTIVE", "false")
+	t.Setenv("GCM_READ_ONLY", "true")
+	t.Setenv("GCM_TOOLSETS", "core")
+	code, stdout, stderr := runCmd(t, "--dump-schemas")
+	if code != 0 {
+		t.Fatalf("--dump-schemas exited %d (%s)", code, stderr)
+	}
+	for _, want := range []string{
+		`"name": "delete_space"`, `"name": "promote_member"`, `"name": "send_message"`, `"name": "delete_section"`,
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the dump does not contain %s", want)
+		}
+	}
+}
+
 // A bad setting has to be reported, not worked around.
 func TestABadSettingFailsTheCommand(t *testing.T) {
 	tempProfile(t)

@@ -16,8 +16,8 @@ else.
 | `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. Lowercase letters, digits, `_` and `-`, up to 64 characters. |
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
-| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. |
-| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Deletes, and opening a space to a target audience with `set_space_audience`, are refused unless you set this to `true`. The tools stay registered either way, so a model that reaches for one is told it is not permitted here and that nothing was changed, rather than being left to guess from a tool that is missing. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
+| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so the token cannot write either. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
+| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
 | `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register, or `all`. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
 | `GCM_HTTP_MAX_RETRIES` | `--http-max-retries` | `3` | Extra attempts after a 429 or 5xx, 0 to 10. A write is only retried when repeating it cannot post twice. |
@@ -37,8 +37,10 @@ so a flag left in your client's arguments stops the server from
 starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused at
 start unless `false`, their old default, because ignoring one would
 quietly allow what you set it to stop. `GCM_INTERACTION_HINT` is
-ignored: only `delete_space` and `set_space_audience` carry the mark
-now, and Claude Code refuses those two when nobody is at the keyboard.
+ignored: only `delete_space`, `set_space_audience` and
+`delete_custom_emoji` carry the mark now, and Claude Code refuses those
+three when nobody is at the keyboard. A headless run that set it to
+`false` to use them loses them.
 
 | Variable | Still accepted | Instead |
 |---|---|---|

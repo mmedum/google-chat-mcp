@@ -347,6 +347,33 @@ func TestFindDirectMessagePassesTheUserAsAQueryParameter(t *testing.T) {
 	}
 }
 
+// A directory search asks both sources, and a question about who is in
+// the organization asks its members alone: a contact an administrator
+// shared with the domain is someone outside it.
+func TestADirectorySearchNamesItsSources(t *testing.T) {
+	for _, tc := range []struct {
+		membersOnly bool
+		want        []string
+	}{
+		{false, []string{"DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE", "DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT"}},
+		{true, []string{"DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"}},
+	} {
+		var got []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.URL.Query()["sources"]
+			fmt.Fprint(w, `{}`)
+		}))
+		if _, err := newTestClient(t, srv).SearchDirectoryPeople(context.Background(), "janedoe@example.com", 10,
+			tc.membersOnly); err != nil {
+			t.Fatalf("SearchDirectoryPeople: %v", err)
+		}
+		srv.Close()
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("members only %v: sources = %v, want %v", tc.membersOnly, got, tc.want)
+		}
+	}
+}
+
 // The limiter must bound calls, not just exist. An unlimited client
 // would trip Google's per-user quota on the first fan-out.
 func TestTheReadLimiterIsApplied(t *testing.T) {
@@ -421,7 +448,7 @@ func TestATransportErrorDoesNotCarryTheURL(t *testing.T) {
 		Tokens:     staticToken("test"),
 		Sleep:      func(context.Context, time.Duration) error { return nil },
 	})
-	_, err := c.SearchDirectoryPeople(context.Background(), "janedoe@example.com", 10)
+	_, err := c.SearchDirectoryPeople(context.Background(), "janedoe@example.com", 10, false)
 	if err == nil {
 		t.Fatal("want a transport error")
 	}
@@ -672,6 +699,17 @@ func TestEveryCallNamesItsScope(t *testing.T) {
 	for _, s := range scopes.All {
 		asked[s] = true
 	}
+	// A read has to name a scope a read-only login asks for too, or a
+	// read-only server tells a refused person to grant what its login
+	// never asks for. The one read Google takes only through a scope
+	// that writes is named here, and its tool is not registered under
+	// GCM_READ_ONLY; the one read sent as a POST is named too.
+	readOnly := map[string]bool{}
+	for _, s := range scopes.Requested(false, true) {
+		readOnly[s] = true
+	}
+	readsThroughAWriteScope := map[string]bool{"GetSpaceNotificationSetting": true}
+	readsByPost := map[string]bool{"SearchMessages": true}
 
 	ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
 	errType := reflect.TypeOf((*error)(nil)).Elem()
@@ -710,6 +748,10 @@ func TestEveryCallNamesItsScope(t *testing.T) {
 		}
 		if !asked[apiErr.Scope] {
 			t.Errorf("%s: scope = %q, which login does not ask for", name, apiErr.Scope)
+		}
+		read := apiErr.Method == http.MethodGet || readsByPost[name]
+		if read && !readsThroughAWriteScope[name] && !readOnly[apiErr.Scope] {
+			t.Errorf("%s reads and names %q, which a read-only login does not ask for", name, apiErr.Scope)
 		}
 		checked++
 	}

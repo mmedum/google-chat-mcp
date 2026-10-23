@@ -54,13 +54,6 @@ func requireSpace(value string) (string, error) {
 	return requireShape("space_id", v, spaceName, "spaces/{space}")
 }
 
-// confirmedSpace reports whether confirm names space, in either form
-// space_id takes.
-func confirmedSpace(space, confirm string) bool {
-	c, err := requireSpace(confirm)
-	return err == nil && c == space
-}
-
 // requireMessage checks that an argument names a message.
 //
 // Unlike a space, there is no bare form to accept: a message id means

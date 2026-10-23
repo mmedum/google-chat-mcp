@@ -450,6 +450,9 @@ func everyEndpoint(w http.ResponseWriter, r *http.Request) {
 		  "attachment":[{"name":"spaces/AAAAspace1/messages/AAAAmsg1/attachments/AAAAattach1",
 		    "contentName":"notes.txt","contentType":"text/plain","source":"UPLOADED_CONTENT",
 		    "attachmentDataRef":{"resourceName":"spaces/AAAAspace1/attachments/AAAAmedia1"}}]}`)
+	case strings.Contains(path, "/customEmojis"):
+		fmt.Fprint(w, `{"customEmojis":[{"name":"customEmojis/AAAAemoji1","emojiName":":test-emoji:"}],
+		  "name":"customEmojis/AAAAemoji1","emojiName":":test-emoji:"}`)
 	case strings.Contains(path, "/members"):
 		fmt.Fprint(w, `{"memberships":[{"name":"spaces/AAAAspace1/members/AAAAmember1","state":"JOINED",
 		  "role":"ROLE_MEMBER","member":{"name":"users/1","type":"HUMAN","displayName":"Jane Doe"}}],

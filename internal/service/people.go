@@ -166,7 +166,7 @@ func (s *Service) searchOneSource(ctx context.Context, source PeopleSource, quer
 		}
 		return people, nil
 	}
-	resp, err := s.client.SearchDirectoryPeople(ctx, query, limit)
+	resp, err := s.client.SearchDirectoryPeople(ctx, query, limit, false)
 	if err != nil {
 		return nil, err
 	}

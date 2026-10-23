@@ -90,10 +90,10 @@ func TestCanonicalRewritesOnlyTheAliases(t *testing.T) {
 // against All without canonicalizing both sides reports them missing.
 func TestMissingIgnoresTheOIDCAliasSpelling(t *testing.T) {
 	granted := Canonical(All)
-	if missing := Missing(granted, false); len(missing) != 0 {
+	if missing := Missing(granted, Requested(false, false)); len(missing) != 0 {
 		t.Errorf("a full grant reports %d missing scopes: %v", len(missing), missing)
 	}
-	if missing := Missing(All, false); len(missing) != 0 {
+	if missing := Missing(All, Requested(false, false)); len(missing) != 0 {
 		t.Errorf("a full grant in alias spelling reports missing: %v", missing)
 	}
 }
@@ -103,10 +103,10 @@ func TestMissingIgnoresTheOIDCAliasSpelling(t *testing.T) {
 // the person who turned it on.
 func TestMissingFollowsWhatLoginAskedFor(t *testing.T) {
 	granted := Canonical(All)
-	if missing := Missing(granted, false); len(missing) != 0 {
+	if missing := Missing(granted, Requested(false, false)); len(missing) != 0 {
 		t.Errorf("a full grant reports %v", missing)
 	}
-	missing := Missing(granted, true)
+	missing := Missing(granted, Requested(true, false))
 	if len(missing) != 1 || missing[0] != AdminSpacesReadonly {
 		t.Errorf("with admin on, missing = %v, want the admin scope alone", missing)
 	}
@@ -117,7 +117,7 @@ func TestMissingFollowsWhatLoginAskedFor(t *testing.T) {
 
 func TestMissingNamesWhatIsAbsent(t *testing.T) {
 	granted := []string{OpenID, Email, Profile, Messages, Spaces, Memberships}
-	missing := Missing(granted, false)
+	missing := Missing(granted, Requested(false, false))
 	if slices.Contains(missing, MessagesCreate) {
 		t.Error("MessagesCreate is covered by the Messages umbrella")
 	}
@@ -126,5 +126,34 @@ func TestMissingNamesWhatIsAbsent(t *testing.T) {
 	}
 	if !slices.Contains(missing, DirectoryReadonly) {
 		t.Error("DirectoryReadonly was not granted and should be reported")
+	}
+}
+
+// A read-only server asks for a token that cannot write (the standard's
+// §3: "requests read-only scopes"). The set is derived from the names,
+// so this pins it to exactly the scopes that can only read.
+func TestReadOnlyAsksForNothingThatWrites(t *testing.T) {
+	want := []string{
+		OpenID, Email, Profile,
+		MessagesReadonly, SpacesReadonly, MembershipsReadonly, UserSectionsReadonly,
+		PinsReadonly, CustomEmojisReadonly, ReadStateReadonly, AvailabilityReadonly,
+		DirectoryReadonly, ContactsReadonly, GroupsReadonly,
+	}
+	if got := Requested(false, true); !slices.Equal(got, want) {
+		t.Errorf("Requested(read-only) = %v, want %v", got, want)
+	}
+	if got := Requested(true, true); !slices.Equal(got, append(slices.Clone(want), AdminSpacesReadonly)) {
+		t.Errorf("Requested(admin, read-only) = %v, want the read-only set and the admin scope", got)
+	}
+	if got := Requested(false, false); !slices.Equal(got, All) {
+		t.Errorf("Requested(writes on) = %v, want All", got)
+	}
+	// A full token is complete for a read-only server, and a read-only
+	// token is short for one that writes.
+	if missing := Missing(All, Requested(false, true)); len(missing) != 0 {
+		t.Errorf("a full grant is short for a read-only server: %v", missing)
+	}
+	if missing := Missing(want, Requested(false, false)); !slices.Contains(missing, Messages) {
+		t.Errorf("a read-only grant reports %v missing for a server that writes; want chat.messages among them", missing)
 	}
 }

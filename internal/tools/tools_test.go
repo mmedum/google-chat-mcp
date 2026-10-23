@@ -2,9 +2,19 @@ package tools
 
 import (
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mmedum/google-chat-mcp/v6/internal/service"
 )
@@ -104,4 +114,110 @@ func TestOutputSchemaAnnotatesTimestamps(t *testing.T) {
 	if ts.Format != "date-time" {
 		t.Errorf("format = %q, want date-time", ts.Format)
 	}
+}
+
+// modulePath is this module's import path, the prefix that tells one of
+// its own packages from a dependency.
+const modulePath = "github.com/mmedum/google-chat-mcp/v6/"
+
+// The model never widens its own reach (the standard's §3): no tool turns
+// a toolset on, lifts a refusal or edits what the operator set. The
+// server's settings are the environment, the profile internal/userconfig
+// writes and the token internal/credentials stores, all set outside the
+// conversation. No package a tool can reach imports either of the two,
+// and none sets an environment variable. Read from the source rather
+// than listed, so a new import is caught the day it is added.
+func TestNoToolCanWriteTheServersSettings(t *testing.T) {
+	reached := map[string]bool{}
+	setsEnv := map[string]string{}
+	var walk func(pkg string)
+	walk = func(pkg string) {
+		if reached[pkg] {
+			return
+		}
+		reached[pkg] = true
+		dir := filepath.Join("..", "..", filepath.FromSlash(pkg))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("read %s: %v", dir, err)
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+			if err != nil {
+				t.Fatalf("parse %s: %v", name, err)
+			}
+			for _, imp := range file.Imports {
+				path, _ := strconv.Unquote(imp.Path.Value)
+				if internal, ok := strings.CutPrefix(path, modulePath); ok {
+					walk(internal)
+				}
+			}
+			ast.Inspect(file, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if x, ok := sel.X.(*ast.Ident); ok && x.Name == "os" &&
+					slices.Contains([]string{"Setenv", "Unsetenv", "Clearenv"}, sel.Sel.Name) {
+					setsEnv[pkg+"/"+name] = "os." + sel.Sel.Name
+				}
+				return true
+			})
+		}
+	}
+	walk("internal/tools")
+
+	// A floor on what was read: the walk has to have reached the
+	// service and the client, or it is looking at nothing.
+	for _, pkg := range []string{"internal/service", "internal/gchat", "internal/config"} {
+		if !reached[pkg] {
+			t.Fatalf("the walk never reached %s; it read %v", pkg, reached)
+		}
+	}
+	for _, pkg := range []string{"internal/userconfig", "internal/credentials"} {
+		if reached[pkg] {
+			t.Errorf("a tool can reach %s, which writes the server's own settings", pkg)
+		}
+	}
+	for file, call := range setsEnv {
+		t.Errorf("%s calls %s, and a tool can reach it", file, call)
+	}
+	// The configuration reaches a tool as a copy it cannot write back.
+	field, ok := reflect.TypeFor[Deps]().FieldByName("Config")
+	if !ok || field.Type.Kind() != reflect.Struct {
+		t.Errorf("Deps carries the configuration as %v; a pointer would let a tool change it", field.Type)
+	}
+}
+
+// The same rule from the outside: every registered tool is called, and
+// what is registered afterward is what was registered before. A tool
+// that turned on a toolset or registered a refused tool would show here.
+func TestNoToolChangesWhatIsRegistered(t *testing.T) {
+	cs := session(t, everyEndpoint)
+	before := toolNames(t, cs)
+	for name, args := range everyRegisteredTool(t, cs) {
+		call(t, cs, name, args, nil)
+	}
+	if after := toolNames(t, cs); !slices.Equal(before, after) {
+		t.Errorf("calling every tool changed what is registered:\nbefore %v\nafter  %v", before, after)
+	}
+}
+
+// toolNames is what a client is told the server registers, sorted.
+func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
+	t.Helper()
+	list, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	names := make([]string, 0, len(list.Tools))
+	for _, tool := range list.Tools {
+		names = append(names, tool.Name)
+	}
+	slices.Sort(names)
+	return names
 }

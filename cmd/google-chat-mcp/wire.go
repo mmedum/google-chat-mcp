@@ -119,7 +119,7 @@ func clientConfig(cfg config.Config, profile userconfig.Config) (*oauth2.Config,
 			return nil, err
 		}
 	}
-	return auth.LoadClientSecret(path, auth.Scopes(cfg.Enabled(config.ToolsetAdmin)))
+	return auth.LoadClientSecret(path, requestedScopes(cfg))
 }
 
 // credentialStore resolves the refresh token: the environment first for

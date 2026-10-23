@@ -9,6 +9,7 @@ import (
 
 	"github.com/mmedum/google-chat-mcp/v6/internal/config"
 	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
 )
 
 // SpaceKind is a space's type, in Google's spelling. The tool surface
@@ -574,13 +575,15 @@ type UpdateSpaceResult struct {
 	Rendered   map[string]any
 }
 
-// UpdateSpace renames a space, edits its description, or sets who can
-// find and join it.
+// UpdateSpace renames a space, edits its description, or makes it
+// private.
 //
-// Editing the description clears the space's guidelines, if it has any.
-// Google's mask accepts only top-level paths, so there is no way to
-// patch one field of spaceDetails and leave the other; the tool
-// description says so.
+// Editing the description sends the space's guidelines back with it.
+// Google's mask accepts only top-level paths, so a patch of the
+// description is a patch of all of spaceDetails, and guidelines left
+// out of it are cleared. They are read first, a dry run included, and
+// resent as they were. Someone editing them between that read and the
+// patch loses their edit; the window is one request wide.
 //
 // It makes a space private, and never opens one: that widens who can
 // read it, so it is set_space_audience's, behind the destructive flag.
@@ -625,7 +628,17 @@ func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*Update
 				return nil, err
 			}
 		}
-		body, out.UpdateMask = gchat.BuildUpdateSpace(out.DisplayName, out.Description)
+		guidelines := ""
+		if out.Description != nil {
+			sp, err := s.client.GetSpace(ctx, space)
+			if err != nil {
+				return nil, needsScope(err, scopes.Spaces)
+			}
+			if sp.Details != nil {
+				guidelines = sp.Details.Guidelines
+			}
+		}
+		body, out.UpdateMask = gchat.BuildUpdateSpace(out.DisplayName, out.Description, guidelines)
 	}
 	return s.patchSpace(ctx, body, out)
 }
@@ -664,10 +677,10 @@ type SetSpaceAudienceInput struct {
 	// Audience is default for the organization's default target
 	// audience, or audiences/{id}.
 	Audience string
-	// Confirm has to carry the space's own resource name: who can read
-	// the space widens for good.
-	Confirm string
-	DryRun  bool
+	// DisplayName is what the caller read the space to be called: who
+	// can read the space widens for good, so the call says which space.
+	DisplayName string
+	DryRun      bool
 }
 
 // SetSpaceAudience opens a space to a target audience. Whoever is in it
@@ -685,9 +698,12 @@ func (s *Service) SetSpaceAudience(ctx context.Context, in SetSpaceAudienceInput
 	if audience == "" {
 		return nil, Invalidf("set_space_audience opens a space; update_space with audience private makes one private")
 	}
-	if !confirmedSpace(space, in.Confirm) {
-		return nil, Invalidf("opening %s to an audience lets everyone in it read the space, and cannot be taken back. "+
-			"Pass confirm_space_id with the same value as space_id to go ahead", space)
+	sp, err := s.client.GetSpace(ctx, space)
+	if err != nil {
+		return nil, needsScope(err, scopes.Spaces)
+	}
+	if err := checkName("display_name", space, sp.DisplayName, in.DisplayName); err != nil {
+		return nil, err
 	}
 	out := &UpdateSpaceResult{Space: space, Audience: &audience, DryRun: in.DryRun}
 	var body *gchat.UpdateSpaceRequest

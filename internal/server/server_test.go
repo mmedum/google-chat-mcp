@@ -157,11 +157,29 @@ func TestInstructionsNameTheStartingPoints(t *testing.T) {
 	}{
 		{name: "default", cfg: config.Config{Toolsets: config.AllToolsets}},
 		{name: "read only", cfg: config.Config{Toolsets: config.AllToolsets, ReadOnly: true}},
-		{name: "deletes refused", cfg: config.Config{Toolsets: config.AllToolsets, RefuseDestructive: true}},
+		{name: "destructive allowed", cfg: config.Config{Toolsets: config.AllToolsets, AllowDestructive: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkInstructions(t, tc.cfg)
 		})
+	}
+}
+
+// The sentence on confirm and witnesses describes the destructive tools,
+// so it is there exactly when they are registered.
+func TestInstructionsDescribeTheDestructiveToolsOnlyWhereTheyAre(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  config.Config
+		want bool
+	}{
+		{"default", config.Config{}, false},
+		{"destructive allowed", config.Config{AllowDestructive: true}, true},
+		{"read only", config.Config{AllowDestructive: true, ReadOnly: true}, false},
+	} {
+		if got := strings.Contains(instructionsFor(tc.cfg), "confirm: true"); got != tc.want {
+			t.Errorf("%s: instructions mention confirm = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 
@@ -260,11 +278,12 @@ func TestPortedToolsKeepTheirNames(t *testing.T) {
 		t.Fatalf("decode baseline: %v", err)
 	}
 
-	// Every toolset, because that is what ships: the zero config leaves
-	// the seven section tools out, and comparing a narrowed surface
-	// against the full baseline would report them as lost.
+	// The full surface, because that is what ships and what
+	// --dump-schemas writes: the zero config leaves the section tools and
+	// the deletes out, and comparing a narrowed surface against the full
+	// baseline would report them as lost.
 	have := map[string]bool{}
-	for _, tool := range dump(t, config.Config{Toolsets: config.AllToolsets}).Tools {
+	for _, tool := range dump(t, config.Config{}.FullSurface()).Tools {
 		have[tool.Name] = true
 	}
 

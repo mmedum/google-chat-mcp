@@ -137,6 +137,7 @@ type RenameSectionInput struct {
 // DeleteSectionInput names a section to delete.
 type DeleteSectionInput struct {
 	SectionName string `json:"section_name" jsonschema:"the section to delete, users/{user}/sections/{section}"`
+	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: a deleted section cannot be restored, and its spaces have to be filed again"`
 	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without deleting anything"`
 }
 
@@ -223,8 +224,8 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 		Name: "delete_section",
 		Description: "Delete a custom section from your own sidebar. The spaces in it are not deleted: Google files " +
 			"them back under the default sections. A section that is already gone reports deleted false rather than " +
-			"failing. A refusal is reported, because that is Google declining to delete a system section. Needs the " +
-			"chat.users.sections scope.",
+			"failing. A refusal is reported, because that is Google declining to delete a system section. Pass " +
+			"confirm: true. Needs the chat.users.sections scope.",
 		Kind:    Destructive,
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteSectionInput) (*mcp.CallToolResult, DeleteSectionOutput, error) {

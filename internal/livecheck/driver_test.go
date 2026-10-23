@@ -50,6 +50,9 @@ type driver struct {
 	// space is the scratch space every step works in, and the only
 	// identifier a report may print unredacted.
 	space string
+	// name is what the scratch space is called now, which the calls
+	// that open or delete it repeat as their witness.
+	name string
 	// made holds every resource name this run created, so redact can
 	// tell them from everything else.
 	made map[string]bool
@@ -98,12 +101,12 @@ func connect(t *testing.T) *driver {
 	t.Helper()
 	dir := t.TempDir()
 	cmd := exec.Command(binPath(t))
-	// Deletes are allowed here on purpose. They are refused by default now
-	// — a deleted Chat message has no trash behind it — and this suite
-	// exercises them deliberately against a scratch space it made itself,
-	// then deletes that space to clean up. Without this the run would fail
-	// its delete steps AND leave the scratch space behind in a real account,
-	// which is worse than the failure.
+	// Deletes are allowed here on purpose. They are not registered by
+	// default — a deleted Chat message has no trash behind it — and this
+	// suite exercises them deliberately against a scratch space it made
+	// itself, then deletes that space to clean up. Without this the run
+	// would fail its delete steps AND leave the scratch space behind in a
+	// real account, which is worse than the failure.
 	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
 		"GCM_ALLOW_DESTRUCTIVE=true")
 	ctx := context.Background()
@@ -174,14 +177,15 @@ func (d *driver) seed() {
 	}
 	// audience private is the only audience create_space takes, and it
 	// sends what leaving it out does.
+	name := fmt.Sprintf("%s %d (safe to delete)", spacePrefix, time.Now().Unix())
 	d.into(d.must("create_space", map[string]any{
-		"display_name": fmt.Sprintf("%s %d (safe to delete)", spacePrefix, time.Now().Unix()),
+		"display_name": name,
 		"audience":     "private",
 	}), &out)
 	if out.SpaceID == "" {
 		d.t.Fatal("create_space returned no space_id")
 	}
-	d.space = out.SpaceID
+	d.space, d.name = out.SpaceID, name
 	d.record(out.SpaceID)
 }
 
@@ -229,7 +233,7 @@ func (d *driver) drop() {
 		return
 	}
 	res := d.call("delete_space", map[string]any{
-		"space_id": d.space, "confirm_space_id": d.space,
+		"space_id": d.space, "display_name": d.name, "confirm": true,
 	})
 	if res.IsError {
 		d.t.Errorf("the scratch space was left behind: %s", d.redact(res.Text))

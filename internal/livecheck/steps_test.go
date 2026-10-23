@@ -555,6 +555,47 @@ var steps = []step{
 		d.must("get_member", map[string]any{"membership_name": d.member})
 	}},
 
+	// A manager controls the space, so update_member_role makes nobody
+	// one. A dry run on this account's own membership: refused before
+	// anything is read or sent.
+	{"making a manager is refused", "update_member_role", func(d *driver) {
+		if d.member == "" {
+			d.t.Skip("no member to promote")
+		}
+		res := d.call("update_member_role", map[string]any{
+			"membership_name": d.member, "role": "MANAGER", "dry_run": true,
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("update_member_role made a manager, or refused it otherwise: %s", d.redact(res.Text))
+		}
+	}},
+
+	// add_member takes only people in the organization's directory into a
+	// space that says it admits anyone from outside it. A dry run with an
+	// address no directory holds: nothing is sent either way. Whether the
+	// scratch space admits outsiders is the organization's policy, read
+	// off the space rather than assumed; where it says nothing, Google
+	// left a false out, refuses outsiders itself, and no lookup is made.
+	{"an invite from outside the organization is refused", "add_member", func(d *driver) {
+		var space struct {
+			ExternalUserAllowed *bool `json:"external_user_allowed"`
+		}
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &space)
+		res := d.call("add_member", map[string]any{
+			"space_id": d.space, "user_email": "livecheck-outsider@example.com", "dry_run": true,
+		})
+		if space.ExternalUserAllowed == nil || !*space.ExternalUserAllowed {
+			d.t.Log("the scratch space does not say it admits anyone from outside, so no lookup is made")
+			if res.IsError {
+				d.t.Errorf("a dry run into a space that admits nobody from outside: %s", d.redact(res.Text))
+			}
+			return
+		}
+		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
+			d.t.Errorf("an address outside the directory was not refused: %s", d.redact(res.Text))
+		}
+	}},
+
 	{"search finds the message in this space", "search_messages", func(d *driver) {
 		var out struct {
 			Matches []struct {
@@ -616,9 +657,25 @@ var steps = []step{
 	}},
 
 	{"the space renames", "update_space", func(d *driver) {
-		d.must("update_space", map[string]any{
-			"space_id": d.space, "display_name": spacePrefix + " renamed (safe to delete)",
-		})
+		name := spacePrefix + " renamed (safe to delete)"
+		d.must("update_space", map[string]any{"space_id": d.space, "display_name": name})
+		d.name = name
+	}},
+
+	// A description edit masks all of spaceDetails, so the server reads
+	// the guidelines and sends them back. The scratch space has none to
+	// keep; what this settles is that the read before the patch and the
+	// patch with guidelines left out still land, and the description
+	// reads back.
+	{"the description changes", "update_space", func(d *driver) {
+		d.must("update_space", map[string]any{"space_id": d.space, "description": "livecheck scratch space"})
+		var out struct {
+			Description *string `json:"description"`
+		}
+		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+		if out.Description == nil || *out.Description != "livecheck scratch space" {
+			d.t.Error("the description did not read back as it was set")
+		}
 	}},
 
 	// Opening a space widens who can read it, so update_space refuses it
@@ -633,11 +690,16 @@ var steps = []step{
 			d.t.Errorf("update_space opened the space, or refused it otherwise: %s", d.redact(res.Text))
 		}
 		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
-			"confirm_space_id": d.space, "dry_run": true}); res.IsError {
+			"display_name": "a space this run did not make", "confirm": true}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Errorf("opening a space under another name was not refused as stale: %s", d.redact(res.Text))
+		}
+		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
+			"display_name": d.name, "dry_run": true}); res.IsError {
 			d.t.Errorf("a dry run of opening the space: %s", d.redact(res.Text))
 		}
 		if res := d.call("set_space_audience", map[string]any{"space_id": d.space, "audience": "default",
-			"confirm_space_id": d.space}); res.IsError {
+			"display_name": d.name, "confirm": true}); res.IsError {
 			d.t.Errorf("opening the space: %s", d.redact(res.Text))
 		}
 		opened := d.accessOf(d.space)
@@ -780,12 +842,24 @@ var steps = []step{
 		}
 	}},
 
+	// A delete names the message by how its text begins, and the server
+	// reads the message to compare: text it does not begin with is
+	// [stale], and nothing goes.
+	{"a delete naming other text is refused", "delete_message", func(d *driver) {
+		res := d.call("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": "livecheck wrote something else here", "confirm": true,
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Errorf("a delete naming other text was not refused as stale: %s", d.redact(res.Text))
+		}
+	}},
+
 	// The bug this repository shipped once: Google answers a deleted
 	// message with 200 and a tombstone rather than 404, so a repeat
 	// delete that reads the status instead of the answer reports success
 	// twice. Every gate passed while it was broken.
 	// The reply goes first: Google refuses to delete a message that has
-	// threaded replies unless forced, and force is a step of its own.
+	// threaded replies, and taking them is delete_thread's.
 	{"the thread reply deletes", "delete_message", func(d *driver) {
 		if d.threadReply == "" {
 			d.t.Skip("no reply was posted into the thread")
@@ -793,7 +867,9 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		d.into(d.must("delete_message", map[string]any{"message_name": d.threadReply}), &out)
+		d.into(d.must("delete_message", map[string]any{
+			"message_name": d.threadReply, "text_start": searchTerm + " replied in the thread", "confirm": true,
+		}), &out)
 		if !out.Deleted {
 			d.t.Error("the reply's delete reported that it deleted nothing")
 		}
@@ -803,7 +879,9 @@ var steps = []step{
 		var out struct {
 			Deleted bool `json:"deleted"`
 		}
-		d.into(d.must("delete_message", map[string]any{"message_name": d.posted}), &out)
+		d.into(d.must("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": liveEditBody, "confirm": true,
+		}), &out)
 		if !out.Deleted {
 			d.t.Error("the first delete reported that it deleted nothing")
 		}
@@ -820,7 +898,9 @@ var steps = []step{
 	// That is precisely what happened, and only a live call can tell the
 	// two apart.
 	{"a repeat delete reports that it deleted nothing", "delete_message", func(d *driver) {
-		res := d.call("delete_message", map[string]any{"message_name": d.posted})
+		res := d.call("delete_message", map[string]any{
+			"message_name": d.posted, "text_start": liveEditBody, "confirm": true,
+		})
 		if res.IsError {
 			d.t.Fatalf("a repeat delete failed rather than being idempotent: %s", d.redact(res.Text))
 		}
@@ -844,12 +924,71 @@ var steps = []step{
 		d.must("send_message", map[string]any{"space_id": d.space, "text": "livecheck posts a plain line and will delete it"})
 	}},
 
-	// Deleting the space needs the id twice. One argument would make a
-	// mistyped call destroy other people's messages.
+	// A message with replies goes only through delete_thread, which
+	// takes them too. Google refusing delete_message here is what
+	// delete_message's description promises; the thread then goes whole,
+	// and neither message is left in the space.
+	{"a thread deletes with its replies", "delete_thread", func(d *driver) {
+		var root, reply struct {
+			MessageID string `json:"message_id"`
+			ThreadID  string `json:"thread_id"`
+		}
+		d.into(d.must("send_message", map[string]any{"space_id": d.space, "text": liveThreadBody}), &root)
+		d.record(root.MessageID)
+		d.record(root.ThreadID)
+		d.into(d.must("send_message", map[string]any{
+			"space_id": d.space, "text": searchTerm + " replied and will go with the thread", "thread_name": root.ThreadID,
+		}), &reply)
+		d.record(reply.MessageID)
+
+		if res := d.call("delete_message", map[string]any{
+			"message_name": root.MessageID, "text_start": liveThreadBody, "confirm": true,
+		}); !res.IsError {
+			d.t.Error("delete_message deleted a message that has replies; Google was meant to refuse it")
+		}
+		if res := d.call("delete_thread", map[string]any{
+			"message_name": reply.MessageID, "text_start": searchTerm + " replied and will go", "confirm": true,
+		}); !res.IsError || !strings.HasPrefix(res.Text, "[invalid]") {
+			d.t.Errorf("delete_thread took a reply as a thread's first message: %s", d.redact(res.Text))
+		}
+		var out struct {
+			Deleted bool `json:"deleted"`
+			Forced  bool `json:"forced"`
+		}
+		d.into(d.must("delete_thread", map[string]any{
+			"message_name": root.MessageID, "text_start": liveThreadBody, "confirm": true,
+		}), &out)
+		if !out.Deleted {
+			d.t.Error("delete_thread reported that it deleted nothing")
+		}
+		if !out.Forced {
+			d.t.Error("delete_thread did not report taking the replies")
+		}
+
+		var left struct {
+			Result []struct {
+				MessageID string `json:"message_id"`
+			} `json:"result"`
+		}
+		d.into(d.must("get_messages", map[string]any{"space_id": d.space, "limit": 50}), &left)
+		for _, m := range left.Result {
+			if m.MessageID == root.MessageID || m.MessageID == reply.MessageID {
+				d.t.Errorf("%s is still in the space after delete_thread", d.redact(m.MessageID))
+			}
+		}
+	}},
+
+	// Deleting the space names it and says confirm. Leaving either out
+	// changes nothing, and a name that is not the space's is [stale].
 	{"deleting a space without the confirmation is refused", "delete_space", func(d *driver) {
-		res := d.call("delete_space", map[string]any{"space_id": d.space})
-		if !res.IsError {
-			d.t.Fatal("delete_space ran without its confirmation argument")
+		if res := d.call("delete_space", map[string]any{"space_id": d.space, "display_name": d.name}); !res.IsError ||
+			!strings.HasPrefix(res.Text, "[invalid]") {
+			d.t.Fatalf("delete_space ran without confirm, or refused it otherwise: %s", d.redact(res.Text))
+		}
+		if res := d.call("delete_space", map[string]any{
+			"space_id": d.space, "display_name": "a space this run did not make", "confirm": true,
+		}); !res.IsError || !strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Fatalf("delete_space ran under another space's name, or refused it otherwise: %s", d.redact(res.Text))
 		}
 	}},
 }
@@ -863,7 +1002,9 @@ const (
 	liveMarkdownBody = "livecheck posted this **" + liveMarkdownBold + "** line and will delete it"
 	liveMarkdownBold = "markdown"
 	liveEditBody     = "livecheck edited this line and will delete it"
-	searchTerm       = "livecheck"
+	// liveThreadBody starts the thread delete_thread takes whole.
+	liveThreadBody = "livecheck started this thread and will delete all of it"
+	searchTerm     = "livecheck"
 )
 
 func TestLive(t *testing.T) {

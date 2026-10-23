@@ -20,9 +20,10 @@ var excused = map[string]string{
 	// Reaching another person. The scratch space has one member — this
 	// account — and a live run may not write into somebody else's
 	// sidebar, direct messages or membership to prove a tool works.
-	"add_member":         "would change another person's membership",
-	"remove_member":      "would change another person's membership",
-	"update_member_role": "would change another person's membership",
+	"remove_member":  "would change another person's membership",
+	"promote_member": "would change another person's membership",
+	"add_external_member": "would invite someone from outside the organization " +
+		"into the scratch space",
 	"find_direct_message": "opens a direct message with another person, " +
 		"which is visible to them the moment anything is posted",
 	"create_group_chat": "creates a chat with other people in it",

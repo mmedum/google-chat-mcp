@@ -96,7 +96,7 @@ func TestGrantedScopesReadsWhatGoogleReturned(t *testing.T) {
 	token := (&oauth2.Token{AccessToken: "x"}).WithExtra(map[string]any{
 		"scope": "https://www.googleapis.com/auth/chat.messages email",
 	})
-	got := grantedScopes(token, false)
+	got := grantedScopes(token, scopes.All)
 	if len(got) == 0 {
 		t.Fatal("no scopes read from the response")
 	}
@@ -106,9 +106,25 @@ func TestGrantedScopesReadsWhatGoogleReturned(t *testing.T) {
 
 	// No scope member at all is Google saying "everything you asked
 	// for", which is the documented shape and must not read as none.
-	bare := grantedScopes(&oauth2.Token{AccessToken: "x"}, false)
+	bare := grantedScopes(&oauth2.Token{AccessToken: "x"}, scopes.All)
 	if len(bare) == 0 {
 		t.Error("a response naming no scopes recorded none granted, rather than all requested")
+	}
+}
+
+// Login under GCM_READ_ONLY asks for read-only scopes, and the admin
+// toolset adds the administrator's scope: the two settings that change
+// what the consent screen lists reach the request.
+func TestLoginAsksForWhatTheSettingsAllow(t *testing.T) {
+	tempProfile(t)
+	t.Setenv("GCM_READ_ONLY", "true")
+	t.Setenv("GCM_TOOLSETS", "core,admin")
+	got := requestedScopes(loadedConfig(t))
+	if slicesContains(got, scopes.Messages) || !slicesContains(got, scopes.MessagesReadonly) {
+		t.Errorf("read-only login asks for %v, want the read-only scopes alone", got)
+	}
+	if !slicesContains(got, scopes.AdminSpacesReadonly) {
+		t.Errorf("login with the admin toolset asks for %v, want the admin scope among them", got)
 	}
 }
 

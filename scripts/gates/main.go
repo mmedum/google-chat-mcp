@@ -310,9 +310,9 @@ func parseDump(b []byte, source string) (*dump, error) {
 // seam is what the shell wrappers had: one dumped the schemas and
 // another compared them, and nothing said they were the same dump.
 //
-// It dumps the default surface. A GCM_ setting in the shell running the
-// gate, such as read-only mode, changes what registers, and the profile
-// in the real config directory is none of the dump's business.
+// The binary dumps its full surface whatever the settings say, and the
+// environment is isolated anyway: the profile in the real config
+// directory is none of the dump's business.
 func runDumpSchemas(bin string) ([]byte, error) {
 	configDir, err := os.MkdirTemp("", "gates-dump-")
 	if err != nil {

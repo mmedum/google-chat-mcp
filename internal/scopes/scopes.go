@@ -9,7 +9,10 @@
 // trade-off for anyone publishing externally.
 package scopes
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // OpenID Connect scopes. Google accepts "email" and "profile" on the
 // authorization request and reports them back as URLs, which Canonical
@@ -188,23 +191,35 @@ func Canonical(in []string) []string {
 }
 
 // Requested is the scope set login asks for. admin adds the one scope
-// All leaves out, and nothing else varies: a read-only server still
-// asks for the write scopes, so turning writes back on does not cost a
-// second consent screen.
-func Requested(admin bool) []string {
-	if !admin {
-		return All
+// All leaves out. readOnly keeps only the scopes that cannot write, so
+// a read-only server holds a token that could not write either; turning
+// writes back on then takes a second login.
+func Requested(admin, readOnly bool) []string {
+	out := slices.Clone(All)
+	if readOnly {
+		out = slices.DeleteFunc(out, canWrite)
 	}
-	return append(slices.Clone(All), AdminSpacesReadonly)
+	if admin {
+		out = append(out, AdminSpacesReadonly)
+	}
+	return out
 }
 
-// Missing returns the scopes login asked for that granted does not
-// cover, in the requested order. Used by status and doctor to explain a
-// stale token, so it has to ask about the same set login did.
-func Missing(granted []string, admin bool) []string {
+// canWrite reports whether a scope can change anything: every one but
+// the OpenID Connect scopes and the .readonly ones. Read off the names
+// rather than listed, so a scope added to All is sorted without anyone
+// deciding to.
+func canWrite(scope string) bool {
+	return scope != OpenID && scope != Email && scope != Profile && !strings.HasSuffix(scope, ".readonly")
+}
+
+// Missing returns the scopes in requested that granted does not cover,
+// in the requested order. Used by login and status to explain a stale
+// token, so requested has to be the set login asks for.
+func Missing(granted, requested []string) []string {
 	g := Canonical(granted)
 	var missing []string
-	for _, want := range Canonical(Requested(admin)) {
+	for _, want := range Canonical(requested) {
 		if !Satisfied(want, g) {
 			missing = append(missing, want)
 		}

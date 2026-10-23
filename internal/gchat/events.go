@@ -52,9 +52,9 @@ type EventType struct {
 
 // EventTypes is every event type a caller may ask for.
 //
-// The reaction rows name the umbrella reactions scope rather than the
-// readonly one, because the readonly one is not in the set login asks
-// for and the umbrella covers it.
+// The reaction rows name chat.messages.readonly, which discovery lists
+// for spaceEvents.list and which a read-only login asks for; the
+// reactions scopes are not in that login.
 var EventTypes = []EventType{
 	{"message_created", EventMessageCreated, scopes.MessagesReadonly},
 	{"message_updated", EventMessageUpdated, scopes.MessagesReadonly},
@@ -62,8 +62,8 @@ var EventTypes = []EventType{
 	{"membership_created", EventMembershipCreated, scopes.MembershipsReadonly},
 	{"membership_updated", EventMembershipUpdated, scopes.MembershipsReadonly},
 	{"membership_deleted", EventMembershipDeleted, scopes.MembershipsReadonly},
-	{"reaction_created", EventReactionCreated, scopes.MessagesReactions},
-	{"reaction_deleted", EventReactionDeleted, scopes.MessagesReactions},
+	{"reaction_created", EventReactionCreated, scopes.MessagesReadonly},
+	{"reaction_deleted", EventReactionDeleted, scopes.MessagesReadonly},
 	{"space_updated", EventSpaceUpdated, scopes.SpacesReadonly},
 }
 

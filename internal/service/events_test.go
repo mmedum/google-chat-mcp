@@ -268,10 +268,12 @@ func TestBatchIsReadFromThePayloadNotTheTypeString(t *testing.T) {
 }
 
 // Every event type this server offers names the scope Google wants for
-// it, so a type cannot be added without one.
+// it, so a type cannot be added without one, and it is one a read-only
+// login asks for: listing events is a read, registered under
+// GCM_READ_ONLY.
 func TestEveryEventTypeNamesAScopeLoginAsksFor(t *testing.T) {
 	asked := map[string]bool{}
-	for _, s := range scopes.All {
+	for _, s := range scopes.Requested(false, true) {
 		asked[s] = true
 	}
 	for _, known := range gchat.EventTypes {

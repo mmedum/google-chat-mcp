@@ -314,10 +314,11 @@ type UpdateSpaceInput struct {
 
 // SetSpaceAudienceInput opens a space to a target audience.
 type SetSpaceAudienceInput struct {
-	SpaceID        string `json:"space_id" jsonschema:"the space to open, spaces/{id}"`
-	Audience       string `json:"audience" jsonschema:"who can then find the space, read it and join without an invitation: default for the organization's default target audience, or audiences/{id} for one an administrator set up"`
-	ConfirmSpaceID string `json:"confirm_space_id" jsonschema:"the same value as space_id. Whoever is in the audience can read the space from then on, and making it private again does not take that back"`
-	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
+	SpaceID     string `json:"space_id" jsonschema:"the space to open, spaces/{id}"`
+	Audience    string `json:"audience" jsonschema:"who can then find the space, read it and join without an invitation: default for the organization's default target audience, or audiences/{id} for one an administrator set up"`
+	DisplayName string `json:"display_name" jsonschema:"what the space is called, as get_space reports it. The space is read first, and opening a space called something else is refused [stale]"`
+	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: whoever is in the audience can read the space from then on, and making it private again does not take that back"`
+	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
 
 // UpdateSpaceOutput is what the edit asked for.
@@ -393,11 +394,11 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "update_space",
 		Description: "Rename a space, change its description, or make it private again. Pass at least one; " +
-			"an empty edit is refused. Editing the description clears the space's guidelines, because Google's " +
-			"mask covers both at once, so edit a space that has guidelines in the Chat interface instead. " +
-			"audience private makes a space private; Google takes it only on its own, from a space manager. " +
-			"Opening a space to an audience is set_space_audience's. Set dry_run to see the patch body first. " +
-			"Needs the restricted-tier chat.spaces scope.",
+			"an empty edit is refused. Editing the description keeps the space's guidelines: Google's mask " +
+			"covers both at once, so the server reads them and sends them back unchanged. audience private " +
+			"makes a space private; Google takes it only on its own, from a space manager. Opening a space to " +
+			"an audience is set_space_audience's. Set dry_run to see the patch body first. Needs the " +
+			"restricted-tier chat.spaces scope.",
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
@@ -414,14 +415,15 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Name: "set_space_audience",
 		Description: "Open a named space to the organization or to a target audience: whoever is in it can then " +
 			"find the space, read it and join without an invitation, and making it private again with " +
-			"update_space does not take back what they read. Pass confirm_space_id with the same value as " +
-			"space_id. Refused unless the server allows irreversible writes. Google takes it only from a space " +
-			"manager. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope.",
+			"update_space does not take back what they read. Pass the space's display_name, as get_space " +
+			"reports it, and confirm: true; the space is read first and the call refused [stale] when it is " +
+			"called something else. Google takes it only from a space manager. Set dry_run to see the patch " +
+			"body first. Needs the restricted-tier chat.spaces scope.",
 		Kind:   Destructive,
 		Marked: true,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SetSpaceAudienceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.SetSpaceAudience(ctx, service.SetSpaceAudienceInput{
-			Space: in.SpaceID, Audience: in.Audience, Confirm: in.ConfirmSpaceID, DryRun: in.DryRun,
+			Space: in.SpaceID, Audience: in.Audience, DisplayName: in.DisplayName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, UpdateSpaceOutput{}, err

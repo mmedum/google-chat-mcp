@@ -39,7 +39,7 @@ Usage:
   google-chat-mcp status [--json]          account, token location, settings
   google-chat-mcp doctor [--spaces N]      check live responses against our models
   google-chat-mcp --version
-  google-chat-mcp --dump-schemas           tool and resource schemas as JSON
+  google-chat-mcp --dump-schemas           the full tool surface and resource schemas as JSON
 
 Settings come from GCM_* environment variables; every subcommand also
 accepts the matching flags (run one with -h).
@@ -177,13 +177,15 @@ const (
 	codeClientClosing = -32003
 )
 
-// cmdDumpSchemas prints the tool and resource schemas as JSON. It needs
-// no credentials: registration does not call Google.
+// cmdDumpSchemas prints the full tool surface and the resource schemas
+// as JSON, whatever the settings that leave tools out say. It needs no
+// credentials: registration does not call Google.
 func cmdDumpSchemas(args []string, stdout, stderr io.Writer) int {
 	cfg, err := loadConfig("--dump-schemas", args, stderr, nil)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
+	cfg = cfg.FullSurface()
 	log := config.NewLogger(cfg, io.Discard)
 	deps, err := build(context.Background(), cfg, log)
 	if err != nil {

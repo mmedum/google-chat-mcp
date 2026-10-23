@@ -28,6 +28,10 @@ type ListReactionsOptions struct {
 }
 
 // ListReactions returns one page of a message's reactions.
+//
+// It names chat.messages.readonly, which discovery lists for
+// reactions.list beside the reactions scopes: a read-only login asks for
+// it, and for no reactions scope.
 func (c *Client) ListReactions(ctx context.Context, o ListReactionsOptions) (*ListReactionsResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)
 	var clauses []string
@@ -46,7 +50,7 @@ func (c *Client) ListReactions(ctx context.Context, o ListReactionsOptions) (*Li
 		name:   o.Message,
 		path:   "reactions",
 		query:  q,
-		scope:  scopes.MessagesReactions,
+		scope:  scopes.MessagesReadonly,
 	}, &out)
 	return &out, err
 }

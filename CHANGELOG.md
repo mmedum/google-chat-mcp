@@ -13,23 +13,37 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
-- `set_space_audience` opens a space to a target audience. It is refused unless `GCM_ALLOW_DESTRUCTIVE=true`, takes the space twice, and Claude Code asks for it on every call.
+- `set_space_audience` opens a space to a target audience. It names the space by its display name, and Claude Code asks for it on every call.
+- `delete_thread` deletes a thread's first message and every reply under it, which `delete_message`'s `force` used to do.
+- `promote_member` makes someone a manager or an assistant manager of a space.
+- `add_external_member` invites someone from outside your organization into a space that admits them.
+- The `[stale]` error class, for a destructive call that names its target otherwise than the target reads.
 
 ### Changed
 
-- **Breaking:** the server no longer asks you before a write; your client approves each call. In Claude Code, list the writes you want to approve under `permissions.ask`, as the README shows. Only `delete_space` and `set_space_audience` carry the `requiresUserInteraction` mark now, so Claude Code no longer asks for every other write, and headless it no longer refuses them.
+- **Breaking:** the server no longer asks you before a write; your client approves each call. In Claude Code, list the writes you want to approve under `permissions.ask`, as the README shows. Only `delete_space`, `set_space_audience` and `delete_custom_emoji` carry the `requiresUserInteraction` mark now, so Claude Code no longer asks for every other write, and headless it no longer refuses them.
+- **Breaking:** the tools that cannot be taken back are not registered unless `GCM_ALLOW_DESTRUCTIVE=true`: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. They used to be registered and refuse each call.
+- **Breaking:** every one of those tools takes `confirm: true` on each call, a dry run excepted.
+- **Breaking:** `delete_message` and `delete_thread` take `text_start`, how the message's text begins; `delete_space` and `set_space_audience` take the space's `display_name` in place of `confirm_space_id`; `delete_custom_emoji` takes `emoji_name`. The target is read first, a dry run included, and a call that names it otherwise is refused `[stale]`.
+- **Breaking:** `add_member` refuses `[blocked]` an address your organization's directory does not know, into a space that admits people from outside it. Use `add_external_member` for those.
+- **Breaking:** `update_member_role` takes `MEMBER` alone; use `promote_member` to make someone a manager.
+- **Breaking:** under `GCM_READ_ONLY`, `login` asks for read-only scopes and `get_space_notification_setting` is not registered. Run `google-chat-mcp login` again after turning writes back on.
 - **Breaking:** `send_message` and `update_message` refuse a text that mentions everyone in the space, `<users/all>`. Mention the people you mean.
 - **Breaking:** `create_space` and `update_space` no longer open a space to a target audience; use `set_space_audience`. `update_space` still makes a space private.
 - **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v6`, as Go requires from v6 on; install with `go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest`.
+- `unpin_message` and `remove_reaction` are ordinary writes: registered by default and no longer marked destructive.
+- `list_reactions` and the reaction types of `list_space_events` name `chat.messages.readonly` when a scope is missing, which a read-only login asks for.
+- `--dump-schemas` prints the full tool surface, whatever the settings that leave tools out say.
 
 ### Removed
 
-- **Breaking:** `GCM_REQUIRE_PROMPT`, `GCM_ASK_BEFORE_SEND` and `GCM_INTERACTION_HINT`, and their flags. The first two are refused at start unless `false`, and `GCM_INTERACTION_HINT` is ignored; unset them, and drop the flags from your client's arguments.
+- **Breaking:** `GCM_REQUIRE_PROMPT`, `GCM_ASK_BEFORE_SEND` and `GCM_INTERACTION_HINT`, and their flags. The first two are refused at start unless `false`, and `GCM_INTERACTION_HINT` is ignored; unset them, and drop the flags from your client's arguments. A headless run that set `GCM_INTERACTION_HINT=false` to call `delete_space` or `set_space_audience` can no longer call them.
+- **Breaking:** `delete_message`'s `force` argument; use `delete_thread`.
 - The `[ambiguous_outcome]` error class. Only a write the person had confirmed could end with it.
 
 ### Fixed
 
-- `delete_space` accepts `confirm_space_id` as a bare id, like `space_id`. It refused the bare id it had just been given.
+- `update_space` keeps a space's guidelines when it changes the description. It cleared them.
 
 ## [5.1.1] - 2026-10-10
 

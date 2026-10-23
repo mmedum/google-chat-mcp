@@ -173,8 +173,22 @@ func TestListMembersNamesItsScope(t *testing.T) {
 	}
 }
 
+// noGuests answers a read of a space with one that admits nobody from
+// outside the organization, where an invite needs no directory lookup,
+// and passes every other request to h.
+func noGuests(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/spaces/") &&
+			!strings.Contains(r.URL.Path, "/members") {
+			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","externalUserAllowed":false}`)
+			return
+		}
+		h(w, r)
+	}
+}
+
 func TestAddMemberInvitesByEmail(t *testing.T) {
-	s, rec := recorded(t, ok(`{"name":"spaces/A/members/M"}`))
+	s, rec := recorded(t, noGuests(ok(`{"name":"spaces/A/members/M"}`)))
 	got, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com",
 	})
@@ -196,7 +210,7 @@ func TestAddMemberInvitesByEmail(t *testing.T) {
 // The membership that already exists belongs to whoever invited them
 // first. Returning it would say this call added them when it did not.
 func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
-	s := newService(t, status(409, `{"error":{"status":"ALREADY_EXISTS","message":"already a member"}}`))
+	s := newService(t, noGuests(status(409, `{"error":{"status":"ALREADY_EXISTS","message":"already a member"}}`)))
 	_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
 	assertClass(t, err, ClassInvalid)
 	if !strings.Contains(err.Error(), "janedoe@example.com") {
@@ -204,16 +218,17 @@ func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
 	}
 }
 
+// A dry run reads the space, as the invite would, and invites nobody.
 func TestAddMemberDryRunInvitesNobody(t *testing.T) {
-	s, rec := recorded(t, ok(`{"name":"spaces/A/members/M"}`))
+	s, rec := recorded(t, noGuests(ok(`{"name":"spaces/A/members/M"}`)))
 	got, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
-	if rec.len() != 0 {
-		t.Errorf("a dry run made %d requests", rec.len())
+	if n := rec.writes(); n != 0 {
+		t.Errorf("a dry run sent %d writes", n)
 	}
 	if got.Name != "" || !got.DryRun {
 		t.Errorf("result = %+v", got)
@@ -343,7 +358,7 @@ func TestMemberWritesNameTheirScope(t *testing.T) {
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	for _, run := range []func() error{
 		func() error {
-			_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
+			_, err := s.AddExternalMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
 			return err
 		},
 		func() error {
@@ -355,10 +370,79 @@ func TestMemberWritesNameTheirScope(t *testing.T) {
 	}
 }
 
+// Someone added to a space can read what is already in it, so add_member
+// takes only people in the organization's directory into a space that
+// says it admits anyone from outside. A space that says nothing admits
+// nobody from outside, since Google leaves a false boolean out, and
+// needs no lookup: Google refuses the invite there itself. A directory
+// that declines to answer vouches for nobody; one that could answer
+// later is reported as it failed. add_external_member is the way past
+// the check, and it is registered only with the destructive tools.
+func TestAddMemberRefusesSomeoneFromOutside(t *testing.T) {
+	forbidden := `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"no directory"}}`
+	noScope := `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`
+	for _, tc := range []struct {
+		name      string
+		space     string
+		directory http.HandlerFunc
+		external  bool
+		dryRun    bool
+		wantErr   Class
+		wantReads int
+	}{
+		{"in the directory", `{"externalUserAllowed":true}`,
+			ok(`{"people":[{"emailAddresses":[{"value":"JaneDoe@example.com"}]}]}`), false, false, "", 2},
+		{"not in the directory", `{"externalUserAllowed":true}`, ok(`{}`), false, false, ClassBlocked, 2},
+		{"a neighbor of the address", `{"externalUserAllowed":true}`,
+			ok(`{"people":[{"emailAddresses":[{"value":"janedoe@example.com.invalid"}]}]}`), false, false, ClassBlocked, 2},
+		{"not in the directory, in a dry run", `{"externalUserAllowed":true}`, ok(`{}`), false, true, ClassBlocked, 2},
+		{"a directory that declines", `{"externalUserAllowed":true}`, status(403, forbidden), false, false, ClassBlocked, 2},
+		{"a directory scope not granted", `{"externalUserAllowed":true}`, status(403, noScope), false, false, ClassScope, 2},
+		{"a directory that failed", `{"externalUserAllowed":true}`,
+			status(503, `{"error":{"code":503,"status":"UNAVAILABLE","message":"try later"}}`), false, false, ClassServer, 2},
+		{"a space that does not say", `{}`, ok(`{}`), false, false, "", 1},
+		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, ok(`{}`), false, false, "", 1},
+		{"through add_external_member", `{"externalUserAllowed":true}`, ok(`{}`), true, false, "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, route(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprint(w, tc.space)
+					return
+				}
+				fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
+			}, tc.directory))
+			add := s.AddMember
+			if tc.external {
+				add = s.AddExternalMember
+			}
+			_, err := add(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com", DryRun: tc.dryRun})
+			reads, writes := rec.count(http.MethodGet), rec.writes()
+			// A failed read is retried, so the floor is what matters.
+			if reads < tc.wantReads || (tc.wantErr != ClassServer && reads != tc.wantReads) {
+				t.Errorf("%d reads, want %d", reads, tc.wantReads)
+			}
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				if writes != 0 {
+					t.Errorf("a refused invite sent %d writes", writes)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddMember: %v", err)
+			}
+			if writes != 1 {
+				t.Errorf("%d writes, want the invite", writes)
+			}
+		})
+	}
+}
+
 // The tools that hand Google a caller-supplied address all say what to
 // check, because the address is nearly always what Google objected to.
 func TestAddMemberExplainsAnAddressGoogleWillNotTake(t *testing.T) {
-	s := newService(t, status(400, `{"error":{"status":"INVALID_ARGUMENT","message":"invalid member"}}`))
+	s := newService(t, noGuests(status(400, `{"error":{"status":"INVALID_ARGUMENT","message":"invalid member"}}`)))
 	_, err := s.AddMember(writeCtx(), AddMemberInput{
 		Space: "spaces/A", Email: "janedoe@example.com",
 	})
@@ -376,10 +460,10 @@ func TestUpdateMemberRoleMasksRoleAlone(t *testing.T) {
 	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
 		mask, method = r.URL.Query().Get("updateMask"), r.Method
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MANAGER"}`)
+		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MEMBER"}`)
 	})
 	got, err := s.UpdateMemberRole(context.Background(), UpdateMemberRoleInput{
-		Membership: "spaces/AAAAspace1/members/AAAAmember1", Role: "MANAGER",
+		Membership: "spaces/AAAAspace1/members/AAAAmember1", Role: "MEMBER",
 	})
 	if err != nil {
 		t.Fatalf("UpdateMemberRole: %v", err)
@@ -387,12 +471,54 @@ func TestUpdateMemberRoleMasksRoleAlone(t *testing.T) {
 	if method != http.MethodPatch || mask != "role" {
 		t.Errorf("%s with updateMask=%q, want PATCH masking role alone", method, mask)
 	}
-	if body["role"] != "ROLE_MANAGER" || len(body) != 1 {
+	if body["role"] != "ROLE_MEMBER" || len(body) != 1 {
 		t.Errorf("body = %v, want the role by itself", body)
 	}
 	// What Google recorded, not what was asked for.
-	if got.Role != "ROLE_MANAGER" {
+	if got.Role != "ROLE_MEMBER" {
 		t.Errorf("role = %q", got.Role)
+	}
+}
+
+// A manager controls the space, so only promote_member makes one, and it
+// makes nothing else. A refused role reaches nothing.
+func TestOnlyPromoteMemberMakesAManager(t *testing.T) {
+	for _, tc := range []struct {
+		role     string
+		promote  bool
+		wantErr  Class
+		wantRole string
+	}{
+		{"MEMBER", false, "", "ROLE_MEMBER"},
+		{"MANAGER", false, ClassBlocked, ""},
+		{"ASSISTANT_MANAGER", false, ClassBlocked, ""},
+		{"MANAGER", true, "", "ROLE_MANAGER"},
+		{"ASSISTANT_MANAGER", true, "", "ROLE_ASSISTANT_MANAGER"},
+		{"MEMBER", true, ClassInvalid, ""},
+	} {
+		t.Run(fmt.Sprintf("%s promote=%v", tc.role, tc.promote), func(t *testing.T) {
+			s, rec := recorded(t, ok(`{}`))
+			update := s.UpdateMemberRole
+			if tc.promote {
+				update = s.PromoteMember
+			}
+			_, err := update(writeCtx(), UpdateMemberRoleInput{
+				Membership: "spaces/AAAAspace1/members/AAAAmember1", Role: tc.role,
+			})
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				if rec.len() != 0 {
+					t.Errorf("a refused role reached Google %d times", rec.len())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpdateMemberRole: %v", err)
+			}
+			if sent := rec.last(t); !strings.Contains(sent.Body, `"role":"`+tc.wantRole+`"`) {
+				t.Errorf("body = %s, want role %s", sent.Body, tc.wantRole)
+			}
+		})
 	}
 }
 
@@ -415,7 +541,7 @@ func TestUpdateMemberRoleDryRun(t *testing.T) {
 	s := newService(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("a dry run must not reach Google")
 	})
-	got, err := s.UpdateMemberRole(context.Background(), UpdateMemberRoleInput{
+	got, err := s.PromoteMember(context.Background(), UpdateMemberRoleInput{
 		Membership: "spaces/AAAAspace1/members/AAAAmember1", Role: "MANAGER", DryRun: true,
 	})
 	if err != nil {
