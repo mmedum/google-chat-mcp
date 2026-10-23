@@ -90,7 +90,7 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 		Scopes:        statusScopes{Granted: []string{}, Missing: []string{}},
 		Settings: statusSettings{
 			ReadOnly:    cfg.ReadOnly,
-			Destructive: cfg.AllowDestructive,
+			Destructive: cfg.EnableDestructive,
 			Toolsets:    toolsetList(cfg.Toolsets),
 			LocalDir:    orNil(cfg.LocalDir),
 			ChatAPIBase: cfg.ChatAPIBase,

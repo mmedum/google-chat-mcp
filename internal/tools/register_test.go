@@ -76,7 +76,7 @@ func allToolsets() config.Config { return config.Config{Toolsets: config.AllTool
 func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 	cfg := allToolsets()
 	cfg.ReadOnly = true
-	cfg.AllowDestructive = true
+	cfg.EnableDestructive = true
 	got := registered(t, cfg,
 		spec{Name: "a_read", Description: "d", Kind: Read},
 		spec{Name: "a_write", Description: "d", Kind: Write},
@@ -110,7 +110,7 @@ func TestReadOnlyLeavesOutAReadThroughAWriteScope(t *testing.T) {
 	}
 }
 
-// A destructive tool is not registered unless GCM_ALLOW_DESTRUCTIVE is
+// A destructive tool is not registered unless GCM_ENABLE_DESTRUCTIVE is
 // on: some mode of every widely used client runs a listed tool with
 // nobody approving the call, so a tool that must not run unattended is
 // not listed.
@@ -128,13 +128,13 @@ func TestADestructiveToolIsRegisteredOnlyWhenAllowed(t *testing.T) {
 		}
 	}
 	if _, ok := refused["a_delete"]; ok {
-		t.Error("a destructive tool is registered without GCM_ALLOW_DESTRUCTIVE")
+		t.Error("a destructive tool is registered without GCM_ENABLE_DESTRUCTIVE")
 	}
 
 	cfg := allToolsets()
-	cfg.AllowDestructive = true
+	cfg.EnableDestructive = true
 	if _, ok := registered(t, cfg, specs...)["a_delete"]; !ok {
-		t.Error("a destructive tool is missing with GCM_ALLOW_DESTRUCTIVE on")
+		t.Error("a destructive tool is missing with GCM_ENABLE_DESTRUCTIVE on")
 	}
 }
 
@@ -303,7 +303,7 @@ type deleteProbe struct {
 // confirm.
 func TestADeleteRunsOnlyWithConfirm(t *testing.T) {
 	cfg := allToolsets()
-	cfg.AllowDestructive = true
+	cfg.EnableDestructive = true
 
 	ran := 0
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)

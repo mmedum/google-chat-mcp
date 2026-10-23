@@ -16,17 +16,17 @@ dir=$(dirname "$0")
 
 case $(uname -m) in
   x86_64 | amd64)
-    bin=$dir/google-chat-mcp-amd64
+    bin=$dir/google-chat-mcp-linux-amd64
     ;;
   aarch64 | arm64)
-    bin=$dir/google-chat-mcp-arm64
+    bin=$dir/google-chat-mcp-linux-arm64
     ;;
   *)
     # stderr, because stdout is the JSON-RPC channel and a line of
     # English on it corrupts the session before the client's first
     # request completes.
     echo "google-chat-mcp: no binary in this bundle for $(uname -m)." \
-         "Install with: go install github.com/mmedum/google-chat-mcp/cmd/google-chat-mcp@latest" >&2
+         "Install with: go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest" >&2
     exit 1
     ;;
 esac

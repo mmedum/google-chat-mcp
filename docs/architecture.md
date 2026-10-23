@@ -131,7 +131,7 @@ docs said thirteen when the server registered twenty-five.
 `register` takes a tool's `Kind` — read, write, idempotent write,
 destructive — and derives from it the MCP annotations, whether
 `GCM_READ_ONLY` leaves the tool registered, and whether it needs
-`GCM_ALLOW_DESTRUCTIVE` to be registered at all. Three rules enforced by
+`GCM_ENABLE_DESTRUCTIVE` to be registered at all. Three rules enforced by
 author discipline is three ways to be quietly wrong. Two more are held
 at start, by a panic: a destructive tool takes `confirm`, and only a
 destructive tool carries the mark.
@@ -150,7 +150,7 @@ that is not registered cannot be called, a dry run cannot write, and a
 witness that does not match changes nothing.
 
 So the destructive tools are not registered unless
-`GCM_ALLOW_DESTRUCTIVE=true`. Until 6.0.0 they were registered and
+`GCM_ENABLE_DESTRUCTIVE=true`. Until 6.0.0 they were registered and
 refused at call time, a recorded deviation from the standard: a tool
 that vanished was held to be a broken client rather than a safer one.
 That left Claude Code prompting for a marked tool the server then
@@ -246,7 +246,7 @@ tool of its own, registered only with the destructive ones.
   space's settings and remove people, which is a new owner in the
   standard's words. `update_member_role` takes `MEMBER` alone and refuses
   the other roles `[blocked]`.
-- **Deletes are registered only under `GCM_ALLOW_DESTRUCTIVE=true`, and
+- **Deletes are registered only under `GCM_ENABLE_DESTRUCTIVE=true`, and
   each call says `confirm: true`.** That argument is a witness that the
   caller meant the call, never an approval: the model sets it. The same
   holds for every destructive tool. `delete_message` deletes one message.
@@ -431,6 +431,20 @@ launcher is the third option neither of those considered. Checked
 against the client's own manifest schema, whose platform enum is
 `darwin`, `win32`, `linux`.
 
+The bundle has the sibling servers' shape. It stages
+`server/google-chat-mcp-darwin`, `server/google-chat-mcp.exe`,
+`server/google-chat-mcp-linux-amd64`, `server/google-chat-mcp-linux-arm64`
+and `server/launch-linux.sh`, with the LICENSE and the README at the
+root, and claims Claude Desktop 0.10.0 or later. It asks for what a
+person sets in another client's configuration, each under the
+variable's name without `GCM_`, lowercased: `client_secret`, `profile`,
+`read_only`, `enable_destructive`, `toolsets` and `local_dir`. The
+bundle gate gives every other variable the server reads a reason it is
+left out, refuses a switch that defaults to anything but the server's
+own default and defaults that configure the server at all, and refuses
+an empty `privacy_policies`. The manifest lists
+no tools, since the settings change what registers, and carries no icon.
+
 ## Evidence log
 
 Every convention here was checked against a primary source or a live
@@ -519,6 +533,9 @@ contradicted a document, which won.
 | Pinning an action does not pin what the action installs | So `cosign-release` and `syft-version` are pinned beside the SHAs. A half-pinned step reads exactly like a pinned one |
 | goreleaser's `mcp` block cannot publish an MCPB package | The registry requires `fileSha256` for that type and the block has exactly `registry_type`, `identifier` and `transport`. Read out of its config at v2.18.0 and again at v2.18.1 |
 | The registry enforces its MCPB rules in code, not in the published schema | A hash, a github.com or gitlab.com release-asset URL carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL before it accepts the entry — so the entry can only be published after the release exists |
+| A bundle install has a second approval behind the server, as Claude Code's ask rules are | **Refuted**, read 2026-10-23; Claude Desktop itself not probed. anthropics/mcpb `70fe3b34` and v2.1.2 declare the manifest's `tools` list for display, and nothing reads it at run time. Claude's connector docs: Desktop approves per tool, driven by the annotations, and "Always allow" skips the prompt "for that tool from now on". So every switch the bundle asks for defaults to the server's own, off, the bundle gate refuses one that does not, and the manifest lists no tools |
+| `privacy_policies` is optional for a bundle | **Refuted**. The manifest specification (anthropics/mcpb `70fe3b34`, MANIFEST.md) makes it "Required when the extension connects to external services (first- or third-party) that process user data". Neither the schema nor `mcpb validate` enforces it, so the bundle gate does. The manifest names Google's, https://policies.google.com/privacy, which answered 200 on 2026-10-24 |
+| A bundle setting the person leaves empty reaches the server empty | **Refuted** for an optional key with no default: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, passes `${user_config.x}` through as written. A `""` default reaches the server as `""`, and a boolean as `"true"` or `"false"`. So every optional key has a default, and the bundle gate builds the configuration from the bundle's defaults and holds it to an unconfigured server's |
 | `defaults.run` covers every `run` step in a workflow | Most specific wins, and an explicit `shell: bash` also turns on pipefail. Without it a step on the Windows runner gets PowerShell, and the mangling shows up on the line that runs |
 
 ## Agent evals

@@ -104,7 +104,8 @@ func TestDumpSchemasNeedsNoCredentials(t *testing.T) {
 // lost.
 func TestDumpSchemasCarriesTheWholeSurface(t *testing.T) {
 	tempProfile(t)
-	t.Setenv("GCM_ALLOW_DESTRUCTIVE", "false")
+	t.Setenv("GCM_ENABLE_DESTRUCTIVE", "false")
+	t.Setenv("GCM_ALLOW_DESTRUCTIVE", "")
 	t.Setenv("GCM_READ_ONLY", "true")
 	t.Setenv("GCM_TOOLSETS", "core")
 	code, stdout, stderr := runCmd(t, "--dump-schemas")
@@ -116,6 +117,25 @@ func TestDumpSchemasCarriesTheWholeSurface(t *testing.T) {
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("the dump does not contain %s", want)
+		}
+	}
+}
+
+// A setting under its old name works, and every command says it was
+// renamed.
+func TestAnOldSettingNameIsWarnedAbout(t *testing.T) {
+	tempProfile(t)
+	t.Setenv("GCM_ALLOW_DESTRUCTIVE", "true")
+	t.Setenv("GCM_ENABLE_DESTRUCTIVE", "")
+	code, _, stderr := runCmd(t, "--dump-schemas")
+	if code != 0 {
+		t.Fatalf("--dump-schemas exited %d (%s)", code, stderr)
+	}
+	for _, want := range []string{
+		"renamed", `"old":"GCM_ALLOW_DESTRUCTIVE"`, `"new":"GCM_ENABLE_DESTRUCTIVE"`, `"new_flag":"--enable-destructive"`,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr does not say %s: %s", want, stderr)
 		}
 	}
 }

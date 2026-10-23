@@ -191,7 +191,7 @@ var tasks = []task{
 			}
 		},
 		// delete_thread is registered only with the destructive tools.
-		env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "true"},
+		env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
 	},
 	{
 		name: "react-then-clear",
