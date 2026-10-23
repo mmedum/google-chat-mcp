@@ -189,6 +189,39 @@ func TestDeleteMessageReportsAnAlreadyGoneMessage(t *testing.T) {
 	}
 }
 
+// A group in a space that admits people from outside goes through
+// add_external_member, which takes group_name; add_member refuses it.
+func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
+	var sent []map[string]any
+	cs := session(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","externalUserAllowed":true}`)
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		sent = append(sent, body)
+		fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
+	})
+	args := map[string]any{"space_id": "spaces/A", "group_name": "groups/AAAAgroup1"}
+	res := call(t, cs, "add_member", args, nil)
+	if !res.IsError || !strings.HasPrefix(errorText(t, res), "[blocked]") {
+		t.Fatalf("add_member added a group to a space that admits outsiders: %+v", res)
+	}
+	args["confirm"] = true
+	var out AddMemberOutput
+	if res := call(t, cs, "add_external_member", args, &out); res.IsError {
+		t.Fatalf("add_external_member: %s", errorText(t, res))
+	}
+	if len(sent) != 1 {
+		t.Fatalf("%d writes, want the one group add", len(sent))
+	}
+	group, _ := sent[0]["groupMember"].(map[string]any)
+	if group["name"] != "groups/AAAAgroup1" || out.GroupName != "groups/AAAAgroup1" {
+		t.Errorf("sent %v and reported %+v, want groups/AAAAgroup1 added", sent[0], out)
+	}
+}
+
 // A misspelled dry_run must fail rather than post for real, which is
 // what additionalProperties false buys.
 func TestAMisspelledArgumentIsRefused(t *testing.T) {

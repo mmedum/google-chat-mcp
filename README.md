@@ -212,8 +212,8 @@ and the three tools that move them say so.
 | `create_space` | Create a private named space with up to 20 people | `chat.spaces.create` |
 | `update_space` | Rename a space, change its description, or make it private | `chat.spaces` |
 | `set_space_audience` | Open a space to a target audience, with `GCM_ALLOW_DESTRUCTIVE` | `chat.spaces` |
-| `add_member` | Invite someone in your organization to a space by email, or add a Google Group | `chat.memberships`; `chat.spaces.readonly`, `directory.readonly` to check the address |
-| `add_external_member` | Invite someone from outside your organization, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships` |
+| `add_member` | Invite someone in your organization to a space by email, or add a Google Group to a space that admits nobody from outside | `chat.memberships`; `chat.spaces.readonly`, `directory.readonly` to check the address |
+| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships` |
 | `remove_member` | Remove a membership, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
 | `rename_section` | Rename a sidebar section | `chat.users.sections` |
@@ -290,8 +290,8 @@ client that includes resources in its context:
   an edit that mentions everyone, `<users/all>`, is refused. A space is
   created private, and `update_space` does not open one. In a space that
   admits people from outside your organization, `add_member` refuses an
-  address your organization's directory does not know, and
-  `update_member_role` makes nobody a manager: those are
+  address your organization's directory does not know and every Google
+  Group, and `update_member_role` makes nobody a manager: those are
   `add_external_member` and `promote_member`.
 - **`send_message` posts the body verbatim.** No prefix, no suffix, no
   "sent by an assistant" footer.

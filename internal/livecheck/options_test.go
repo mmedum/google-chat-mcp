@@ -42,7 +42,6 @@ import (
 // says that.
 var excusedOptions = map[string]string{
 	"create_space.member_emails":                     "would put a real colleague in a scratch space; a live run involves nobody else",
-	"add_member.group_name":                          "adds a Google Group, which would put real people in the scratch space",
 	"download_attachment.attachment_name":            "the by-name form of a download the step already makes by message",
 	"get_messages.since":                             "a time bound on a space minutes old, where every bound is degenerate",
 	"list_space_events.since":                        "same: the scratch space has no history to bound",

@@ -244,6 +244,10 @@ count as outside. Where the person really is outside, or the lookup
 cannot see them, `add_external_member` invites them; it needs
 `GCM_ALLOW_DESTRUCTIVE=true`.
 
+A Google Group is refused there whoever is in it, because the group's
+members from outside join with it, and so does anyone added to the
+group later. `add_external_member` adds a group too.
+
 ## `remove_reaction` reports nothing removed, but the reaction is there
 
 The by-triple form — message, emoji, person — has to resolve each

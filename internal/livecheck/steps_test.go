@@ -570,12 +570,13 @@ var steps = []step{
 		}
 	}},
 
-	// add_member takes only people in the organization's directory into a
-	// space that says it admits anyone from outside it. A dry run with an
-	// address no directory holds: nothing is sent either way. Whether the
-	// scratch space admits outsiders is the organization's policy, read
-	// off the space rather than assumed; where it says nothing, Google
-	// left a false out, refuses outsiders itself, and no lookup is made.
+	// add_member takes only people in the organization's directory, and
+	// no Google Group, into a space that says it admits anyone from
+	// outside it. Dry runs with an address no directory holds and a
+	// made-up group: nothing is sent either way. Whether the scratch
+	// space admits outsiders is the organization's policy, read off the
+	// space rather than assumed; where it says nothing, Google left a
+	// false out, refuses outsiders itself, and no lookup is made.
 	{"an invite from outside the organization is refused", "add_member", func(d *driver) {
 		var space struct {
 			ExternalUserAllowed *bool `json:"external_user_allowed"`
@@ -584,15 +585,22 @@ var steps = []step{
 		res := d.call("add_member", map[string]any{
 			"space_id": d.space, "user_email": "livecheck-outsider@example.com", "dry_run": true,
 		})
+		group := d.call("add_member", map[string]any{
+			"space_id": d.space, "group_name": "groups/AAAAlivecheckgroup", "dry_run": true,
+		})
 		if space.ExternalUserAllowed == nil || !*space.ExternalUserAllowed {
 			d.t.Log("the scratch space does not say it admits anyone from outside, so no lookup is made")
-			if res.IsError {
-				d.t.Errorf("a dry run into a space that admits nobody from outside: %s", d.redact(res.Text))
+			if res.IsError || group.IsError {
+				d.t.Errorf("a dry run into a space that admits nobody from outside: %s %s",
+					d.redact(res.Text), d.redact(group.Text))
 			}
 			return
 		}
 		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {
 			d.t.Errorf("an address outside the directory was not refused: %s", d.redact(res.Text))
+		}
+		if !group.IsError || !strings.HasPrefix(group.Text, "[blocked]") {
+			d.t.Errorf("a group into a space that admits outsiders was not refused: %s", d.redact(group.Text))
 		}
 	}},
 

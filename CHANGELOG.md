@@ -16,7 +16,7 @@ upgrading are marked **Breaking:** and say what to do.
 - `set_space_audience` opens a space to a target audience. It names the space by its display name, and Claude Code asks for it on every call.
 - `delete_thread` deletes a thread's first message and every reply under it, which `delete_message`'s `force` used to do.
 - `promote_member` makes someone a manager or an assistant manager of a space.
-- `add_external_member` invites someone from outside your organization into a space that admits them.
+- `add_external_member` invites someone from outside your organization, or adds a Google Group, into a space that admits people from outside.
 - The `[stale]` error class, for a destructive call that names its target otherwise than the target reads.
 
 ### Changed
@@ -26,6 +26,7 @@ upgrading are marked **Breaking:** and say what to do.
 - **Breaking:** every one of those tools takes `confirm: true` on each call, a dry run excepted.
 - **Breaking:** `delete_message` and `delete_thread` take `text_start`, how the message's text begins; `delete_space` and `set_space_audience` take the space's `display_name` in place of `confirm_space_id`; `delete_custom_emoji` takes `emoji_name`. The target is read first, a dry run included, and a call that names it otherwise is refused `[stale]`.
 - **Breaking:** `add_member` refuses `[blocked]` an address your organization's directory does not know, into a space that admits people from outside it. Use `add_external_member` for those.
+- **Breaking:** `add_member` refuses `[blocked]` every Google Group into a space that admits people from outside your organization, since the group brings in its outside members and anyone added to it later. Use `add_external_member`.
 - **Breaking:** `update_member_role` takes `MEMBER` alone; use `promote_member` to make someone a manager.
 - **Breaking:** under `GCM_READ_ONLY`, `login` asks for read-only scopes and `get_space_notification_setting` is not registered. Run `google-chat-mcp login` again after turning writes back on.
 - **Breaking:** `send_message` and `update_message` refuse a text that mentions everyone in the space, `<users/all>`. Mention the people you mean.

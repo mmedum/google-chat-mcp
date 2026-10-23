@@ -38,7 +38,8 @@ call any registered tool, under your valid credentials. The server holds
 a few lines whatever the client approves: it refuses a post or an edit
 that mentions everyone, a space opened to an audience outside
 `set_space_audience`, a manager made outside `promote_member`, and an
-invite from outside the organization outside `add_external_member`.
+invite from outside the organization, or a Google Group into a space
+that admits outsiders, outside `add_external_member`.
 Those three and every delete are not registered unless you set
 `GCM_ALLOW_DESTRUCTIVE=true`, and each of their calls says
 `confirm: true`. The message, space and emoji deletes and

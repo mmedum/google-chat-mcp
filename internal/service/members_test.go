@@ -439,6 +439,64 @@ func TestAddMemberRefusesSomeoneFromOutside(t *testing.T) {
 	}
 }
 
+// A group added to a space that admits people from outside brings its
+// outside members in, and anyone added to the group later, so add_member
+// refuses every group there, one the directory knows included. A space
+// without guest access leaves outsiders out, so a group add there is
+// ordinary. add_external_member adds a group anywhere.
+func TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted(t *testing.T) {
+	known := ok(`{"people":[{"emailAddresses":[{"value":"team@example.com"}]}]}`)
+	for _, tc := range []struct {
+		name      string
+		space     string
+		external  bool
+		dryRun    bool
+		wantErr   Class
+		wantReads int
+	}{
+		{"a space that admits outsiders", `{"externalUserAllowed":true}`, false, false, ClassBlocked, 1},
+		{"a space that admits outsiders, in a dry run", `{"externalUserAllowed":true}`, false, true, ClassBlocked, 1},
+		{"a space that does not say", `{}`, false, false, "", 1},
+		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, false, false, "", 1},
+		{"through add_external_member", `{"externalUserAllowed":true}`, true, false, "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rec := recorded(t, route(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					fmt.Fprint(w, tc.space)
+					return
+				}
+				fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
+			}, known))
+			add := s.AddMember
+			if tc.external {
+				add = s.AddExternalMember
+			}
+			_, err := add(writeCtx(), AddMemberInput{Space: "spaces/A", Group: "groups/AAAAgroup1", DryRun: tc.dryRun})
+			if reads := rec.count(http.MethodGet); reads != tc.wantReads {
+				t.Errorf("%d reads, want %d", reads, tc.wantReads)
+			}
+			writes := rec.writes()
+			if tc.wantErr != "" {
+				assertClass(t, err, tc.wantErr)
+				if !strings.Contains(err.Error(), "add_external_member adds groups/AAAAgroup1") {
+					t.Errorf("error = %q, want it to name add_external_member", err)
+				}
+				if writes != 0 {
+					t.Errorf("a refused group add sent %d writes", writes)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("add: %v", err)
+			}
+			if writes != 1 {
+				t.Errorf("%d writes, want the group added", writes)
+			}
+		})
+	}
+}
+
 // The tools that hand Google a caller-supplied address all say what to
 // check, because the address is nearly always what Google objected to.
 func TestAddMemberExplainsAnAddressGoogleWillNotTake(t *testing.T) {

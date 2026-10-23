@@ -442,19 +442,21 @@ type AddMemberResult struct {
 }
 
 // AddMember invites someone inside the organization into a space by
-// email address, or adds a Google Group.
+// email address, or adds a Google Group to a space that admits nobody
+// from outside.
 func (s *Service) AddMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
 	return s.addMember(ctx, in, false)
 }
 
 // AddExternalMember invites someone the organization's directory need
-// not know, by email address.
+// not know, by email address, or adds a Google Group to any space.
 func (s *Service) AddExternalMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
 	return s.addMember(ctx, in, true)
 }
 
 // addMember makes the membership, refusing someone from outside the
-// organization unless outside is set.
+// organization, and any group where outsiders are admitted, unless
+// outside is set.
 //
 // Someone already in the space is reported rather than passed off as a
 // success. Google usually answers the duplicate with the existing
@@ -477,6 +479,11 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 		group, err := requireGroup(in.Group)
 		if err != nil {
 			return nil, err
+		}
+		if !outside {
+			if err := s.refuseGroup(ctx, space, group); err != nil {
+				return nil, err
+			}
 		}
 		// Google's own rule, and worth saying here: a group cannot join
 		// a group chat or a direct message, only a named space.
@@ -532,21 +539,15 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 // Someone added to a space can read what is already in it. Widening
 // that past the organization is its own tool, registered only with the
 // destructive ones (docs/architecture.md, "What a write may reach").
-// Only a space that says it admits people from outside is checked:
-// Google leaves a false boolean out of its JSON, so a space that says
-// nothing admits nobody from outside, and Google refuses the invite
-// there itself. The address is looked up in the organization's
+// Only a space that says it admits people from outside is checked
+// (admitsOutsiders). The address is looked up in the organization's
 // directory, its members only, since a contact an administrator shared
 // is someone outside. A directory that cannot be read cannot vouch for
 // anyone, which fails closed: a personal account has none, so everyone
 // counts as outside.
 func (s *Service) refuseOutsider(ctx context.Context, space, email string) error {
-	sp, err := s.client.GetSpace(ctx, space)
-	if err != nil {
-		return Classify(err)
-	}
-	if sp.ExternalUser == nil || !*sp.ExternalUser {
-		return nil
+	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
+		return err
 	}
 	found, err := s.client.SearchDirectoryPeople(ctx, email, 10, true)
 	if err != nil {
@@ -563,6 +564,37 @@ func (s *Service) refuseOutsider(ctx context.Context, space, email string) error
 		}
 	}
 	return outsiderRefused(email, space, "")
+}
+
+// refuseGroup refuses adding a Google Group to a space that admits
+// people from outside the organization, whatever the directory says of
+// the group.
+//
+// Google invites a group's outside members into such a space, and
+// carries every later change to the group's membership into it
+// (docs/architecture.md, evidence log). So a group the organization owns
+// can bring in outsiders after the add, and no check at add time holds.
+// In a space that admits nobody from outside, Google leaves them out.
+func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
+	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
+		return err
+	}
+	return Failf(ClassBlocked, "%s admits people from outside the organization, and a Google Group added to it "+
+		"brings in its members from outside, and anyone added to the group later. add_member adds a group only "+
+		"to a space that admits nobody from outside; nothing was sent. add_external_member adds %s, when "+
+		"%sALLOW_DESTRUCTIVE=true", space, group, config.EnvPrefix)
+}
+
+// admitsOutsiders reports whether a space says it admits people from
+// outside the organization. Google leaves a false boolean out of its
+// JSON, so a space that says nothing admits nobody from outside, and
+// Google refuses an outsider there itself.
+func (s *Service) admitsOutsiders(ctx context.Context, space string) (bool, error) {
+	sp, err := s.client.GetSpace(ctx, space)
+	if err != nil {
+		return false, Classify(err)
+	}
+	return sp.ExternalUser != nil && *sp.ExternalUser, nil
 }
 
 // worthReporting reports whether a failed directory lookup is passed on

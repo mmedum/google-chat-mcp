@@ -232,8 +232,13 @@ tool of its own, registered only with the destructive ones.
   invites someone from outside, and is destructive. A space that says
   nothing admits nobody from outside, since Google leaves a false
   boolean out of its JSON, and needs no lookup: Google refuses the
-  invite there itself. A Google Group added by `group_name` is not
-  looked up, though a group can hold people from outside.
+  invite there itself. Every Google Group is refused into a space that
+  admits outsiders, whatever the directory says of it: Google invites
+  the group's outside members and carries every later change to the
+  group into the space (evidence log), so no check at add time holds.
+  `add_external_member` adds it. In a space that admits nobody from
+  outside, Google leaves the group's outsiders out, and a group add is
+  ordinary.
   `create_space`, `create_group_chat` and `find_direct_message` stay
   ordinary writes: a new conversation shows nobody what was already
   there.
@@ -447,6 +452,7 @@ contradicted a document, which won.
 | A quote's snapshot is filled differently for a reply and a forward | A REPLY carries `sender` and `text` only; `formattedText`, `annotations` and `attachments` are documented as populated for FORWARD alone, and `forwardedMetadata` only for a forward. Reference, 2026-09-17. So an empty link list on a reply-quote is Google saying nothing, not the quoted message having no links, and the tool schemas say which is which. For a forward the snapshot is the only copy a caller can reach: the source space is usually one they are not in |
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
 | A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too. So `delete_thread` takes a first message that reads as deleted, without comparing its witness, sends `force=true` and reports Google's answer, a refusal included: the replies left under it are what the call is for, and the deleted first message says nothing of them. `delete_message` always sends `force=false`. 2026-10-23 |
+| A group in a space that admits outsiders brings them in, now and later | Google's help page "Add a Google Group to a space" (support.google.com/chat/answer/13535086, read 2026-10-23): "If Allow people outside your organization to join is enabled, the group and its members are invited to the space"; external members are "excluded in spaces with guest access turned off"; and "Any changes to the group's membership ... are also automatically reflected in the space". So a group the organization owns can bring in an outsider after it is added, and `add_member` refuses every group into such a space rather than checking the group once. Help-page prose, not settled live: the live run adds no group, since that would put real people in the scratch space |
 | A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
 | `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
