@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-10",
+  "fetched": "2026-10-23",
   "apis": {
     "chat": {
       "customEmojis.create": {
@@ -281,6 +281,13 @@
           "https://www.googleapis.com/auth/chat.messages.reactions",
           "https://www.googleapis.com/auth/chat.messages.reactions.readonly",
           "https://www.googleapis.com/auth/chat.messages.readonly"
+        ]
+      },
+      "spaces.messages.replaceCards": {
+        "verb": "POST",
+        "path": "v1/{+name}:replaceCards",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.bot"
         ]
       },
       "spaces.messages.search": {

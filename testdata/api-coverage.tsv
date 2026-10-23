@@ -61,6 +61,7 @@ chat	spaces.messages.patch	used	Client.UpdateMessage
 chat	spaces.messages.reactions.create	used	Client.AddReaction
 chat	spaces.messages.reactions.delete	used	Client.DeleteReaction
 chat	spaces.messages.reactions.list	used	Client.ListReactions
+chat	spaces.messages.replaceCards	unreachable	https://www.googleapis.com/auth/chat.bot
 chat	spaces.messages.search	used	Client.SearchMessages
 chat	spaces.messages.update	out	the PUT form replaces every field rather than the masked one, so it would clear cards and attachments; update_message patches the text alone
 chat	spaces.patch	used	Client.UpdateSpace

@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-23
+
 ### Added
 
 - `set_space_audience` opens a space to a target audience. It names the space by its display name, and Claude Code asks for it on every call.
@@ -730,7 +732,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v4.0.0...v5.0.0

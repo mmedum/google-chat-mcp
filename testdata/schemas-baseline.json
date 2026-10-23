@@ -1,19 +1,107 @@
 {
   "server": "google-chat-mcp",
-  "version": "v5.1.1",
+  "version": "v6.0.0",
   "sdk": "v1.8.0",
   "tools": [
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
       },
+      "description": "Invite someone from outside your organization into a space that admits them, by email address, or add a Google Group to such a space by group_name and group_email, which brings in the group's members from outside and anyone added to the group later. They can read what is already in the space, and removing them later does not take that back. Pass confirm: true. add_member is the tool for anyone inside the organization, and for a group in a space that admits nobody from outside. Set dry_run to see the request body without inviting anyone.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: someone outside the organization can read the space's history, and removing them does not take back what they read",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the request body without inviting anyone",
+            "type": "boolean"
+          },
+          "group_email": {
+            "description": "required with group_name: the group's email address, as find_group reports it. The group is read first, a dry run included, and the call is refused [stale] when its address differs",
+            "type": "string"
+          },
+          "group_name": {
+            "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Its members from outside the organization join with it, and so does anyone added to the group later",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "their email address. Whoever it is can read what is already in the space. Pass this or group_name, not both",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "add_external_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nobody was invited",
+            "type": "boolean"
+          },
+          "group_name": {
+            "description": "the group that was added, when it was a group",
+            "type": "string"
+          },
+          "membership_name": {
+            "description": "the new membership's resource name; remove_member takes it. Null after a dry run",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real invite",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; empty when Google said nothing, which means an ordinary member",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space they were invited into",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "who was invited; empty when a group was added",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "space_id",
+          "user_email",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Invite someone into a space by email address, or add a Google Group. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently, so use update_member_role afterward to make someone a manager. Set dry_run to see the request body without inviting anyone. When the client can ask, the server also asks the person before it adds someone; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Invite someone in your organization into a space by email address, or add a Google Group. In a space that admits people from outside the organization, an address the organization's directory does not know is refused [blocked], and so is every Google Group, since a group brings in its outside members and anyone added to it later: add_external_member adds those. Someone already in the space is reported as an error rather than as a success, because the membership that exists belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role given here, silently. Set dry_run to see the request body without inviting anyone.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -22,7 +110,7 @@
             "type": "boolean"
           },
           "group_name": {
-            "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message",
+            "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message. Refused in a space that admits people from outside the organization",
             "type": "string"
           },
           "space_id": {
@@ -141,9 +229,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -208,9 +293,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -279,9 +361,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -344,21 +423,18 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Create a named space, with up to 20 initial members or none at all. Leave yourself out of member_emails: Google adds the signed-in account. A space of your own is fine — invite people later with add_member. A space is private unless audience opens it to the organization or to a target audience. Set dry_run to see the request body without creating anything. When the client can ask, the server also asks the person before it creates a space open to a target audience; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Create a named space, with up to 20 initial members or none at all. Leave yourself out of member_emails: Google adds the signed-in account. A space of your own is fine — invite people later with add_member. A space is created private; set_space_audience opens one to an audience. Set dry_run to see the request body without creating anything.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "open the space to a target audience, who can then find it, read it and join without an invitation: default for the organization's default audience, or audiences/{id} for one an administrator set up. Omit it, or pass private, for a private space",
+            "description": "private, or omit it: a space is created private. Opening one to a target audience is set_space_audience's, and anything else here is refused",
             "type": "string"
           },
           "display_name": {
@@ -390,7 +466,7 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "the target audience the space was opened to; null for a private space",
+            "description": "always null: a space is created private, and set_space_audience opens one",
             "type": [
               "null",
               "string"
@@ -445,13 +521,21 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Remove a custom emoji from your organization. It goes for everyone, and messages that already use it lose the image. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Remove a custom emoji from your organization. It goes for everyone, messages and reactions that already use it lose the image, and nothing restores it. Pass its :shortcode: as emoji_name and confirm: true; the emoji is read first and the delete refused [stale] when it is called something else.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "dry_run": {
-            "description": "check the arguments without deleting anything",
+          "confirm": {
+            "description": "must be true: the emoji goes for the whole organization, and nothing restores it",
             "type": "boolean"
+          },
+          "dry_run": {
+            "description": "check the arguments, the shortcode included, without deleting anything",
+            "type": "boolean"
+          },
+          "emoji_name": {
+            "description": "the emoji's :shortcode:, as list_custom_emojis reports it. The emoji is read first, and a delete of one called something else is refused [stale]",
+            "type": "string"
           },
           "name": {
             "description": "the emoji's resource name, customEmojis/{emoji}",
@@ -459,7 +543,8 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "emoji_name"
         ],
         "type": "object"
       },
@@ -489,34 +574,36 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Delete a message by its resource name. A message that is already gone reports deleted false rather than failing, so a repeat is safe. A message you may not delete is reported as an error, not as a deletion that already happened. Needs the restricted-tier chat.messages scope. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Delete one message by its resource name. Pass text_start, how its text begins, and confirm: true; the message is read first and the delete refused [stale] when its text begins otherwise. Google refuses to delete a message that has threaded replies, which are other people's; delete_thread deletes those. A message that is already gone reports deleted false rather than failing, so a repeat is safe. Needs the restricted-tier chat.messages scope.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "dry_run": {
-            "description": "check the arguments without deleting anything",
+          "confirm": {
+            "description": "must be true: a deleted message cannot be restored",
             "type": "boolean"
           },
-          "force": {
-            "description": "also delete the threaded replies to this message, which are other people's. Without it Google refuses to delete a message that has replies, and refusing is the safe answer: ask the person before setting this",
+          "dry_run": {
+            "description": "check the arguments, the text included, without deleting anything",
             "type": "boolean"
           },
           "message_name": {
             "description": "the message to delete, spaces/{space}/messages/{message}",
             "type": "string"
+          },
+          "text_start": {
+            "description": "how the message's text begins, as get_message reports it: at least its first 20 characters, or all of it when it is shorter, and empty for a message with no text. The message is read first, and a delete whose text_start does not match is refused [stale]",
+            "type": "string"
           }
         },
         "required": [
-          "message_name"
+          "message_name",
+          "text_start"
         ],
         "type": "object"
       },
@@ -525,7 +612,7 @@
         "additionalProperties": false,
         "properties": {
           "deleted": {
-            "description": "true only when this call deleted the message. False means nothing was deleted: a dry run, a message that was already gone, or Google refusing — those last two are not told apart, so do not report the message as deleted on false",
+            "description": "true only when this call deleted the message. False means nothing was deleted: a dry run, or a message that was already gone",
             "type": "boolean"
           },
           "dry_run": {
@@ -533,7 +620,7 @@
             "type": "boolean"
           },
           "forced": {
-            "description": "true when the call also deleted the message's threaded replies",
+            "description": "true when the call took the message's threaded replies as well, which only delete_thread does",
             "type": "boolean"
           },
           "message_name": {
@@ -551,19 +638,20 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Delete a custom section from your own sidebar. The spaces in it are not deleted: Google files them back under the default sections. A section that is already gone reports deleted false rather than failing. A refusal is reported, because that is Google declining to delete a system section. Needs the chat.users.sections scope.",
+      "description": "Delete a custom section from your own sidebar. The spaces in it are not deleted: Google files them back under the default sections. A section that is already gone reports deleted false rather than failing. A refusal is reported, because that is Google declining to delete a system section. Pass confirm: true. Needs the chat.users.sections scope.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "confirm": {
+            "description": "must be true: a deleted section cannot be restored, and its spaces have to be filed again",
+            "type": "boolean"
+          },
           "dry_run": {
             "description": "check the arguments without deleting anything",
             "type": "boolean"
@@ -613,16 +701,20 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Delete a space, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass confirm_space_id with the same value as space_id. This is the most destructive call in this server: read the space first, and ask the person before using it. When the client can ask, the server also asks the person before it deletes; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Delete a space, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass the space's display_name, as get_space reports it, and confirm: true; the space is read first and the delete refused [stale] when it is called something else.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "confirm_space_id": {
-            "description": "the same value as space_id. Deleting a space destroys every message and membership in it for everyone, and cannot be undone, so this call asks twice",
+          "confirm": {
+            "description": "must be true: deleting a space destroys every message and membership in it for everyone, and cannot be undone",
+            "type": "boolean"
+          },
+          "display_name": {
+            "description": "what the space is called, as get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]",
             "type": "string"
           },
           "dry_run": {
-            "description": "check the arguments without deleting anything",
+            "description": "check the arguments, the name included, without deleting anything",
             "type": "boolean"
           },
           "space_id": {
@@ -632,7 +724,7 @@
         },
         "required": [
           "space_id",
-          "confirm_space_id"
+          "display_name"
         ],
         "type": "object"
       },
@@ -656,6 +748,70 @@
         "required": [
           "space_id",
           "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete a thread: its first message and every reply under it, other people's included. Pass the first message as message_name, how its text begins as text_start, and confirm: true; the message is read first and the delete refused [stale] when its text begins otherwise. A first message that is already deleted has no text left to compare, and the replies left under it still go. Nothing restores a deleted thread. Needs the restricted-tier chat.messages scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: a deleted message cannot be restored",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "check the arguments, the text included, without deleting anything",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message to delete, spaces/{space}/messages/{message}",
+            "type": "string"
+          },
+          "text_start": {
+            "description": "how the message's text begins, as get_message reports it: at least its first 20 characters, or all of it when it is shorter, and empty for a message with no text. The message is read first, and a delete whose text_start does not match is refused [stale]",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "text_start"
+        ],
+        "type": "object"
+      },
+      "name": "delete_thread",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "true only when this call deleted the message. False means nothing was deleted: a dry run, or a message that was already gone",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "forced": {
+            "description": "true when the call took the message's threaded replies as well, which only delete_thread does",
+            "type": "boolean"
+          },
+          "message_name": {
+            "description": "the message that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_name",
+          "deleted",
+          "forced",
           "dry_run"
         ],
         "type": "object"
@@ -3605,9 +3761,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -3664,9 +3817,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -3811,9 +3961,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -3947,19 +4094,88 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Remove someone from a space by their membership resource name, which list_members gives you. Check what the membership is first: a membership can name a Google Group, and removing that one removes everyone in the group from the space. list_members reports the kind. A membership that is already gone reports removed false rather than failing, so a repeat is safe; a membership you may not remove is reported as an error instead. There is no by-email shape: the People API stays silent about people the caller cannot see, so a miss would read as already gone while the person is still in the space.",
+      "description": "Make someone a MANAGER or an ASSISTANT_MANAGER of a space. A manager can change the space's settings and remove people, so this gives away control of it. Pass confirm: true. update_member_role makes a manager an ordinary member again. Set dry_run to see the request body without sending it.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "confirm": {
+            "description": "must be true: a manager can act on the space before anyone takes the role back",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to promote, spaces/{space}/members/{member}, from list_members",
+            "type": "string"
+          },
+          "role": {
+            "description": "MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role"
+        ],
+        "type": "object"
+      },
+      "name": "promote_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; after a dry run, the role that was asked for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Remove someone from a space by their membership resource name, which list_members gives you. Check what the membership is first: a membership can name a Google Group, and removing that one removes everyone in the group from the space. list_members reports the kind. A membership that is already gone reports removed false rather than failing, so a repeat is safe; a membership you may not remove is reported as an error instead. Pass confirm: true. There is no by-email shape: the People API stays silent about people the caller cannot see, so a miss would read as already gone while the person is still in the space.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: someone removed has to be invited again, and a removed group takes everyone in it",
+            "type": "boolean"
+          },
           "dry_run": {
             "description": "check the arguments without removing anyone",
             "type": "boolean"
@@ -4000,11 +4216,8 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
-        "destructiveHint": true,
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -4876,16 +5089,13 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Post a text message to a Chat space, a group chat or a direct message. The body is posted exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put \u003cusers/their@address\u003e in the text yourself. Pass thread_name to reply in an existing thread, which every message carries as thread_id. Set dry_run to see the request body without posting. The post carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the tool again after an error can, because that is a new post. Read the space first if you are unsure. To send a file, upload it with upload_attachment first and pass the token it returns. When the client can ask, the server also asks the person before a post that mentions everyone in the space, \u003cusers/all\u003e, and before every post when GCM_ASK_BEFORE_SEND is set; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Post a text message to a Chat space, a group chat or a direct message. The body is posted exactly as given: nothing is added to it, and nothing in it is rewritten. To @mention someone, put \u003cusers/their@address\u003e in the text yourself; a mention of everyone in the space, \u003cusers/all\u003e, is refused [blocked], since it notifies every member. Pass thread_name to reply in an existing thread, which every message carries as thread_id. Set dry_run to see the request body without posting. The post carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the tool again after an error can, because that is a new post. Read the space first if you are unsure. To send a file, upload it with upload_attachment first and pass the token it returns.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4902,7 +5112,7 @@
             "type": "boolean"
           },
           "markdown": {
-            "description": "read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written \u003cchat-user data-email=\"their@address\"\u003e, and \u003cchat-user data-user=\"users/all\"\u003e mentions and notifies EVERYONE",
+            "description": "read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written \u003cchat-user data-email=\"their@address\"\u003e; a mention of everyone in the space is refused here too",
             "type": "boolean"
           },
           "quote_message": {
@@ -4918,7 +5128,7 @@
             "type": "string"
           },
           "text": {
-            "description": "the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write \u003cusers/their@address\u003e in the text: Google resolves the address itself when the server is signed in as a person, which this one is. \u003cusers/all\u003e mentions and notifies EVERYONE in the space, so use it only when asked to",
+            "description": "the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write \u003cusers/their@address\u003e in the text: Google resolves the address itself when the server is signed in as a person, which this one is. A mention of everyone in the space, \u003cusers/all\u003e, is refused",
             "type": "string"
           },
           "thread_name": {
@@ -4978,9 +5188,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -5060,9 +5267,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -5170,6 +5374,106 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
+      "description": "Open a named space to the organization or to a target audience: whoever is in it can then find the space, read it and join without an invitation, and making it private again with update_space does not take back what they read. Pass the space's display_name, as get_space reports it, and confirm: true; the space is read first and the call refused [stale] when it is called something else. Google takes it only from a space manager. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "description": "who can then find the space, read it and join without an invitation: default for the organization's default target audience, or audiences/{id} for one an administrator set up",
+            "type": "string"
+          },
+          "confirm": {
+            "description": "must be true: whoever is in the audience can read the space from then on, and making it private again does not take that back",
+            "type": "boolean"
+          },
+          "display_name": {
+            "description": "what the space is called, as get_space reports it. The space is read first, and opening a space called something else is refused [stale]",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the patch body and its mask without applying them",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space to open, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "audience",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "set_space_audience",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "description": "the target audience that was set, private when the space was made private, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "description": "the description that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "the name that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact patch body; null on a real edit",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the space that was edited",
+            "type": "string"
+          },
+          "update_mask": {
+            "description": "which top-level fields the patch targeted",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "space_id",
+          "display_name",
+          "description",
+          "audience",
+          "update_mask",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
       "description": "Remove a message's pin. Takes the message, not the pin: Google gives a pin the message's own id. A message that was not pinned reports unpinned false rather than failing.",
       "inputSchema": {
         "additionalProperties": false,
@@ -5224,16 +5528,13 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Change what someone may do in a space: MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people, so promoting someone gives away control of the space and demoting the last manager may leave nobody able to administer it. Role is the only thing this changes. Set dry_run to see the request body without sending it.",
+      "description": "Make a manager or an assistant manager an ordinary member of a space again: role MEMBER. Demoting the last manager may leave nobody able to administer the space. Making someone a manager is refused [blocked] here; promote_member does it. Role is the only thing this changes. Set dry_run to see the request body without sending it.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -5246,7 +5547,7 @@
             "type": "string"
           },
           "role": {
-            "description": "MEMBER, MANAGER or ASSISTANT_MANAGER. A manager can change a space's settings and remove people, so promoting someone gives away control of the space",
+            "description": "MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's",
             "type": "string"
           }
         },
@@ -5291,16 +5592,13 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Replace the text of a message you sent. Text only: cards and attachments are left untouched, and editing them needs an identity this server does not have. Set dry_run to see the patch body without applying it. Needs the restricted-tier chat.messages scope. When the client can ask, the server also asks the person before an edit that makes the text mention everyone in the space, \u003cusers/all\u003e, and before every edit when GCM_ASK_BEFORE_SEND is set; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Replace the text of a message you sent. Text only: cards and attachments are left untouched, and editing them needs an identity this server does not have. An edit that newly mentions everyone in the space, \u003cusers/all\u003e, is refused [blocked], since it notifies every member. Set dry_run to see the patch body without applying it. Needs the restricted-tier chat.messages scope.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -5358,21 +5656,18 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Rename a space, change its description, or set who can find and join it. Pass at least one; an empty edit is refused. Editing the description clears the space's guidelines, because Google's mask covers both at once, so edit a space that has guidelines in the Chat interface instead. audience opens a named space to the organization or a target audience, and private makes it private again; Google takes it only on its own, from a space manager. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope. When the client can ask, the server also asks the person before it opens a space to a target audience; a call they do not confirm is [blocked], changes nothing, and is not to be made again unless they ask.",
+      "description": "Rename a space, change its description, or make it private again. Pass at least one; an empty edit is refused. Editing the description keeps the space's guidelines: Google's mask covers both at once, so the server reads them and sends them back unchanged. audience private makes a space private; Google takes it only on its own, from a space manager. Opening a space to an audience is set_space_audience's. Set dry_run to see the patch body first. Needs the restricted-tier chat.spaces scope.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "who can find the space, read it and join without an invitation: default for the organization's default target audience, audiences/{id} for one an administrator set up, or private to make the space private again. Omit it to leave access alone. Change it in a call of its own",
+            "description": "private to make the space private again; omit it to leave access alone. Opening a space to a target audience is set_space_audience's, and anything else here is refused. Change it in a call of its own",
             "type": "string"
           },
           "description": {
@@ -5465,9 +5760,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -5540,9 +5832,6 @@
       }
     },
     {
-      "_meta": {
-        "anthropic/requiresUserInteraction": true
-      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
