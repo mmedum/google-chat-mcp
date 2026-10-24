@@ -5,7 +5,7 @@
   "display_name": "Google Chat",
   "version": "0.0.0-dev",
   "description": "Google Chat as MCP tools: read, search and write to your spaces, direct messages and sidebar.",
-  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. macOS, Windows and Linux, on both architectures each. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and pick it during install. Then run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. The README has the full setup.\n\nThe bundle asks for the same settings as a client's configuration file, each off or empty unless you set it. The tools that cannot be taken back stay unregistered until you turn them on, and attachment transfer stays off until you pick a folder.",
+  "long_description": "A single Go binary that speaks MCP over stdio, on your own machine, against your own Google account. macOS, Windows and Linux, on both architectures each. There is no server to host and no service account.\n\nYou need your own Google OAuth client and one login before the bundle works. Create an OAuth 2.0 Client ID of type Desktop app, download the JSON, and run `google-chat-mcp login --client-secret <that file>` once from a terminal; the refresh token goes to your OS keyring. During install, leave the OAuth client field empty to use the client that login recorded; a file you pick there must be that same client, since the refresh token belongs to it. The README has the full setup.\n\nThe bundle asks for the same settings as a client's configuration file, each off or empty unless you set it. The tools that cannot be taken back stay unregistered until you turn them on, and attachment transfer stays off until you pick a folder.",
   "author": {
     "name": "mmedum",
     "url": "https://github.com/mmedum"
@@ -55,8 +55,9 @@
     "client_secret": {
       "type": "file",
       "title": "OAuth client JSON",
-      "description": "The client_secret JSON you downloaded when you created the Desktop OAuth client. The same file you passed to `google-chat-mcp login`.",
-      "required": true
+      "description": "The client_secret JSON you downloaded when you created the Desktop OAuth client. Leave it empty to use the one `google-chat-mcp login` recorded for the profile. A file picked here must be the client that login used, since the refresh token belongs to it.",
+      "default": "",
+      "required": false
     },
     "profile": {
       "type": "string",

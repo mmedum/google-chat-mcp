@@ -13,6 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Changed
 
+- The Claude Desktop bundle's OAuth client file is optional, so a person who signed in with `google-chat-mcp login` does not pick it again; left empty, the server uses the client that login recorded for the profile.
 - The Claude Desktop bundle's profile field, and the server's refusal of a profile name it does not accept, say what a name is: up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit, with capitals read as lowercase.
 
 ### Fixed

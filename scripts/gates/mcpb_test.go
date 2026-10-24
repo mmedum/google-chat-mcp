@@ -150,7 +150,7 @@ func TestManifestProblemsRunsEveryCheck(t *testing.T) {
 			dig(d, "server", "mcp_config", "platform_overrides", "linux")["command"] = "${__dirname}/server/google-chat-mcp-linux-amd64"
 		}, `linux command "${__dirname}/server/google-chat-mcp-linux-amd64", expected the launcher`},
 		{"a field the person may skip", func(d map[string]any) {
-			delete(dig(d, "user_config", "client_secret"), "required")
+			delete(dig(d, "user_config", "client_secret"), "default")
 		}, "user configuration that the installing client may leave unsubstituted: client_secret (optional, no default)"},
 		{"a command nothing stages", func(d map[string]any) {
 			dig(d, "server", "mcp_config")["command"] = "${__dirname}/server/gone"
