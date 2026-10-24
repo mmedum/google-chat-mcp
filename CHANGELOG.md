@@ -11,6 +11,21 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-10-24
+
+### Added
+
+- `status --json` carries `settings.destructive_registers`, whether the destructive tools register: `false` under `GCM_READ_ONLY` even with `settings.destructive` on. `status` says `true (read-only wins)` then.
+
+### Changed
+
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v7`, as Go requires from v7 on; install with `go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest`.
+- The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
+
+### Removed
+
+- **Breaking:** `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive`, the destructive switch's names before 6.1.0. Unset or off (`false`, `0`, `no`, `off` or empty), they start the server and do nothing; on, or a value that is not a boolean, is refused at start. Use `GCM_ENABLE_DESTRUCTIVE` and `--enable-destructive`.
+
 ## [6.1.0] - 2026-10-24
 
 ### Added
@@ -751,7 +766,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...HEAD
+[7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0
 [6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1

@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/redact"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v6/internal/version"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/version"
 )
 
 // statusSchemaVersion is the version of the JSON object `status --json`
@@ -69,13 +69,18 @@ type statusScopes struct {
 }
 
 type statusSettings struct {
-	ReadOnly    bool     `json:"read_only"`
-	Destructive bool     `json:"destructive"`
-	Toolsets    []string `json:"toolsets"`
-	LocalDir    *string  `json:"local_dir"`
-	ChatAPIBase string   `json:"chat_api_base"`
-	LogLevel    string   `json:"log_level"`
-	LogFormat   string   `json:"log_format"`
+	ReadOnly bool `json:"read_only"`
+	// Destructive is the switch, GCM_ENABLE_DESTRUCTIVE.
+	Destructive bool `json:"destructive"`
+	// DestructiveRegisters is whether the destructive tools register,
+	// which read-only overrides. Added under schema 1, since adding a
+	// field does not change it.
+	DestructiveRegisters bool     `json:"destructive_registers"`
+	Toolsets             []string `json:"toolsets"`
+	LocalDir             *string  `json:"local_dir"`
+	ChatAPIBase          string   `json:"chat_api_base"`
+	LogLevel             string   `json:"log_level"`
+	LogFormat            string   `json:"log_format"`
 }
 
 // newStatusReport collects the state. The error it returns is a real
@@ -89,13 +94,14 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 		Profile:       cfg.Profile,
 		Scopes:        statusScopes{Granted: []string{}, Missing: []string{}},
 		Settings: statusSettings{
-			ReadOnly:    cfg.ReadOnly,
-			Destructive: cfg.EnableDestructive,
-			Toolsets:    toolsetList(cfg.Toolsets),
-			LocalDir:    orNil(cfg.LocalDir),
-			ChatAPIBase: cfg.ChatAPIBase,
-			LogLevel:    string(cfg.LogLevel),
-			LogFormat:   string(cfg.LogFormat),
+			ReadOnly:             cfg.ReadOnly,
+			Destructive:          cfg.EnableDestructive,
+			DestructiveRegisters: cfg.DestructiveRegisters(),
+			Toolsets:             toolsetList(cfg.Toolsets),
+			LocalDir:             orNil(cfg.LocalDir),
+			ChatAPIBase:          cfg.ChatAPIBase,
+			LogLevel:             string(cfg.LogLevel),
+			LogFormat:            string(cfg.LogFormat),
 		},
 	}
 	if dir, err := userconfig.ProfileDir(cfg.Profile); err == nil {
@@ -155,7 +161,11 @@ func (r statusReport) writeText(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "scopes:         %s\n", strings.Join(r.Scopes.Granted, " "))
 	}
 	_, _ = fmt.Fprintf(w, "read-only:      %t\n", r.Settings.ReadOnly)
-	_, _ = fmt.Fprintf(w, "destructive:    %t\n", r.Settings.Destructive)
+	if r.Settings.Destructive && !r.Settings.DestructiveRegisters {
+		_, _ = fmt.Fprintln(w, "destructive:    true (read-only wins)")
+	} else {
+		_, _ = fmt.Fprintf(w, "destructive:    %t\n", r.Settings.Destructive)
+	}
 	_, _ = fmt.Fprintf(w, "toolsets:       %s\n", collapseToolsets(r.Settings.Toolsets))
 	_, _ = fmt.Fprintf(w, "local dir:      %s\n", orUnset(deref(r.Settings.LocalDir)))
 	_, _ = fmt.Fprintf(w, "chat api:       %s\n", r.Settings.ChatAPIBase)

@@ -7,9 +7,9 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // tempProfile points the config directory at a temporary one. No test
@@ -117,25 +117,6 @@ func TestDumpSchemasCarriesTheWholeSurface(t *testing.T) {
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("the dump does not contain %s", want)
-		}
-	}
-}
-
-// A setting under its old name works, and every command says it was
-// renamed.
-func TestAnOldSettingNameIsWarnedAbout(t *testing.T) {
-	tempProfile(t)
-	t.Setenv("GCM_ALLOW_DESTRUCTIVE", "true")
-	t.Setenv("GCM_ENABLE_DESTRUCTIVE", "")
-	code, _, stderr := runCmd(t, "--dump-schemas")
-	if code != 0 {
-		t.Fatalf("--dump-schemas exited %d (%s)", code, stderr)
-	}
-	for _, want := range []string{
-		"renamed", `"old":"GCM_ALLOW_DESTRUCTIVE"`, `"new":"GCM_ENABLE_DESTRUCTIVE"`, `"new_flag":"--enable-destructive"`,
-	} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("stderr does not say %s: %s", want, stderr)
 		}
 	}
 }

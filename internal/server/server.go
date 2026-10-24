@@ -14,9 +14,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
-	"github.com/mmedum/google-chat-mcp/v6/internal/tools"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/tools"
 )
 
 // Name is the MCP server name.
@@ -92,7 +92,7 @@ func instructionsFor(cfg config.Config) string {
 	switch {
 	case cfg.ReadOnly:
 		middle = readOnlyInstructions
-	case cfg.EnableDestructive:
+	case cfg.DestructiveRegisters():
 		middle += " " + destructiveInstructions
 	}
 	return readInstructions + " " + middle + " " + tailInstructions

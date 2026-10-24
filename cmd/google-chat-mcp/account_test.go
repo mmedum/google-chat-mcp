@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,9 +14,9 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // A client going away is the ordinary end of a session, and the exit
@@ -235,6 +236,68 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 	// list of what is missing rather than a silent partial install.
 	if !strings.Contains(stdout, "not granted") {
 		t.Errorf("status did not report the ungranted scopes:\n%s", stdout)
+	}
+}
+
+// status reports the destructive switch and, beside it, whether the
+// destructive tools register: read-only wins, so with both on none of
+// them is there, and the text says so. destructive_registers was added
+// under schema 1, which adding a field leaves alone.
+func TestStatusSaysWhetherTheDestructiveToolsRegister(t *testing.T) {
+	for _, tc := range []struct {
+		name, destructive, readOnly string
+		text                        string
+		switchOn, registers         bool
+	}{
+		{"the switch off", "false", "false", "destructive:    false\n", false, false},
+		{"the switch on", "true", "false", "destructive:    true\n", true, true},
+		{"the switch on under read-only", "true", "true", "destructive:    true (read-only wins)\n", true, false},
+		{"read-only alone", "false", "true", "destructive:    false\n", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempProfile(t)
+			keyring.MockInit()
+			if err := userconfig.Save("default", userconfig.Config{
+				AccountEmail: "janedoe@example.com", TokenStore: "keyring", Scopes: scopes.All,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GCM_ENABLE_DESTRUCTIVE", tc.destructive)
+			t.Setenv("GCM_READ_ONLY", tc.readOnly)
+			t.Setenv("GCM_ALLOW_DESTRUCTIVE", "")
+
+			code, stdout, stderr := runCmd(t, "status")
+			if code != 0 {
+				t.Fatalf("status exited %d: %s", code, stderr)
+			}
+			if !strings.Contains(stdout, tc.text) {
+				t.Errorf("status did not print %q:\n%s", tc.text, stdout)
+			}
+
+			code, stdout, stderr = runCmd(t, "status", "--json")
+			if code != 0 {
+				t.Fatalf("status --json exited %d: %s", code, stderr)
+			}
+			var got struct {
+				SchemaVersion int `json:"schema_version"`
+				Settings      struct {
+					Destructive          any `json:"destructive"`
+					DestructiveRegisters any `json:"destructive_registers"`
+				} `json:"settings"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+				t.Fatalf("not JSON: %v\n%s", err, stdout)
+			}
+			if got.SchemaVersion != 1 {
+				t.Errorf("schema_version = %d, want 1", got.SchemaVersion)
+			}
+			if got.Settings.Destructive != tc.switchOn {
+				t.Errorf("settings.destructive = %v, want %t", got.Settings.Destructive, tc.switchOn)
+			}
+			if got.Settings.DestructiveRegisters != tc.registers {
+				t.Errorf("settings.destructive_registers = %v, want %t", got.Settings.DestructiveRegisters, tc.registers)
+			}
+		})
 	}
 }
 

@@ -115,8 +115,8 @@ func connect(t *testing.T) *driver {
 	// itself, then deletes that space to clean up. Without this the run
 	// would fail its delete steps AND leave the scratch space behind in a
 	// real account, which is worse than the failure.
-	// The old name is emptied, which is unset, so one left in the shell
-	// cannot disagree with the new one and stop the server.
+	// The switch's removed old name is emptied, which is unset, so one
+	// left on in the shell cannot stop the server.
 	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
 		"GCM_ENABLE_DESTRUCTIVE=true", "GCM_ALLOW_DESTRUCTIVE=")
 	ctx := context.Background()

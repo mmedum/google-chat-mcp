@@ -9,8 +9,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a
@@ -159,7 +159,7 @@ func registers(sp spec, cfg config.Config) bool {
 	if cfg.ReadOnly && ((sp.Kind != Read && sp.Kind != ReadWritesLocally) || sp.WriteScope) {
 		return false
 	}
-	return sp.Kind != Destructive || cfg.EnableDestructive
+	return sp.Kind != Destructive || cfg.DestructiveRegisters()
 }
 
 // interactionKey is Claude Code's mark for a tool it prompts for on

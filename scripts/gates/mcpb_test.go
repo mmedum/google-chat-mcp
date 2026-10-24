@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,8 +19,8 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/server"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/server"
 )
 
 // The Claude Desktop bundle is built once a year at most, on a runner,
@@ -138,30 +139,13 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 		t.Errorf("server type %q, expected binary", m.Server.Type)
 	}
 
-	// Every variable the bundle sets has to be one the server reads. A
-	// misspelled name is silently ignored at runtime, so the bundle would
-	// start and behave as though nothing had been configured.
-	known := configVars()
-	env := m.Server.MCPConfig.Env
-	if len(env) == 0 {
-		t.Fatal("the manifest sets no environment variables; this gate would check nothing")
-	}
-	for name := range env {
-		if !slices.Contains(known, name) {
-			t.Errorf("manifest sets %s, which this server does not read", name)
-		}
-	}
-
 	if m.Compatibility.ClaudeDesktop != ">=0.10.0" {
 		t.Errorf("compatibility.claude_desktop is %q, want the family's >=0.10.0", m.Compatibility.ClaudeDesktop)
 	}
-	for _, p := range settingProblems(m) {
+	for _, p := range settingProblems(m, bundleLeftOut) {
 		t.Error(p)
 	}
 
-	if refs := m.references(); len(refs) == 0 {
-		t.Error("the manifest substitutes no user configuration; the client secret should come from it")
-	}
 	if loose := alwaysSubstituted(m); len(loose) > 0 {
 		t.Errorf("user configuration that the installing client may leave unsubstituted: %s",
 			strings.Join(loose, ", "))
@@ -370,9 +354,20 @@ func TestPackWritesWhatTheManifestNames(t *testing.T) {
 	// has no key for the architecture and Claude Desktop for Linux ships
 	// both. All three have to be in the bundle or the override names a
 	// file that is not there.
-	for _, name := range []string{
-		"server/launch-linux.sh", "server/google-chat-mcp-linux-amd64", "server/google-chat-mcp-linux-arm64",
-	} {
+	files, err := bundleLayout(dist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linux := []string{serverDir + filepath.Base(launcherSource)}
+	for _, f := range files {
+		if strings.HasPrefix(f.name, serverDir+server.Name+"-linux-") {
+			linux = append(linux, f.name)
+		}
+	}
+	if len(linux) != 3 {
+		t.Errorf("the packer stages %v for Linux, want the launcher and two binaries", linux)
+	}
+	for _, name := range linux {
 		entry, ok := packed[name]
 		if !ok {
 			t.Errorf("%s is missing from the bundle", name)
@@ -483,47 +478,25 @@ func TestPackRefusesTwoCandidates(t *testing.T) {
 // The three things the published schema cannot check, each of which
 // packs, installs cleanly, and then does nothing.
 func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
-	packed := []bundleFile{
-		{name: "server/google-chat-mcp-darwin"},
-		{name: "server/google-chat-mcp.exe"},
-		{name: "server/launch-linux.sh"},
+	packed, err := bundleLayout(fakeDist(t, true, true, true))
+	if err != nil {
+		t.Fatal(err)
 	}
-	// good is the shape that has to keep passing, as JSON, so each case
-	// below is one edit away from it.
-	const good = `{
-	  "server": {
-	    "entry_point": "server/google-chat-mcp-darwin",
-	    "mcp_config": {
-	      "command": "${__dirname}/server/google-chat-mcp-darwin",
-	      "env": {"GCM_CLIENT_SECRET": "${user_config.client_secret}"},
-	      "platform_overrides": {
-	        "linux": {"command": "${__dirname}/server/launch-linux.sh"},
-	        "win32": {"command": "${__dirname}/server/google-chat-mcp.exe"}
-	      }
-	    }
-	  },
-	  "user_config": {"client_secret": {"type": "file", "required": true}}
-	}`
-
+	overrides := []string{"server", "mcp_config", "platform_overrides"}
 	tests := []struct {
 		name string
-		edit func(string) string
+		edit func(map[string]any)
 		want string
 	}{
-		{name: "the shape that ships", edit: func(s string) string { return s }},
+		{name: "the shape that ships", edit: func(map[string]any) {}},
 		{
 			name: "an entry point nothing packs",
-			edit: func(s string) string {
-				return strings.Replace(s, `"entry_point": "server/google-chat-mcp-darwin"`,
-					`"entry_point": "server/google-chat-mcp-x64"`, 1)
-			},
+			edit: func(d map[string]any) { dig(d, "server")["entry_point"] = "server/google-chat-mcp-x64" },
 			want: "entry_point names server/google-chat-mcp-x64",
 		},
 		{
 			name: "no entry point at all",
-			edit: func(s string) string {
-				return strings.Replace(s, `"entry_point": "server/google-chat-mcp-darwin",`, "", 1)
-			},
+			edit: func(d map[string]any) { delete(dig(d, "server"), "entry_point") },
 			want: "declares no entry_point",
 		},
 		{
@@ -531,42 +504,46 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 			// override is present, well formed, and names a file that is
 			// not there. Windows installs the bundle and starts nothing.
 			name: "a win32 override naming a file nothing packs",
-			edit: func(s string) string {
-				return strings.Replace(s, "server/google-chat-mcp.exe", "server/google-chat-mcp-amd64.exe", 1)
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "win32")...)["command"] = "${__dirname}/server/google-chat-mcp-amd64.exe"
 			},
 			want: "the win32 command names server/google-chat-mcp-amd64.exe",
 		},
 		{
 			name: "a linux override naming a file nothing packs",
-			edit: func(s string) string {
-				return strings.Replace(s, "server/launch-linux.sh", "server/launch.sh", 1)
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "linux")...)["command"] = "${__dirname}/server/launch.sh"
 			},
 			want: "the linux command names server/launch.sh",
 		},
 		{
 			name: "a command outside the bundle",
-			edit: func(s string) string {
-				return strings.Replace(s, "${__dirname}/server/google-chat-mcp-darwin\"",
-					"/usr/local/bin/google-chat-mcp\"", 1)
-			},
+			edit: func(d map[string]any) { dig(d, "server", "mcp_config")["command"] = "/usr/local/bin/google-chat-mcp" },
 			want: "not under ${__dirname}",
 		},
 		{
 			name: "a substitution user_config does not declare",
-			edit: func(s string) string {
-				return strings.Replace(s, "user_config.client_secret", "user_config.oauth_client", 1)
+			edit: func(d map[string]any) {
+				dig(d, "server", "mcp_config", "env")["GCM_CLIENT_SECRET"] = "${user_config.oauth_client}"
 			},
 			want: "${user_config.oauth_client} is substituted",
+		},
+		{
+			name: "a substitution user_config does not declare, in an argument",
+			edit: func(d map[string]any) { dig(d, "server", "mcp_config")["args"] = []any{"${user_config.verbose}"} },
+			want: "${user_config.verbose} is substituted",
+		},
+		{
+			name: "a substitution user_config does not declare, in an override's argument",
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "win32")...)["args"] = []any{"--profile=${user_config.account}"}
+			},
+			want: "${user_config.account} is substituted",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var m bundleManifest
-			body := tt.edit(good)
-			if err := json.Unmarshal([]byte(body), &m); err != nil {
-				t.Fatalf("the edited manifest is not JSON: %v\n%s", err, body)
-			}
-			problems := checkManifest(m, packed)
+			problems := checkManifest(editedManifest(t, tt.edit), packed)
 			if tt.want == "" {
 				if len(problems) > 0 {
 					t.Fatalf("the shape that ships was reported: %s", strings.Join(problems, "; "))
@@ -750,15 +727,55 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 			"privacy_policies is empty"},
 		{"a switch the bundle turns on", func(d map[string]any) {
 			dig(d, "user_config", "enable_destructive")["default"] = true
-		}, "user_config.enable_destructive is a boolean defaulting to true; GCM_ENABLE_DESTRUCTIVE is a switch " +
-			"the server defaults to false"},
+		}, "the bundle's defaults configure the server otherwise than no environment does"},
+		{"a required switch the bundle turns on, which Claude Desktop fills in", func(d map[string]any) {
+			dig(d, "user_config", "enable_destructive")["default"] = true
+			dig(d, "user_config", "enable_destructive")["required"] = true
+		}, "the bundle's defaults configure the server otherwise than no environment does"},
+		{"a required field with a list for a default", func(d map[string]any) {
+			dig(d, "user_config", "client_secret")["default"] = []any{"client.json"}
+		}, "user_config.client_secret defaults to a list, which the defaults check cannot build an environment from"},
 		{"a switch asked as text", func(d map[string]any) {
 			dig(d, "user_config", "read_only")["type"] = "string"
 			dig(d, "user_config", "read_only")["default"] = "false"
-		}, `user_config.read_only is a string defaulting to "false"; GCM_READ_ONLY is a switch`},
+		}, "user_config.read_only is a string; GCM_READ_ONLY is a switch, so ask for a boolean"},
 		{"a switch with no default", func(d map[string]any) {
 			delete(dig(d, "user_config", "read_only"), "default")
-		}, "user_config.read_only is a boolean defaulting to null"},
+		}, "the environment the bundle's defaults give the server is refused: config: invalid: read-only " +
+			`"${user_config.read_only}"`},
+		{"an override's env, which replaces the base", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "win32")["env"] = map[string]any{
+				"GCM_ENABLE_DESTRUCTIVE": "true",
+			}
+		}, "platform_overrides.win32.env is set"},
+		{"an empty override env, which replaces the base too", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "linux")["env"] = map[string]any{}
+		}, "platform_overrides.linux.env is set"},
+		{"no argument list in mcp_config", func(d map[string]any) {
+			delete(dig(d, "server", "mcp_config"), "args")
+		}, "mcp_config.args is missing; keep it as []"},
+		{"a null argument list in mcp_config", func(d map[string]any) {
+			dig(d, "server", "mcp_config")["args"] = nil
+		}, "mcp_config.args is null; keep it as []"},
+		{"an argument that turns the deletes on", func(d map[string]any) {
+			dig(d, "server", "mcp_config")["args"] = []any{"--enable-destructive=true"}
+		}, `mcp_config.args is ["--enable-destructive=true"]`},
+		{"an override's argument, which replaces the base", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "linux")["args"] = []any{"--enable-destructive=true"}
+		}, "platform_overrides.linux.args is set"},
+		{"an empty override argument list, which replaces the base too", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "win32")["args"] = []any{}
+		}, "platform_overrides.win32.args is set"},
+		{"a toolset the description leaves out", func(d map[string]any) {
+			dig(d, "user_config", "toolsets")["description"] = "Comma-separated tool groups to register, or all. " +
+				"The groups are core, sections, pins, emoji, events, readstate, settings, availability."
+		}, `user_config.toolsets does not list the toolsets as ` +
+			`"core, sections, pins, emoji, events, readstate, settings, availability, admin"`},
+		{"every toolset's name, only as words in the prose", func(d map[string]any) {
+			dig(d, "user_config", "toolsets")["description"] = "Pick groups, or all: core is always on, and admin " +
+				"needs an administrator. The rest are sections, pins, emoji, events, readstate, settings and availability."
+		}, `user_config.toolsets does not list the toolsets as ` +
+			`"core, sections, pins, emoji, events, readstate, settings, availability, admin"`},
 		{"a setting the bundle no longer asks for", func(d map[string]any) {
 			delete(dig(d, "user_config"), "local_dir")
 			delete(dig(d, "server", "mcp_config", "env"), "GCM_LOCAL_DIR")
@@ -766,18 +783,24 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"a setting spent under another key", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "env")["GCM_PROFILE"] = "${user_config.toolsets}"
 		}, `mcp_config.env.GCM_PROFILE is "${user_config.toolsets}", want "${user_config.profile}"`},
-		{"the destructive switch's old name", func(d map[string]any) {
+		{"the destructive switch's removed name", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "env")["GCM_ALLOW_DESTRUCTIVE"] = "${user_config.enable_destructive}"
-		}, "mcp_config.env sets GCM_ALLOW_DESTRUCTIVE, whose name is now GCM_ENABLE_DESTRUCTIVE"},
+		}, "mcp_config.env sets GCM_ALLOW_DESTRUCTIVE, which a release removed"},
 		{"the destructive switch's old key", func(d map[string]any) {
 			uc := dig(d, "user_config")
 			uc["allow_destructive"] = uc["enable_destructive"]
 			delete(uc, "enable_destructive")
 			dig(d, "server", "mcp_config", "env")["GCM_ENABLE_DESTRUCTIVE"] = "${user_config.allow_destructive}"
 		}, "user_config does not ask for enable_destructive"},
-		{"a setting the bundle does not carry", func(d map[string]any) {
-			dig(d, "server", "mcp_config", "env")["GCM_LOG_LEVEL"] = "debug"
-		}, "mcp_config.env sets GCM_LOG_LEVEL, which the bundle does not ask for"},
+		{"a setting the bundle leaves out", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_REFRESH_TOKEN"] = "x"
+		}, "mcp_config.env sets GCM_REFRESH_TOKEN, which the bundle leaves out: a credential for automation"},
+		{"a variable the server does not read", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_TOOLSET"] = "${user_config.toolsets}"
+		}, "mcp_config.env sets GCM_TOOLSET, which the server does not read"},
+		{"a removed setting", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "env")["GCM_REQUIRE_PROMPT"] = "false"
+		}, "mcp_config.env sets GCM_REQUIRE_PROMPT, which a release removed"},
 		{"a default that configures something", func(d map[string]any) {
 			dig(d, "user_config", "toolsets")["default"] = "all,admin"
 		}, "the bundle's defaults configure the server otherwise than no environment does"},
@@ -790,7 +813,7 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		}, "user_config asks for verbose, which is no setting's key"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			problems := settingProblems(editedManifest(t, tc.edit))
+			problems := settingProblems(editedManifest(t, tc.edit), bundleLeftOut)
 			if tc.want == "" {
 				if len(problems) > 0 {
 					t.Fatalf("the shape that ships was reported: %s", strings.Join(problems, "; "))
@@ -804,47 +827,64 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 	}
 }
 
-// Every variable the server reads is asked for by the bundle or left
-// out with a reason, so a setting added later is a decision about the
-// bundle rather than a gap in it.
-func TestEverySettingHasABundleVerdict(t *testing.T) {
-	// A renamed or removed setting takes its verdict from config.
-	derived := map[string]bool{}
-	for _, v := range config.Vars() {
-		derived[v.Name] = v.ReplacedBy != "" || v.Removed
+// Every default the check cannot read is reported, in key order, and
+// the comparison still runs over the rest, so one run names everything
+// wrong with the defaults.
+func TestDefaultsProblemsReportsEveryUnreadableDefaultAndTheRest(t *testing.T) {
+	m := editedManifest(t, func(d map[string]any) {
+		uc := dig(d, "user_config")
+		dig(uc, "profile")["default"] = map[string]any{"name": "work"}
+		dig(uc, "local_dir")["default"] = []any{"/tmp"}
+		dig(uc, "client_secret")["default"] = []any{"client.json"}
+		dig(uc, "enable_destructive")["default"] = true
+	})
+	const cannot = ", which the defaults check cannot build an environment from: give it a boolean, a string or a number"
+	want := []string{
+		"user_config.client_secret defaults to a list" + cannot,
+		"user_config.local_dir defaults to a list" + cannot,
+		"user_config.profile defaults to an object" + cannot,
 	}
-	read := configVars()
-	if len(read) < 20 {
-		t.Fatalf("the server reads %d variables; this would be checking a stub", len(read))
-	}
-	for _, name := range read {
-		_, leftOut := bundleLeftOut[name]
-		asked := slices.Contains(bundleVars, name)
-		switch n := btoi(asked) + btoi(leftOut) + btoi(derived[name]); {
-		case n == 0:
-			t.Errorf("%s has no bundle verdict: ask for it in bundleVars or say in bundleLeftOut why not", name)
-		case n > 1:
-			t.Errorf("%s is asked for %t, left out %t, and renamed or removed %t: it takes one verdict",
-				name, asked, leftOut, derived[name])
-		}
-	}
-	for name := range bundleLeftOut {
-		if !slices.Contains(read, name) {
-			t.Errorf("bundleLeftOut names %s, which the server does not read", name)
-		}
-	}
-	for _, name := range bundleVars {
-		if !slices.Contains(read, name) {
-			t.Errorf("bundleVars names %s, which the server does not read", name)
-		}
+	got := defaultsProblems(m)
+	if len(got) != 4 || !slices.Equal(got[:3], want) ||
+		!strings.HasPrefix(got[3], "the bundle's defaults configure the server otherwise than no environment does") {
+		t.Errorf("defaultsProblems =\n%s\nwant\n%s\nand then the comparison", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
-func btoi(b bool) int {
-	if b {
-		return 1
+// The bundle asks for every variable the server reads, less the
+// removed ones and less each one left out with a reason, so
+// a setting added later is a decision about the bundle rather than a
+// gap in it. An exclusion the server has no use for is refused.
+func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
+	if read := configVars(); len(read) < 20 {
+		t.Fatalf("the server reads %d variables; this would be deriving from a stub", len(read))
 	}
-	return 0
+	asked, problems := bundleVarsFrom(
+		[]string{"GCM_ASKED", "GCM_LEFT_OUT", "GCM_REMOVED", "GCM_ADDED_LATER"},
+		map[string]config.Var{"GCM_ASKED": {Name: "GCM_ASKED"}, "GCM_REMOVED": {Name: "GCM_REMOVED", Removed: true}},
+		map[string]string{"GCM_LEFT_OUT": "a reason", "GCM_GONE": "a reason", "GCM_REMOVED": "a reason"},
+	)
+	if want := []string{"GCM_ASKED", "GCM_ADDED_LATER"}; !slices.Equal(asked, want) {
+		t.Errorf("asked = %v, want %v", asked, want)
+	}
+	want := []string{
+		"bundleLeftOut names GCM_GONE, which the server does not read",
+		"bundleLeftOut names GCM_REMOVED, which a release removed, and so left out already",
+	}
+	if !slices.Equal(problems, want) {
+		t.Errorf("problems = %q, want %q", problems, want)
+	}
+}
+
+// A stale exclusion fails the gate itself, not only the derivation.
+func TestSettingProblemsRefuseAStaleExclusion(t *testing.T) {
+	leftOut := maps.Clone(bundleLeftOut)
+	leftOut["GCM_GONE"] = "a reason"
+	m, _ := readManifest(t)
+	want := "bundleLeftOut names GCM_GONE, which the server does not read"
+	if got := settingProblems(m, leftOut); !slices.Contains(got, want) {
+		t.Errorf("settingProblems = %q, want %q among them", got, want)
+	}
 }
 
 // The launcher picks between binaries no manifest names, so renaming a

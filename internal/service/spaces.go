@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 // SpaceKind is a space's type, in Google's spelling. The tool surface

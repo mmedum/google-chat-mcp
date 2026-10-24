@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // counter records the method of every request a tool call made. A dry

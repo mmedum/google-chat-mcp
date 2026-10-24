@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 // Message limits. These are this server's, not Google's: the tool

@@ -38,10 +38,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -497,13 +497,19 @@ func toolNames(path string, stdout, stderr io.Writer) int {
 
 // configVars is every GCM_ variable this server reads, sorted.
 //
-// It asks the code rather than grepping it. config.EnvVars reports what
+// It asks the code rather than grepping it. config.Vars reports what
 // the settings actually look up, and the three variables defined outside
 // that set are named by their own exported constants — so a renamed
 // variable is a compile error here rather than a silently shorter list.
-func configVars() []string {
-	vars := append(config.EnvVars(),
-		credentials.EnvVar, userconfig.EnvDir, userconfig.EnvAllowOutsideHome)
+func configVars() []string { return configVarsOf(config.Vars()) }
+
+// configVarsOf is configVars from settings config.Vars already gave.
+func configVarsOf(settings []config.Var) []string {
+	vars := make([]string, 0, 3+len(settings))
+	vars = append(vars, credentials.EnvVar, userconfig.EnvDir, userconfig.EnvAllowOutsideHome)
+	for _, v := range settings {
+		vars = append(vars, v.Name)
+	}
 	slices.Sort(vars)
 	return slices.Compact(vars)
 }

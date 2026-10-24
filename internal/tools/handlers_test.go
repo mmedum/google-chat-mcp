@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 type staticToken string
