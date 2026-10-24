@@ -13,9 +13,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 func newServer(t *testing.T, cfg config.Config) *mcp.Server {
@@ -157,7 +157,7 @@ func TestInstructionsNameTheStartingPoints(t *testing.T) {
 	}{
 		{name: "default", cfg: config.Config{Toolsets: config.AllToolsets}},
 		{name: "read only", cfg: config.Config{Toolsets: config.AllToolsets, ReadOnly: true}},
-		{name: "destructive allowed", cfg: config.Config{Toolsets: config.AllToolsets, AllowDestructive: true}},
+		{name: "destructive allowed", cfg: config.Config{Toolsets: config.AllToolsets, EnableDestructive: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkInstructions(t, tc.cfg)
@@ -174,8 +174,8 @@ func TestInstructionsDescribeTheDestructiveToolsOnlyWhereTheyAre(t *testing.T) {
 		want bool
 	}{
 		{"default", config.Config{}, false},
-		{"destructive allowed", config.Config{AllowDestructive: true}, true},
-		{"read only", config.Config{AllowDestructive: true, ReadOnly: true}, false},
+		{"destructive allowed", config.Config{EnableDestructive: true}, true},
+		{"read only", config.Config{EnableDestructive: true, ReadOnly: true}, false},
 	} {
 		if got := strings.Contains(instructionsFor(tc.cfg), "confirm: true"); got != tc.want {
 			t.Errorf("%s: instructions mention confirm = %v, want %v", tc.name, got, tc.want)

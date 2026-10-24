@@ -17,7 +17,7 @@ import (
 	"io"
 	"slices"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 // Chat is the part of the service a check needs. It is an interface so

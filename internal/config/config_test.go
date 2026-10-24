@@ -4,10 +4,18 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +34,211 @@ func define(t *testing.T, env map[string]string, args ...string) *Settings {
 	return s
 }
 
+// definedFloor is how many variables Define reads today, on purpose: the
+// floor moves with it, so a Define that reads nothing cannot pass.
+const definedFloor = 18
+
+// A setting given as spaces alone is unset, as an empty one is, so a
+// form field cleared to a space starts the server with the default. A
+// removed setting of spaces is off.
+func TestASettingOfSpacesIsUnset(t *testing.T) {
+	want, err := define(t, nil).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	vars := defined()
+	if len(vars) < definedFloor {
+		t.Fatalf("Define reads %d settings, want at least %d", len(vars), definedFloor)
+	}
+	for _, v := range vars {
+		got, err := define(t, map[string]string{v.Name: "  "}).Build()
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s=\"  \": %+v, %v; want the unconfigured configuration", v.Name, got, err)
+		}
+	}
+}
+
+// A profile name is held to ProfileRule, and the refusal says it. Only A
+// to Z are lowered: a character Unicode folds into a to z, such as the
+// Kelvin sign, is refused rather than renamed to another profile.
+func TestProfileRule(t *testing.T) {
+	if ProfileRule != "up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit" {
+		t.Errorf("ProfileRule = %q", ProfileRule)
+	}
+	for _, tc := range []struct{ name, want string }{
+		{"Work", "work"}, {" work ", "work"}, {"a", "a"}, {"9-", "9-"}, {"a-b_c", "a-b_c"},
+		{strings.Repeat("a", 64), strings.Repeat("a", 64)},
+	} {
+		if c, err := define(t, map[string]string{"GCM_PROFILE": tc.name}).Build(); err != nil || c.Profile != tc.want {
+			t.Errorf("GCM_PROFILE=%q: profile %q, %v; want %q", tc.name, c.Profile, err, tc.want)
+		}
+	}
+	for _, name := range []string{strings.Repeat("a", 65), "-a", "_a", "a.b", "a b", "caf\u00e9", "\u212aey"} {
+		_, err := define(t, map[string]string{"GCM_PROFILE": name}).Build()
+		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "must be "+ProfileRule) {
+			t.Errorf("GCM_PROFILE=%q: %v; want it refused, naming the rule", name, err)
+		}
+	}
+}
+
+// Load is Define, Parse and Build: a flag is read, and an unknown one
+// refused.
+func TestLoad(t *testing.T) {
+	c, err := Load([]string{"-read-only", "true"}, func(string) string { return "" })
+	if err != nil || !c.ReadOnly {
+		t.Errorf("Load = %+v, %v; want read-only", c, err)
+	}
+	if _, err := Load([]string{"-unknown"}, func(string) string { return "" }); err == nil {
+		t.Error("an unknown flag was accepted")
+	}
+}
+
+// EnvVars is every variable the server reads, the removed ones and the
+// three read outside Define included.
+func TestEnvVars(t *testing.T) {
+	want := []string{
+		"GCM_ALLOW_DESTRUCTIVE", "GCM_ASK_BEFORE_SEND", "GCM_CHAT_API_BASE", "GCM_CLIENT_SECRET",
+		"GCM_CLOUD_IDENTITY_API_BASE", "GCM_CONFIG_DIR", "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME",
+		"GCM_DIRECTORY_CACHE_TTL_SECONDS", "GCM_ENABLE_DESTRUCTIVE", "GCM_HTTP_MAX_RETRIES",
+		"GCM_HTTP_TIMEOUT_SECONDS", "GCM_LOCAL_DIR", "GCM_LOG_FORMAT", "GCM_LOG_LEVEL", "GCM_PEOPLE_API_BASE",
+		"GCM_PROFILE", "GCM_READ_ONLY", "GCM_REFRESH_TOKEN", "GCM_REQUIRE_PROMPT", "GCM_SEARCH_MAX_PAGES",
+		"GCM_TOOLSETS",
+	}
+	if got := EnvVars(); !slices.Equal(got, want) {
+		t.Errorf("EnvVars =\n%v\nwant\n%v", got, want)
+	}
+}
+
+// Every GCM_ variable the server's code spells is one EnvVars lists, so
+// a variable read outside Define cannot escape the bundle and staleness
+// gates. A name is seen as a string literal, or as a chain of literals
+// and EnvPrefix joined by +; one built from any other constant, or
+// through a format verb, is not seen. The scan must find a name outside
+// this package in each root, or it read too little.
+func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
+	known := map[string]bool{}
+	for _, name := range EnvVars() {
+		known[name] = true
+	}
+	name := regexp.MustCompile(`^GCM_[A-Z0-9][A-Z0-9_]*$`)
+	found := map[string]string{}
+	elsewhere := map[string]int{}
+	fset := token.NewFileSet()
+	roots := []string{"../../cmd", "../../internal"}
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+			outside := filepath.Dir(path) != filepath.Join("..", "..", "internal", "config")
+			spell := func(s string, at token.Pos) {
+				for _, word := range strings.FieldsFunc(s, func(r rune) bool {
+					return r != '_' && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+				}) {
+					if name.MatchString(word) {
+						found[word] = fset.Position(at).String()
+						if outside {
+							elsewhere[root]++
+						}
+					}
+				}
+			}
+			var visit func(n ast.Node) bool
+			visit = func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.BinaryExpr:
+					if n.Op != token.ADD {
+						return true
+					}
+					// A + chain is read in order: each run of literals
+					// and EnvPrefix is one string, and any other operand
+					// ends the run and is read on its own.
+					run, at := "", n.Pos()
+					for _, op := range operands(n) {
+						if s, ok := joined(op); ok {
+							if run == "" {
+								at = op.Pos()
+							}
+							run += s
+							continue
+						}
+						spell(run, at)
+						run = ""
+						ast.Inspect(op, visit)
+					}
+					spell(run, at)
+					return false
+				case *ast.BasicLit:
+					if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
+						spell(s, n.Pos())
+					}
+				}
+				return true
+			}
+			ast.Inspect(f, visit)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, root := range roots {
+		if elsewhere[root] == 0 {
+			t.Errorf("the scan found no GCM_ name in %s outside internal/config; it read too little", root)
+		}
+	}
+	for _, v := range slices.Sorted(maps.Keys(found)) {
+		if !known[v] {
+			t.Errorf("%s names %s, which EnvVars does not list", found[v], v)
+		}
+	}
+}
+
+// operands is a + chain's operands in order, through parentheses.
+func operands(e ast.Expr) []ast.Expr {
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		if e.Op == token.ADD {
+			return append(operands(e.X), operands(e.Y)...)
+		}
+	case *ast.ParenExpr:
+		if b, ok := e.X.(*ast.BinaryExpr); ok && b.Op == token.ADD {
+			return operands(b)
+		}
+	}
+	return []ast.Expr{e}
+}
+
+// joined is a + chain of string literals and EnvPrefix as one string.
+func joined(e ast.Expr) (string, bool) {
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		x, ok := joined(e.X)
+		if !ok {
+			return "", false
+		}
+		y, ok := joined(e.Y)
+		return x + y, ok
+	case *ast.ParenExpr:
+		return joined(e.X)
+	case *ast.BasicLit:
+		s, err := strconv.Unquote(e.Value)
+		return s, e.Kind == token.STRING && err == nil
+	case *ast.Ident:
+		return EnvPrefix, e.Name == "EnvPrefix"
+	case *ast.SelectorExpr:
+		return EnvPrefix, e.Sel.Name == "EnvPrefix"
+	}
+	return "", false
+}
+
 func TestDefaults(t *testing.T) {
 	c, err := define(t, nil).Build()
 	if err != nil {
@@ -37,7 +250,7 @@ func TestDefaults(t *testing.T) {
 	if c.ReadOnly {
 		t.Error("read-only must default off")
 	}
-	if c.AllowDestructive {
+	if c.EnableDestructive {
 		t.Error("the destructive tools must be unregistered by default: a deleted Chat message has no trash " +
 			"behind it, and an opened space or a new manager cannot be taken back")
 	}
@@ -163,7 +376,7 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 		{"timeout out of range", map[string]string{"GCM_HTTP_TIMEOUT_SECONDS": "0"}, "http-timeout"},
 		{"timeout unparsable", map[string]string{"GCM_HTTP_TIMEOUT_SECONDS": "soon"}, "http-timeout"},
 		{"api base not a url", map[string]string{"GCM_CHAT_API_BASE": "chat.googleapis.com"}, "chat-api-base"},
-		{"api base empty", map[string]string{"GCM_CHAT_API_BASE": "  "}, "chat-api-base"},
+		{"api base empty", map[string]string{"GCM_CHAT_API_BASE": "/"}, "chat-api-base must not be empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := define(t, tc.env).Build()
@@ -180,15 +393,17 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 	}
 }
 
-// A removed setting that made the server ask starts when off and is
-// refused otherwise, saying what to do instead: ignored, it would
-// quietly allow what its owner set it to stop. GCM_INTERACTION_HINT is
-// not read at all. The flags are gone.
+// A removed setting starts when off or unset and is refused otherwise,
+// saying what to do instead: ignored, it would quietly leave the server
+// otherwise than its owner set it. GCM_INTERACTION_HINT is not read at
+// all. The flags of the first two are gone.
 func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 	for _, env := range []map[string]string{
 		nil,
 		{"GCM_REQUIRE_PROMPT": "false", "GCM_ASK_BEFORE_SEND": " FALSE "},
 		{"GCM_REQUIRE_PROMPT": "0", "GCM_ASK_BEFORE_SEND": ""},
+		{"GCM_ALLOW_DESTRUCTIVE": "false"},
+		{"GCM_ALLOW_DESTRUCTIVE": ""},
 		{"GCM_INTERACTION_HINT": "false"},
 		{"GCM_INTERACTION_HINT": "maybe"},
 	} {
@@ -196,13 +411,17 @@ func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 			t.Errorf("%v: %v", env, err)
 		}
 	}
-	for _, tc := range []struct{ key, value, instead string }{
-		{"GCM_REQUIRE_PROMPT", "true", "GCM_ALLOW_DESTRUCTIVE off"},
-		{"GCM_REQUIRE_PROMPT", "maybe", "GCM_ALLOW_DESTRUCTIVE off"},
-		{"GCM_ASK_BEFORE_SEND", "true", "send_message and update_message"},
+	for _, tc := range []struct{ key, value, removed, instead string }{
+		{"GCM_REQUIRE_PROMPT", "true", "GCM_REQUIRE_PROMPT was removed", "GCM_ENABLE_DESTRUCTIVE off"},
+		{"GCM_REQUIRE_PROMPT", "maybe", "GCM_REQUIRE_PROMPT was removed", "GCM_ENABLE_DESTRUCTIVE off"},
+		{"GCM_ASK_BEFORE_SEND", "true", "GCM_ASK_BEFORE_SEND was removed", "send_message and update_message"},
+		{"GCM_ALLOW_DESTRUCTIVE", "true", "GCM_ALLOW_DESTRUCTIVE (--allow-destructive) was removed",
+			"GCM_ENABLE_DESTRUCTIVE (--enable-destructive)"},
+		{"GCM_ALLOW_DESTRUCTIVE", "maybe", "GCM_ALLOW_DESTRUCTIVE (--allow-destructive) was removed",
+			"GCM_ENABLE_DESTRUCTIVE (--enable-destructive)"},
 	} {
 		_, err := define(t, map[string]string{tc.key: tc.value}).Build()
-		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.key+" was removed") ||
+		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.removed) ||
 			!strings.Contains(err.Error(), tc.instead) {
 			t.Errorf("%s=%s: %v", tc.key, tc.value, err)
 		}
@@ -217,6 +436,129 @@ func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 		if fs.Lookup(name) != nil {
 			t.Errorf("--%s is still a flag", name)
 		}
+	}
+}
+
+// The destructive switch's old names answer as a removed setting does,
+// as a variable and as a flag: off starts and does nothing, and on or
+// not a boolean is refused, beside the new name too, naming the new
+// one. The flag beats the variable, as every flag does.
+func TestTheDestructiveSwitchsOldNamesNameTheNewOnes(t *testing.T) {
+	const refused = "config: invalid: GCM_ALLOW_DESTRUCTIVE (--allow-destructive) was removed: " +
+		"it is GCM_ENABLE_DESTRUCTIVE (--enable-destructive) now. Unset it, and set that in its place"
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		args []string
+		// want is the refusal, or empty for a run that starts.
+		want string
+		// on is EnableDestructive in a run that starts: the new switch's.
+		on bool
+	}{
+		{name: "the variable on, beside the new one",
+			env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true", "GCM_ALLOW_DESTRUCTIVE": "true"}, want: refused},
+		{name: "the flag on", args: []string{"-allow-destructive=true"}, want: refused},
+		{name: "the flag not a boolean", args: []string{"-allow-destructive=maybe"}, want: refused},
+		{name: "the flag on, beside the new one", args: []string{"-enable-destructive=true", "-allow-destructive=1"},
+			want: refused},
+		{name: "the flag on over the variable off", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"},
+			args: []string{"-allow-destructive=true"}, want: refused},
+		// Off, the old name is ignored, and the new switch decides, unset
+		// as well as on.
+		{name: "the flag off, the new one unset", args: []string{"-allow-destructive=false"}, on: false},
+		{name: "the variable off, the new one unset", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"},
+			on: false},
+		{name: "the flag off leaves the new one on", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-allow-destructive=false"}, on: true},
+		{name: "the flag off over the variable on is ignored, and the new one decides",
+			env:  map[string]string{"GCM_ALLOW_DESTRUCTIVE": "true", "GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-allow-destructive=false"}, on: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := define(t, tc.env, tc.args...).Build()
+			if tc.want != "" {
+				if err == nil || err.Error() != tc.want {
+					t.Errorf("got %v\nwant %s", err, tc.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if c.EnableDestructive != tc.on {
+				t.Errorf("EnableDestructive = %t, want the new switch's %t", c.EnableDestructive, tc.on)
+			}
+		})
+	}
+}
+
+// --help shows the old flag as removed and what to use, with no
+// default: not a live option, and not the variable's value.
+func TestTheRemovedFlagsHelpSaysWhatToUse(t *testing.T) {
+	var help bytes.Buffer
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(&help)
+	Define(fs, func(name string) string {
+		if name == "GCM_ALLOW_DESTRUCTIVE" {
+			return "true"
+		}
+		return ""
+	})
+	fs.PrintDefaults()
+	const want = "  -allow-destructive string\n    \tremoved; use --enable-destructive [env GCM_ALLOW_DESTRUCTIVE]\n"
+	if !strings.Contains(help.String(), want) {
+		t.Errorf("--help does not say %q:\n%s", want, help.String())
+	}
+}
+
+// The destructive tools register with the switch on and read-only off.
+// Read-only wins over the switch, so registration, the server's
+// instructions and status read this one answer.
+func TestDestructiveRegisters(t *testing.T) {
+	for _, tc := range []struct {
+		enable, readOnly, want bool
+	}{
+		{enable: false, readOnly: false, want: false},
+		{enable: true, readOnly: false, want: true},
+		{enable: true, readOnly: true, want: false},
+		{enable: false, readOnly: true, want: false},
+	} {
+		c := Config{EnableDestructive: tc.enable, ReadOnly: tc.readOnly}
+		if got := c.DestructiveRegisters(); got != tc.want {
+			t.Errorf("EnableDestructive %t, ReadOnly %t: DestructiveRegisters = %t, want %t",
+				tc.enable, tc.readOnly, got, tc.want)
+		}
+	}
+}
+
+// The destructive switch is GCM_ENABLE_DESTRUCTIVE and
+// --enable-destructive alone. Its old name off does nothing.
+func TestTheDestructiveSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		args []string
+		on   bool
+	}{
+		{name: "unset", on: false},
+		{name: "the variable on", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"}, on: true},
+		{name: "the variable off", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "false"}, on: false},
+		{name: "the flag", args: []string{"-enable-destructive=true"}, on: true},
+		{name: "the flag over the variable", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-enable-destructive=false"}, on: false},
+		{name: "the old name off beside the new on",
+			env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true", "GCM_ALLOW_DESTRUCTIVE": "false"}, on: true},
+		{name: "the old name off alone", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"}, on: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := define(t, tc.env, tc.args...).Build()
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if c.EnableDestructive != tc.on {
+				t.Errorf("EnableDestructive = %t, want %t", c.EnableDestructive, tc.on)
+			}
+		})
 	}
 }
 
@@ -360,5 +702,89 @@ func TestTheDirectoryMustExistAndBeADirectory(t *testing.T) {
 				t.Errorf("the error does not name the setting: %v", err)
 			}
 		})
+	}
+}
+
+// A removed setting that keeps its flag says what to use in its place,
+// in --help and in its refusal alike, and only such a setting names one.
+func TestARemovedFlagNamesItsReplacement(t *testing.T) {
+	flags := 0
+	for _, r := range removedSettings {
+		switch {
+		case r.flag == "" && r.use != "":
+			t.Errorf("%s names %s to use, and has no flag whose help would say so", r.key, r.use)
+		case r.flag == "":
+		case r.use == "":
+			t.Errorf("--%s has no use, so --help would say %q", r.flag, "removed; use ")
+		case !strings.Contains(r.why, r.use):
+			t.Errorf("--%s's refusal does not name %s, which its help does: %q", r.flag, r.use, r.why)
+		default:
+			flags++
+		}
+	}
+	if flags != 1 {
+		t.Errorf("%d removed settings keep a flag, want the one: --allow-destructive", flags)
+	}
+}
+
+// Define reads each variable once, and records each once for Vars. Two
+// settings on one variable would leave it to whichever Build reads
+// last.
+func TestDefineReadsEachVariableOnce(t *testing.T) {
+	reads := map[string]int{}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(&bytes.Buffer{})
+	Define(fs, func(name string) string { reads[name]++; return "" })
+	var listed []string
+	for _, v := range defined() {
+		listed = append(listed, v.Name)
+	}
+	slices.Sort(listed)
+	if len(listed) < definedFloor {
+		t.Fatalf("Define records %d settings, want at least %d", len(listed), definedFloor)
+	}
+	if read := slices.Sorted(maps.Keys(reads)); !slices.Equal(listed, read) {
+		t.Errorf("Define records %v\nDefine reads %v", listed, read)
+	}
+	for name, n := range reads {
+		if n != 1 {
+			t.Errorf("Define reads %s %d times", name, n)
+		}
+	}
+	// A variable Define reads and something outside it reads too would
+	// be read under two rules; EnvVars lists it twice, so this sees it.
+	if names := EnvVars(); !slices.Equal(names, slices.Compact(slices.Clone(names))) {
+		t.Errorf("EnvVars names a variable twice: %v", names)
+	}
+}
+
+// Vars is what the bundle gate reads a setting's kind from, so each
+// claim it makes is held to what Build does. A switch takes true and
+// false and refuses anything else, and nothing else does that.
+func TestVarsDescribeWhatBuildDoes(t *testing.T) {
+	vars := Vars()
+	if len(vars) < 15 {
+		t.Fatalf("Vars has %d settings; Define registers more than that", len(vars))
+	}
+	switches := 0
+	for _, v := range vars {
+		accepts := func(value string) bool {
+			_, err := define(t, map[string]string{v.Name: value}).Build()
+			return err == nil
+		}
+		if boolean := accepts("true") && accepts("false") && !accepts("maybe"); boolean != v.Switch {
+			t.Errorf("%s: Switch is %t, and Build reads it as a boolean: %t", v.Name, v.Switch, boolean)
+		}
+		if v.Switch {
+			switches++
+		}
+		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, flag, use, why string }) bool {
+			return v.Name == EnvPrefix+r.key
+		}); removed != v.Removed {
+			t.Errorf("%s: Removed is %t, and it is a removed setting: %t", v.Name, v.Removed, removed)
+		}
+	}
+	if switches != 2 {
+		t.Errorf("%d switches, want read-only and the destructive switch", switches)
 	}
 }

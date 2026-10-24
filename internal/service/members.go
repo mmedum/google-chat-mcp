@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's
@@ -392,7 +392,7 @@ func (s *Service) updateMemberRole(ctx context.Context, in UpdateMemberRoleInput
 	case !promote && role != gchat.RoleMember:
 		return nil, Failf(ClassBlocked, "a manager controls the space, its settings and its members, so "+
 			"update_member_role does not make one; nothing was sent. promote_member does, when "+
-			"%sALLOW_DESTRUCTIVE=true", config.EnvPrefix)
+			"%sENABLE_DESTRUCTIVE=true", config.EnvPrefix)
 	}
 
 	out := &UpdateMemberRoleResult{Name: name, Role: in.Role, DryRun: in.DryRun}
@@ -590,7 +590,7 @@ func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
 	return Failf(ClassBlocked, "%s admits people from outside the organization, and a Google Group added to it "+
 		"brings in its members from outside, and anyone added to the group later. add_member adds a group only "+
 		"to a space that admits nobody from outside; nothing was sent. add_external_member adds %s, when "+
-		"%sALLOW_DESTRUCTIVE=true", space, group, config.EnvPrefix)
+		"%sENABLE_DESTRUCTIVE=true", space, group, config.EnvPrefix)
 }
 
 // checkGroup reads a group and refuses [stale] when its address is not
@@ -658,7 +658,7 @@ func outsiderRefused(email, space, why string) error {
 	return Failf(ClassBlocked, "%s is not in your organization's directory, and %s admits people from outside the "+
 		"organization, who can read what is already in it.%s add_member adds only people inside the "+
 		"organization; nothing was sent. add_external_member adds someone from outside, when "+
-		"%sALLOW_DESTRUCTIVE=true", email, space, why, config.EnvPrefix)
+		"%sENABLE_DESTRUCTIVE=true", email, space, why, config.EnvPrefix)
 }
 
 // membershipRemoved reports whether a membership Google handed back is

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 // DefaultCloudIdentityBase serves the Cloud Identity Groups API, which is

@@ -38,10 +38,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -157,7 +155,7 @@ func init() {
 		},
 		"config-vars": {
 			run: func(_ []string, o, _ io.Writer) int {
-				_, _ = fmt.Fprintln(o, strings.Join(configVars(), "\n"))
+				_, _ = fmt.Fprintln(o, strings.Join(config.EnvVars(), "\n"))
 				return 0
 			},
 			arity: 1, runsIn: manual,
@@ -493,19 +491,6 @@ func toolNames(path string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintln(stdout, strings.Join(toolNamesIn(d), "\n"))
 	return 0
-}
-
-// configVars is every GCM_ variable this server reads, sorted.
-//
-// It asks the code rather than grepping it. config.EnvVars reports what
-// the settings actually look up, and the three variables defined outside
-// that set are named by their own exported constants — so a renamed
-// variable is a compile error here rather than a silently shorter list.
-func configVars() []string {
-	vars := append(config.EnvVars(),
-		credentials.EnvVar, userconfig.EnvDir, userconfig.EnvAllowOutsideHome)
-	slices.Sort(vars)
-	return slices.Compact(vars)
 }
 
 // defaultBinary is where `make build` leaves the server, and what a

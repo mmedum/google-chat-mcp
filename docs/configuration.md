@@ -2,8 +2,9 @@
 
 Every setting has an environment variable and a command-line flag. The
 flag wins over the environment, and the environment wins over the
-default. Settings are validated once at start, and every problem is
-reported at once rather than one per run.
+default. A variable set to spaces alone is unset, as an empty one is.
+Settings are validated once at start, and every problem is reported at
+once rather than one per run.
 
 Environment variables are the practical route: an MCP client passes a
 stdio server a command, its arguments and its environment, and nothing
@@ -13,11 +14,11 @@ else.
 
 | Variable | Flag | Default | What it does |
 |---|---|---|---|
-| `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. Lowercase letters, digits, `_` and `-`, up to 64 characters. |
+| `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. A name is up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit; capitals are read as lowercase, and any other name stops the server at start. |
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
 | `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
-| `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
+| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. `GCM_READ_ONLY` wins: with it on, none of them is registered. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
 | `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register; `all` may be one of them. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named, as in `all,admin`: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
 | `GCM_HTTP_MAX_RETRIES` | `--http-max-retries` | `3` | Extra attempts after a 429 or 5xx, 0 to 10. A write is only retried when repeating it cannot post twice. |
@@ -31,21 +32,32 @@ else.
 
 ### Removed settings
 
+A removed setting is refused at start unless it is unset or off
+(`false`, `0`, `no`, `off` or empty), because ignoring one would quietly
+leave the server otherwise than you set it. Off, it does nothing.
+
+`GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` are the destructive
+switch's names before 6.1.0, which renamed them `GCM_ENABLE_DESTRUCTIVE`
+and `--enable-destructive`. The old flag still parses and answers as its
+variable does, so the refusal names the new one, and `--help` lists it
+as removed. A setting renamed
+later goes the same way: the old name is removed, not kept beside the
+new one.
+
 The server no longer asks you before a write; your client approves each
 call. Three settings went with the question, and their flags are gone,
 so a flag left in your client's arguments stops the server from
-starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused at
-start unless `false`, their old default, because ignoring one would
-quietly allow what you set it to stop. `GCM_INTERACTION_HINT` is
-ignored: only `delete_space`, `set_space_audience` and
-`delete_custom_emoji` carry the mark now, and Claude Code refuses those
-three when nobody is at the keyboard. A headless run that set it to
-`false` to use them loses them.
+starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused
+unless off, as above. `GCM_INTERACTION_HINT` is ignored: only
+`delete_space`, `set_space_audience` and `delete_custom_emoji` carry the
+mark now, and Claude Code refuses those three when nobody is at the
+keyboard. A headless run that set it to `false` to use them loses them.
 
 | Variable | Still accepted | Instead |
 |---|---|---|
-| `GCM_REQUIRE_PROMPT` | `false` | Leave `GCM_ALLOW_DESTRUCTIVE` off for a client that runs with nobody watching. |
-| `GCM_ASK_BEFORE_SEND` | `false` | List `send_message` and `update_message` under your client's ask rules. |
+| `GCM_ALLOW_DESTRUCTIVE` | unset or off | `GCM_ENABLE_DESTRUCTIVE` or `--enable-destructive`. |
+| `GCM_REQUIRE_PROMPT` | unset or off | Leave `GCM_ENABLE_DESTRUCTIVE` off for a client that runs with nobody watching. |
+| `GCM_ASK_BEFORE_SEND` | unset or off | List `send_message` and `update_message` under your client's ask rules. |
 | `GCM_INTERACTION_HINT` | any value, ignored | Nothing. |
 
 ## Credentials

@@ -181,3 +181,27 @@ func TestChangelogProblem(t *testing.T) {
 		})
 	}
 }
+
+// The configuration page names every variable the server reads, and
+// says what a profile name is in the server's own words.
+func TestConfigDocProblems(t *testing.T) {
+	doc := readRepoFile(t, configDocPath)
+	if got := configDocProblems(doc); len(got) != 0 {
+		t.Errorf("the committed page: %q", got)
+	}
+	for _, tc := range []struct{ name, old, new, want string }{
+		{"a variable left out", "GCM_LOCAL_DIR", "GCM_LOCALDIR", "docs/configuration.md does not mention GCM_LOCAL_DIR"},
+		{"a name kept only inside a longer one", "`GCM_CONFIG_DIR`", "`GCM_CONFIG_DIRECTORY`",
+			"docs/configuration.md does not mention GCM_CONFIG_DIR"},
+		{"the profile rule in other words", "- and _, starting", "`-` and `_`, starting",
+			`docs/configuration.md does not say a profile name is "up to 64 characters from a to z, 0 to 9, - and _, ` +
+				`starting with a letter or digit"`},
+	} {
+		if !strings.Contains(doc, tc.old) {
+			t.Fatalf("%s: the page does not say %q", tc.name, tc.old)
+		}
+		if got := configDocProblems(strings.ReplaceAll(doc, tc.old, tc.new)); !slices.Equal(got, []string{tc.want}) {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

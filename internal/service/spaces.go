@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 // SpaceKind is a space's type, in Google's spelling. The tool surface
@@ -668,7 +668,7 @@ func (s *Service) patchSpace(ctx context.Context, body *gchat.UpdateSpaceRequest
 func audienceRefused() error {
 	return Failf(ClassBlocked, "opening a space to a target audience lets everyone in it find and read the space, and "+
 		"making it private again does not take back what they read, so create_space and update_space do not do it; "+
-		"nothing was sent. set_space_audience does, when %sALLOW_DESTRUCTIVE=true", config.EnvPrefix)
+		"nothing was sent. set_space_audience does, when %sENABLE_DESTRUCTIVE=true", config.EnvPrefix)
 }
 
 // SetSpaceAudienceInput opens a space to a target audience.

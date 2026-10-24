@@ -6,7 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mmedum/google-chat-mcp/v6/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v7/internal/redact"
 	"io"
 	"os"
 	"slices"
@@ -15,14 +15,13 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/doctor"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/doctor"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // cmdLogin runs the loopback OAuth flow and stores the refresh token.
@@ -46,7 +45,7 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 	}
 	if path == "" {
 		return fail(stderr, "no OAuth client. Pass --client-secret <path to the Desktop client JSON>, "+
-			"or set %sCLIENT_SECRET. docs/gcp-setup.md walks through creating one.", config.EnvPrefix)
+			"or set "+config.EnvPrefix+"CLIENT_SECRET. docs/gcp-setup.md walks through creating one.")
 	}
 
 	requested := requestedScopes(cfg)
@@ -158,9 +157,9 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 	// it for automation would otherwise read "signed out" and still be
 	// signed in. Borrowed from google-docs-mcp, which had this and the
 	// resolver above right when we had neither.
-	if os.Getenv(credentials.EnvVar) != "" {
+	if store.EnvOverride() {
 		_, _ = fmt.Fprintf(stderr, "note: %s is set; logout cannot revoke or remove it, "+
-			"and the server will keep using it.\n", credentials.EnvVar)
+			"and the server will keep using it.\n", config.EnvRefreshToken)
 	}
 	if err := userconfig.Remove(cfg.Profile); err != nil {
 		return fail(stderr, "%v", err)

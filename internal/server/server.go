@@ -14,9 +14,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
-	"github.com/mmedum/google-chat-mcp/v6/internal/tools"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/tools"
 )
 
 // Name is the MCP server name.
@@ -68,7 +68,7 @@ const readInstructions = "Google Chat tools. Start with list_spaces to find a sp
 const writeInstructions = "Write with send_message, which posts the text exactly as given, and find_direct_message " +
 	"to reach one person. Most write tools take dry_run, which returns the request body without sending it."
 
-// destructiveInstructions follow them when GCM_ALLOW_DESTRUCTIVE
+// destructiveInstructions follow them when GCM_ENABLE_DESTRUCTIVE
 // registers the tools they describe.
 const destructiveInstructions = "The writes that cannot be taken back take confirm: true and repeat what they act " +
 	"on, a message's text or a space's or an emoji's name. The target is read first, and a call that names it " +
@@ -92,7 +92,7 @@ func instructionsFor(cfg config.Config) string {
 	switch {
 	case cfg.ReadOnly:
 		middle = readOnlyInstructions
-	case cfg.AllowDestructive:
+	case cfg.DestructiveRegisters():
 		middle += " " + destructiveInstructions
 	}
 	return readInstructions + " " + middle + " " + tailInstructions

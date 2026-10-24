@@ -41,7 +41,7 @@ that mentions everyone, a space opened to an audience outside
 invite from outside the organization, or a Google Group into a space
 that admits outsiders, outside `add_external_member`.
 Those three and every delete are not registered unless you set
-`GCM_ALLOW_DESTRUCTIVE=true`, and each of their calls says
+`GCM_ENABLE_DESTRUCTIVE=true`, and each of their calls says
 `confirm: true`. The message, space and emoji deletes and
 `set_space_audience` also repeat what they act on, and are refused when
 that differs. Past that, Google's per-scope
@@ -151,7 +151,7 @@ never recorded, and a live run reads back only what it wrote.
   Granting fewer means some tools return a `[scope]` error naming what
   is missing; that is a supported state, not a broken one.
 - **Where you point an unattended agent.** `GCM_READ_ONLY=true`, and
-  leaving `GCM_ALLOW_DESTRUCTIVE` off, are the controls a client cannot
+  leaving `GCM_ENABLE_DESTRUCTIVE` off, are the controls a client cannot
   override. Under `GCM_READ_ONLY` login asks for read-only scopes, so
   the token cannot write either once you log in again with it set.
 - **Keeping the client secret file out of version control.** It is

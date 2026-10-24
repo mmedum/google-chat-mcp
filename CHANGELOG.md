@@ -11,6 +11,48 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.0.1] - 2026-10-24
+
+### Changed
+
+- The Claude Desktop bundle's OAuth client file is optional, so a person who signed in with `google-chat-mcp login` does not pick it again; left empty, the server uses the client that login recorded for the profile.
+- The Claude Desktop bundle's profile field says what a profile name may be, up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit, with capitals read as lowercase; the server's refusal of another name states the same rule.
+
+### Fixed
+
+- A profile name with a character that Unicode lowercases into a to z, such as the Kelvin sign (U+212A), is refused rather than read as another profile's name.
+- A variable set to spaces alone is unset, as an empty one is, `GCM_CONFIG_DIR` and `GCM_REFRESH_TOKEN` included, and the spaces around either are dropped; a bundle field cleared to a space no longer stops the server.
+
+## [7.0.0] - 2026-10-24
+
+### Added
+
+- `status --json` carries `settings.destructive_registers`, whether the destructive tools register: `false` under `GCM_READ_ONLY` even with `settings.destructive` on. `status` says `true (read-only wins)` then.
+
+### Changed
+
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v7`, as Go requires from v7 on; install with `go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest`.
+- The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
+
+### Removed
+
+- **Breaking:** `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive`, the destructive switch's names before 6.1.0. Unset or off (`false`, `0`, `no`, `off` or empty), they start the server and do nothing; on, or a value that is not a boolean, is refused at start. Use `GCM_ENABLE_DESTRUCTIVE` and `--enable-destructive`.
+
+## [6.1.0] - 2026-10-24
+
+### Added
+
+- The Claude Desktop bundle asks for the profile, read-only, `enable_destructive`, the toolsets and the attachment folder, each off or empty unless you set it, names Google's privacy policy and needs Claude Desktop 0.10.0 or later.
+
+### Changed
+
+- The destructive switch is `GCM_ENABLE_DESTRUCTIVE` (`--enable-destructive`), as on the sibling servers. `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` still work and log a warning at start; set both and they have to agree, or the server refuses to start.
+- The bundle stages its files under the sibling servers' names: `server/google-chat-mcp-darwin`, `server/google-chat-mcp-linux-amd64`, `server/google-chat-mcp-linux-arm64` and `server/launch-linux.sh`.
+
+### Fixed
+
+- The bundle's Linux launcher names the v6 module path in its install hint for an architecture it does not carry.
+
 ## [6.0.0] - 2026-10-23
 
 ### Added
@@ -736,7 +778,10 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...HEAD
+[7.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...v7.0.1
+[7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0
+[6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.0.0...v5.1.0

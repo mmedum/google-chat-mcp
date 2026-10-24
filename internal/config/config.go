@@ -114,12 +114,12 @@ type Config struct {
 	LogLevel  LogLevel
 	LogFormat LogFormat
 	ReadOnly  bool
-	// AllowDestructive registers the Destructive tools: the deletes,
+	// EnableDestructive registers the Destructive tools: the deletes,
 	// opening a space to an audience, making someone a manager and adding
 	// someone from outside the organization. Off, they are not registered
 	// at all, so no client mode and no model can call them
 	// (docs/architecture.md, "What a write may reach").
-	AllowDestructive  bool
+	EnableDestructive bool
 	Toolsets          []Toolset
 	HTTPTimeout       time.Duration
 	HTTPMaxRetries    int
@@ -139,13 +139,17 @@ type Config struct {
 // Enabled reports whether a toolset's tools should be registered.
 func (c Config) Enabled(t Toolset) bool { return slices.Contains(c.Toolsets, t) }
 
+// DestructiveRegisters reports whether the destructive tools register:
+// the switch on, and read-only off, since read-only wins.
+func (c Config) DestructiveRegisters() bool { return c.EnableDestructive && !c.ReadOnly }
+
 // FullSurface is c with every tool registrable: writes on, every
 // toolset, and the destructive tools. --dump-schemas writes this
 // surface, because the schema diff holds every released tool to it and
 // a tool a setting leaves out is no less part of the contract.
 func (c Config) FullSurface() Config {
 	c.ReadOnly = false
-	c.AllowDestructive = true
+	c.EnableDestructive = true
 	c.Toolsets = slices.Clone(AllToolsets)
 	return c
 }
@@ -157,7 +161,7 @@ type Settings struct {
 	LogLevel          string
 	LogFormat         string
 	ReadOnly          string
-	AllowDestructive  string
+	EnableDestructive string
 	Toolsets          string
 	HTTPTimeout       string
 	HTTPMaxRetries    string
@@ -168,33 +172,80 @@ type Settings struct {
 	CloudIdentityBase string
 	ClientSecretPath  string
 	LocalDir          string
-	// removed are the settings a release took out, as the environment
-	// gives them, read only to refuse one still set.
-	removed map[string]string
+	// removed are the settings a release took out, in removedSettings'
+	// order, as a flag or the environment gives them, read only to
+	// refuse one still set.
+	removed []string
+	// vars is every setting Define reads, in order.
+	vars []Var
 }
 
-// removedSettings are the settings that made the server ask the person,
-// each with what to do instead. Both were off by default, and off is
+// Var is one variable the server reads.
+type Var struct {
+	// Name is the environment variable.
+	Name string
+	// Switch marks a setting that is on or off.
+	Switch bool
+	// Removed marks a setting a release took out, read only to refuse it.
+	Removed bool
+}
+
+// The variables read outside Define. internal/userconfig reads the
+// profile directory and its opt-in before any flag is parsed, and
+// internal/credentials the refresh token; each takes its name from
+// here, so config imports neither.
+const (
+	EnvConfigDir                 = EnvPrefix + "CONFIG_DIR"
+	EnvConfigDirAllowOutsideHome = EnvPrefix + "CONFIG_DIR_ALLOW_OUTSIDE_HOME"
+	EnvRefreshToken              = EnvPrefix + "REFRESH_TOKEN"
+)
+
+// envOnly is every variable read outside Define, for Vars.
+var envOnly = []string{EnvConfigDir, EnvConfigDirAllowOutsideHome, EnvRefreshToken}
+
+// Blank reports whether a variable's value leaves it unset: empty, or
+// spaces alone, so a form field cleared to a space means the default
+// rather than a value the server refuses.
+func Blank(v string) bool { return strings.TrimSpace(v) == "" }
+
+// removedSettings are the settings a release took out, each with why
+// and what to do instead. Each was off by default, and unset or off is
 // still accepted. On, or a value that is not a boolean, is refused at
-// start: ignored, it would quietly allow what its owner set it to stop.
+// start: ignored, it would quietly leave the server otherwise than its
+// owner set it. A setting with a flag keeps it, answering as its
+// variable does, so the refusal says what to use instead, and --help
+// says it is removed and names use. A setting renamed later goes the
+// same way, rather than answering to two names.
 //
 // GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
 // marks than the server now sets, and on was every install's default.
-var removedSettings = []struct{ key, instead string }{
-	{"REQUIRE_PROMPT", "leave " + EnvPrefix + "ALLOW_DESTRUCTIVE off for a client that runs with nobody watching"},
-	{"ASK_BEFORE_SEND", "list send_message and update_message under your client's ask rules, as the README shows"},
+// The flags of the first two went in 6.0.0, and stay gone.
+var removedSettings = []struct{ key, flag, use, why string }{
+	{key: "REQUIRE_PROMPT",
+		why: noQuestion + "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
+	{key: "ASK_BEFORE_SEND",
+		why: noQuestion + "list send_message and update_message under your client's ask rules, as the README shows"},
+	// The destructive switch's names until 6.1.0 renamed them.
+	{key: "ALLOW_DESTRUCTIVE", flag: "allow-destructive", use: "--enable-destructive",
+		why: "it is " + EnvPrefix + "ENABLE_DESTRUCTIVE (--enable-destructive) now. Unset it, and set that in its place"},
 }
+
+// noQuestion is why the settings that made the server ask were removed.
+const noQuestion = "the server no longer asks the person, and the client's own approval decides each call. Unset it, and "
 
 // removedSet refuses each removed setting that is set to anything but
 // off.
 func (s *Settings) removedSet() []error {
 	var errs []error
-	for _, r := range removedSettings {
-		if on, err := parseBool(r.key, s.removed[r.key]); err == nil && !on {
+	for i, r := range removedSettings {
+		if on, err := parseBool(r.key, s.removed[i]); err == nil && !on {
 			continue
 		}
-		errs = append(errs, fmt.Errorf("%w: %s%s was removed: the server no longer asks the person, and the client's "+
-			"own approval decides each call. Unset it, and %s", ErrInvalid, EnvPrefix, r.key, r.instead))
+		name := EnvPrefix + r.key
+		if r.flag != "" {
+			name += " (--" + r.flag + ")"
+		}
+		errs = append(errs, fmt.Errorf("%w: %s was removed: %s", ErrInvalid, name, r.why))
 	}
 	return errs
 }
@@ -211,24 +262,37 @@ const (
 // Define registers one flag per setting on fs, defaulting to the
 // matching GCM_* variable read through env.
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
-	s := &Settings{removed: map[string]string{}}
-	for _, r := range removedSettings {
-		s.removed[r.key] = env(EnvPrefix + r.key)
+	s := &Settings{removed: make([]string, len(removedSettings))}
+	for i, r := range removedSettings {
+		// The flag is registered empty and the variable read after, so
+		// --help shows no default for a setting nobody should set.
+		if r.flag != "" {
+			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use+" [env "+EnvPrefix+r.key+"]")
+		}
+		s.removed[i] = env(EnvPrefix + r.key)
+		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
+	}
+	bind := func(p *string, name, fallback, usage string, v Var) {
+		value := env(v.Name)
+		if Blank(value) {
+			value = fallback
+		}
+		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
+		s.vars = append(s.vars, v)
 	}
 	def := func(p *string, name, key, fallback, usage string) {
-		v := env(EnvPrefix + key)
-		if v == "" {
-			v = fallback
-		}
-		fs.StringVar(p, name, v, usage+" [env "+EnvPrefix+key+"]")
+		bind(p, name, fallback, usage, Var{Name: EnvPrefix + key})
+	}
+	defSwitch := func(p *string, name, key, usage string) {
+		bind(p, name, "false", usage, Var{Name: EnvPrefix + key, Switch: true})
 	}
 	def(&s.Profile, "profile", "PROFILE", "default", "named configuration profile")
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
-	def(&s.ReadOnly, "read-only", "READ_ONLY", "false", "register only the read-only tools")
-	def(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", "false",
+	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "register only the read-only tools")
+	defSwitch(&s.EnableDestructive, "enable-destructive", "ENABLE_DESTRUCTIVE",
 		"register the tools that delete, open a space, make a manager or add someone from outside the organization")
-	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
+	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+ToolsetList())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
 	def(&s.SearchMaxPages, "search-max-pages", "SEARCH_MAX_PAGES", "10", "how many pages search_messages may scan before reporting a partial result")
@@ -241,25 +305,50 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	return s
 }
 
-// EnvVars is every GCM_ variable Define reads, sorted.
-//
-// It runs Define against a recording lookup rather than keeping a second
-// list, so a setting cannot be added without appearing here. The
-// staleness gate uses it to check that docs/configuration.md documents
-// every setting the server actually has.
-func EnvVars() []string {
-	var seen []string
-	fs := flag.NewFlagSet("envvars", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	Define(fs, func(name string) string {
-		seen = append(seen, name)
-		return ""
-	})
-	slices.Sort(seen)
-	return slices.Compact(seen)
+// Vars is every variable the server reads, sorted by name: Define's,
+// the removed ones included, and the ones read outside it. Define's are
+// recorded rather than listed, so they cannot fall behind. The bundle
+// and staleness gates derive what they hold from these.
+func Vars() []Var {
+	vars := defined()
+	for _, name := range envOnly {
+		vars = append(vars, Var{Name: name})
+	}
+	slices.SortFunc(vars, func(a, b Var) int { return strings.Compare(a.Name, b.Name) })
+	return vars
 }
 
-func toolsetNames() string {
+// defined is every variable Define reads, in the order it reads them.
+func defined() []Var {
+	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return Define(fs, func(string) string { return "" }).vars
+}
+
+// EnvVars is the names of Vars, sorted.
+func EnvVars() []string {
+	vars := Vars()
+	names := make([]string, 0, len(vars))
+	for _, v := range vars {
+		names = append(names, v.Name)
+	}
+	return names
+}
+
+// Load is Define, Parse and Build for a caller with no flags of its own.
+func Load(args []string, env func(string) string) (Config, error) {
+	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	s := Define(fs, env)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, err
+	}
+	return s.Build()
+}
+
+// ToolsetList is every toolset a person may name, in registration
+// order, comma-separated.
+func ToolsetList() string {
 	names := make([]string, len(AllToolsets))
 	for i, t := range AllToolsets {
 		names[i] = string(t)
@@ -267,11 +356,26 @@ func toolsetNames() string {
 	return strings.Join(names, ", ")
 }
 
+// ProfileRule is profilePattern in words, which Build's refusal and the
+// bundle's profile field both give.
+const ProfileRule = "up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit"
+
 var (
 	profilePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 	logLevels      = map[LogLevel]bool{LogDebug: true, LogInfo: true, LogWarn: true, LogError: true}
 	logFormats     = map[LogFormat]bool{LogText: true, LogJSON: true}
 )
+
+// asciiLower lowers A to Z alone, so a character Unicode folds into a
+// to z, such as the Kelvin sign, is refused rather than renamed.
+func asciiLower(s string) string {
+	return strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, s)
+}
 
 // ErrInvalid wraps every validation failure.
 var ErrInvalid = errors.New("config: invalid")
@@ -282,9 +386,9 @@ func (s *Settings) Build() (Config, error) {
 	var c Config
 	var errs []error
 
-	c.Profile = strings.ToLower(strings.TrimSpace(s.Profile))
+	c.Profile = asciiLower(strings.TrimSpace(s.Profile))
 	if !profilePattern.MatchString(c.Profile) {
-		errs = append(errs, fmt.Errorf("%w: profile %q must match %s", ErrInvalid, s.Profile, profilePattern))
+		errs = append(errs, fmt.Errorf("%w: profile %q must be %s", ErrInvalid, s.Profile, ProfileRule))
 	}
 
 	c.LogLevel = LogLevel(strings.ToLower(strings.TrimSpace(s.LogLevel)))
@@ -301,7 +405,7 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, err)
 	}
 
-	if c.AllowDestructive, err = parseBool("allow-destructive", s.AllowDestructive); err != nil {
+	if c.EnableDestructive, err = parseBool("enable-destructive", s.EnableDestructive); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -408,7 +512,7 @@ func parseToolsets(v string) ([]Toolset, error) {
 	}
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("%w: unknown toolsets %s (want %s, or all)",
-			ErrInvalid, strings.Join(unknown, ", "), toolsetNames())
+			ErrInvalid, strings.Join(unknown, ", "), ToolsetList())
 	}
 	out := make([]Toolset, 0, len(seen))
 	for _, t := range AllToolsets {

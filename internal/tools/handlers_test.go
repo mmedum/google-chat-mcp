@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 type staticToken string
@@ -47,7 +47,7 @@ func sessionWithToolsets(t *testing.T, handler http.HandlerFunc, toolsets ...con
 	// harness that could not drive them would leave them untested. The
 	// destructive tools are on for the same reason: off, they are not
 	// registered at all.
-	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t), AllowDestructive: true}
+	cfg := config.Config{Toolsets: config.DefaultToolsets(), LocalDir: localDir(t), EnableDestructive: true}
 	if len(toolsets) > 0 && toolsets[0] != "" {
 		cfg.Toolsets = toolsets
 	}

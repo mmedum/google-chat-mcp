@@ -242,7 +242,7 @@ no directory, so everyone counts as outside. `search_people` with `sources: ["DI
 directory answers, contacts an administrator shared included, which
 count as outside. Where the person really is outside, or the lookup
 cannot see them, `add_external_member` invites them; it needs
-`GCM_ALLOW_DESTRUCTIVE=true`.
+`GCM_ENABLE_DESTRUCTIVE=true`.
 
 A Google Group is refused there whoever is in it, because the group's
 members from outside join with it, and so does anyone added to the

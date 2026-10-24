@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v6.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v6)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v7.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v7)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -32,7 +32,7 @@ tools you are actually using need.
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v6/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -60,8 +60,17 @@ you did not build.
 ### Claude Desktop
 
 Every release also carries a `.mcpb` bundle. Open it and Claude Desktop
-installs the server and asks for your OAuth client JSON — no config file
-to edit. It covers macOS, Windows and Linux on both architectures each:
+installs the server and asks for the settings a config file would carry,
+with no file to edit: your OAuth client JSON, which may be left empty
+to use the one `login` recorded, the profile, read-only,
+the toolsets and the attachment folder. The tools that cannot be taken
+back (`enable_destructive`) stay off unless you turn them on, and so
+does attachment transfer until you pick a folder. This server asks
+nobody before a call. Claude Desktop approves each tool, and a tool you
+always allow then runs unasked, so leave `enable_destructive` off unless
+you need its tools.
+
+It covers macOS, Windows and Linux on both architectures each:
 macOS through a universal binary, Windows through amd64, and Linux
 through a small launcher that picks the right binary at start, because a
 bundle manifest has no key for the architecture. Its SHA-256 is in the
@@ -152,7 +161,7 @@ the `.mcpb` bundle above and edit nothing.
 Every setting is an environment variable, listed in
 [`docs/configuration.md`](docs/configuration.md). The four worth
 knowing now: `GCM_READ_ONLY=true` leaves out every tool that changes anything in Chat,
-`GCM_ALLOW_DESTRUCTIVE=true` adds the tools that cannot be taken back,
+`GCM_ENABLE_DESTRUCTIVE=true` adds the tools that cannot be taken back,
 `GCM_PROFILE` lets one machine hold a work account and a personal one,
 and `GCM_LOCAL_DIR` names the one directory files may be written to and
 read from. Without that last one the server touches no files at all,
@@ -178,7 +187,7 @@ and the three tools that move them say so.
 | `list_members` | Who is in a space, people and groups resolved to names and addresses, and on request who is in each group | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `get_member` | One membership: who or what it is, their role, whether they have joined | `chat.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
 | `update_member_role` | Make a manager an ordinary member again | `chat.memberships` |
-| `promote_member` | Make someone a manager or an assistant manager, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships` |
+| `promote_member` | Make someone a manager or an assistant manager, with `GCM_ENABLE_DESTRUCTIVE` | `chat.memberships` |
 | `list_reactions` | Reactions on a message | `chat.messages.readonly` |
 | `list_pinned_messages` | What a space has pinned | `chat.spaces.pins.readonly` |
 | `pin_message` | Pin a message, which everyone in the space sees | `chat.spaces.pins` |
@@ -197,27 +206,27 @@ and the three tools that move them say so.
 | `list_custom_emojis` | Your organization's own emoji | `chat.customemojis.readonly` |
 | `get_custom_emoji` | One of them by resource name | `chat.customemojis.readonly` |
 | `create_custom_emoji` | Add one from a local image | `chat.customemojis` |
-| `delete_custom_emoji` | Remove one, for everyone, with `GCM_ALLOW_DESTRUCTIVE` | `chat.customemojis` |
-| `delete_space` | Delete a space and everything in it, with `GCM_ALLOW_DESTRUCTIVE` | `chat.delete` |
+| `delete_custom_emoji` | Remove one, for everyone, with `GCM_ENABLE_DESTRUCTIVE` | `chat.customemojis` |
+| `delete_space` | Delete a space and everything in it, with `GCM_ENABLE_DESTRUCTIVE` | `chat.delete` |
 | `list_sections` | Your own sidebar sections | `chat.users.sections.readonly` |
 | `list_section_items` | What a section holds, or which section a space sits in | `chat.users.sections.readonly` |
 | `send_message` | Post text, exactly as given, in Chat's syntax or Markdown. Optionally into a thread, quoting a message, or carrying an uploaded file | `chat.messages.create`; `chat.messages.readonly` to quote |
 | `upload_attachment` | Send a local file to a space and get the token that attaches it | `chat.messages.create` |
 | `update_message` | Edit the text of a message you sent | `chat.messages` |
-| `delete_message` | Delete one message, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.messages` |
-| `delete_thread` | Delete a thread's first message and every reply, with `GCM_ALLOW_DESTRUCTIVE` | `chat.messages` |
+| `delete_message` | Delete one message, with `GCM_ENABLE_DESTRUCTIVE`. Already gone counts as success | `chat.messages` |
+| `delete_thread` | Delete a thread's first message and every reply, with `GCM_ENABLE_DESTRUCTIVE` | `chat.messages` |
 | `add_reaction` | React to a message with a Unicode emoji | `chat.messages.reactions` |
 | `remove_reaction` | Remove a reaction, by resource name or by message, emoji and person | `chat.messages.reactions` |
 | `create_group_chat` | Start an unnamed group chat with 2 to 20 people | `chat.spaces.create` |
 | `create_space` | Create a private named space with up to 20 people | `chat.spaces.create` |
 | `update_space` | Rename a space, change its description, or make it private | `chat.spaces` |
-| `set_space_audience` | Open a space to a target audience, with `GCM_ALLOW_DESTRUCTIVE` | `chat.spaces` |
+| `set_space_audience` | Open a space to a target audience, with `GCM_ENABLE_DESTRUCTIVE` | `chat.spaces` |
 | `add_member` | Invite someone in your organization to a space by email, or add a Google Group to a space that admits nobody from outside | `chat.memberships`; `chat.spaces.readonly`, `directory.readonly` to check the address |
-| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ALLOW_DESTRUCTIVE` | `chat.memberships`; `cloud-identity.groups.readonly` to check a group's address |
-| `remove_member` | Remove a membership, with `GCM_ALLOW_DESTRUCTIVE`. Already gone counts as success | `chat.memberships` |
+| `add_external_member` | Invite someone from outside your organization, or add a Google Group where outsiders are admitted, with `GCM_ENABLE_DESTRUCTIVE` | `chat.memberships`; `cloud-identity.groups.readonly` to check a group's address |
+| `remove_member` | Remove a membership, with `GCM_ENABLE_DESTRUCTIVE`. Already gone counts as success | `chat.memberships` |
 | `create_section` | Add a sidebar section | `chat.users.sections` |
 | `rename_section` | Rename a sidebar section | `chat.users.sections` |
-| `delete_section` | Delete a sidebar section, with `GCM_ALLOW_DESTRUCTIVE`; its spaces fall back to the defaults | `chat.users.sections` |
+| `delete_section` | Delete a sidebar section, with `GCM_ENABLE_DESTRUCTIVE`; its spaces fall back to the defaults | `chat.users.sections` |
 | `position_section` | Reorder a section, by absolute rank or by moving it to the start or end | `chat.users.sections` |
 | `move_space_to_section` | File a space under a section. A space already there is left alone | `chat.users.sections` |
 
@@ -249,7 +258,7 @@ client that includes resources in its context:
   takes another login.
 - **What cannot be taken back is not registered unless you say so.**
   The deletes, `delete_thread`, `set_space_audience`, `promote_member`
-  and `add_external_member` exist only with `GCM_ALLOW_DESTRUCTIVE=true`.
+  and `add_external_member` exist only with `GCM_ENABLE_DESTRUCTIVE=true`.
   Each call then says `confirm: true`. `delete_message`,
   `delete_thread`, `delete_space`, `delete_custom_emoji` and
   `set_space_audience` also repeat what they act on: how the message
@@ -259,7 +268,7 @@ client that includes resources in its context:
 - **Your client approves each call; the server asks you nothing.**
   Claude Code asks for the tools you list under `permissions.ask`.
   claude.ai and Codex prompt for a tool marked `destructiveHint`, which
-  every tool in the list above that needs `GCM_ALLOW_DESTRUCTIVE`
+  every tool in the list above that needs `GCM_ENABLE_DESTRUCTIVE`
   carries. VS Code prompts for every tool that changes anything,
   `download_attachment` included. In Claude Code, put the writes that
   post, invite, share or delete under `permissions.ask` in your settings,
