@@ -146,11 +146,68 @@ type Rename struct {
 	OldFlag, NewFlag string
 }
 
-// renamedDestructive is the destructive switch's name until 6.1.0,
-// renamed to match the sibling servers.
-var renamedDestructive = Rename{
-	Old: EnvPrefix + "ALLOW_DESTRUCTIVE", New: EnvPrefix + "ENABLE_DESTRUCTIVE",
-	OldFlag: "--allow-destructive", NewFlag: "--enable-destructive",
+// rename is one setting that took a new name: its old key and flag, and
+// the key that replaced it.
+type rename struct{ old, oldFlag, new string }
+
+// renames is every setting that took a new name. Define reads each old
+// name as a variable and as a flag, Vars lists it as replaced by the new
+// one, and Build settles it into the new one.
+var renames = []rename{
+	// The destructive switch until 6.1.0, renamed to match the sibling
+	// servers.
+	{old: "ALLOW_DESTRUCTIVE", oldFlag: "allow-destructive", new: "ENABLE_DESTRUCTIVE"},
+}
+
+// renamedSetting is one old name as Define read it.
+type renamedSetting struct {
+	Rename
+	// value is the old name's, from its flag or its variable.
+	value string
+	// target is the new name's raw value, which Build reads.
+	target *string
+	// fallback is the new name's default. Define leaves it out of target,
+	// so that Build can tell the new name unset from set to its default.
+	fallback string
+	isSwitch bool
+}
+
+// settle carries the old name's value to the new one, or the default
+// when neither is set. Either name alone decides. Both set have to
+// agree, because a run that took one over the other would turn on or
+// leave off what its owner set the other to say.
+func (r *renamedSetting) settle() error {
+	if strings.TrimSpace(r.value) == "" {
+		if strings.TrimSpace(*r.target) == "" {
+			*r.target = r.fallback
+		}
+		return nil
+	}
+	old, err := r.canonical(strings.TrimPrefix(r.OldFlag, "--"), r.value)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(*r.target) == "" {
+		*r.target = r.value
+		return nil
+	}
+	// A new value that does not parse is left to Build, which reports it
+	// under the new name.
+	if now, err := r.canonical(strings.TrimPrefix(r.NewFlag, "--"), *r.target); err == nil && now != old {
+		return fmt.Errorf("%w: %s is %s and %s, its old name, is %s: unset %s",
+			ErrInvalid, r.New, now, r.Old, old, r.Old)
+	}
+	return nil
+}
+
+// canonical is a value as Build reads it, so that two spellings of one
+// value agree: a switch's 1 and true, or a value with spaces around it.
+func (r *renamedSetting) canonical(name, value string) (string, error) {
+	if !r.isSwitch {
+		return strconv.Quote(strings.TrimSpace(value)), nil
+	}
+	on, err := parseBool(name, value)
+	return strconv.FormatBool(on), err
 }
 
 // Enabled reports whether a toolset's tools should be registered.
@@ -175,8 +232,6 @@ type Settings struct {
 	LogFormat         string
 	ReadOnly          string
 	EnableDestructive string
-	// AllowDestructive is EnableDestructive's old name, still read.
-	AllowDestructive  string
 	Toolsets          string
 	HTTPTimeout       string
 	HTTPMaxRetries    string
@@ -190,6 +245,8 @@ type Settings struct {
 	// removed are the settings a release took out, as the environment
 	// gives them, read only to refuse one still set.
 	removed map[string]string
+	// renamed are the old names of the settings in renames.
+	renamed []*renamedSetting
 	// vars is every setting Define reads, in order.
 	vars []Var
 }
@@ -198,9 +255,6 @@ type Settings struct {
 type Var struct {
 	// Name is the environment variable.
 	Name string
-	// Default is what the server uses when neither it nor its flag is
-	// set, written as a person would set it.
-	Default string
 	// Switch marks a setting that is on or off.
 	Switch bool
 	// ReplacedBy names the variable that took this one's place. The old
@@ -248,35 +302,52 @@ const (
 // Define registers one flag per setting on fs, defaulting to the
 // matching GCM_* variable read through env.
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
+	return defineWith(fs, env, renames)
+}
+
+// defineWith is Define with the renamed settings given, so a test can
+// rename a setting that is not a switch.
+func defineWith(fs *flag.FlagSet, env func(string) string, table []rename) *Settings {
 	s := &Settings{removed: map[string]string{}}
 	for _, r := range removedSettings {
 		s.removed[r.key] = env(EnvPrefix + r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
+	renamedTo := map[string]bool{}
+	for _, r := range table {
+		renamedTo[EnvPrefix+r.new] = true
+	}
+	type binding struct {
+		p              *string
+		flag, fallback string
+		v              Var
+	}
+	bound := map[string]binding{}
 	bind := func(p *string, name, fallback, usage string, v Var) {
 		value := env(v.Name)
-		if value == "" {
+		// A renamed setting's default waits for Build, which settles
+		// the old name first.
+		if value == "" && !renamedTo[v.Name] {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
 		s.vars = append(s.vars, v)
+		bound[v.Name] = binding{p, name, fallback, v}
 	}
 	def := func(p *string, name, key, fallback, usage string) {
-		bind(p, name, fallback, usage, Var{Name: EnvPrefix + key, Default: fallback})
+		bind(p, name, fallback, usage, Var{Name: EnvPrefix + key})
 	}
 	// A switch is registered empty rather than "false", so Build can
 	// tell one nobody set from one set off. Empty is off.
-	defSwitch := func(p *string, name, key, replacedBy, usage string) {
-		bind(p, name, "", usage, Var{Name: EnvPrefix + key, Default: "false", Switch: true, ReplacedBy: replacedBy})
+	defSwitch := func(p *string, name, key, usage string) {
+		bind(p, name, "", usage, Var{Name: EnvPrefix + key, Switch: true})
 	}
 	def(&s.Profile, "profile", "PROFILE", "default", "named configuration profile")
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
-	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "", "register only the read-only tools")
-	defSwitch(&s.EnableDestructive, "enable-destructive", "ENABLE_DESTRUCTIVE", "",
+	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "register only the read-only tools")
+	defSwitch(&s.EnableDestructive, "enable-destructive", "ENABLE_DESTRUCTIVE",
 		"register the tools that delete, open a space, make a manager or add someone from outside the organization")
-	defSwitch(&s.AllowDestructive, "allow-destructive", "ALLOW_DESTRUCTIVE", renamedDestructive.New,
-		"deprecated: the old name of --enable-destructive, which still works")
 	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
@@ -287,6 +358,22 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	def(&s.CloudIdentityBase, "cloud-identity-api-base", "CLOUD_IDENTITY_API_BASE", DefaultCloudIdentityBase, "Cloud Identity API base URL")
 	def(&s.ClientSecretPath, "client-secret", "CLIENT_SECRET", "", "path to the OAuth Desktop client JSON (overrides the stored profile setting)")
 	def(&s.LocalDir, "local-dir", "LOCAL_DIR", "", "the one directory attachments are downloaded to and uploaded from (unset turns file transfer off)")
+
+	// Each old name is bound beside the new one it settles into.
+	for _, r := range table {
+		to, ok := bound[EnvPrefix+r.new]
+		if !ok {
+			panic("config: " + EnvPrefix + r.old + " is renamed to " + EnvPrefix + r.new + ", which is not a setting")
+		}
+		old := &renamedSetting{
+			Rename: Rename{Old: EnvPrefix + r.old, New: to.v.Name, OldFlag: "--" + r.oldFlag, NewFlag: "--" + to.flag},
+			target: to.p, fallback: to.fallback, isSwitch: to.v.Switch,
+		}
+		fs.StringVar(&old.value, r.oldFlag, env(old.Old),
+			"deprecated: the old name of "+old.NewFlag+", which still works [env "+old.Old+"]")
+		s.vars = append(s.vars, Var{Name: old.Old, Switch: to.v.Switch, ReplacedBy: old.New})
+		s.renamed = append(s.renamed, old)
+	}
 	return s
 }
 
@@ -299,22 +386,16 @@ func Vars() []Var {
 	return vars
 }
 
-// EnvVars is every GCM_ variable Define reads, sorted.
-//
-// It runs Define against a recording lookup rather than keeping a second
-// list, so a setting cannot be added without appearing here. The
-// staleness gate uses it to check that docs/configuration.md documents
-// every setting the server actually has.
+// EnvVars is every GCM_ variable Define reads, sorted: the names of
+// Vars. The staleness gate uses it to check that docs/configuration.md
+// documents every setting the server actually has.
 func EnvVars() []string {
-	var seen []string
-	fs := flag.NewFlagSet("envvars", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	Define(fs, func(name string) string {
-		seen = append(seen, name)
-		return ""
-	})
-	slices.Sort(seen)
-	return slices.Compact(seen)
+	vars := Vars()
+	names := make([]string, len(vars))
+	for i, v := range vars {
+		names[i] = v.Name
+	}
+	return names
 }
 
 func toolsetNames() string {
@@ -340,6 +421,15 @@ func (s *Settings) Build() (Config, error) {
 	var c Config
 	var errs []error
 
+	for _, r := range s.renamed {
+		if strings.TrimSpace(r.value) != "" {
+			c.Deprecated = append(c.Deprecated, r.Rename)
+		}
+		if err := r.settle(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	c.Profile = strings.ToLower(strings.TrimSpace(s.Profile))
 	if !profilePattern.MatchString(c.Profile) {
 		errs = append(errs, fmt.Errorf("%w: profile %q must match %s", ErrInvalid, s.Profile, profilePattern))
@@ -359,11 +449,8 @@ func (s *Settings) Build() (Config, error) {
 		errs = append(errs, err)
 	}
 
-	if c.EnableDestructive, err = s.enableDestructive(); err != nil {
+	if c.EnableDestructive, err = parseBool("enable-destructive", s.EnableDestructive); err != nil {
 		errs = append(errs, err)
-	}
-	if strings.TrimSpace(s.AllowDestructive) != "" {
-		c.Deprecated = append(c.Deprecated, renamedDestructive)
 	}
 
 	errs = append(errs, s.removedSet()...)
@@ -437,26 +524,6 @@ func (s *Settings) Build() (Config, error) {
 		return Config{}, errors.Join(errs...)
 	}
 	return c, nil
-}
-
-// enableDestructive reads the destructive switch under its name and
-// under its old one. Either alone decides. Both set have to agree,
-// because a run that took one over the other would turn on or leave
-// off what its owner set the other to say.
-func (s *Settings) enableDestructive() (bool, error) {
-	on, err := parseBool("enable-destructive", s.EnableDestructive)
-	if err != nil || strings.TrimSpace(s.AllowDestructive) == "" {
-		return on, err
-	}
-	old, err := parseBool("allow-destructive", s.AllowDestructive)
-	if err != nil {
-		return false, err
-	}
-	if strings.TrimSpace(s.EnableDestructive) != "" && old != on {
-		return false, fmt.Errorf("%w: %s is %t and %s, its old name, is %t: unset %s",
-			ErrInvalid, renamedDestructive.New, on, renamedDestructive.Old, old, renamedDestructive.Old)
-	}
-	return old, nil
 }
 
 // parseToolsets accepts a comma-separated list of names, any of which may

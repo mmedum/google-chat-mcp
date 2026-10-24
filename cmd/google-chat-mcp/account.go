@@ -28,7 +28,7 @@ import (
 // cmdLogin runs the loopback OAuth flow and stores the refresh token.
 func cmdLogin(args []string, stdout, stderr io.Writer) int {
 	var noBrowser bool
-	cfg, err := loadConfig("login", args, stderr, func(fs *flag.FlagSet) {
+	cfg, _, err := loadConfig("login", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&noBrowser, "no-browser", false, "print the authorization URL instead of opening a browser")
 	})
 	if err != nil {
@@ -110,7 +110,7 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 // cmdLogout revokes the refresh token at Google and deletes it locally.
 func cmdLogout(args []string, stdout, stderr io.Writer) int {
 	var assumeYes bool
-	cfg, err := loadConfig("logout", args, stderr, func(fs *flag.FlagSet) {
+	cfg, _, err := loadConfig("logout", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&assumeYes, "yes", false, "do not ask for confirmation")
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 // cmdStatus prints where things are and what is missing.
 func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	var asJSON bool
-	cfg, err := loadConfig("status", args, stderr, func(fs *flag.FlagSet) {
+	cfg, _, err := loadConfig("status", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&asJSON, "json", false, "print the same state as one JSON object")
 	})
 	if err != nil {
@@ -200,7 +200,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 // cmdDoctor checks live responses against the models this server holds.
 func cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	var sampleSpaces int
-	cfg, err := loadConfig("doctor", args, stderr, func(fs *flag.FlagSet) {
+	cfg, log, err := loadConfig("doctor", args, stderr, func(fs *flag.FlagSet) {
 		fs.IntVar(&sampleSpaces, "spaces", 3, "how many spaces to sample")
 	})
 	if err != nil {
@@ -212,7 +212,6 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) int {
 
 	// Output goes to stdout on purpose: this is a CLI command, not the
 	// server, so the stdout-only-JSON-RPC rule does not apply here.
-	log := config.NewLogger(cfg, stderr)
 	d, err := build(context.Background(), cfg, log)
 	if err != nil {
 		return fail(stderr, "%v", err)

@@ -17,7 +17,7 @@ else.
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
 | `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
-| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
+| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. `GCM_READ_ONLY` wins: with it on, none of them is registered. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
 | `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register; `all` may be one of them. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named, as in `all,admin`: it searches spaces you are not a member of, only a Workspace administrator can use it, and turning it on adds an administrator's scope to what `login` asks for. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
 | `GCM_HTTP_MAX_RETRIES` | `--http-max-retries` | `3` | Extra attempts after a 429 or 5xx, 0 to 10. A write is only retried when repeating it cannot post twice. |
@@ -31,11 +31,15 @@ else.
 
 ### Renamed settings
 
-`GCM_ENABLE_DESTRUCTIVE` was `GCM_ALLOW_DESTRUCTIVE` until 6.1.0, and
-`--enable-destructive` was `--allow-destructive`. The old names still
-work, and the server logs a warning at start when it reads one. Set both
-and they have to agree: a run where one says `true` and the other
-`false` is refused at start, rather than settled by either.
+A renamed setting still answers to its old name, as a variable and as a
+flag, and the server logs a warning at start when it reads one. Either
+name alone decides. Set both and they have to agree, `1` and `true`
+alike: a run where they differ is refused at start, rather than settled
+by either.
+
+| Variable | Flag | Old variable | Old flag | Renamed in |
+|---|---|---|---|---|
+| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | 6.1.0 |
 
 ### Removed settings
 

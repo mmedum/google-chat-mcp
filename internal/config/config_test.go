@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -435,21 +435,13 @@ func TestTheDestructiveSwitchAnswersToItsOldName(t *testing.T) {
 	}
 }
 
-// Vars is what the bundle gate reads a setting's default and kind from,
-// so each claim it makes is held to what Build does. A switch takes
-// true and false and refuses anything else, and nothing else does that.
-// A default means the same as setting nothing.
+// Vars is what the bundle gate reads a setting's kind from, so each
+// claim it makes is held to what Build does. A switch takes true and
+// false and refuses anything else, and nothing else does that.
 func TestVarsDescribeWhatBuildDoes(t *testing.T) {
 	vars := Vars()
 	if len(vars) < 15 {
 		t.Fatalf("Vars has %d settings; Define registers more than that", len(vars))
-	}
-	if got, want := varNames(vars), EnvVars(); !slices.Equal(got, want) {
-		t.Errorf("Vars names\n%v\nwant every variable Define reads\n%v", got, want)
-	}
-	unset, err := define(t, nil).Build()
-	if err != nil {
-		t.Fatal(err)
 	}
 	switches := 0
 	for _, v := range vars {
@@ -463,18 +455,6 @@ func TestVarsDescribeWhatBuildDoes(t *testing.T) {
 		if v.Switch {
 			switches++
 		}
-		c, err := define(t, map[string]string{v.Name: v.Default}).Build()
-		if err != nil {
-			t.Errorf("%s=%q, its default, is refused: %v", v.Name, v.Default, err)
-			continue
-		}
-		c.Deprecated = nil
-		if !reflect.DeepEqual(c, unset) {
-			t.Errorf("%s=%q, its default, configures something:\n got %+v\nwant %+v", v.Name, v.Default, c, unset)
-		}
-		if v.ReplacedBy != "" && !slices.ContainsFunc(vars, func(w Var) bool { return w.Name == v.ReplacedBy }) {
-			t.Errorf("%s is replaced by %s, which is not a setting", v.Name, v.ReplacedBy)
-		}
 		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, instead string }) bool {
 			return v.Name == EnvPrefix+r.key
 		}); removed != v.Removed {
@@ -486,10 +466,71 @@ func TestVarsDescribeWhatBuildDoes(t *testing.T) {
 	}
 }
 
-func varNames(vars []Var) []string {
-	names := make([]string, len(vars))
-	for i, v := range vars {
-		names[i] = v.Name
+// The rename table is not only for switches. A setting that takes text
+// answers to its old name as a variable and as a flag, with spaces
+// around a value not making two values differ, and its default when
+// neither name is set. Vars says what replaced it. A rename to a
+// setting that does not exist stops Define.
+func TestARenamedSettingThatIsNotASwitch(t *testing.T) {
+	table := []rename{{old: "PROFILE_NAME", oldFlag: "profile-name", new: "PROFILE"}}
+	build := func(env map[string]string, args ...string) (Config, error) {
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		fs.SetOutput(&bytes.Buffer{})
+		s := defineWith(fs, func(k string) string { return env[k] }, table)
+		if err := fs.Parse(args); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		return s.Build()
 	}
-	return names
+	renamed := []Rename{{Old: "GCM_PROFILE_NAME", New: "GCM_PROFILE", OldFlag: "--profile-name", NewFlag: "--profile"}}
+	for _, tc := range []struct {
+		name       string
+		env        map[string]string
+		args       []string
+		want       string
+		deprecated []Rename
+	}{
+		{name: "neither, which is the default", want: "default"},
+		{name: "the new name", env: map[string]string{"GCM_PROFILE": "work"}, want: "work"},
+		{name: "the old name", env: map[string]string{"GCM_PROFILE_NAME": "work"}, want: "work", deprecated: renamed},
+		{name: "the old flag", args: []string{"-profile-name=work"}, want: "work", deprecated: renamed},
+		{name: "both, agreeing", env: map[string]string{"GCM_PROFILE": "work", "GCM_PROFILE_NAME": " work "},
+			want: "work", deprecated: renamed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := build(tc.env, tc.args...)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if c.Profile != tc.want {
+				t.Errorf("Profile = %q, want %q", c.Profile, tc.want)
+			}
+			if !slices.Equal(c.Deprecated, tc.deprecated) {
+				t.Errorf("Deprecated = %v, want %v", c.Deprecated, tc.deprecated)
+			}
+		})
+	}
+
+	// The new name set to its own default is set, and disagrees.
+	for _, newValue := range []string{"home", "default"} {
+		_, err := build(map[string]string{"GCM_PROFILE": newValue, "GCM_PROFILE_NAME": "work"})
+		want := `GCM_PROFILE is "` + newValue + `" and GCM_PROFILE_NAME, its old name, is "work": unset GCM_PROFILE_NAME`
+		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), want) {
+			t.Errorf("both, disagreeing: got %v, want an invalid setting saying %q", err, want)
+		}
+	}
+
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	vars := defineWith(fs, func(string) string { return "" }, table).vars
+	if !slices.Contains(vars, Var{Name: "GCM_PROFILE_NAME", ReplacedBy: "GCM_PROFILE"}) {
+		t.Errorf("Vars does not say GCM_PROFILE_NAME is replaced by GCM_PROFILE: %v", vars)
+	}
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "GCM_NOWHERE, which is not a setting") {
+			t.Errorf("a rename to no setting: recovered %v", r)
+		}
+	}()
+	defineWith(flag.NewFlagSet("test", flag.ContinueOnError), func(string) string { return "" },
+		[]rename{{old: "SOMEWHERE", oldFlag: "somewhere", new: "NOWHERE"}})
 }

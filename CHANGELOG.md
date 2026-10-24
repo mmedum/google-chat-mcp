@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
+
 ## [6.1.0] - 2026-10-24
 
 ### Added

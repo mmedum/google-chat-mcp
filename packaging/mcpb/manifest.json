@@ -68,14 +68,14 @@
     "read_only": {
       "type": "boolean",
       "title": "Read-only",
-      "description": "Register only the tools that change nothing in Chat. For Google to refuse a write as well, log in with `google-chat-mcp login --read-only=true`, which asks for read-only scopes. Turning writes back on takes another login.",
+      "description": "Register only the tools that change nothing in Chat. Read-only wins over Deleting, and what cannot be taken back: with both on, the tools that cannot be taken back stay unregistered. For Google to refuse a write as well, log in with `google-chat-mcp login --read-only=true`, which asks for read-only scopes. Turning writes back on takes another login.",
       "default": false,
       "required": false
     },
     "enable_destructive": {
       "type": "boolean",
       "title": "Deleting, and what cannot be taken back",
-      "description": "Register the tools that delete messages, threads, spaces, sections and custom emoji, remove a member, open a space to an audience, make someone a manager and add someone from outside your organization. Each call also needs confirm: true. Off by default. This server asks nobody before a call, so Claude Desktop's approval of each tool is then the only check.",
+      "description": "Register the tools that delete messages, threads, spaces, sections and custom emoji, remove a member, open a space to an audience, make someone a manager and add someone from outside your organization. Each call also needs confirm: true. Off by default, and Read-only wins: with Read-only on, this registers nothing. This server asks nobody before a call, so Claude Desktop's approval of each tool is then the only check.",
       "default": false,
       "required": false
     },

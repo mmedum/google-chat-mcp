@@ -439,11 +439,18 @@ root, and claims Claude Desktop 0.10.0 or later. It asks for what a
 person sets in another client's configuration, each under the
 variable's name without `GCM_`, lowercased: `client_secret`, `profile`,
 `read_only`, `enable_destructive`, `toolsets` and `local_dir`. The
-bundle gate gives every other variable the server reads a reason it is
-left out, refuses a switch that defaults to anything but the server's
-own default and defaults that configure the server at all, and refuses
-an empty `privacy_policies`. The manifest lists
-no tools, since the settings change what registers, and carries no icon.
+bundle gate derives that list: every variable the server reads, less the
+renamed and removed ones and less each one it gives a reason to leave
+out, so a setting added later is asked for until the manifest asks or a
+reason is written. It refuses a reason for a variable the server no
+longer reads, a variable in `env` that the bundle leaves out, a switch
+asked as anything but a boolean, defaults that configure the server at
+all, any `env` on a platform override, which a host uses in place of
+`mcp_config.env`, a toolsets field that does not name every toolset,
+and an empty `privacy_policies`. Read-only wins over
+`enable_destructive` rather than refusing the pair, and both fields say
+so. The manifest lists no tools, since the settings change what
+registers, and carries no icon.
 
 ## Evidence log
 
@@ -535,6 +542,7 @@ contradicted a document, which won.
 | The registry enforces its MCPB rules in code, not in the published schema | A hash, a github.com or gitlab.com release-asset URL carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL before it accepts the entry — so the entry can only be published after the release exists |
 | A bundle install has a second approval behind the server, as Claude Code's ask rules are | **Refuted**, read 2026-10-23; Claude Desktop itself not probed. anthropics/mcpb `70fe3b34` and v2.1.2 declare the manifest's `tools` list for display, and nothing reads it at run time. Claude's connector docs: Desktop approves per tool, driven by the annotations, and "Always allow" skips the prompt "for that tool from now on". So every switch the bundle asks for defaults to the server's own, off, the bundle gate refuses one that does not, and the manifest lists no tools |
 | `privacy_policies` is optional for a bundle | **Refuted**. The manifest specification (anthropics/mcpb `70fe3b34`, MANIFEST.md) makes it "Required when the extension connects to external services (first- or third-party) that process user data". Neither the schema nor `mcpb validate` enforces it, so the bundle gate does. The manifest names Google's, https://policies.google.com/privacy, which answered 200 on 2026-10-24 |
+| A platform override's `env` is merged into `mcp_config.env` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.env = platformConfig.env \|\| result.env`. An override's `env`, an empty `{}` included, replaces the base, so the settings would not reach that platform. The bundle gate refuses any `env` on an override |
 | A bundle setting the person leaves empty reaches the server empty | **Refuted** for an optional key with no default: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, passes `${user_config.x}` through as written. A `""` default reaches the server as `""`, and a boolean as `"true"` or `"false"`. So every optional key has a default, and the bundle gate builds the configuration from the bundle's defaults and holds it to an unconfigured server's |
 | `defaults.run` covers every `run` step in a workflow | Most specific wins, and an explicit `shell: bash` also turns on pipefail. Without it a step on the Windows runner gets PowerShell, and the mangling shows up on the line that runs |
 

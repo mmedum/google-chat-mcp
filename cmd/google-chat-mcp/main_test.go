@@ -155,7 +155,7 @@ func TestABadSettingFailsTheCommand(t *testing.T) {
 // loadedConfig builds the configuration the way a subcommand does.
 func loadedConfig(t *testing.T) config.Config {
 	t.Helper()
-	cfg, err := loadConfig("test", nil, &bytes.Buffer{}, nil)
+	cfg, _, err := loadConfig("test", nil, &bytes.Buffer{}, nil)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
