@@ -18,8 +18,8 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/server"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/server"
 )
 
 // The Claude Desktop bundle is built once a year at most, on a runner,
@@ -731,6 +731,18 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"an empty override env, which replaces the base too", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "platform_overrides", "linux")["env"] = map[string]any{}
 		}, "platform_overrides.linux.env is set"},
+		{"an argument that turns the deletes on", func(d map[string]any) {
+			dig(d, "server", "mcp_config")["args"] = []any{"--enable-destructive=true"}
+		}, "mcp_config.args is set, an empty list too"},
+		{"an empty argument list", func(d map[string]any) {
+			dig(d, "server", "mcp_config")["args"] = []any{}
+		}, "mcp_config.args is set, an empty list too"},
+		{"an override's argument, which replaces the base", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "linux")["args"] = []any{"--enable-destructive=true"}
+		}, "platform_overrides.linux.args is set"},
+		{"an empty override argument list, which replaces the base too", func(d map[string]any) {
+			dig(d, "server", "mcp_config", "platform_overrides", "win32")["args"] = []any{}
+		}, "platform_overrides.win32.args is set"},
 		{"a toolset the description leaves out", func(d map[string]any) {
 			dig(d, "user_config", "toolsets")["description"] = "Comma-separated tool groups to register: core, " +
 				"sections, pins, emoji, events, readstate, settings and availability, or all."
@@ -742,9 +754,9 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"a setting spent under another key", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "env")["GCM_PROFILE"] = "${user_config.toolsets}"
 		}, `mcp_config.env.GCM_PROFILE is "${user_config.toolsets}", want "${user_config.profile}"`},
-		{"the destructive switch's old name", func(d map[string]any) {
+		{"the destructive switch's removed name", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "env")["GCM_ALLOW_DESTRUCTIVE"] = "${user_config.enable_destructive}"
-		}, "mcp_config.env sets GCM_ALLOW_DESTRUCTIVE, whose name is now GCM_ENABLE_DESTRUCTIVE"},
+		}, "mcp_config.env sets GCM_ALLOW_DESTRUCTIVE, which a release removed"},
 		{"the destructive switch's old key", func(d map[string]any) {
 			uc := dig(d, "user_config")
 			uc["allow_destructive"] = uc["enable_destructive"]
@@ -787,7 +799,7 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 }
 
 // The bundle asks for every variable the server reads, less the
-// renamed and removed ones and less each one left out with a reason, so
+// removed ones and less each one left out with a reason, so
 // a setting added later is a decision about the bundle rather than a
 // gap in it. An exclusion the server has no use for is refused.
 func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
@@ -795,8 +807,8 @@ func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
 		t.Fatalf("the server reads %d variables; this would be deriving from a stub", len(read))
 	}
 	asked, problems := bundleVarsFrom(
-		[]string{"GCM_ASKED", "GCM_LEFT_OUT", "GCM_OLD_NAME", "GCM_REMOVED", "GCM_ADDED_LATER"},
-		[]config.Var{{Name: "GCM_ASKED"}, {Name: "GCM_OLD_NAME", ReplacedBy: "GCM_ASKED"}, {Name: "GCM_REMOVED", Removed: true}},
+		[]string{"GCM_ASKED", "GCM_LEFT_OUT", "GCM_REMOVED", "GCM_ADDED_LATER"},
+		[]config.Var{{Name: "GCM_ASKED"}, {Name: "GCM_REMOVED", Removed: true}},
 		map[string]string{"GCM_LEFT_OUT": "a reason", "GCM_GONE": "a reason", "GCM_REMOVED": "a reason"},
 	)
 	if want := []string{"GCM_ASKED", "GCM_ADDED_LATER"}; !slices.Equal(asked, want) {
@@ -804,7 +816,7 @@ func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
 	}
 	want := []string{
 		"bundleLeftOut names GCM_GONE, which the server does not read",
-		"bundleLeftOut names GCM_REMOVED, which is renamed or removed, and so left out already",
+		"bundleLeftOut names GCM_REMOVED, which a release removed, and so left out already",
 	}
 	if !slices.Equal(problems, want) {
 		t.Errorf("problems = %q, want %q", problems, want)

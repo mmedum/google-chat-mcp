@@ -13,7 +13,12 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Changed
 
+- **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v7`, as Go requires from v7 on; install with `go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest`.
 - The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
+
+### Removed
+
+- **Breaking:** `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive`, the destructive switch's names before 6.1.0. The variable is refused at start unless `false`, and the flag is refused. Use `GCM_ENABLE_DESTRUCTIVE` and `--enable-destructive`.
 
 ## [6.1.0] - 2026-10-24
 

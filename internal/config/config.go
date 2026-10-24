@@ -134,80 +134,6 @@ type Config struct {
 	// default: a server that can read and write anywhere on the machine
 	// is a different thing from one that can talk to Chat.
 	LocalDir string
-	// Deprecated is each old setting name this run was given, for the
-	// caller to warn about once it has a logger.
-	Deprecated []Rename
-}
-
-// Rename is a setting that took a new name and still answers to the
-// old one, as a variable and as a flag.
-type Rename struct {
-	Old, New         string
-	OldFlag, NewFlag string
-}
-
-// rename is one setting that took a new name: its old key and flag, and
-// the key that replaced it.
-type rename struct{ old, oldFlag, new string }
-
-// renames is every setting that took a new name. Define reads each old
-// name as a variable and as a flag, Vars lists it as replaced by the new
-// one, and Build settles it into the new one.
-var renames = []rename{
-	// The destructive switch until 6.1.0, renamed to match the sibling
-	// servers.
-	{old: "ALLOW_DESTRUCTIVE", oldFlag: "allow-destructive", new: "ENABLE_DESTRUCTIVE"},
-}
-
-// renamedSetting is one old name as Define read it.
-type renamedSetting struct {
-	Rename
-	// value is the old name's, from its flag or its variable.
-	value string
-	// target is the new name's raw value, which Build reads.
-	target *string
-	// fallback is the new name's default. Define leaves it out of target,
-	// so that Build can tell the new name unset from set to its default.
-	fallback string
-	isSwitch bool
-}
-
-// settle carries the old name's value to the new one, or the default
-// when neither is set. Either name alone decides. Both set have to
-// agree, because a run that took one over the other would turn on or
-// leave off what its owner set the other to say.
-func (r *renamedSetting) settle() error {
-	if strings.TrimSpace(r.value) == "" {
-		if strings.TrimSpace(*r.target) == "" {
-			*r.target = r.fallback
-		}
-		return nil
-	}
-	old, err := r.canonical(strings.TrimPrefix(r.OldFlag, "--"), r.value)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(*r.target) == "" {
-		*r.target = r.value
-		return nil
-	}
-	// A new value that does not parse is left to Build, which reports it
-	// under the new name.
-	if now, err := r.canonical(strings.TrimPrefix(r.NewFlag, "--"), *r.target); err == nil && now != old {
-		return fmt.Errorf("%w: %s is %s and %s, its old name, is %s: unset %s",
-			ErrInvalid, r.New, now, r.Old, old, r.Old)
-	}
-	return nil
-}
-
-// canonical is a value as Build reads it, so that two spellings of one
-// value agree: a switch's 1 and true, or a value with spaces around it.
-func (r *renamedSetting) canonical(name, value string) (string, error) {
-	if !r.isSwitch {
-		return strconv.Quote(strings.TrimSpace(value)), nil
-	}
-	on, err := parseBool(name, value)
-	return strconv.FormatBool(on), err
 }
 
 // Enabled reports whether a toolset's tools should be registered.
@@ -245,8 +171,6 @@ type Settings struct {
 	// removed are the settings a release took out, as the environment
 	// gives them, read only to refuse one still set.
 	removed map[string]string
-	// renamed are the old names of the settings in renames.
-	renamed []*renamedSetting
 	// vars is every setting Define reads, in order.
 	vars []Var
 }
@@ -257,24 +181,29 @@ type Var struct {
 	Name string
 	// Switch marks a setting that is on or off.
 	Switch bool
-	// ReplacedBy names the variable that took this one's place. The old
-	// name still works, and nothing should offer it.
-	ReplacedBy string
 	// Removed marks a setting a release took out, read only to refuse it.
 	Removed bool
 }
 
-// removedSettings are the settings that made the server ask the person,
-// each with what to do instead. Both were off by default, and off is
+// removedSettings are the settings a release took out, each with why
+// and what to do instead. Each was off by default, and off or unset is
 // still accepted. On, or a value that is not a boolean, is refused at
-// start: ignored, it would quietly allow what its owner set it to stop.
+// start: ignored, it would quietly leave the server otherwise than its
+// owner set it. Their flags are gone. A setting renamed later goes the
+// same way, rather than answering to two names.
 //
 // GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
 // marks than the server now sets, and on was every install's default.
-var removedSettings = []struct{ key, instead string }{
-	{"REQUIRE_PROMPT", "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
-	{"ASK_BEFORE_SEND", "list send_message and update_message under your client's ask rules, as the README shows"},
+var removedSettings = []struct{ key, why string }{
+	{"REQUIRE_PROMPT", noQuestion + "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
+	{"ASK_BEFORE_SEND", noQuestion + "list send_message and update_message under your client's ask rules, as the README shows"},
+	// The destructive switch's name until 6.1.0 renamed it.
+	{"ALLOW_DESTRUCTIVE", "it is " + EnvPrefix + "ENABLE_DESTRUCTIVE now. Unset it, and set " + EnvPrefix +
+		"ENABLE_DESTRUCTIVE or --enable-destructive in its place"},
 }
+
+// noQuestion is why the settings that made the server ask were removed.
+const noQuestion = "the server no longer asks the person, and the client's own approval decides each call. Unset it, and "
 
 // removedSet refuses each removed setting that is set to anything but
 // off.
@@ -284,8 +213,7 @@ func (s *Settings) removedSet() []error {
 		if on, err := parseBool(r.key, s.removed[r.key]); err == nil && !on {
 			continue
 		}
-		errs = append(errs, fmt.Errorf("%w: %s%s was removed: the server no longer asks the person, and the client's "+
-			"own approval decides each call. Unset it, and %s", ErrInvalid, EnvPrefix, r.key, r.instead))
+		errs = append(errs, fmt.Errorf("%w: %s%s was removed: %s", ErrInvalid, EnvPrefix, r.key, r.why))
 	}
 	return errs
 }
@@ -302,45 +230,24 @@ const (
 // Define registers one flag per setting on fs, defaulting to the
 // matching GCM_* variable read through env.
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
-	return defineWith(fs, env, renames)
-}
-
-// defineWith is Define with the renamed settings given, so a test can
-// rename a setting that is not a switch.
-func defineWith(fs *flag.FlagSet, env func(string) string, table []rename) *Settings {
 	s := &Settings{removed: map[string]string{}}
 	for _, r := range removedSettings {
 		s.removed[r.key] = env(EnvPrefix + r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
-	renamedTo := map[string]bool{}
-	for _, r := range table {
-		renamedTo[EnvPrefix+r.new] = true
-	}
-	type binding struct {
-		p              *string
-		flag, fallback string
-		v              Var
-	}
-	bound := map[string]binding{}
 	bind := func(p *string, name, fallback, usage string, v Var) {
 		value := env(v.Name)
-		// A renamed setting's default waits for Build, which settles
-		// the old name first.
-		if value == "" && !renamedTo[v.Name] {
+		if value == "" {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
 		s.vars = append(s.vars, v)
-		bound[v.Name] = binding{p, name, fallback, v}
 	}
 	def := func(p *string, name, key, fallback, usage string) {
 		bind(p, name, fallback, usage, Var{Name: EnvPrefix + key})
 	}
-	// A switch is registered empty rather than "false", so Build can
-	// tell one nobody set from one set off. Empty is off.
 	defSwitch := func(p *string, name, key, usage string) {
-		bind(p, name, "", usage, Var{Name: EnvPrefix + key, Switch: true})
+		bind(p, name, "false", usage, Var{Name: EnvPrefix + key, Switch: true})
 	}
 	def(&s.Profile, "profile", "PROFILE", "default", "named configuration profile")
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
@@ -358,22 +265,6 @@ func defineWith(fs *flag.FlagSet, env func(string) string, table []rename) *Sett
 	def(&s.CloudIdentityBase, "cloud-identity-api-base", "CLOUD_IDENTITY_API_BASE", DefaultCloudIdentityBase, "Cloud Identity API base URL")
 	def(&s.ClientSecretPath, "client-secret", "CLIENT_SECRET", "", "path to the OAuth Desktop client JSON (overrides the stored profile setting)")
 	def(&s.LocalDir, "local-dir", "LOCAL_DIR", "", "the one directory attachments are downloaded to and uploaded from (unset turns file transfer off)")
-
-	// Each old name is bound beside the new one it settles into.
-	for _, r := range table {
-		to, ok := bound[EnvPrefix+r.new]
-		if !ok {
-			panic("config: " + EnvPrefix + r.old + " is renamed to " + EnvPrefix + r.new + ", which is not a setting")
-		}
-		old := &renamedSetting{
-			Rename: Rename{Old: EnvPrefix + r.old, New: to.v.Name, OldFlag: "--" + r.oldFlag, NewFlag: "--" + to.flag},
-			target: to.p, fallback: to.fallback, isSwitch: to.v.Switch,
-		}
-		fs.StringVar(&old.value, r.oldFlag, env(old.Old),
-			"deprecated: the old name of "+old.NewFlag+", which still works [env "+old.Old+"]")
-		s.vars = append(s.vars, Var{Name: old.Old, Switch: to.v.Switch, ReplacedBy: old.New})
-		s.renamed = append(s.renamed, old)
-	}
 	return s
 }
 
@@ -420,15 +311,6 @@ var ErrInvalid = errors.New("config: invalid")
 func (s *Settings) Build() (Config, error) {
 	var c Config
 	var errs []error
-
-	for _, r := range s.renamed {
-		if strings.TrimSpace(r.value) != "" {
-			c.Deprecated = append(c.Deprecated, r.Rename)
-		}
-		if err := r.settle(); err != nil {
-			errs = append(errs, err)
-		}
-	}
 
 	c.Profile = strings.ToLower(strings.TrimSpace(s.Profile))
 	if !profilePattern.MatchString(c.Profile) {

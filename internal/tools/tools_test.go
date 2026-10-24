@@ -16,7 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
 )
 
 // The model reads the leading class, so it has to survive the trip from
@@ -118,7 +118,7 @@ func TestOutputSchemaAnnotatesTimestamps(t *testing.T) {
 
 // modulePath is this module's import path, the prefix that tells one of
 // its own packages from a dependency.
-const modulePath = "github.com/mmedum/google-chat-mcp/v6/"
+const modulePath = "github.com/mmedum/google-chat-mcp/v7/"
 
 // The model never widens its own reach (the standard's §3): no tool turns
 // a toolset on, lifts a refusal or edits what the operator set. The

@@ -32,7 +32,6 @@
     "entry_point": "server/google-chat-mcp-darwin",
     "mcp_config": {
       "command": "${__dirname}/server/google-chat-mcp-darwin",
-      "args": [],
       "env": {
         "GCM_CLIENT_SECRET": "${user_config.client_secret}",
         "GCM_PROFILE": "${user_config.profile}",

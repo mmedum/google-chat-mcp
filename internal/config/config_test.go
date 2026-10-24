@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -181,15 +180,17 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 	}
 }
 
-// A removed setting that made the server ask starts when off and is
-// refused otherwise, saying what to do instead: ignored, it would
-// quietly allow what its owner set it to stop. GCM_INTERACTION_HINT is
-// not read at all. The flags are gone.
+// A removed setting starts when off or unset and is refused otherwise,
+// saying what to do instead: ignored, it would quietly leave the server
+// otherwise than its owner set it. GCM_INTERACTION_HINT is not read at
+// all. The flags are gone.
 func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 	for _, env := range []map[string]string{
 		nil,
 		{"GCM_REQUIRE_PROMPT": "false", "GCM_ASK_BEFORE_SEND": " FALSE "},
 		{"GCM_REQUIRE_PROMPT": "0", "GCM_ASK_BEFORE_SEND": ""},
+		{"GCM_ALLOW_DESTRUCTIVE": "false"},
+		{"GCM_ALLOW_DESTRUCTIVE": ""},
 		{"GCM_INTERACTION_HINT": "false"},
 		{"GCM_INTERACTION_HINT": "maybe"},
 	} {
@@ -201,6 +202,8 @@ func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 		{"GCM_REQUIRE_PROMPT", "true", "GCM_ENABLE_DESTRUCTIVE off"},
 		{"GCM_REQUIRE_PROMPT", "maybe", "GCM_ENABLE_DESTRUCTIVE off"},
 		{"GCM_ASK_BEFORE_SEND", "true", "send_message and update_message"},
+		{"GCM_ALLOW_DESTRUCTIVE", "true", "set GCM_ENABLE_DESTRUCTIVE or --enable-destructive in its place"},
+		{"GCM_ALLOW_DESTRUCTIVE", "maybe", "set GCM_ENABLE_DESTRUCTIVE or --enable-destructive in its place"},
 	} {
 		_, err := define(t, map[string]string{tc.key: tc.value}).Build()
 		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.key+" was removed") ||
@@ -214,10 +217,52 @@ func TestARemovedSettingIsRefusedUnlessOff(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.SetOutput(&bytes.Buffer{})
 	Define(fs, func(string) string { return "" })
-	for _, name := range []string{"require-prompt", "ask-before-send", "interaction-hint"} {
+	for _, name := range []string{"require-prompt", "ask-before-send", "interaction-hint", "allow-destructive"} {
 		if fs.Lookup(name) != nil {
 			t.Errorf("--%s is still a flag", name)
 		}
+	}
+}
+
+// The destructive switch's old name on is refused beside the new one
+// too, and the refusal names the new one, as a variable and as a flag.
+func TestTheDestructiveSwitchsOldNameNamesTheNewOne(t *testing.T) {
+	_, err := define(t, map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true", "GCM_ALLOW_DESTRUCTIVE": "true"}).Build()
+	want := "config: invalid: GCM_ALLOW_DESTRUCTIVE was removed: it is GCM_ENABLE_DESTRUCTIVE now. " +
+		"Unset it, and set GCM_ENABLE_DESTRUCTIVE or --enable-destructive in its place"
+	if err == nil || err.Error() != want {
+		t.Errorf("got %v\nwant %s", err, want)
+	}
+}
+
+// The destructive switch is GCM_ENABLE_DESTRUCTIVE and
+// --enable-destructive alone. Its old name off does nothing.
+func TestTheDestructiveSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		args []string
+		on   bool
+	}{
+		{name: "unset", on: false},
+		{name: "the variable on", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"}, on: true},
+		{name: "the variable off", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "false"}, on: false},
+		{name: "the flag", args: []string{"-enable-destructive=true"}, on: true},
+		{name: "the flag over the variable", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-enable-destructive=false"}, on: false},
+		{name: "the old name off beside the new on",
+			env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true", "GCM_ALLOW_DESTRUCTIVE": "false"}, on: true},
+		{name: "the old name off alone", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"}, on: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := define(t, tc.env, tc.args...).Build()
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if c.EnableDestructive != tc.on {
+				t.Errorf("EnableDestructive = %t, want %t", c.EnableDestructive, tc.on)
+			}
+		})
 	}
 }
 
@@ -364,77 +409,6 @@ func TestTheDirectoryMustExistAndBeADirectory(t *testing.T) {
 	}
 }
 
-// The destructive switch is GCM_ENABLE_DESTRUCTIVE, the family's name,
-// and GCM_ALLOW_DESTRUCTIVE, its name until 6.1.0, still works. Both
-// set and disagreeing is refused rather than settled by either.
-func TestTheDestructiveSwitchAnswersToItsOldName(t *testing.T) {
-	const (
-		newName = "GCM_ENABLE_DESTRUCTIVE"
-		oldName = "GCM_ALLOW_DESTRUCTIVE"
-	)
-	for _, tc := range []struct {
-		name       string
-		env        map[string]string
-		args       []string
-		on         bool
-		deprecated bool
-	}{
-		{name: "neither", on: false},
-		{name: "the new name on", env: map[string]string{newName: "true"}, on: true},
-		{name: "the new name off", env: map[string]string{newName: "false"}, on: false},
-		{name: "the old name alone on", env: map[string]string{oldName: "true"}, on: true, deprecated: true},
-		{name: "the old name alone off", env: map[string]string{oldName: "false"}, on: false, deprecated: true},
-		{name: "both on", env: map[string]string{newName: "true", oldName: "1"}, on: true, deprecated: true},
-		{name: "both off", env: map[string]string{newName: "off", oldName: "false"}, on: false, deprecated: true},
-		{name: "the new flag", args: []string{"-enable-destructive=true"}, on: true},
-		{name: "the old flag", args: []string{"-allow-destructive=true"}, on: true, deprecated: true},
-		{name: "a flag over its own variable", env: map[string]string{oldName: "true"},
-			args: []string{"-allow-destructive=false"}, on: false, deprecated: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c, err := define(t, tc.env, tc.args...).Build()
-			if err != nil {
-				t.Fatalf("refused: %v", err)
-			}
-			if c.EnableDestructive != tc.on {
-				t.Errorf("EnableDestructive = %t, want %t", c.EnableDestructive, tc.on)
-			}
-			want := []Rename(nil)
-			if tc.deprecated {
-				want = []Rename{{Old: oldName, New: newName, OldFlag: "--allow-destructive", NewFlag: "--enable-destructive"}}
-			}
-			if !slices.Equal(c.Deprecated, want) {
-				t.Errorf("Deprecated = %v, want %v", c.Deprecated, want)
-			}
-		})
-	}
-
-	for _, tc := range []struct {
-		name string
-		env  map[string]string
-		args []string
-		want string
-	}{
-		{name: "the new on, the old off", env: map[string]string{newName: "true", oldName: "false"},
-			want: newName + " is true and " + oldName + ", its old name, is false"},
-		{name: "the new off, the old on", env: map[string]string{newName: "false", oldName: "true"},
-			want: newName + " is false and " + oldName + ", its old name, is true"},
-		{name: "the new flag against the old variable", env: map[string]string{oldName: "true"},
-			args: []string{"-enable-destructive=false"}, want: newName + " is false and " + oldName},
-		{name: "the old name not a boolean", env: map[string]string{oldName: "maybe"},
-			want: `allow-destructive "maybe"`},
-		{name: "the new name not a boolean", env: map[string]string{newName: "maybe"},
-			want: `enable-destructive "maybe"`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := define(t, tc.env, tc.args...).Build()
-			if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("got %v, want an invalid setting naming %q", err, tc.want)
-			}
-		})
-	}
-}
-
 // Vars is what the bundle gate reads a setting's kind from, so each
 // claim it makes is held to what Build does. A switch takes true and
 // false and refuses anything else, and nothing else does that.
@@ -455,82 +429,13 @@ func TestVarsDescribeWhatBuildDoes(t *testing.T) {
 		if v.Switch {
 			switches++
 		}
-		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, instead string }) bool {
+		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, why string }) bool {
 			return v.Name == EnvPrefix+r.key
 		}); removed != v.Removed {
 			t.Errorf("%s: Removed is %t, and it is a removed setting: %t", v.Name, v.Removed, removed)
 		}
 	}
-	if switches != 3 {
-		t.Errorf("%d switches, want read-only and the destructive switch under both its names", switches)
+	if switches != 2 {
+		t.Errorf("%d switches, want read-only and the destructive switch", switches)
 	}
-}
-
-// The rename table is not only for switches. A setting that takes text
-// answers to its old name as a variable and as a flag, with spaces
-// around a value not making two values differ, and its default when
-// neither name is set. Vars says what replaced it. A rename to a
-// setting that does not exist stops Define.
-func TestARenamedSettingThatIsNotASwitch(t *testing.T) {
-	table := []rename{{old: "PROFILE_NAME", oldFlag: "profile-name", new: "PROFILE"}}
-	build := func(env map[string]string, args ...string) (Config, error) {
-		fs := flag.NewFlagSet("test", flag.ContinueOnError)
-		fs.SetOutput(&bytes.Buffer{})
-		s := defineWith(fs, func(k string) string { return env[k] }, table)
-		if err := fs.Parse(args); err != nil {
-			t.Fatalf("parse: %v", err)
-		}
-		return s.Build()
-	}
-	renamed := []Rename{{Old: "GCM_PROFILE_NAME", New: "GCM_PROFILE", OldFlag: "--profile-name", NewFlag: "--profile"}}
-	for _, tc := range []struct {
-		name       string
-		env        map[string]string
-		args       []string
-		want       string
-		deprecated []Rename
-	}{
-		{name: "neither, which is the default", want: "default"},
-		{name: "the new name", env: map[string]string{"GCM_PROFILE": "work"}, want: "work"},
-		{name: "the old name", env: map[string]string{"GCM_PROFILE_NAME": "work"}, want: "work", deprecated: renamed},
-		{name: "the old flag", args: []string{"-profile-name=work"}, want: "work", deprecated: renamed},
-		{name: "both, agreeing", env: map[string]string{"GCM_PROFILE": "work", "GCM_PROFILE_NAME": " work "},
-			want: "work", deprecated: renamed},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c, err := build(tc.env, tc.args...)
-			if err != nil {
-				t.Fatalf("refused: %v", err)
-			}
-			if c.Profile != tc.want {
-				t.Errorf("Profile = %q, want %q", c.Profile, tc.want)
-			}
-			if !slices.Equal(c.Deprecated, tc.deprecated) {
-				t.Errorf("Deprecated = %v, want %v", c.Deprecated, tc.deprecated)
-			}
-		})
-	}
-
-	// The new name set to its own default is set, and disagrees.
-	for _, newValue := range []string{"home", "default"} {
-		_, err := build(map[string]string{"GCM_PROFILE": newValue, "GCM_PROFILE_NAME": "work"})
-		want := `GCM_PROFILE is "` + newValue + `" and GCM_PROFILE_NAME, its old name, is "work": unset GCM_PROFILE_NAME`
-		if err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), want) {
-			t.Errorf("both, disagreeing: got %v, want an invalid setting saying %q", err, want)
-		}
-	}
-
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	vars := defineWith(fs, func(string) string { return "" }, table).vars
-	if !slices.Contains(vars, Var{Name: "GCM_PROFILE_NAME", ReplacedBy: "GCM_PROFILE"}) {
-		t.Errorf("Vars does not say GCM_PROFILE_NAME is replaced by GCM_PROFILE: %v", vars)
-	}
-
-	defer func() {
-		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "GCM_NOWHERE, which is not a setting") {
-			t.Errorf("a rename to no setting: recovered %v", r)
-		}
-	}()
-	defineWith(flag.NewFlagSet("test", flag.ContinueOnError), func(string) string { return "" },
-		[]rename{{old: "SOMEWHERE", oldFlag: "somewhere", new: "NOWHERE"}})
 }

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
 // Userinfo returns the OpenID Connect profile of the token's owner.

@@ -8,14 +8,14 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v6/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v6/internal/service"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v6/internal/version"
+	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/version"
 )
 
 // deps is everything the server needs, assembled once at start.

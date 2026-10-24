@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,9 +19,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/server"
-	"github.com/mmedum/google-chat-mcp/v6/internal/version"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/server"
+	"github.com/mmedum/google-chat-mcp/v7/internal/version"
 )
 
 // below takes them as io.Writer, so nothing else can reach stdout.
@@ -86,11 +85,9 @@ func fail(stderr io.Writer, format string, args ...any) int {
 	return 1
 }
 
-// loadConfig parses flags and the environment into a validated Config,
-// and returns the logger it configures, which has already warned of
-// each renamed setting it read. extra registers any flags the
-// subcommand adds beyond the settings.
-func loadConfig(name string, args []string, stderr io.Writer, extra func(*flag.FlagSet)) (config.Config, *slog.Logger, error) {
+// loadConfig parses flags and the environment into a validated Config.
+// extra registers any flags the subcommand adds beyond the settings.
+func loadConfig(name string, args []string, stderr io.Writer, extra func(*flag.FlagSet)) (config.Config, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	settings := config.Define(fs, os.Getenv)
@@ -98,18 +95,9 @@ func loadConfig(name string, args []string, stderr io.Writer, extra func(*flag.F
 		extra(fs)
 	}
 	if err := fs.Parse(args); err != nil {
-		return config.Config{}, nil, err
+		return config.Config{}, err
 	}
-	cfg, err := settings.Build()
-	if err != nil {
-		return cfg, nil, err
-	}
-	log := config.NewLogger(cfg, stderr)
-	for _, r := range cfg.Deprecated {
-		log.Warn("a setting was renamed; the old name still works",
-			"old", r.Old, "new", r.New, "old_flag", r.OldFlag, "new_flag", r.NewFlag)
-	}
-	return cfg, log, nil
+	return settings.Build()
 }
 
 // cmdServe runs the MCP server on stdio until stdin closes.
@@ -118,10 +106,11 @@ func loadConfig(name string, args []string, stderr io.Writer, extra func(*flag.F
 // JSON-RPC framing before the client's first request completes, and the
 // failure would look like the server never started.
 func cmdServe(args []string, stderr io.Writer) int {
-	cfg, log, err := loadConfig("serve", args, stderr, nil)
+	cfg, err := loadConfig("serve", args, stderr, nil)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
+	log := config.NewLogger(cfg, stderr)
 
 	// The server keeps running when credentials are missing or stale.
 	// A client that cannot start a server shows "failed to connect" and
@@ -192,7 +181,7 @@ const (
 // as JSON, whatever the settings that leave tools out say. It needs no
 // credentials: registration does not call Google.
 func cmdDumpSchemas(args []string, stdout, stderr io.Writer) int {
-	cfg, _, err := loadConfig("--dump-schemas", args, stderr, nil)
+	cfg, err := loadConfig("--dump-schemas", args, stderr, nil)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}

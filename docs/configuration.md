@@ -29,33 +29,29 @@ else.
 | `GCM_CLIENT_SECRET` | `--client-secret` | *(from the profile)* | Path to the OAuth Desktop client JSON. `login` records this in the profile, so it is normally only passed once. |
 | `GCM_LOCAL_DIR` | `--local-dir` | *(unset)* | The one directory attachments are downloaded to and uploaded from. Unset means no file transfer at all: `download_attachment` and `upload_attachment` refuse and say so. Must be an absolute path — a relative one would mean whatever directory the MCP client happened to launch the server from. A download never overwrites, and an upload outside this directory is refused with the symlinks resolved first. |
 
-### Renamed settings
-
-A renamed setting still answers to its old name, as a variable and as a
-flag, and the server logs a warning at start when it reads one. Either
-name alone decides. Set both and they have to agree, `1` and `true`
-alike: a run where they differ is refused at start, rather than settled
-by either.
-
-| Variable | Flag | Old variable | Old flag | Renamed in |
-|---|---|---|---|---|
-| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `GCM_ALLOW_DESTRUCTIVE` | `--allow-destructive` | 6.1.0 |
-
 ### Removed settings
 
+A removed setting's flag is gone, so a flag left in your client's
+arguments stops the server from starting. Its variable is refused at
+start unless it is unset or `false`, its old default, because ignoring
+one would quietly leave the server otherwise than you set it.
+
+`GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` are the destructive
+switch's names before 6.1.0, which renamed them `GCM_ENABLE_DESTRUCTIVE`
+and `--enable-destructive`. A setting renamed later goes the same way:
+the old name is removed, not kept beside the new one.
+
 The server no longer asks you before a write; your client approves each
-call. Three settings went with the question, and their flags are gone,
-so a flag left in your client's arguments stops the server from
-starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused at
-start unless `false`, their old default, because ignoring one would
-quietly allow what you set it to stop. `GCM_INTERACTION_HINT` is
-ignored: only `delete_space`, `set_space_audience` and
-`delete_custom_emoji` carry the mark now, and Claude Code refuses those
-three when nobody is at the keyboard. A headless run that set it to
-`false` to use them loses them.
+call. Three settings went with the question. `GCM_REQUIRE_PROMPT` and
+`GCM_ASK_BEFORE_SEND` are refused unless `false`, as above.
+`GCM_INTERACTION_HINT` is ignored: only `delete_space`,
+`set_space_audience` and `delete_custom_emoji` carry the mark now, and
+Claude Code refuses those three when nobody is at the keyboard. A
+headless run that set it to `false` to use them loses them.
 
 | Variable | Still accepted | Instead |
 |---|---|---|
+| `GCM_ALLOW_DESTRUCTIVE` | `false` | `GCM_ENABLE_DESTRUCTIVE` or `--enable-destructive`. |
 | `GCM_REQUIRE_PROMPT` | `false` | Leave `GCM_ENABLE_DESTRUCTIVE` off for a client that runs with nobody watching. |
 | `GCM_ASK_BEFORE_SEND` | `false` | List `send_message` and `update_message` under your client's ask rules. |
 | `GCM_INTERACTION_HINT` | any value, ignored | Nothing. |

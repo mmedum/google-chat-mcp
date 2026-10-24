@@ -20,9 +20,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mmedum/google-chat-mcp/v6/internal/config"
-	"github.com/mmedum/google-chat-mcp/v6/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v6/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // The Claude Desktop bundle.
@@ -494,8 +494,8 @@ const (
 )
 
 // bundleLeftOut is every setting the server reads that the bundle does
-// not ask for, with why. A renamed or removed setting is left out
-// without an entry, because config says which it is.
+// not ask for, with why. A removed setting is left out without an
+// entry, because config says which it is.
 var bundleLeftOut = map[string]string{
 	config.EnvPrefix + "LOG_LEVEL":                   diagnostics,
 	config.EnvPrefix + "LOG_FORMAT":                  diagnostics,
@@ -512,18 +512,18 @@ var bundleLeftOut = map[string]string{
 }
 
 // bundleVarsFrom is the settings the bundle asks for at install: every
-// variable the server reads, less the renamed and removed ones and less
-// each one leftOut gives a reason for. A setting added later is asked
-// for until the manifest asks for it or a reason is written. It also
-// refuses an exclusion the server has no use for: one naming a variable
-// it does not read, or one config already retires.
+// variable the server reads, less the removed ones and less each one
+// leftOut gives a reason for. A setting added later is asked for until
+// the manifest asks for it or a reason is written. It also refuses an
+// exclusion the server has no use for: one naming a variable it does
+// not read, or one config already says is removed.
 func bundleVarsFrom(read []string, settings []config.Var, leftOut map[string]string) (asked, problems []string) {
-	retired := map[string]bool{}
+	removed := map[string]bool{}
 	for _, v := range settings {
-		retired[v.Name] = v.ReplacedBy != "" || v.Removed
+		removed[v.Name] = v.Removed
 	}
 	for _, name := range read {
-		if !retired[name] && leftOut[name] == "" {
+		if !removed[name] && leftOut[name] == "" {
 			asked = append(asked, name)
 		}
 	}
@@ -531,8 +531,8 @@ func bundleVarsFrom(read []string, settings []config.Var, leftOut map[string]str
 		switch {
 		case !slices.Contains(read, name):
 			problems = append(problems, fmt.Sprintf("bundleLeftOut names %s, which the server does not read", name))
-		case retired[name]:
-			problems = append(problems, fmt.Sprintf("bundleLeftOut names %s, which is renamed or removed, "+
+		case removed[name]:
+			problems = append(problems, fmt.Sprintf("bundleLeftOut names %s, which a release removed, "+
 				"and so left out already", name))
 		}
 	}
@@ -560,8 +560,12 @@ const toolsetsVar = config.EnvPrefix + "TOOLSETS"
 // Desktop the only other guard is its approval of each tool, which a
 // person can set to always allow. A platform override carries no env,
 // because the reference host replaces mcp_config.env with it rather
-// than merging the two, and these checks read mcp_config.env alone. The
-// toolsets field names every toolset. And privacy_policies is not
+// than merging the two, and these checks read mcp_config.env alone.
+// Nothing carries args, an empty list included: the bundle passes every
+// setting by env, an argument such as --enable-destructive=true would
+// configure the server past these checks, and the host replaces
+// mcp_config.args with an override's the same way. The toolsets field
+// names every toolset. And privacy_policies is not
 // empty, which the manifest specification requires of a server that
 // talks to a service processing user data, and which neither the schema
 // nor `mcpb validate` enforces.
@@ -577,10 +581,20 @@ func settingProblems(m bundleManifest) []string {
 		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
 			"server that connects to a service processing user data, as this one does to Google")
 	}
+	if m.Server.MCPConfig.Args != nil {
+		problems = append(problems, "mcp_config.args is set, an empty list too; the bundle passes every setting "+
+			"through mcp_config.env, and an argument would configure the server past these checks")
+	}
 	for _, platform := range slices.Sorted(maps.Keys(m.Server.MCPConfig.PlatformOverrides)) {
-		if m.Server.MCPConfig.PlatformOverrides[platform].Env != nil {
+		o := m.Server.MCPConfig.PlatformOverrides[platform]
+		if o.Env != nil {
 			problems = append(problems, fmt.Sprintf("platform_overrides.%s.env is set; a host replaces "+
 				"mcp_config.env with it, an empty one too, so put every variable in mcp_config.env", platform))
+		}
+		if o.Args != nil {
+			problems = append(problems, fmt.Sprintf("platform_overrides.%s.args is set; a host replaces "+
+				"mcp_config.args with it, an empty one too, and the bundle passes every setting through mcp_config.env",
+				platform))
 		}
 	}
 	asked := map[string]bool{}
@@ -617,9 +631,6 @@ func settingProblems(m bundleManifest) []string {
 		v := vars[name]
 		switch {
 		case slices.Contains(bundleVars, name):
-		case v.ReplacedBy != "":
-			problems = append(problems, fmt.Sprintf("mcp_config.env sets %s, whose name is now %s; offer the new one",
-				name, v.ReplacedBy))
 		case v.Removed:
 			problems = append(problems, fmt.Sprintf("mcp_config.env sets %s, which a release removed", name))
 		case bundleLeftOut[name] != "":
