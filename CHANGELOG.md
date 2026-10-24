@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.0.2] - 2026-10-24
+
 ### Fixed
 
 - `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME` drops the spaces around its value, as every other variable does, so ` 1 ` lets `GCM_CONFIG_DIR` point outside your home directory as `1` does.
@@ -782,7 +784,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...HEAD
+[7.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...v7.0.2
 [7.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...v7.0.1
 [7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0
 [6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
