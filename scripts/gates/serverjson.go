@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"runtime/debug"
 	"strings"
 
 	"github.com/mmedum/google-chat-mcp/v7/internal/server"
@@ -87,12 +86,14 @@ func githubRepo(module string) (owner, name string, err error) {
 // majorVersion matches the /vN a module path carries from v2 onward.
 var majorVersion = regexp.MustCompile(`^v[1-9][0-9]*$`)
 
-func moduleRepo() (owner, name string, err error) {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "", "", fmt.Errorf("no build info")
+// moduleRepo is the owner and repository of the module go.mod under
+// root declares, read by modulePath as the launcher's install hint is.
+func moduleRepo(root string) (owner, name string, err error) {
+	module, err := modulePath(root)
+	if err != nil {
+		return "", "", err
 	}
-	return githubRepo(info.Main.Path)
+	return githubRepo(module)
 }
 
 // bundle finds the single .mcpb row in a checksums file. Two bundles or
@@ -132,7 +133,7 @@ func serverJSON(version, checksums string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "server-json:", err)
 		return 1
 	}
-	owner, repo, err := moduleRepo()
+	owner, repo, err := moduleRepo(".")
 	if err != nil {
 		return fail(err)
 	}

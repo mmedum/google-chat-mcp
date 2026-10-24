@@ -20,9 +20,6 @@ import (
 // AppDir is the directory name under the user's config directory.
 const AppDir = "google-chat-mcp"
 
-// DefaultProfile is the profile used when none is named.
-const DefaultProfile = "default"
-
 // ErrNotFound is returned when the profile has no config file yet.
 var ErrNotFound = errors.New("userconfig: no config file for this profile; run `google-chat-mcp login`")
 
@@ -47,15 +44,15 @@ var ErrOutsideHome = errors.New("userconfig: config dir resolves outside the hom
 // something sensitive, so it is refused unless the caller says they
 // meant it.
 func BaseDir() (string, error) {
-	v := strings.TrimSpace(os.Getenv(config.EnvConfigDir))
-	if config.Blank(v) {
+	v := config.Lookup(os.Getenv, config.EnvConfigDir)
+	if v == "" {
 		d, err := os.UserConfigDir()
 		if err != nil {
 			return "", fmt.Errorf("userconfig: locate user config dir: %w", err)
 		}
 		return filepath.Join(d, AppDir), nil
 	}
-	if os.Getenv(config.EnvConfigDirAllowOutsideHome) == "1" {
+	if config.Lookup(os.Getenv, config.EnvConfigDirAllowOutsideHome) == "1" {
 		return v, nil
 	}
 	abs, err := filepath.Abs(v)
@@ -117,7 +114,7 @@ func ProfileDir(profile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if profile == "" || profile == DefaultProfile {
+	if profile == "" || profile == config.DefaultProfile {
 		return base, nil
 	}
 	return filepath.Join(base, "profiles", profile), nil

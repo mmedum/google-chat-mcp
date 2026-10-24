@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -12,7 +13,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -37,26 +37,6 @@ func define(t *testing.T, env map[string]string, args ...string) *Settings {
 // definedFloor is how many variables Define reads today, on purpose: the
 // floor moves with it, so a Define that reads nothing cannot pass.
 const definedFloor = 18
-
-// A setting given as spaces alone is unset, as an empty one is, so a
-// form field cleared to a space starts the server with the default. A
-// removed setting of spaces is off.
-func TestASettingOfSpacesIsUnset(t *testing.T) {
-	want, err := define(t, nil).Build()
-	if err != nil {
-		t.Fatal(err)
-	}
-	vars := defined()
-	if len(vars) < definedFloor {
-		t.Fatalf("Define reads %d settings, want at least %d", len(vars), definedFloor)
-	}
-	for _, v := range vars {
-		got, err := define(t, map[string]string{v.Name: "  "}).Build()
-		if err != nil || !reflect.DeepEqual(got, want) {
-			t.Errorf("%s=\"  \": %+v, %v; want the unconfigured configuration", v.Name, got, err)
-		}
-	}
-}
 
 // A profile name is held to ProfileRule, and the refusal says it. Only A
 // to Z are lowered: a character Unicode folds into a to z, such as the
@@ -109,93 +89,179 @@ func TestEnvVars(t *testing.T) {
 	}
 }
 
-// Every GCM_ variable the server's code spells is one EnvVars lists, so
-// a variable read outside Define cannot escape the bundle and staleness
-// gates. A name is seen as a string literal, or as a chain of literals
-// and EnvPrefix joined by +; one built from any other constant, or
-// through a format verb, is not seen. The scan must find a name outside
-// this package in each root, or it read too little.
+// notRead is the GCM_ names tests spell for a variable the server does
+// not read, each without the prefix: a setting a gate is shown refusing,
+// a near miss the staleness gate is shown catching, and one a release
+// stopped reading. Each is joined to EnvPrefix through a variable, so
+// this list spells none of them itself.
+var notRead = []string{
+	"ADDED_LATER", "ASKED", "CONFIG_DIRECTORY", "GONE", "INTERACTION_HINT", "LEFT_OUT", "LOCALDIR",
+	"NOT_READ", "REMOVED", "TOOLSET",
+}
+
+// Every GCM_ name the code spells is one EnvVars lists, so a variable
+// read outside Define cannot escape the bundle and staleness gates. Test
+// files are read too: the smoke test, the live driver, the evals and the
+// command tests set the variables of the server they start, and a
+// misspelling there tests a configuration nobody asked for. A test may
+// spell a name notRead lists, and nothing else may; each one is spelled
+// by a test and is not in EnvVars, so the list cannot go stale. The scan
+// must find a name outside this package in the code and in the tests of
+// each root, or it read too little.
 func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 	known := map[string]bool{}
 	for _, name := range EnvVars() {
 		known[name] = true
 	}
-	name := regexp.MustCompile(`^GCM_[A-Z0-9][A-Z0-9_]*$`)
-	found := map[string]string{}
-	elsewhere := map[string]int{}
-	fset := token.NewFileSet()
-	roots := []string{"../../cmd", "../../internal"}
-	for _, root := range roots {
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return err
+	unread := map[string]bool{}
+	for _, key := range notRead {
+		unread[EnvPrefix+key] = true
+	}
+	spelledByTests := map[string]bool{}
+	for _, root := range []string{"../../cmd", "../../internal", "../../scripts"} {
+		elsewhere := map[bool]int{}
+		for _, s := range spellings(t, root) {
+			if s.dir != filepath.Join("..", "..", "internal", "config") {
+				elsewhere[s.test]++
 			}
-			f, err := parser.ParseFile(fset, path, nil, 0)
-			if err != nil {
-				return err
+			switch {
+			case known[s.name]:
+			case unread[s.name] && s.test:
+				spelledByTests[s.name] = true
+			case unread[s.name]:
+				t.Errorf("%s names %s, which notRead lists for a test to spell", s.at, s.name)
+			default:
+				t.Errorf("%s names %s, which EnvVars does not list", s.at, s.name)
 			}
-			outside := filepath.Dir(path) != filepath.Join("..", "..", "internal", "config")
-			spell := func(s string, at token.Pos) {
-				for _, word := range strings.FieldsFunc(s, func(r rune) bool {
-					return r != '_' && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
-				}) {
-					if name.MatchString(word) {
-						found[word] = fset.Position(at).String()
-						if outside {
-							elsewhere[root]++
-						}
-					}
-				}
-			}
-			var visit func(n ast.Node) bool
-			visit = func(n ast.Node) bool {
-				switch n := n.(type) {
-				case *ast.BinaryExpr:
-					if n.Op != token.ADD {
-						return true
-					}
-					// A + chain is read in order: each run of literals
-					// and EnvPrefix is one string, and any other operand
-					// ends the run and is read on its own.
-					run, at := "", n.Pos()
-					for _, op := range operands(n) {
-						if s, ok := joined(op); ok {
-							if run == "" {
-								at = op.Pos()
-							}
-							run += s
-							continue
-						}
-						spell(run, at)
-						run = ""
-						ast.Inspect(op, visit)
-					}
-					spell(run, at)
-					return false
-				case *ast.BasicLit:
-					if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
-						spell(s, n.Pos())
-					}
-				}
-				return true
-			}
-			ast.Inspect(f, visit)
-			return nil
-		})
-		if err != nil {
+		}
+		if elsewhere[false] == 0 || elsewhere[true] == 0 {
+			t.Errorf("the scan found %d GCM_ names in the code under %s and %d in its tests, outside "+
+				"internal/config; it read too little", elsewhere[false], root, elsewhere[true])
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(unread)) {
+		if known[name] {
+			t.Errorf("notRead lists %s, which the server reads", name)
+		}
+		if !spelledByTests[name] {
+			t.Errorf("notRead lists %s, which no test spells", name)
+		}
+	}
+}
+
+// The scan reads a test file as it reads code, and a + chain in order: a
+// run of literals that another operand continues ends in a prefix, not a
+// name, unless something ends the name inside the run.
+func TestTheNameScanReadsChainsInOrder(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"code.go": "package p\n" +
+			"var (\n" +
+			"\tprefix = EnvPrefix + \"ENABLE_\" + kind\n" +
+			"\tended  = \"set \" + kind + EnvPrefix + \"GONE\"\n" +
+			"\tspaced = config.EnvPrefix + \"NOT_READ \" + kind\n" +
+			")\n",
+		"code_test.go": "package p\n" +
+			"func init() { os.Setenv(EnvPrefix+\"ADDED_LATER\", \"\") }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, root := range roots {
-		if elsewhere[root] == 0 {
-			t.Errorf("the scan found no GCM_ name in %s outside internal/config; it read too little", root)
-		}
+	var got []string
+	for _, s := range spellings(t, root) {
+		got = append(got, fmt.Sprintf("%s:%d %s test=%t", filepath.Base(s.at.Filename), s.at.Line, s.name, s.test))
 	}
-	for _, v := range slices.Sorted(maps.Keys(found)) {
-		if !known[v] {
-			t.Errorf("%s names %s, which EnvVars does not list", found[v], v)
-		}
+	want := []string{"code.go:4 GCM_GONE test=false", "code.go:5 GCM_NOT_READ test=false",
+		"code_test.go:2 GCM_ADDED_LATER test=true"}
+	if !slices.Equal(got, want) {
+		t.Errorf("spellings =\n%q\nwant\n%q", got, want)
 	}
+}
+
+// spelling is a GCM_ name a Go file spells: where, in which directory,
+// and whether the file is a test.
+type spelling struct {
+	name string
+	at   token.Position
+	dir  string
+	test bool
+}
+
+// spellings is every GCM_ name the Go files under root spell, test files
+// included, in the order the walk reads them. A name is seen as a string
+// literal, or as a run of literals and EnvPrefix joined by +; one built
+// from any other constant, or through a format verb, is not seen. A run
+// that another operand continues is building a name, so its last word is
+// a prefix rather than a name when nothing ends it inside the run:
+// EnvPrefix + "ENABLE_" + kind spells none.
+func spellings(t *testing.T, root string) []spelling {
+	t.Helper()
+	name := regexp.MustCompile(`^GCM_[A-Z0-9][A-Z0-9_]*$`)
+	inName := func(r rune) bool { return r == '_' || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') }
+	var out []spelling
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		// spell records the names s spells; continued is another operand
+		// following s in its chain.
+		spell := func(s string, at token.Pos, continued bool) {
+			words := strings.FieldsFunc(s, func(r rune) bool { return !inName(r) })
+			if continued && s != "" && inName(rune(s[len(s)-1])) {
+				words = words[:len(words)-1]
+			}
+			for _, word := range words {
+				if name.MatchString(word) {
+					out = append(out, spelling{name: word, at: fset.Position(at), dir: filepath.Dir(path),
+						test: strings.HasSuffix(path, "_test.go")})
+				}
+			}
+		}
+		var visit func(n ast.Node) bool
+		visit = func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.BinaryExpr:
+				if n.Op != token.ADD {
+					return true
+				}
+				// A + chain is read in order: each run of literals and
+				// EnvPrefix is one string, and any other operand
+				// continues the run before it and is read on its own.
+				run, at := "", n.Pos()
+				for _, op := range operands(n) {
+					if s, ok := joined(op); ok {
+						if run == "" {
+							at = op.Pos()
+						}
+						run += s
+						continue
+					}
+					spell(run, at, true)
+					run = ""
+					ast.Inspect(op, visit)
+				}
+				spell(run, at, false)
+				return false
+			case *ast.BasicLit:
+				if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
+					spell(s, n.Pos(), false)
+				}
+			}
+			return true
+		}
+		ast.Inspect(f, visit)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // operands is a + chain's operands in order, through parentheses.

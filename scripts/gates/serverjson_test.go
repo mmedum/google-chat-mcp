@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -27,7 +28,13 @@ func checksums(t *testing.T, rows ...string) string {
 	return write(t, "checksums.txt", strings.Join(rows, "\n")+"\n")
 }
 
+// server-json runs from the repository root, where go.mod is, as the
+// release workflow runs it; each test that runs it starts there.
+
 func TestServerJSONMatchesTheRegistrySchema(t *testing.T) {
+	// Read before the move to the root, from this package's testdata.
+	resolved, schema := resolveSchema(t, "server-2025-12-11.schema.json")
+	t.Chdir(repoRoot(t))
 	path := checksums(t,
 		archiveSum+"  google-chat-mcp_2.0.0_linux_amd64.tar.gz",
 		bundleSum+"  google-chat-mcp_2.0.0.mcpb",
@@ -44,7 +51,6 @@ func TestServerJSONMatchesTheRegistrySchema(t *testing.T) {
 	if len(entry) < 6 {
 		t.Fatalf("entry has %d fields, expected the full one: %s", len(entry), out.String())
 	}
-	resolved, schema := resolveSchema(t, "server-2025-12-11.schema.json")
 	if len(schema.Definitions) < 10 {
 		t.Fatalf("vendored schema has %d definitions, expected the published one", len(schema.Definitions))
 	}
@@ -88,6 +94,7 @@ func TestServerJSONMatchesTheRegistrySchema(t *testing.T) {
 }
 
 func TestServerJSONTakesTheTagWithOrWithoutItsV(t *testing.T) {
+	t.Chdir(repoRoot(t))
 	path := checksums(t, bundleSum+"  google-chat-mcp_2.0.0.mcpb")
 	for _, version := range []string{"v2.0.0", "2.0.0"} {
 		var out, errOut bytes.Buffer
@@ -104,6 +111,7 @@ func TestServerJSONTakesTheTagWithOrWithoutItsV(t *testing.T) {
 }
 
 func TestServerJSONRefusesAnUncertainRelease(t *testing.T) {
+	t.Chdir(repoRoot(t))
 	tests := []struct {
 		name string
 		rows []string
@@ -142,12 +150,34 @@ func TestServerJSONRefusesAnUncertainRelease(t *testing.T) {
 }
 
 func TestServerJSONReportsAMissingChecksumFile(t *testing.T) {
+	t.Chdir(repoRoot(t))
 	var out, errOut bytes.Buffer
 	if code := run([]string{"server-json", "v2.0.0", "no/such/checksums.txt"}, &out, &errOut); code == 0 {
 		t.Fatalf("wrote an entry without a checksum file:\n%s", out.String())
 	}
 	if !strings.Contains(errOut.String(), "no/such/checksums.txt") {
 		t.Errorf("error does not name the file: %s", errOut.String())
+	}
+}
+
+// The repository and the registry name are the module go.mod declares,
+// read by modulePath, so the entry and the launcher's install hint name
+// one module.
+func TestServerJSONNamesTheModuleGoModDeclares(t *testing.T) {
+	root := t.TempDir()
+	put(t, root, goModSource, "module\tgithub.com/example/chat-mcp/v2 // moved at v2\r\n\r\ngo 1.27\r\n")
+	path := checksums(t, bundleSum+"  google-chat-mcp_2.0.0.mcpb")
+	t.Chdir(root)
+	var out, errOut bytes.Buffer
+	if code := run([]string{"server-json", "v2.0.0", path}, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var entry registryEntry
+	if err := json.Unmarshal(out.Bytes(), &entry); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if entry.Name != "io.github.example/chat-mcp" || entry.Repository.URL != "https://github.com/example/chat-mcp" {
+		t.Errorf("name %q, repository %q; want go.mod's module", entry.Name, entry.Repository.URL)
 	}
 }
 
@@ -189,24 +219,28 @@ func TestGitHubRepoRefusesAnythingElse(t *testing.T) {
 	}
 }
 
-// runManifest runs mcpb-manifest on raw from the repository root, where
-// the checks read the schema, the launcher and go.mod.
+// runManifest runs mcpb-manifest on a copy of the repository whose
+// committed manifest is raw, the root it reads the schema, the launcher
+// and go.mod from too.
 func runManifest(t *testing.T, version string, raw []byte) (stdout, stderr string, code int) {
 	t.Helper()
-	path := write(t, "manifest.json", string(raw))
-	t.Chdir(repoRoot(t))
+	root := copiedRoot(t)
+	put(t, root, manifestSource, string(raw))
 	var out, errOut bytes.Buffer
-	code = run([]string{"mcpb-manifest", version, path}, &out, &errOut)
+	code = run([]string{"mcpb-manifest", version, root}, &out, &errOut)
 	return out.String(), errOut.String(), code
 }
 
-// The committed manifest comes out byte for byte, its version stamped.
+// The committed manifest comes out byte for byte, its version stamped,
+// read from the repository root when no other root is given.
 func TestMCPBManifestStampsTheVersion(t *testing.T) {
 	committed := readRepoFile(t, manifestSource)
-	out, errOut, code := runManifest(t, "v2.0.0", []byte(committed))
-	if code != 0 {
-		t.Fatalf("exit %d: %s", code, errOut)
+	t.Chdir(repoRoot(t))
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"mcpb-manifest", "v2.0.0"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
+	out := stdout.String()
 	var stamped map[string]any
 	if err := json.Unmarshal([]byte(out), &stamped); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -249,7 +283,14 @@ func TestMCPBManifestRefusesWhatItCannotStamp(t *testing.T) {
 			name:    "not json",
 			version: "2.0.0",
 			raw:     []byte("manifest_version: 0.3\n"),
-			want:    "manifest.json: the manifest does not decode: invalid character",
+			want:    "mcpb-manifest: the manifest does not decode: invalid character",
+		},
+		{
+			name:    "a key twice",
+			version: "2.0.0",
+			raw: []byte(strings.Replace(readRepoFile(t, manifestSource), `"name": "google-chat-mcp",`,
+				`"name": "google-chat-mcp", "name": "google-chat",`, 1)),
+			want: "mcpb-manifest: the manifest has name more than once",
 		},
 		{
 			name:    "no version given",
@@ -264,10 +305,27 @@ func TestMCPBManifestRefusesWhatItCannotStamp(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("stamped it anyway:\n%s", out)
 			}
+			if out != "" {
+				t.Errorf("stdout carries %q; a refusal goes to stderr alone", out)
+			}
 			if !strings.Contains(errOut, tt.want) {
 				t.Errorf("error %q does not say %q", errOut, tt.want)
 			}
 		})
+	}
+}
+
+// mcpb-manifest reads the launcher and go.mod from the root it reads the
+// manifest from, as the gate and the packer do.
+func TestMCPBManifestReadsOneRoot(t *testing.T) {
+	root := copiedRoot(t)
+	put(t, root, goModSource, "module example.com/elsewhere\n")
+	var out, errOut bytes.Buffer
+	code := run([]string{"mcpb-manifest", "2.0.0", root}, &out, &errOut)
+	want := `mcpb-manifest: the launcher says "go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest", ` +
+		`want "go install example.com/elsewhere/cmd/google-chat-mcp@latest"` + "\n"
+	if code != 1 || out.String() != "" || errOut.String() != want {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing, and %q", code, out.String(), errOut.String(), want)
 	}
 }
 
@@ -281,6 +339,40 @@ func TestRenderManifestReplacesTheVersionAlone(t *testing.T) {
 	} {
 		if _, err := renderManifest("2.0.0", []byte(tc.raw)); err == nil || err.Error() != tc.want {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+// A version that is not Semantic Versioning's is refused, saying what
+// is wrong with it, which the vendored schema would not do: it takes any
+// string as the version. What goreleaser passes for a tag, and a
+// snapshot's version with a pre-release after it, render.
+func TestRenderManifestRefusesAVersionThatIsNotSemver(t *testing.T) {
+	committed := []byte(readRepoFile(t, manifestSource))
+	for _, tc := range []struct{ version, why string }{
+		{"1.2.3 ", "it has spaces in it"},
+		{" 1.2.3", "it has spaces in it"},
+		{"dev", "it has no number in it"},
+		{"vv1.2.3", `"v" comes before its major number`},
+		{"1", "it has no minor or patch number"},
+		{"1.2", "it has no patch number"},
+		{"1.2.", "1.2. has an empty number in it"},
+		{"1..3", "1..3 has an empty number in it"},
+		{"1.2.3.4", "it has more than three numbers, 1.2.3.4"},
+		{"01.2.3", "01.2.3 has a number with a leading zero, 01"},
+		{`1.2.3"`, `"\"" follows 1.2.3, where only a -pre-release or a +build may`},
+		{"1.2.3-01", `"-01" after 1.2.3 is not a pre-release or a build Semantic Versioning allows`},
+	} {
+		_, err := renderManifest(tc.version, committed)
+		want := "the version is " + strconv.Quote(tc.version) + ": " + tc.why +
+			"; the bundle takes a version such as 1.2.3, or a tag such as v1.2.3"
+		if err == nil || err.Error() != want {
+			t.Errorf("version %q: %v\nwant %q", tc.version, err, want)
+		}
+	}
+	for _, version := range []string{"1.2.3", "v1.2.3", "7.0.2-SNAPSHOT-1e7b4af", "1.2.3-rc.1+build.5"} {
+		if _, err := renderManifest(version, committed); err != nil {
+			t.Errorf("version %q: %v", version, err)
 		}
 	}
 }

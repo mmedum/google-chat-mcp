@@ -273,10 +273,16 @@ func TestLoadRejectsAMalformedFile(t *testing.T) {
 	}
 }
 
+// The profile an unconfigured server runs is the one kept at the base,
+// and a named one has a directory of its own.
 func TestProfileDirSeparatesNamedProfiles(t *testing.T) {
 	base := tempBase(t)
 
-	def, err := ProfileDir(DefaultProfile)
+	c, err := config.Load(nil, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := ProfileDir(c.Profile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +399,7 @@ func TestNamedProfilesAreIndependent(t *testing.T) {
 func TestDirectoryCachePath(t *testing.T) {
 	base := tempBase(t)
 
-	got, err := DirectoryCachePath(DefaultProfile)
+	got, err := DirectoryCachePath(config.DefaultProfile)
 	if err != nil {
 		t.Fatalf("DirectoryCachePath: %v", err)
 	}

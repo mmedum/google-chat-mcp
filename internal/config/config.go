@@ -26,6 +26,10 @@ import (
 // EnvPrefix is prepended to every environment variable name.
 const EnvPrefix = "GCM_"
 
+// DefaultProfile is the profile a server runs when none is named, which
+// internal/userconfig keeps at the top of its directory.
+const DefaultProfile = "default"
+
 // LogLevel is a typed enum constrained at load time.
 type LogLevel string
 
@@ -203,10 +207,14 @@ const (
 // envOnly is every variable read outside Define, for Vars.
 var envOnly = []string{EnvConfigDir, EnvConfigDirAllowOutsideHome, EnvRefreshToken}
 
-// Blank reports whether a variable's value leaves it unset: empty, or
-// spaces alone, so a form field cleared to a space means the default
-// rather than a value the server refuses.
-func Blank(v string) bool { return strings.TrimSpace(v) == "" }
+// Lookup is the value env gives the variable name, without the spaces
+// around it. Spaces alone are "", unset as an empty variable is, so a
+// form field cleared to a space means the default rather than a value
+// the server refuses. Define reads every setting through it, and so does each
+// reader of a variable outside Define.
+func Lookup(env func(string) string, name string) string {
+	return strings.TrimSpace(env(name))
+}
 
 // removedSettings are the settings a release took out, each with why
 // and what to do instead. Each was off by default, and unset or off is
@@ -269,12 +277,12 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 		if r.flag != "" {
 			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use+" [env "+EnvPrefix+r.key+"]")
 		}
-		s.removed[i] = env(EnvPrefix + r.key)
+		s.removed[i] = Lookup(env, EnvPrefix+r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
-		value := env(v.Name)
-		if Blank(value) {
+		value := Lookup(env, v.Name)
+		if value == "" {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
@@ -286,7 +294,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	defSwitch := func(p *string, name, key, usage string) {
 		bind(p, name, "false", usage, Var{Name: EnvPrefix + key, Switch: true})
 	}
-	def(&s.Profile, "profile", "PROFILE", "default", "named configuration profile")
+	def(&s.Profile, "profile", "PROFILE", DefaultProfile, "named configuration profile")
 	def(&s.LogLevel, "log-level", "LOG_LEVEL", string(LogInfo), "log level: debug, info, warn, error")
 	def(&s.LogFormat, "log-format", "LOG_FORMAT", string(LogJSON), "log format: text, json")
 	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "register only the read-only tools")

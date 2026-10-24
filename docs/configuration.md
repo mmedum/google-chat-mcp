@@ -2,7 +2,8 @@
 
 Every setting has an environment variable and a command-line flag. The
 flag wins over the environment, and the environment wins over the
-default. A variable set to spaces alone is unset, as an empty one is.
+default. A variable set to spaces alone is unset, as an empty one is,
+and the spaces around a value are dropped.
 Settings are validated once at start, and every problem is reported at
 once rather than one per run.
 
@@ -92,7 +93,7 @@ lives under `profiles/<name>/`.
 | Variable | Default | What it does |
 |---|---|---|
 | `GCM_CONFIG_DIR` | *(the path above)* | Moves the whole directory. Tests use it; so does an unusual setup. |
-| `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME` | *(unset)* | Allows `GCM_CONFIG_DIR` to point outside your home directory. |
+| `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME` | *(unset)* | Set to `1`, allows `GCM_CONFIG_DIR` to point outside your home directory. |
 
 The home-directory check is there because this server creates that
 directory `0700` and writes `0600` files into it. A mistyped override —
