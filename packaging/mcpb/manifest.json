@@ -61,7 +61,7 @@
     "profile": {
       "type": "string",
       "title": "Profile",
-      "description": "Which stored login to use. Separate profiles keep separate tokens, such as a work account and a personal one, and each is logged in to with `google-chat-mcp login --profile <name>`. Leave it empty for the default profile.",
+      "description": "Which stored login to use. Separate profiles keep separate tokens, such as a work account and a personal one, and each is logged in to with `google-chat-mcp login --profile <name>`. A name is up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit; capitals are read as lowercase, and any other name stops the server at start. Leave it empty for the default profile.",
       "default": "",
       "required": false
     },

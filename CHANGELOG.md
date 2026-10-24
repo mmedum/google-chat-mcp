@@ -11,6 +11,15 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- The Claude Desktop bundle's profile field, and the server's refusal of a profile name it does not accept, say what a name is: up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit, with capitals read as lowercase.
+
+### Fixed
+
+- A profile name with a character that Unicode lowercases into a to z, such as the Kelvin sign (U+212A), is refused rather than read as another profile's name.
+- A variable set to spaces alone is unset, as an empty one is, `GCM_CONFIG_DIR` and `GCM_REFRESH_TOKEN` included; a bundle field cleared to a space no longer stops the server.
+
 ## [7.0.0] - 2026-10-24
 
 ### Added

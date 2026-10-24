@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // write puts a schema dump in a temp file and returns its path.
@@ -244,7 +246,7 @@ func TestToolNamesSorted(t *testing.T) {
 // The staleness gate reads this list, so a variable the server reads and
 // this misses is a documentation hole the gate cannot see.
 func TestConfigVars(t *testing.T) {
-	got := configVars()
+	got := config.EnvVars()
 	want := []string{
 		"GCM_ALLOW_DESTRUCTIVE",
 		"GCM_ASK_BEFORE_SEND",

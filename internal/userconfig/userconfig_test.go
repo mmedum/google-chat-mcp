@@ -85,14 +85,21 @@ func TestPathsAndRoundTrip(t *testing.T) {
 	}
 }
 
+// Spaces alone are unset, as empty is.
 func TestBaseDirFallsBackToUserConfigDir(t *testing.T) {
-	t.Setenv(EnvDir, "")
-	d, err := BaseDir()
+	want, err := os.UserConfigDir()
 	if err != nil {
-		t.Skip("no user config dir on this system")
+		t.Skipf("no user config dir on this system: %v", err)
 	}
-	if filepath.Base(d) != AppDir {
-		t.Fatalf("base dir = %s", d)
+	for _, v := range []string{"", "  "} {
+		t.Setenv(EnvDir, v)
+		got, err := BaseDir()
+		if err != nil {
+			t.Fatalf("%s=%q: BaseDir: %v", EnvDir, v, err)
+		}
+		if got != filepath.Join(want, AppDir) {
+			t.Errorf("%s=%q: BaseDir() = %q, want it under %q", EnvDir, v, got, want)
+		}
 	}
 }
 

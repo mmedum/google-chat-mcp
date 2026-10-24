@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
 )
 
@@ -95,7 +96,7 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 	// The configuration page must name every GCM_ variable the server
 	// reads, a removed one it refuses included.
 	if configDoc, ok := load(configDocPath); ok {
-		for _, v := range configVars() {
+		for _, v := range config.EnvVars() {
 			if !strings.Contains(configDoc, v) {
 				fail("%s does not mention %s", configDocPath, v)
 			}

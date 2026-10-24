@@ -72,6 +72,23 @@ func TestEnvWins(t *testing.T) {
 	}
 }
 
+// A refresh token of spaces alone is unset, so the keyring's is used.
+func TestAnEnvTokenOfSpacesIsUnset(t *testing.T) {
+	s, _ := newStore(t, &memKeyring{data: map[string]string{"google-chat-mcp/default": "from-keyring"}})
+	s.Env = func(string) string { return "  " }
+	tok, src, err := s.Resolve()
+	if err != nil || tok != "from-keyring" || src != SourceKeyring {
+		t.Errorf("Resolve = %q/%q/%v, want the keyring's token", tok, src, err)
+	}
+	if s.EnvOverride() {
+		t.Error("EnvOverride is true for a token of spaces, so logout would say the server keeps using it")
+	}
+	s.Env = func(string) string { return "from-env" }
+	if !s.EnvOverride() {
+		t.Error("EnvOverride is false for a token the environment sets")
+	}
+}
+
 func TestKeyringRoundTrip(t *testing.T) {
 	kr := &memKeyring{data: map[string]string{}}
 	s, warnings := newStore(t, kr)

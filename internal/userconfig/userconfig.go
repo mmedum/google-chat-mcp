@@ -13,13 +13,15 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // AppDir is the directory name under the user's config directory.
 const AppDir = "google-chat-mcp"
 
 // EnvDir overrides the base directory (tests, unusual setups).
-const EnvDir = "GCM_CONFIG_DIR"
+const EnvDir = config.EnvConfigDir
 
 // DefaultProfile is the profile used when none is named.
 const DefaultProfile = "default"
@@ -37,7 +39,7 @@ type Config struct {
 }
 
 // EnvAllowOutsideHome opts an override out of the home-directory check.
-const EnvAllowOutsideHome = "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME"
+const EnvAllowOutsideHome = config.EnvConfigDirAllowOutsideHome
 
 // ErrOutsideHome is returned when the override points outside the home
 // directory without the opt-in.
@@ -52,7 +54,8 @@ var ErrOutsideHome = errors.New("userconfig: config dir resolves outside the hom
 // meant it.
 func BaseDir() (string, error) {
 	v := os.Getenv(EnvDir)
-	if v == "" {
+	// Spaces alone are unset, as for every setting.
+	if strings.TrimSpace(v) == "" {
 		d, err := os.UserConfigDir()
 		if err != nil {
 			return "", fmt.Errorf("userconfig: locate user config dir: %w", err)

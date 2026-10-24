@@ -46,7 +46,7 @@ func cmdLogin(args []string, stdout, stderr io.Writer) int {
 	}
 	if path == "" {
 		return fail(stderr, "no OAuth client. Pass --client-secret <path to the Desktop client JSON>, "+
-			"or set %sCLIENT_SECRET. docs/gcp-setup.md walks through creating one.", config.EnvPrefix)
+			"or set "+config.EnvPrefix+"CLIENT_SECRET. docs/gcp-setup.md walks through creating one.")
 	}
 
 	requested := requestedScopes(cfg)
@@ -158,7 +158,7 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 	// it for automation would otherwise read "signed out" and still be
 	// signed in. Borrowed from google-docs-mcp, which had this and the
 	// resolver above right when we had neither.
-	if os.Getenv(credentials.EnvVar) != "" {
+	if store.EnvOverride() {
 		_, _ = fmt.Fprintf(stderr, "note: %s is set; logout cannot revoke or remove it, "+
 			"and the server will keep using it.\n", credentials.EnvVar)
 	}
