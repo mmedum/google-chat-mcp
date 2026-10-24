@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-10-24
+
 ### Added
 
 - `status --json` carries `settings.destructive_registers`, whether the destructive tools register: `false` under `GCM_READ_ONLY` even with `settings.destructive` on. `status` says `true (read-only wins)` then.
@@ -764,7 +766,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...HEAD
+[7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0
 [6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.0...v5.1.1
