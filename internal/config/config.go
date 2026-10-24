@@ -203,10 +203,14 @@ const (
 // envOnly is every variable read outside Define, for Vars.
 var envOnly = []string{EnvConfigDir, EnvConfigDirAllowOutsideHome, EnvRefreshToken}
 
-// Blank reports whether a variable's value leaves it unset: empty, or
-// spaces alone, so a form field cleared to a space means the default
-// rather than a value the server refuses.
-func Blank(v string) bool { return strings.TrimSpace(v) == "" }
+// Lookup is the variable name as env gives it, without the spaces around
+// it. Spaces alone are "", unset as an empty variable is, so a form field
+// cleared to a space means the default rather than a value the server
+// refuses. Define reads every setting through it, and so does each
+// reader of a variable outside Define.
+func Lookup(env func(string) string, name string) string {
+	return strings.TrimSpace(env(name))
+}
 
 // removedSettings are the settings a release took out, each with why
 // and what to do instead. Each was off by default, and unset or off is
@@ -269,12 +273,12 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 		if r.flag != "" {
 			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use+" [env "+EnvPrefix+r.key+"]")
 		}
-		s.removed[i] = env(EnvPrefix + r.key)
+		s.removed[i] = Lookup(env, EnvPrefix+r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
-		value := env(v.Name)
-		if Blank(value) {
+		value := Lookup(env, v.Name)
+		if value == "" {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")

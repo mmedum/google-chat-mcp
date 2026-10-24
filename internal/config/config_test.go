@@ -12,7 +12,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -37,26 +36,6 @@ func define(t *testing.T, env map[string]string, args ...string) *Settings {
 // definedFloor is how many variables Define reads today, on purpose: the
 // floor moves with it, so a Define that reads nothing cannot pass.
 const definedFloor = 18
-
-// A setting given as spaces alone is unset, as an empty one is, so a
-// form field cleared to a space starts the server with the default. A
-// removed setting of spaces is off.
-func TestASettingOfSpacesIsUnset(t *testing.T) {
-	want, err := define(t, nil).Build()
-	if err != nil {
-		t.Fatal(err)
-	}
-	vars := defined()
-	if len(vars) < definedFloor {
-		t.Fatalf("Define reads %d settings, want at least %d", len(vars), definedFloor)
-	}
-	for _, v := range vars {
-		got, err := define(t, map[string]string{v.Name: "  "}).Build()
-		if err != nil || !reflect.DeepEqual(got, want) {
-			t.Errorf("%s=\"  \": %+v, %v; want the unconfigured configuration", v.Name, got, err)
-		}
-	}
-}
 
 // A profile name is held to ProfileRule, and the refusal says it. Only A
 // to Z are lowered: a character Unicode folds into a to z, such as the
@@ -111,10 +90,14 @@ func TestEnvVars(t *testing.T) {
 
 // Every GCM_ variable the server's code spells is one EnvVars lists, so
 // a variable read outside Define cannot escape the bundle and staleness
-// gates. A name is seen as a string literal, or as a chain of literals
-// and EnvPrefix joined by +; one built from any other constant, or
-// through a format verb, is not seen. The scan must find a name outside
-// this package in each root, or it read too little.
+// gates. So is every one scripts/ and the drivers spell: the smoke test,
+// the live driver and the evals set them for the server they start, and
+// a misspelling there tests a configuration nobody asked for. The
+// drivers are test files, which the scan otherwise skips. A name is seen
+// as a string literal, or as a chain of literals and EnvPrefix joined by
+// +; one built from any other constant, or through a format verb, is not
+// seen. The scan must find a name outside this package in each root and
+// in each driver, or it read too little.
 func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 	known := map[string]bool{}
 	for _, name := range EnvVars() {
@@ -124,11 +107,16 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 	found := map[string]string{}
 	elsewhere := map[string]int{}
 	fset := token.NewFileSet()
-	roots := []string{"../../cmd", "../../internal"}
+	roots := []string{"../../cmd", "../../internal", "../../scripts"}
+	drivers := []string{filepath.Join("..", "..", "internal", "livecheck"), filepath.Join("..", "..", "internal", "evals")}
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 				return err
+			}
+			driver := slices.Contains(drivers, filepath.Dir(path))
+			if strings.HasSuffix(path, "_test.go") && !driver {
+				return nil
 			}
 			f, err := parser.ParseFile(fset, path, nil, 0)
 			if err != nil {
@@ -143,6 +131,9 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 						found[word] = fset.Position(at).String()
 						if outside {
 							elsewhere[root]++
+						}
+						if driver {
+							elsewhere[filepath.Dir(path)]++
 						}
 					}
 				}
@@ -186,7 +177,7 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, root := range roots {
+	for _, root := range append(roots, drivers...) {
 		if elsewhere[root] == 0 {
 			t.Errorf("the scan found no GCM_ name in %s outside internal/config; it read too little", root)
 		}

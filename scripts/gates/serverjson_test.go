@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -279,8 +280,37 @@ func TestRenderManifestReplacesTheVersionAlone(t *testing.T) {
 		{"the placeholder somewhere else", `{"x": "0.0.0-dev", "version": "1.9.0"}`,
 			`the substitution set version to "1.9.0", wanted "2.0.0"`},
 	} {
-		if _, err := renderManifest("2.0.0", []byte(tc.raw)); err == nil || err.Error() != tc.want {
+		if _, err := renderManifest("2.0.0", []byte(tc.raw), repoRoot(t)); err == nil || err.Error() != tc.want {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
 		}
+	}
+}
+
+// A version that is not Semantic Versioning's is refused, which the
+// vendored schema would not do: it takes any string as the version.
+// What goreleaser passes for a tag, and a snapshot's version with a
+// pre-release after it, render.
+func TestRenderManifestRefusesAVersionThatIsNotSemver(t *testing.T) {
+	committed := []byte(readRepoFile(t, manifestSource))
+	for _, version := range []string{"1.2.3 ", " 1.2.3", "1.2", "01.2.3", "dev", `1.2.3"`, "vv1.2.3"} {
+		_, err := renderManifest(version, committed, repoRoot(t))
+		want := "the version is " + strconv.Quote(version) + "; the bundle takes a version such as 1.2.3, with no spaces"
+		if err == nil || err.Error() != want {
+			t.Errorf("version %q: %v, want %q", version, err, want)
+		}
+	}
+	for _, version := range []string{"1.2.3", "v1.2.3", "7.0.2-SNAPSHOT-1e7b4af", "1.2.3-rc.1+build.5"} {
+		if _, err := renderManifest(version, committed, repoRoot(t)); err != nil {
+			t.Errorf("version %q: %v", version, err)
+		}
+	}
+}
+
+// What ships is held to the vendored schema, not only what is
+// committed, since the stamped document is what the bundle carries.
+func TestTheStampedManifestIsHeldToTheSchema(t *testing.T) {
+	_, err := renderManifest("2.0.0", editedRaw(t, func(d map[string]any) { d["keywords"] = "chat" }), repoRoot(t))
+	if want := "the stamped manifest does not match the 0.3 schema"; err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("stamping a document the schema refuses gave %v, want an error containing %q", err, want)
 	}
 }

@@ -87,27 +87,91 @@ func readManifest(t *testing.T) (bundleManifest, map[string]any) {
 // passes for the real thing.
 func TestBundleManifestMatchesTheSchema(t *testing.T) {
 	root := repoRoot(t)
-	if got := schemaProblems(editedRaw(t, func(map[string]any) {}), root); len(got) != 0 {
+	if got := schemaProblems(manifestSource, editedRaw(t, func(map[string]any) {}), root); len(got) != 0 {
 		t.Errorf("the committed manifest: %q", got)
 	}
 	emptied := editedRaw(t, func(d map[string]any) { clear(d); d["name"] = server.Name })
-	if got := schemaProblems(emptied, root); !slices.Equal(got,
+	if got := schemaProblems(manifestSource, emptied, root); !slices.Equal(got,
 		[]string{"the manifest has 1 top-level fields, expected the full one"}) {
 		t.Errorf("an emptied manifest gives %q", got)
 	}
 	stub := t.TempDir()
 	put(t, stub, vendoredSchema, `{"type": "object", "properties": {"name": {"type": "string"}}}`)
-	if got := schemaProblems(editedRaw(t, func(map[string]any) {}), stub); !slices.Equal(got,
+	if got := schemaProblems(manifestSource, editedRaw(t, func(map[string]any) {}), stub); !slices.Equal(got,
 		[]string{"the vendored schema has 1 properties, expected the published one"}) {
 		t.Errorf("a stub schema gives %q", got)
 	}
 }
 
 // The committed manifest passes every check the packer runs, against
-// the names the packer stages.
+// the names the packer stages, read as the packer reads it: the bytes
+// in the tree, not a decode of them, which would merge a repeated key.
 func TestBundleManifestMatchesTheCode(t *testing.T) {
-	for _, p := range manifestProblems(editedRaw(t, func(map[string]any) {}), stagedNames(), repoRoot(t)) {
+	_, problems, err := committedManifest(repoRoot(t), stagedNames())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range problems {
 		t.Error(p)
+	}
+}
+
+// A key twice in one object is refused, whichever object it is in, and
+// nothing else is checked, since every other check would read a
+// document the host does not.
+func TestAManifestKeyGivenTwiceIsRefused(t *testing.T) {
+	committed := readRepoFile(t, manifestSource)
+	for _, tc := range []struct{ name, old, new, want string }{
+		{"at the top", `"name": "google-chat-mcp",`, `"name": "google-chat-mcp", "name": "google-chat-mcp",`, "name"},
+		{"an object", `"privacy_policies": [`, `"server": {"type": "binary"}, "privacy_policies": [`, "server"},
+		{"in the environment", `"GCM_PROFILE": "${user_config.profile}",`,
+			`"GCM_PROFILE": "${user_config.profile}", "GCM_PROFILE": "work",`, "server.mcp_config.env.GCM_PROFILE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(committed, tc.old) {
+				t.Fatalf("%s does not say %q", manifestSource, tc.old)
+			}
+			raw := []byte(strings.Replace(committed, tc.old, tc.new, 1))
+			want := "the manifest has " + tc.want + " more than once; the gate's decode merges a repeated key, " +
+				"and the schema and the host keep the last, so they would read different documents"
+			if got := manifestProblems(raw, stagedNames(), repoRoot(t)); !slices.Equal(got, []string{want}) {
+				t.Errorf("problems %q, want %q alone", got, want)
+			}
+		})
+	}
+}
+
+// A key is repeated only within one object, and each repeated key is
+// named once, by its path, a list's elements and a repeated object's
+// own keys included.
+func TestRepeatedKeysNameEachPathOnce(t *testing.T) {
+	for _, tc := range []struct {
+		doc  string
+		want []string
+	}{
+		{`{"a": [{"b": 1, "b": 2, "b": 3}], "c": {"d": 1}, "d": 1}`, []string{"a[0].b"}},
+		{`{"x": {"y": 1}, "x": {"y": 1, "y": 2}}`, []string{"x", "x.y"}},
+		{`{"server": {"type": "binary"}, "user_config": {"type": {"type": "boolean"}}}`, nil},
+		{`{"a": 1,`, nil},
+	} {
+		if got := repeatedKeys([]byte(tc.doc)); !slices.Equal(got, tc.want) {
+			t.Errorf("repeatedKeys(%s) = %q, want %q", tc.doc, got, tc.want)
+		}
+	}
+}
+
+// compatibility.platforms is exactly the platforms the packer stages an
+// entry point for, so a platform added to the staged table and not to
+// the manifest is refused, and so is one dropped with its override.
+func TestThePlatformsAreTheStagedOnes(t *testing.T) {
+	m := editedManifest(t, func(map[string]any) {})
+	if got := identityProblems(m, stagedPlatforms()); len(got) != 0 {
+		t.Errorf("the committed manifest: %q", got)
+	}
+	want := "compatibility.platforms is [darwin linux win32]; the packer stages entry points for " +
+		"[darwin freebsd linux win32]"
+	if got := identityProblems(m, []string{"darwin", "freebsd", "linux", "win32"}); !slices.Equal(got, []string{want}) {
+		t.Errorf("a platform the manifest does not claim: %q, want %q", got, want)
 	}
 }
 
@@ -135,7 +199,7 @@ func TestManifestProblemsRunsEveryCheck(t *testing.T) {
 		{"an older Claude Desktop", func(d map[string]any) { dig(d, "compatibility")["claude_desktop"] = ">=0.9.0" },
 			`compatibility.claude_desktop is ">=0.9.0", want the family's >=0.10.0`},
 		{"two platforms", func(d map[string]any) { dig(d, "compatibility")["platforms"] = []any{"darwin", "win32"} },
-			"compatibility platforms [darwin win32], expected darwin, linux and win32"},
+			"compatibility.platforms is [darwin win32]; the packer stages entry points for [darwin linux win32]"},
 		{"a field the person may skip", func(d map[string]any) {
 			delete(dig(d, "user_config", "client_secret"), "default")
 		}, "user configuration that the installing client may leave unsubstituted: client_secret (optional, no default)"},
@@ -490,6 +554,8 @@ func TestPackRunsEveryCheckTheGateRuns(t *testing.T) {
 	}{
 		{"another server's name", manifestSource, `"name": "google-chat-mcp"`, `"name": "google-chat"`,
 			`manifest name "google-chat", server name "google-chat-mcp"`},
+		{"a key twice", manifestSource, `"name": "google-chat-mcp",`, `"name": "google-chat-mcp", "name": "google-chat-mcp",`,
+			"the manifest has name more than once"},
 		{"a launcher naming another binary", launcherSource, "google-chat-mcp-linux-arm64", "google-chat-mcp-linux-aarch64",
 			"the launcher runs [google-chat-mcp-linux-aarch64 google-chat-mcp-linux-amd64] and the packer stages " +
 				"[google-chat-mcp-linux-amd64 google-chat-mcp-linux-arm64]"},
@@ -513,6 +579,40 @@ func TestPackRunsEveryCheckTheGateRuns(t *testing.T) {
 				t.Error("a refused pack still wrote the bundle")
 			}
 		})
+	}
+}
+
+// failingWriter refuses every write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+// The end of a bundle reaches the disk only when it closes, so a close
+// that fails fails the pack: the zip's, which writes the directory an
+// installer reads first, and the file's, which leaves nothing at the
+// bundle's name.
+func TestABundleThatDoesNotCloseIsNotWritten(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "binary")
+	if err := os.WriteFile(source, []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Small enough that the zip writer buffers every entry, so the
+	// writes fail first at its close.
+	err := writeEntries(failingWriter{}, []bundleFile{{name: serverDir + "x", from: source}}, []byte("{}"))
+	if err == nil || err.Error() != "disk full" {
+		t.Errorf("writing through a failing disk gave %v, want the disk's error", err)
+	}
+
+	out := filepath.Join(t.TempDir(), "b.mcpb")
+	err = writeThrough(out, func(w io.Writer) error {
+		// Closed early, so writeThrough's own close is the one that fails.
+		return w.(*os.File).Close()
+	})
+	if !errors.Is(err, os.ErrClosed) {
+		t.Errorf("a failed close gave %v, want os.ErrClosed", err)
+	}
+	if _, statErr := os.Stat(out); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("a bundle that did not close is at %s: %v", out, statErr)
 	}
 }
 
@@ -614,11 +714,19 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 			want: "entry_point names LICENSE, which is not a program the bundle carries",
 		},
 		{
+			// A program, and not the one the default command runs.
+			name: "an entry point the default command does not run",
+			edit: func(d map[string]any) { dig(d, "server")["entry_point"] = "server/google-chat-mcp.exe" },
+			want: "entry_point names server/google-chat-mcp.exe, and the default command runs server/google-chat-mcp-darwin",
+		},
+		{
 			// Staged, and a program, and the file staged for another
-			// platform: macOS would spawn a Windows binary.
+			// platform: macOS would spawn a Windows binary. The entry
+			// point moves with the command, so this is the one defect.
 			name: "macOS spawning the Windows binary",
 			edit: func(d map[string]any) {
 				dig(d, "server", "mcp_config")["command"] = "${__dirname}/server/google-chat-mcp.exe"
+				dig(d, "server")["entry_point"] = "server/google-chat-mcp.exe"
 			},
 			want: `on darwin the bundle would spawn "server/google-chat-mcp.exe", and the file staged for darwin is ` +
 				`"server/google-chat-mcp-darwin"`,

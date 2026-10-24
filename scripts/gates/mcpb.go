@@ -151,18 +151,19 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(err)
 	}
-	// Read once: the bytes checked are the bytes shipped.
-	committed, err := os.ReadFile(manifestSource)
+	// The gate's own start, read once: the bytes checked are the bytes
+	// shipped.
+	committed, problems, err := committedManifest(".", files)
 	if err != nil {
 		return fail(err)
 	}
-	if problems := manifestProblems(committed, files, "."); len(problems) > 0 {
+	if len(problems) > 0 {
 		for _, p := range problems {
 			_, _ = fmt.Fprintln(stderr, "gates: mcpb-pack: "+p)
 		}
 		return 1
 	}
-	manifest, err := renderManifest(version, committed)
+	manifest, err := renderManifest(version, committed, ".")
 	if err != nil {
 		return fail(err)
 	}
@@ -175,19 +176,46 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// committedManifest is where the gate and the packer both start: the
+// committed manifest under root, read once, and every problem
+// manifestProblems finds in it, with the schema, the launcher and go.mod
+// read from the same root. files is the staged layout: the packer's
+// bundleLayout, or the gate's stagedNames, with no build.
+func committedManifest(root string, files []bundleFile) (raw []byte, problems []string, err error) {
+	raw, err = os.ReadFile(filepath.Join(root, manifestSource)) //nolint:gosec // a path this repository owns
+	if err != nil {
+		return nil, nil, err
+	}
+	return raw, manifestProblems(raw, files, root), nil
+}
+
 // manifestProblems is every check the gate and the packer both run, so
-// the release packs no manifest the tests would refuse: the placeholder
-// version, what the manifest says it is, the vendored schema, the tree
-// about to be packed, the settings, and the launcher and go.mod beside
-// it. raw is the committed manifest and files the staged layout; root
-// is the repository the schema, the launcher and go.mod are read from.
-// The tests are the gate, and run it on stagedNames, with no build.
+// the release packs no manifest the tests would refuse: no repeated key,
+// the placeholder version, what the manifest says it is, the vendored
+// schema, the tree about to be packed, the settings, and the launcher
+// and go.mod beside it. raw is the committed manifest and files the
+// staged layout; root is the repository the schema, the launcher and
+// go.mod are read from. The tests are the gate, and run it on
+// stagedNames, with no build.
+//
+// A key repeated in one object is refused before anything else is
+// checked. The decode into bundleManifest merges a repeated object into
+// the first, while the schema validator and the host each keep the
+// last, so every other check would read a document that is not the one
+// shipped.
 func manifestProblems(raw []byte, files []bundleFile, root string) []string {
 	var m bundleManifest
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return []string{fmt.Sprintf("the manifest does not decode: %v", err)}
 	}
 	var problems []string
+	for _, at := range repeatedKeys(raw) {
+		problems = append(problems, fmt.Sprintf("the manifest has %s more than once; the gate's decode merges "+
+			"a repeated key, and the schema and the host keep the last, so they would read different documents", at))
+	}
+	if len(problems) > 0 {
+		return problems
+	}
 	if m.Version != placeholderVersion {
 		problems = append(problems, fmt.Sprintf("the manifest carries version %q; the committed one carries the "+
 			"placeholder %q, which the packer replaces", m.Version, placeholderVersion))
@@ -195,8 +223,8 @@ func manifestProblems(raw []byte, files []bundleFile, root string) []string {
 	if p := schemaRefProblem(m); p != "" {
 		problems = append(problems, p)
 	}
-	problems = append(problems, schemaProblems(raw, root)...)
-	problems = append(problems, identityProblems(m)...)
+	problems = append(problems, schemaProblems(manifestSource, raw, root)...)
+	problems = append(problems, identityProblems(m, stagedPlatforms())...)
 	problems = append(problems, checkManifest(m, files)...)
 	if loose := alwaysSubstituted(m); len(loose) > 0 {
 		problems = append(problems, "user configuration that the installing client may leave unsubstituted: "+
@@ -206,19 +234,72 @@ func manifestProblems(raw []byte, files []bundleFile, root string) []string {
 	return append(problems, launcherProblems(files, root)...)
 }
 
+// repeatedKeys is the path of every key an object in raw has more than
+// once, each once, in document order: "server" at the top level,
+// "server.mcp_config.env.GCM_PROFILE" inside, and [i] for an element
+// of a list. A document that is not JSON has none here, since the
+// decode reports it.
+func repeatedKeys(raw []byte) []string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	var repeated []string
+	var walk func(path string) error
+	walk = func(path string) error {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		switch tok {
+		case json.Delim('{'):
+			seen := map[string]int{}
+			for dec.More() {
+				keyTok, err := dec.Token()
+				if err != nil {
+					return err
+				}
+				key, _ := keyTok.(string)
+				at := key
+				if path != "" {
+					at = path + "." + key
+				}
+				if seen[key]++; seen[key] == 2 {
+					repeated = append(repeated, at)
+				}
+				if err := walk(at); err != nil {
+					return err
+				}
+			}
+		case json.Delim('['):
+			for i := 0; dec.More(); i++ {
+				if err := walk(fmt.Sprintf("%s[%d]", path, i)); err != nil {
+					return err
+				}
+			}
+		default:
+			return nil
+		}
+		_, err = dec.Token() // the closing brace or bracket
+		return err
+	}
+	if walk("") != nil {
+		return nil
+	}
+	return repeated
+}
+
 // vendoredSchema is anthropics/mcpb schemas/mcpb-manifest-v0.3.schema.json,
 // fetched 2026-09-06, byte-identical to that repository's "latest"
 // schema then.
 var vendoredSchema = filepath.Join("scripts", "gates", "testdata", "mcpb-manifest-v0.3.schema.json")
 
-// schemaProblems validates the manifest against the vendored copy of its
-// published schema. Each side has a floor on what was read: an empty
+// schemaProblems validates a manifest against the vendored copy of its
+// published schema, naming it as what: the committed one, or the stamped
+// one the packer ships. Each side has a floor on what was read: an empty
 // document validates against a schema whose fields are all optional, and
 // a stub schema validates anything.
-func schemaProblems(raw []byte, root string) []string {
+func schemaProblems(what string, raw []byte, root string) []string {
 	var doc map[string]any
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return []string{fmt.Sprintf("%s: %v", manifestSource, err)}
+		return []string{fmt.Sprintf("%s: %v", what, err)}
 	}
 	if len(doc) < 10 {
 		return []string{fmt.Sprintf("the manifest has %d top-level fields, expected the full one", len(doc))}
@@ -240,7 +321,7 @@ func schemaProblems(raw []byte, root string) []string {
 		return []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	if err := resolved.Validate(doc); err != nil {
-		return []string{fmt.Sprintf("%s does not match the 0.3 schema: %v", manifestSource, err)}
+		return []string{fmt.Sprintf("%s does not match the 0.3 schema: %v", what, err)}
 	}
 	return nil
 }
@@ -251,9 +332,11 @@ const claudeDesktopFloor = ">=0.10.0"
 
 // identityProblems holds what the manifest says it is to the server and
 // to the family: the server's name and description, a binary, the
-// family's Claude Desktop floor, and all three platforms Claude Desktop
-// runs on. checkManifest holds each platform to the file staged for it.
-func identityProblems(m bundleManifest) []string {
+// family's Claude Desktop floor, and exactly the platforms the packer
+// stages an entry point for, stagedPlatforms, so dropping one platform
+// and its override together is refused. checkManifest holds each
+// platform to the file staged for it.
+func identityProblems(m bundleManifest, platforms []string) []string {
 	var problems []string
 	if m.Name != server.Name {
 		problems = append(problems, fmt.Sprintf("manifest name %q, server name %q", m.Name, server.Name))
@@ -269,8 +352,9 @@ func identityProblems(m bundleManifest) []string {
 		problems = append(problems, fmt.Sprintf("compatibility.claude_desktop is %q, want the family's %s",
 			m.Compatibility.ClaudeDesktop, claudeDesktopFloor))
 	}
-	if got := m.Compatibility.Platforms; !slices.Equal(got, []string{"darwin", "linux", "win32"}) {
-		problems = append(problems, fmt.Sprintf("compatibility platforms %v, expected darwin, linux and win32", got))
+	if got := m.Compatibility.Platforms; !slices.Equal(got, platforms) {
+		problems = append(problems, fmt.Sprintf("compatibility.platforms is %v; the packer stages entry points for %v",
+			got, platforms))
 	}
 	return problems
 }
@@ -381,10 +465,14 @@ var carried = []bundleFile{
 	{name: "README.md", from: "README.md"},
 }
 
+// launcherPlatform is the platform the launcher is the entry point for,
+// since it needs one binary per architecture.
+const launcherPlatform = "linux"
+
 // entryPointFor is the file a platform spawns: its own binary, or the
 // launcher where the platform needs one binary per architecture.
 func entryPointFor(platform string) string {
-	if platform == "linux" {
+	if platform == launcherPlatform {
 		return launcherName
 	}
 	for _, b := range binaries {
@@ -393,6 +481,19 @@ func entryPointFor(platform string) string {
 		}
 	}
 	return ""
+}
+
+// stagedPlatforms is every platform the packer stages an entry point
+// for, sorted: the launcher's, and each binary's that is one.
+func stagedPlatforms() []string {
+	platforms := []string{launcherPlatform}
+	for _, b := range binaries {
+		if b.platform != "" {
+			platforms = append(platforms, b.platform)
+		}
+	}
+	slices.Sort(platforms)
+	return platforms
 }
 
 // bundleLayout is what goes into the bundle, ordered by the name each
@@ -503,6 +604,13 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 			runs[platform] = rel
 		}
 	}
+	// entry_point is the file the default command runs, so the bundle
+	// does not name one file as the server and spawn another. An entry
+	// point or a command that names no program is reported above.
+	if got, ok := runs["default"]; ok && programs[m.Server.EntryPoint] && got != m.Server.EntryPoint {
+		problems = append(problems, fmt.Sprintf(
+			"entry_point names %s, and the default command runs %s", m.Server.EntryPoint, got))
+	}
 
 	// An override for a platform the bundle does not claim reaches
 	// nobody: the host picks an override by platform.
@@ -603,12 +711,22 @@ func modeFor(name string) fs.FileMode {
 	return 0o644
 }
 
+// releaseVersion is a Semantic Versioning 2.0.0 version, by the
+// expression semver.org gives: what goreleaser passes for a tag, and
+// for a snapshot, with a pre-release after it. The vendored schema takes
+// any string as the version, so a hook passing a stray space or a quote
+// would otherwise ship.
+var releaseVersion = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
+	`(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?` +
+	`(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+
 // renderManifest is the committed manifest, raw, with a real version in
 // it. raw is the bytes manifestProblems checked, which holds them to the
 // placeholder, so the bytes checked are the bytes shipped.
 //
 // Edited as text, then decoded, which proves the edit left JSON behind,
-// carrying the version asked for.
+// carrying the version asked for, and held to the vendored schema under
+// root again, since what ships is the stamped document.
 //
 // The edit itself is on the bytes rather than on a decoded value,
 // because re-encoding a map is not a neutral act. Go sorts map keys, so
@@ -616,10 +734,13 @@ func modeFor(name string) fs.FileMode {
 // against the source — and its encoder escapes `<`, `>` and `&`, so the
 // `<that file>` in the long description would ship as `\u003cthat
 // file\u003e`. Both are legal JSON and neither is what anyone wrote.
-func renderManifest(version string, raw []byte) ([]byte, error) {
+func renderManifest(version string, raw []byte, root string) ([]byte, error) {
 	semver := strings.TrimPrefix(version, "v")
 	if semver == "" {
 		return nil, fmt.Errorf("empty version")
+	}
+	if !releaseVersion.MatchString(semver) {
+		return nil, fmt.Errorf("the version is %q; the bundle takes a version such as 1.2.3, with no spaces", version)
 	}
 
 	// Exactly one, or the edit is ambiguous and the wrong string could
@@ -638,6 +759,9 @@ func renderManifest(version string, raw []byte) ([]byte, error) {
 	}
 	if check.Version != semver {
 		return nil, fmt.Errorf("the substitution set version to %q, wanted %q", check.Version, semver)
+	}
+	if problems := schemaProblems("the stamped manifest", out, root); len(problems) > 0 {
+		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))
 	}
 	// The manifest is a text file, and the source ends with a newline.
 	if !bytes.HasSuffix(out, []byte("\n")) {
@@ -662,7 +786,7 @@ func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	out, err := renderManifest(version, raw)
+	out, err := renderManifest(version, raw, ".")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "mcpb-manifest:", err)
 		return 1

@@ -445,10 +445,15 @@ directory, its opt-in and the refresh token. It asks for every one, less
 the removed ones and less each one it gives a reason to leave out, so a
 setting added later is asked for until the manifest asks or a reason is
 written. A config test holds that every `GCM_` name the code spells is
-in that registry. The gate refuses a reason for a variable the server no
-longer reads, a variable in `env` that the bundle leaves out or a
-release removed, a switch asked as anything but a boolean, defaults that
-configure the server at all, naming the fields they change, a required
+in that registry, `scripts/` and the live driver's and the evals' test
+files included, since they set the variables of the server they start.
+Every reader of a variable goes through `config.Lookup`, which drops the
+spaces around a value, so spaces alone are unset; a config test walks
+every variable in the registry, the three read outside Define through
+their own readers, and fails on one it has no reader for. The gate
+refuses a reason for a variable the server no longer reads, a variable
+in `env` that the bundle leaves out or a release removed, a switch asked
+as anything but a boolean, defaults that configure the server at all, naming the fields they change, a required
 field's default included since Claude Desktop may fill it in, a default
 that is a list or an object, any `env` on a platform override, which a
 host uses in place of `mcp_config.env`, a missing `mcp_config.args` or
@@ -456,12 +461,16 @@ an argument in it, since the bundle passes settings by `env` and an
 argument would configure the server past these checks, any `args` on a
 platform override, an empty list included, an `entry_point` or a command
 that names no staged program (`LICENSE` and `README.md` are packed to be
-read, not run), a command that does not start with `${__dirname}/`, a
-claimed platform that spawns any file but the one staged for it, an
-override for a platform the bundle does not claim, a profile field that
-does not state `config.ProfileRule`, which the configuration page must
-state too (the staleness gate holds it), a toolsets field
-that does not list every toolset in order, a bundle that stops asking
+read, not run), an `entry_point` that is not the file the default
+command runs, a command that does not start with `${__dirname}/`, a
+claimed platform that spawns any file but the one staged for it,
+`compatibility.platforms` other than the platforms the packer stages an
+entry point for, an override for a platform the bundle does not claim,
+a key given twice in one object of the committed manifest, which the
+gate's decode would merge while the schema and the host keep the last,
+a profile field that does not state `config.ProfileRule`, which the
+configuration page must state too (the staleness gate holds it), a
+toolsets field that does not list every toolset in order, a bundle that stops asking
 for either of those two, and an empty `privacy_policies`. Written down from a
 `/code-review high` rather than changed: the defaults check reads
 `mcp_config.env` alone. The refusals of an argument and of an override's
@@ -482,9 +491,20 @@ refusing the pair, and both fields say so. The gate is the
 function, `manifestProblems`, so the release packs nothing the tests
 refuse: the placeholder version, the schema reference, the vendored
 schema, the name and platforms, and the launcher and go.mod beside the
-manifest are in it. The packer reads the manifest once and ships the
-bytes it checked. The manifest lists no tools, since the settings change what
-registers, and carries no icon.
+manifest are in it. The gate and the packer read the committed manifest
+through `committedManifest`, once, from one root, and the packer ships
+the bytes it checked with the version stamped in. The stamped document is
+held to the vendored schema again, and the version to Semantic
+Versioning, since the schema takes any string; a bundle whose zip or
+file fails to close is not written. The manifest lists no tools, since
+the settings change what registers, and carries no icon.
+
+The family sweep of 2026-10-24 brought this gate and the configuration
+to the rules the family's reviews found: `entry_point` held to the
+default command, the platforms derived from the staged table, a repeated
+key refused, the stamped manifest validated, the close tested, one
+`config.Lookup` for every reader, the config directory's opt-in
+included, and the name scan over `scripts/` and the drivers.
 
 ## Evidence log
 

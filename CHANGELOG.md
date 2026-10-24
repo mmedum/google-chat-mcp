@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Fixed
+
+- `GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME` drops the spaces around its value, as every other variable does, so ` 1 ` lets `GCM_CONFIG_DIR` point outside your home directory as `1` does.
+
 ## [7.0.1] - 2026-10-24
 
 ### Changed

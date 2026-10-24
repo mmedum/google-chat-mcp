@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/zalando/go-keyring"
@@ -93,12 +92,7 @@ func (s *Store) env(k string) string {
 }
 
 // envToken is the refresh token the environment sets, or "" for none.
-func (s *Store) envToken() string {
-	if v := s.env(config.EnvRefreshToken); !config.Blank(v) {
-		return strings.TrimSpace(v)
-	}
-	return ""
-}
+func (s *Store) envToken() string { return config.Lookup(s.env, config.EnvRefreshToken) }
 
 // EnvOverride reports whether the environment sets a refresh token,
 // which Resolve then returns in place of the stored one.
