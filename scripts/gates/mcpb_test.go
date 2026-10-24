@@ -754,6 +754,9 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"no argument list in mcp_config", func(d map[string]any) {
 			delete(dig(d, "server", "mcp_config"), "args")
 		}, "mcp_config.args is missing; keep it as []"},
+		{"a null argument list in mcp_config", func(d map[string]any) {
+			dig(d, "server", "mcp_config")["args"] = nil
+		}, "mcp_config.args is null; keep it as []"},
 		{"an argument that turns the deletes on", func(d map[string]any) {
 			dig(d, "server", "mcp_config")["args"] = []any{"--enable-destructive=true"}
 		}, `mcp_config.args is ["--enable-destructive=true"]`},
@@ -821,6 +824,30 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 				t.Errorf("problems %q\nwant one containing %q", problems, tc.want)
 			}
 		})
+	}
+}
+
+// Every default the check cannot read is reported, in key order, and
+// the comparison still runs over the rest, so one run names everything
+// wrong with the defaults.
+func TestDefaultsProblemsReportsEveryUnreadableDefaultAndTheRest(t *testing.T) {
+	m := editedManifest(t, func(d map[string]any) {
+		uc := dig(d, "user_config")
+		dig(uc, "profile")["default"] = map[string]any{"name": "work"}
+		dig(uc, "local_dir")["default"] = []any{"/tmp"}
+		dig(uc, "client_secret")["default"] = []any{"client.json"}
+		dig(uc, "enable_destructive")["default"] = true
+	})
+	const cannot = ", which the defaults check cannot build an environment from: give it a boolean, a string or a number"
+	want := []string{
+		"user_config.client_secret defaults to a list" + cannot,
+		"user_config.local_dir defaults to a list" + cannot,
+		"user_config.profile defaults to an object" + cannot,
+	}
+	got := defaultsProblems(m)
+	if len(got) != 4 || !slices.Equal(got[:3], want) ||
+		!strings.HasPrefix(got[3], "the bundle's defaults configure the server otherwise than no environment does") {
+		t.Errorf("defaultsProblems =\n%s\nwant\n%s\nand then the comparison", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 

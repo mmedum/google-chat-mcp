@@ -249,7 +249,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 		// The flag is registered empty and the variable read after, so
 		// --help shows no default for a setting nobody should set.
 		if r.flag != "" {
-			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use)
+			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use+" [env "+EnvPrefix+r.key+"]")
 		}
 		s.removed[i] = env(EnvPrefix + r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})

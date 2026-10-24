@@ -420,8 +420,10 @@ type bundleManifest struct {
 		Type       string `json:"type"`
 		EntryPoint string `json:"entry_point"`
 		MCPConfig  struct {
-			Command           string            `json:"command"`
-			Args              []string          `json:"args"`
+			Command string `json:"command"`
+			// Args is raw, so that a key set to null is told apart from
+			// one that is missing.
+			Args              json.RawMessage   `json:"args"`
 			Env               map[string]string `json:"env"`
 			PlatformOverrides map[string]struct {
 				Command string            `json:"command"`
@@ -472,7 +474,7 @@ func (m bundleManifest) references() []string {
 	}
 	c := m.Server.MCPConfig
 	collect(c.Command)
-	collect(c.Args...)
+	collect(m.args()...)
 	for _, v := range c.Env {
 		collect(v)
 	}
@@ -485,6 +487,17 @@ func (m bundleManifest) references() []string {
 	}
 	slices.Sort(refs)
 	return slices.Compact(refs)
+}
+
+// args is mcp_config.args as strings: none when the key is missing,
+// null or not a list of strings. settingProblems reports the first two,
+// and the schema test the third.
+func (m bundleManifest) args() []string {
+	var args []string
+	if err := json.Unmarshal(m.Server.MCPConfig.Args, &args); err != nil {
+		return nil
+	}
+	return args
 }
 
 // Why bundleLeftOut leaves a setting out.
@@ -581,10 +594,12 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
 			"server that connects to a service processing user data, as this one does to Google")
 	}
-	switch args := m.Server.MCPConfig.Args; {
-	case args == nil:
-		problems = append(problems, "mcp_config.args is missing; keep it as [], since no Claude Desktop launch "+
-			"has shown the key optional")
+	const keepArgs = "keep it as [], since no Claude Desktop launch has shown the key optional"
+	switch raw, args := m.Server.MCPConfig.Args, m.args(); {
+	case raw == nil:
+		problems = append(problems, "mcp_config.args is missing; "+keepArgs)
+	case string(raw) == "null":
+		problems = append(problems, "mcp_config.args is null; "+keepArgs)
 	case len(args) > 0:
 		problems = append(problems, fmt.Sprintf("mcp_config.args is %q; the bundle passes every setting "+
 			"through mcp_config.env, and an argument would configure the server past these checks", args))
@@ -641,13 +656,10 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 			problems = append(problems, fmt.Sprintf("mcp_config.env sets %s, which the server does not read", name))
 		}
 	}
-	if p := defaultsProblem(m); p != "" {
-		problems = append(problems, p)
-	}
-	return problems
+	return append(problems, defaultsProblems(m)...)
 }
 
-// defaultsProblem reports a bundle whose defaults configure the server
+// defaultsProblems reports a bundle whose defaults configure the server
 // otherwise than no environment does.
 //
 // The environment is built as the reference host builds it: a boolean
@@ -657,15 +669,26 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 // theirs either way. One with a default is not. The reference host
 // starts the server only with the person's own value for it, but Claude
 // Desktop's form may fill that in from the default, and a person may
-// accept it unread; the evidence log has the source. A default of any
-// other kind, a list or an object, is refused rather than guessed at.
-func defaultsProblem(m bundleManifest) string {
+// accept it unread; the evidence log has the source. A default that is
+// a list or an object is reported rather than guessed at, every one in
+// key order, and its variable is left out of the comparison, which
+// still runs over the rest.
+//
+// It reads mcp_config.env alone. That is sound only because
+// settingProblems refuses an argument and an override's env; relaxing
+// either needs this to read the same (written down from a /code-review
+// high, in docs/architecture.md).
+func defaultsProblems(m bundleManifest) []string {
 	env := map[string]string{}
+	// unreadable is each user_config key whose default is neither a
+	// boolean, a string nor a number, with what it is.
+	unreadable := map[string]string{}
 	for name, value := range m.Server.MCPConfig.Env {
 		var b strings.Builder
-		personal, last := false, 0
+		skip, last := false, 0
 		for _, at := range userConfigRef.FindAllStringSubmatchIndex(value, -1) {
-			opt := m.UserConfig[value[at[2]:at[3]]]
+			key := value[at[2]:at[3]]
+			opt := m.UserConfig[key]
 			sub := value[at[0]:at[1]]
 			switch d := opt.Default.(type) {
 			case bool:
@@ -675,17 +698,23 @@ func defaultsProblem(m bundleManifest) string {
 			case float64:
 				sub = strconv.FormatFloat(d, 'f', -1, 64)
 			case nil:
-				personal = personal || opt.Required
-			default:
-				return fmt.Sprintf("user_config.%s defaults to %s, which the defaults check cannot build an "+
-					"environment from: give it a boolean, a string or a number", value[at[2]:at[3]], jsonKind(d))
+				skip = skip || opt.Required
+			case []any:
+				unreadable[key], skip = "a list", true
+			case map[string]any:
+				unreadable[key], skip = "an object", true
 			}
 			b.WriteString(value[last:at[0]] + sub)
 			last = at[1]
 		}
-		if !personal {
+		if !skip {
 			env[name] = b.String() + value[last:]
 		}
+	}
+	var problems []string
+	for _, key := range slices.Sorted(maps.Keys(unreadable)) {
+		problems = append(problems, fmt.Sprintf("user_config.%s defaults to %s, which the defaults check cannot "+
+			"build an environment from: give it a boolean, a string or a number", key, unreadable[key]))
 	}
 	build := func(env map[string]string) (config.Config, error) {
 		fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
@@ -694,25 +723,15 @@ func defaultsProblem(m bundleManifest) string {
 	}
 	got, err := build(env)
 	if err != nil {
-		return fmt.Sprintf("the environment the bundle's defaults give the server is refused: %v", err)
+		return append(problems, fmt.Sprintf("the environment the bundle's defaults give the server is refused: %v", err))
 	}
 	want, err := build(nil)
 	if err != nil {
-		return fmt.Sprintf("an unconfigured server is refused: %v", err)
+		return append(problems, fmt.Sprintf("an unconfigured server is refused: %v", err))
 	}
 	if !reflect.DeepEqual(got, want) {
-		return fmt.Sprintf("the bundle's defaults configure the server otherwise than no environment does: %v", env)
+		problems = append(problems, fmt.Sprintf("the bundle's defaults configure the server otherwise than no "+
+			"environment does: %v", env))
 	}
-	return ""
-}
-
-// jsonKind names a decoded JSON value's kind, for a message.
-func jsonKind(v any) string {
-	switch v.(type) {
-	case []any:
-		return "a list"
-	case map[string]any:
-		return "an object"
-	}
-	return fmt.Sprintf("a %T", v)
+	return problems
 }

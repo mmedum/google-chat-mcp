@@ -251,7 +251,11 @@ func TestTheDestructiveSwitchsOldNamesNameTheNewOnes(t *testing.T) {
 			want: refused},
 		{name: "the flag on over the variable off", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"},
 			args: []string{"-allow-destructive=true"}, want: refused},
-		// Off, the old name is ignored, and the new switch decides.
+		// Off, the old name is ignored, and the new switch decides, unset
+		// as well as on.
+		{name: "the flag off, the new one unset", args: []string{"-allow-destructive=false"}, on: false},
+		{name: "the variable off, the new one unset", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"},
+			on: false},
 		{name: "the flag off leaves the new one on", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
 			args: []string{"-allow-destructive=false"}, on: true},
 		{name: "the flag off over the variable on is ignored, and the new one decides",
@@ -289,7 +293,8 @@ func TestTheRemovedFlagsHelpSaysWhatToUse(t *testing.T) {
 		return ""
 	})
 	fs.PrintDefaults()
-	if want := "  -allow-destructive string\n    \tremoved; use --enable-destructive\n"; !strings.Contains(help.String(), want) {
+	const want = "  -allow-destructive string\n    \tremoved; use --enable-destructive [env GCM_ALLOW_DESTRUCTIVE]\n"
+	if !strings.Contains(help.String(), want) {
 		t.Errorf("--help does not say %q:\n%s", want, help.String())
 	}
 }
@@ -485,6 +490,28 @@ func TestTheDirectoryMustExistAndBeADirectory(t *testing.T) {
 				t.Errorf("the error does not name the setting: %v", err)
 			}
 		})
+	}
+}
+
+// A removed setting that keeps its flag says what to use in its place,
+// in --help and in its refusal alike, and only such a setting names one.
+func TestARemovedFlagNamesItsReplacement(t *testing.T) {
+	flags := 0
+	for _, r := range removedSettings {
+		switch {
+		case r.flag == "" && r.use != "":
+			t.Errorf("%s names %s to use, and has no flag whose help would say so", r.key, r.use)
+		case r.flag == "":
+		case r.use == "":
+			t.Errorf("--%s has no use, so --help would say %q", r.flag, "removed; use ")
+		case !strings.Contains(r.why, r.use):
+			t.Errorf("--%s's refusal does not name %s, which its help does: %q", r.flag, r.use, r.why)
+		default:
+			flags++
+		}
+	}
+	if flags != 1 {
+		t.Errorf("%d removed settings keep a flag, want the one: --allow-destructive", flags)
 	}
 }
 

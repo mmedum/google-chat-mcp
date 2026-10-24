@@ -452,7 +452,10 @@ missing `mcp_config.args` or an argument in it, since the bundle passes
 settings by `env` and an argument would configure the server past these
 checks, any `args` on a platform override, an empty list included, a
 toolsets field that does not list every toolset in order, and an empty
-`privacy_policies`. Read-only wins over
+`privacy_policies`. Written down from a `/code-review high` rather than
+changed: the defaults check reads `mcp_config.env` alone. The refusals
+of an argument and of an override's `env` are what keep it sound, so
+relaxing either needs the defaults check to read the same. Read-only wins over
 `enable_destructive` rather than refusing the pair, and both fields say
 so. The manifest lists no tools, since the settings change what
 registers, and carries no icon.
