@@ -332,7 +332,7 @@ func EnvVars() []string {
 	for _, v := range vars {
 		names = append(names, v.Name)
 	}
-	return slices.Compact(names)
+	return names
 }
 
 // Load is Define, Parse and Build for a caller with no flags of its own.

@@ -147,22 +147,39 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 					}
 				}
 			}
-			ast.Inspect(f, func(n ast.Node) bool {
+			var visit func(n ast.Node) bool
+			visit = func(n ast.Node) bool {
 				switch n := n.(type) {
 				case *ast.BinaryExpr:
-					// A chain of literals and EnvPrefix is one name; any
-					// other chain is read a literal at a time.
-					if s, ok := joined(n); ok {
-						spell(s, n.Pos())
-						return false
+					if n.Op != token.ADD {
+						return true
 					}
+					// A + chain is read in order: each run of literals
+					// and EnvPrefix is one string, and any other operand
+					// ends the run and is read on its own.
+					run, at := "", n.Pos()
+					for _, op := range operands(n) {
+						if s, ok := joined(op); ok {
+							if run == "" {
+								at = op.Pos()
+							}
+							run += s
+							continue
+						}
+						spell(run, at)
+						run = ""
+						ast.Inspect(op, visit)
+					}
+					spell(run, at)
+					return false
 				case *ast.BasicLit:
 					if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
 						spell(s, n.Pos())
 					}
 				}
 				return true
-			})
+			}
+			ast.Inspect(f, visit)
 			return nil
 		})
 		if err != nil {
@@ -179,6 +196,21 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 			t.Errorf("%s names %s, which EnvVars does not list", found[v], v)
 		}
 	}
+}
+
+// operands is a + chain's operands in order, through parentheses.
+func operands(e ast.Expr) []ast.Expr {
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		if e.Op == token.ADD {
+			return append(operands(e.X), operands(e.Y)...)
+		}
+	case *ast.ParenExpr:
+		if b, ok := e.X.(*ast.BinaryExpr); ok && b.Op == token.ADD {
+			return operands(b)
+		}
+	}
+	return []ast.Expr{e}
 }
 
 // joined is a + chain of string literals and EnvPrefix as one string.
@@ -718,6 +750,11 @@ func TestDefineReadsEachVariableOnce(t *testing.T) {
 		if n != 1 {
 			t.Errorf("Define reads %s %d times", name, n)
 		}
+	}
+	// A variable Define reads and something outside it reads too would
+	// be read under two rules; EnvVars lists it twice, so this sees it.
+	if names := EnvVars(); !slices.Equal(names, slices.Compact(slices.Clone(names))) {
+		t.Errorf("EnvVars names a variable twice: %v", names)
 	}
 }
 

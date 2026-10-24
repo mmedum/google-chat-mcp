@@ -1127,19 +1127,26 @@ func TestTheConfigDiffNamesTheFieldsThatDiffer(t *testing.T) {
 		Shown  int
 		hidden int
 		rest   []string
+		held   any
 	}
 	for _, tc := range []struct {
 		b    cfg
 		want []string
 	}{
-		{cfg{2, 1, nil}, []string{"Shown"}},
-		{cfg{1, 2, nil}, []string{"hidden"}},
-		{cfg{1, 1, []string{"x"}}, []string{"an unexported field"}},
-		{cfg{1, 1, nil}, nil},
+		{cfg{2, 1, nil, nil}, []string{"Shown"}},
+		{cfg{1, 2, nil, nil}, []string{"hidden"}},
+		{cfg{1, 1, []string{"x"}, nil}, []string{"an unexported field"}},
+		{cfg{1, 1, nil, nil}, nil},
 	} {
-		if got := fieldDiff(cfg{1, 1, nil}, tc.b); !slices.Equal(got, tc.want) {
+		if got := fieldDiff(cfg{1, 1, nil, nil}, tc.b); !slices.Equal(got, tc.want) {
 			t.Errorf("fieldDiff against %+v = %q, want %q", tc.b, got, tc.want)
 		}
+	}
+	// An interface holding a slice on both sides compares as a type and
+	// panics in Value.Equal; it is reported unnamed instead.
+	if got := fieldDiff(cfg{held: []string{"y"}}, cfg{held: []string{"x"}}); !slices.Equal(got,
+		[]string{"an unexported field"}) {
+		t.Errorf("an interface field differing gives %q, want [an unexported field]", got)
 	}
 	if got := configDiff(config.Config{Profile: "a", ReadOnly: true}, config.Config{Profile: "a"}); !slices.Equal(got,
 		[]string{"ReadOnly"}) {

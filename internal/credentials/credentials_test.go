@@ -89,6 +89,11 @@ func TestAnEnvTokenOfSpacesIsUnset(t *testing.T) {
 	if !s.EnvOverride() {
 		t.Error("EnvOverride is false for a token the environment sets")
 	}
+	// A token pasted with spaces or a newline is sent without them.
+	s.Env = func(string) string { return " from-env\n" }
+	if tok, src, err := s.Resolve(); err != nil || tok != "from-env" || src != SourceEnv {
+		t.Errorf("Resolve = %q/%q/%v, want the trimmed environment token", tok, src, err)
+	}
 }
 
 func TestKeyringRoundTrip(t *testing.T) {

@@ -47,7 +47,7 @@ var ErrOutsideHome = errors.New("userconfig: config dir resolves outside the hom
 // something sensitive, so it is refused unless the caller says they
 // meant it.
 func BaseDir() (string, error) {
-	v := os.Getenv(config.EnvConfigDir)
+	v := strings.TrimSpace(os.Getenv(config.EnvConfigDir))
 	if config.Blank(v) {
 		d, err := os.UserConfigDir()
 		if err != nil {

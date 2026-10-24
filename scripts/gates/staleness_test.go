@@ -191,6 +191,8 @@ func TestConfigDocProblems(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, old, new, want string }{
 		{"a variable left out", "GCM_LOCAL_DIR", "GCM_LOCALDIR", "docs/configuration.md does not mention GCM_LOCAL_DIR"},
+		{"a name kept only inside a longer one", "`GCM_CONFIG_DIR`", "`GCM_CONFIG_DIRECTORY`",
+			"docs/configuration.md does not mention GCM_CONFIG_DIR"},
 		{"the profile rule in other words", "- and _, starting", "`-` and `_`, starting",
 			`docs/configuration.md does not say a profile name is "up to 64 characters from a to z, 0 to 9, - and _, ` +
 				`starting with a letter or digit"`},

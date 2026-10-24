@@ -249,7 +249,7 @@ func TestMCPBManifestRefusesWhatItCannotStamp(t *testing.T) {
 			name:    "not json",
 			version: "2.0.0",
 			raw:     []byte("manifest_version: 0.3\n"),
-			want:    "manifest.json: invalid character",
+			want:    "manifest.json: the manifest does not decode: invalid character",
 		},
 		{
 			name:    "no version given",

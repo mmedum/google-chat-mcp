@@ -466,7 +466,11 @@ for either of those two, and an empty `privacy_policies`. Written down from a
 `/code-review high` rather than changed: the defaults check reads
 `mcp_config.env` alone. The refusals of an argument and of an override's
 `env` are what keep it sound, so relaxing either needs the defaults
-check to read the same.
+check to read the same. Kept from the 7.0.1 `/simplify` and
+`/code-review medium`: `configDiff`, a one-line wrapper over
+`fieldDiff` that keeps the gate's call typed; and the optional OAuth
+client field, which the reference host fills with its `""` default as
+it does every optional field, Claude Desktop not probed.
 
 The gate also starts every set of the switches over the defaults, each
 switch in a set on whatever its default, and holds the sets the server

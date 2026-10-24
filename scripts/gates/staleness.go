@@ -46,7 +46,7 @@ const (
 func configDocProblems(doc string) []string {
 	var problems []string
 	for _, v := range config.EnvVars() {
-		if !strings.Contains(doc, v) {
+		if !mentions(doc, v) {
 			problems = append(problems, fmt.Sprintf("%s does not mention %s", configDocPath, v))
 		}
 	}
@@ -54,6 +54,12 @@ func configDocProblems(doc string) []string {
 		problems = append(problems, fmt.Sprintf("%s does not say a profile name is %q", configDocPath, config.ProfileRule))
 	}
 	return problems
+}
+
+// mentions reports whether doc names the variable as a whole word, so
+// GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME does not count as GCM_CONFIG_DIR.
+func mentions(doc, name string) bool {
+	return regexp.MustCompile(`(^|[^A-Z0-9_])` + regexp.QuoteMeta(name) + `($|[^A-Z0-9_])`).MatchString(doc)
 }
 
 func staleness(args []string, stdout, stderr io.Writer) int {

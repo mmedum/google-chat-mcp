@@ -19,7 +19,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Fixed
 
 - A profile name with a character that Unicode lowercases into a to z, such as the Kelvin sign (U+212A), is refused rather than read as another profile's name.
-- A variable set to spaces alone is unset, as an empty one is, `GCM_CONFIG_DIR` and `GCM_REFRESH_TOKEN` included; a bundle field cleared to a space no longer stops the server.
+- A variable set to spaces alone is unset, as an empty one is, `GCM_CONFIG_DIR` and `GCM_REFRESH_TOKEN` included, and the spaces around either are dropped; a bundle field cleared to a space no longer stops the server.
 
 ## [7.0.0] - 2026-10-24
 

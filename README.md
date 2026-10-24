@@ -61,7 +61,8 @@ you did not build.
 
 Every release also carries a `.mcpb` bundle. Open it and Claude Desktop
 installs the server and asks for the settings a config file would carry,
-with no file to edit: your OAuth client JSON, the profile, read-only,
+with no file to edit: your OAuth client JSON, which may be left empty
+to use the one `login` recorded, the profile, read-only,
 the toolsets and the attachment folder. The tools that cannot be taken
 back (`enable_destructive`) stay off unless you turn them on, and so
 does attachment transfer until you pick a folder. This server asks

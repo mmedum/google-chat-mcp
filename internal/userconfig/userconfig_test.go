@@ -122,7 +122,8 @@ func TestBaseDirRefusesAPathOutsideHome(t *testing.T) {
 func TestBaseDirAllowsAPathOutsideHomeWithTheOptIn(t *testing.T) {
 	outside := t.TempDir()
 	setHome(t, t.TempDir())
-	t.Setenv(config.EnvConfigDir, outside)
+	// Spaces around the path are dropped, as for every setting.
+	t.Setenv(config.EnvConfigDir, " "+outside+" ")
 	t.Setenv(config.EnvConfigDirAllowOutsideHome, "1")
 
 	got, err := BaseDir()

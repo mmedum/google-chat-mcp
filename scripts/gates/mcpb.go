@@ -185,7 +185,7 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 func manifestProblems(raw []byte, files []bundleFile, root string) []string {
 	var m bundleManifest
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return []string{fmt.Sprintf("%s: %v", manifestSource, err)}
+		return []string{fmt.Sprintf("the manifest does not decode: %v", err)}
 	}
 	var problems []string
 	if m.Version != placeholderVersion {
@@ -658,7 +658,7 @@ func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
 	}
 	if problems := manifestProblems(raw, stagedNames(), "."); len(problems) > 0 {
 		for _, p := range problems {
-			_, _ = fmt.Fprintln(stderr, "mcpb-manifest: "+p)
+			_, _ = fmt.Fprintf(stderr, "mcpb-manifest: %s: %s\n", manifestPath, p)
 		}
 		return 1
 	}
@@ -860,11 +860,14 @@ var fieldRules = map[string]fieldRule{
 // and which neither the schema nor `mcpb validate` enforces. leftOut is
 // bundleLeftOut, or a test's.
 func settingProblems(m bundleManifest, leftOut map[string]string) []string {
-	vars := map[string]config.Var{}
-	for _, v := range config.Vars() {
+	registry := config.Vars()
+	vars := make(map[string]config.Var, len(registry))
+	names := make([]string, 0, len(registry))
+	for _, v := range registry {
 		vars[v.Name] = v
+		names = append(names, v.Name)
 	}
-	bundleVars, problems := bundleVarsFrom(config.EnvVars(), vars, leftOut)
+	bundleVars, problems := bundleVarsFrom(names, vars, leftOut)
 
 	if len(m.PrivacyPolicies) == 0 {
 		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
@@ -1055,7 +1058,7 @@ func fieldDiff(a, b any) []string {
 			if !reflect.DeepEqual(va.Field(i).Interface(), vb.Field(i).Interface()) {
 				fields = append(fields, f.Name)
 			}
-		case f.Type.Comparable():
+		case strictlyComparable(f.Type):
 			if !va.Field(i).Equal(vb.Field(i)) {
 				fields = append(fields, f.Name)
 			}
@@ -1067,6 +1070,26 @@ func fieldDiff(a, b any) []string {
 		fields = append(fields, "an unexported field")
 	}
 	return fields
+}
+
+// strictlyComparable reports whether every value of t compares with
+// Value.Equal. An interface type compares as a type, but Equal panics on
+// a dynamic value that does not, so one anywhere inside t rules it out.
+func strictlyComparable(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Interface:
+		return false
+	case reflect.Struct:
+		for i := range t.NumField() {
+			if !strictlyComparable(t.Field(i).Type) {
+				return false
+			}
+		}
+		return true
+	case reflect.Array:
+		return strictlyComparable(t.Elem())
+	}
+	return t.Comparable()
 }
 
 // bundleRefused are the sets of the bundle's switches the server refuses
