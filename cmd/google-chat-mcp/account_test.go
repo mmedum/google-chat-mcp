@@ -239,20 +239,20 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 	}
 }
 
-// status reports whether the destructive tools register, not the switch
-// alone: read-only wins, so with both on none of them is there. The
-// text says why it is false; the object is schema 2, which made this
-// field mean what registers.
-func TestStatusReportsWhetherTheDestructiveToolsRegister(t *testing.T) {
+// status reports the destructive switch and, beside it, whether the
+// destructive tools register: read-only wins, so with both on none of
+// them is there, and the text says so. destructive_registers was added
+// under schema 1, which adding a field leaves alone.
+func TestStatusSaysWhetherTheDestructiveToolsRegister(t *testing.T) {
 	for _, tc := range []struct {
 		name, destructive, readOnly string
 		text                        string
-		object                      bool
+		switchOn, registers         bool
 	}{
-		{"the switch off", "false", "false", "destructive:    false\n", false},
-		{"the switch on", "true", "false", "destructive:    true\n", true},
-		{"the switch on under read-only", "true", "true", "destructive:    false (read-only wins)\n", false},
-		{"read-only alone", "false", "true", "destructive:    false\n", false},
+		{"the switch off", "false", "false", "destructive:    false\n", false, false},
+		{"the switch on", "true", "false", "destructive:    true\n", true, true},
+		{"the switch on under read-only", "true", "true", "destructive:    true (read-only wins)\n", true, false},
+		{"read-only alone", "false", "true", "destructive:    false\n", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tempProfile(t)
@@ -281,17 +281,21 @@ func TestStatusReportsWhetherTheDestructiveToolsRegister(t *testing.T) {
 			var got struct {
 				SchemaVersion int `json:"schema_version"`
 				Settings      struct {
-					Destructive any `json:"destructive"`
+					Destructive          any `json:"destructive"`
+					DestructiveRegisters any `json:"destructive_registers"`
 				} `json:"settings"`
 			}
 			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 				t.Fatalf("not JSON: %v\n%s", err, stdout)
 			}
-			if got.SchemaVersion != 2 {
-				t.Errorf("schema_version = %d, want 2", got.SchemaVersion)
+			if got.SchemaVersion != 1 {
+				t.Errorf("schema_version = %d, want 1", got.SchemaVersion)
 			}
-			if got.Settings.Destructive != tc.object {
-				t.Errorf("settings.destructive = %v, want %t", got.Settings.Destructive, tc.object)
+			if got.Settings.Destructive != tc.switchOn {
+				t.Errorf("settings.destructive = %v, want %t", got.Settings.Destructive, tc.switchOn)
+			}
+			if got.Settings.DestructiveRegisters != tc.registers {
+				t.Errorf("settings.destructive_registers = %v, want %t", got.Settings.DestructiveRegisters, tc.registers)
 			}
 		})
 	}

@@ -528,6 +528,18 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 			},
 			want: "${user_config.oauth_client} is substituted",
 		},
+		{
+			name: "a substitution user_config does not declare, in an argument",
+			edit: func(d map[string]any) { dig(d, "server", "mcp_config")["args"] = []any{"${user_config.verbose}"} },
+			want: "${user_config.verbose} is substituted",
+		},
+		{
+			name: "a substitution user_config does not declare, in an override's argument",
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "win32")...)["args"] = []any{"--profile=${user_config.account}"}
+			},
+			want: "${user_config.account} is substituted",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -720,6 +732,9 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 			dig(d, "user_config", "enable_destructive")["default"] = true
 			dig(d, "user_config", "enable_destructive")["required"] = true
 		}, "the bundle's defaults configure the server otherwise than no environment does"},
+		{"a required field with a list for a default", func(d map[string]any) {
+			dig(d, "user_config", "client_secret")["default"] = []any{"client.json"}
+		}, "user_config.client_secret defaults to a list, which the defaults check cannot build an environment from"},
 		{"a switch asked as text", func(d map[string]any) {
 			dig(d, "user_config", "read_only")["type"] = "string"
 			dig(d, "user_config", "read_only")["default"] = "false"
@@ -736,6 +751,9 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"an empty override env, which replaces the base too", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "platform_overrides", "linux")["env"] = map[string]any{}
 		}, "platform_overrides.linux.env is set"},
+		{"no argument list in mcp_config", func(d map[string]any) {
+			delete(dig(d, "server", "mcp_config"), "args")
+		}, "mcp_config.args is missing; keep it as []"},
 		{"an argument that turns the deletes on", func(d map[string]any) {
 			dig(d, "server", "mcp_config")["args"] = []any{"--enable-destructive=true"}
 		}, `mcp_config.args is ["--enable-destructive=true"]`},

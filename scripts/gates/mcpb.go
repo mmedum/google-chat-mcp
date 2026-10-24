@@ -458,8 +458,9 @@ func (m bundleManifest) commands() map[string]string {
 var userConfigRef = regexp.MustCompile(`\$\{user_config\.([^}]+)\}`)
 
 // references is every ${user_config.KEY} the manifest substitutes into a
-// command or an environment variable. Not into args: settingProblems
-// refuses any argument, so none reaches the server.
+// command, an argument or an environment variable. Arguments included,
+// though settingProblems refuses one, so that each check reading this
+// holds on its own.
 func (m bundleManifest) references() []string {
 	var refs []string
 	collect := func(vals ...string) {
@@ -471,11 +472,13 @@ func (m bundleManifest) references() []string {
 	}
 	c := m.Server.MCPConfig
 	collect(c.Command)
+	collect(c.Args...)
 	for _, v := range c.Env {
 		collect(v)
 	}
 	for _, o := range c.PlatformOverrides {
 		collect(o.Command)
+		collect(o.Args...)
 		for _, v := range o.Env {
 			collect(v)
 		}
@@ -544,17 +547,6 @@ func bundleKey(name string) string {
 // toolsetsVar is the setting whose field has to list every toolset.
 const toolsetsVar = config.EnvPrefix + "TOOLSETS"
 
-// toolsetList is every toolset as the toolsets field has to list them:
-// in order, comma-separated. A word check would pass on "settings" or
-// "events" anywhere in the prose.
-func toolsetList() string {
-	names := make([]string, len(config.AllToolsets))
-	for i, t := range config.AllToolsets {
-		names[i] = string(t)
-	}
-	return strings.Join(names, ", ")
-}
-
 // settingProblems holds what the bundle asks for to the server's own
 // settings, and reports everything wrong rather than the first thing.
 //
@@ -567,9 +559,10 @@ func toolsetList() string {
 // person can set to always allow. A platform override carries no env,
 // because the reference host replaces mcp_config.env with it rather
 // than merging the two, and these checks read mcp_config.env alone.
-// mcp_config.args is empty: the bundle passes every setting by env, and
-// an argument such as --enable-destructive=true would configure the
-// server past these checks. A platform override carries no args, an
+// mcp_config.args is there and empty: the bundle passes every setting by
+// env, an argument such as --enable-destructive=true would configure the
+// server past these checks, and no Claude Desktop launch has shown the
+// key optional. A platform override carries no args, an
 // empty list included, since the host replaces mcp_config.args with it
 // the same way. The toolsets field lists every toolset. And
 // privacy_policies is not empty, which the manifest specification
@@ -588,7 +581,11 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
 			"server that connects to a service processing user data, as this one does to Google")
 	}
-	if args := m.Server.MCPConfig.Args; len(args) > 0 {
+	switch args := m.Server.MCPConfig.Args; {
+	case args == nil:
+		problems = append(problems, "mcp_config.args is missing; keep it as [], since no Claude Desktop launch "+
+			"has shown the key optional")
+	case len(args) > 0:
 		problems = append(problems, fmt.Sprintf("mcp_config.args is %q; the bundle passes every setting "+
 			"through mcp_config.env, and an argument would configure the server past these checks", args))
 	}
@@ -604,7 +601,7 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 				platform))
 		}
 	}
-	asked := map[string]bool{}
+	asked, toolsets := map[string]bool{}, config.ToolsetList()
 	for _, name := range bundleVars {
 		key := bundleKey(name)
 		asked[key] = true
@@ -620,8 +617,10 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 			problems = append(problems, fmt.Sprintf("user_config.%s is a %s; %s is a switch, so ask for a boolean",
 				key, cmp.Or(opt.Type, "field with no type"), name))
 		}
-		if list := toolsetList(); name == toolsetsVar && !strings.Contains(opt.Description, list) {
-			problems = append(problems, fmt.Sprintf("user_config.%s does not list the toolsets as %q", key, list))
+		// The whole list, in order: a word check passes on "settings" or
+		// "events" anywhere in the prose.
+		if name == toolsetsVar && !strings.Contains(opt.Description, toolsets) {
+			problems = append(problems, fmt.Sprintf("user_config.%s does not list the toolsets as %q", key, toolsets))
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(m.UserConfig)) {
@@ -655,8 +654,11 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 // becomes "true" or "false", a "" default stays "", and a reference
 // with no default is passed through as written. A required setting
 // with no default is left out, since the person supplies it and it is
-// theirs either way. One with a default is not: Claude Desktop fills the
-// field in with it, and a person may accept it unread.
+// theirs either way. One with a default is not. The reference host
+// starts the server only with the person's own value for it, but Claude
+// Desktop's form may fill that in from the default, and a person may
+// accept it unread; the evidence log has the source. A default of any
+// other kind, a list or an object, is refused rather than guessed at.
 func defaultsProblem(m bundleManifest) string {
 	env := map[string]string{}
 	for name, value := range m.Server.MCPConfig.Env {
@@ -674,6 +676,9 @@ func defaultsProblem(m bundleManifest) string {
 				sub = strconv.FormatFloat(d, 'f', -1, 64)
 			case nil:
 				personal = personal || opt.Required
+			default:
+				return fmt.Sprintf("user_config.%s defaults to %s, which the defaults check cannot build an "+
+					"environment from: give it a boolean, a string or a number", value[at[2]:at[3]], jsonKind(d))
 			}
 			b.WriteString(value[last:at[0]] + sub)
 			last = at[1]
@@ -699,4 +704,15 @@ func defaultsProblem(m bundleManifest) string {
 		return fmt.Sprintf("the bundle's defaults configure the server otherwise than no environment does: %v", env)
 	}
 	return ""
+}
+
+// jsonKind names a decoded JSON value's kind, for a message.
+func jsonKind(v any) string {
+	switch v.(type) {
+	case []any:
+		return "a list"
+	case map[string]any:
+		return "an object"
+	}
+	return fmt.Sprintf("a %T", v)
 }

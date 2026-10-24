@@ -38,7 +38,8 @@ leave the server otherwise than you set it. Off, it does nothing.
 `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` are the destructive
 switch's names before 6.1.0, which renamed them `GCM_ENABLE_DESTRUCTIVE`
 and `--enable-destructive`. The old flag still parses and answers as its
-variable does, so the refusal names the new one. A setting renamed
+variable does, so the refusal names the new one, and `--help` lists it
+as removed. A setting renamed
 later goes the same way: the old name is removed, not kept beside the
 new one.
 

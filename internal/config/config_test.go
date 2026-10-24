@@ -238,7 +238,10 @@ func TestTheDestructiveSwitchsOldNamesNameTheNewOnes(t *testing.T) {
 		name string
 		env  map[string]string
 		args []string
+		// want is the refusal, or empty for a run that starts.
 		want string
+		// on is EnableDestructive in a run that starts: the new switch's.
+		on bool
 	}{
 		{name: "the variable on, beside the new one",
 			env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true", "GCM_ALLOW_DESTRUCTIVE": "true"}, want: refused},
@@ -246,23 +249,68 @@ func TestTheDestructiveSwitchsOldNamesNameTheNewOnes(t *testing.T) {
 		{name: "the flag not a boolean", args: []string{"-allow-destructive=maybe"}, want: refused},
 		{name: "the flag on, beside the new one", args: []string{"-enable-destructive=true", "-allow-destructive=1"},
 			want: refused},
-		{name: "the flag off", args: []string{"-allow-destructive=false"}},
-		{name: "the flag off over the variable on", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "true"},
-			args: []string{"-allow-destructive=false"}},
 		{name: "the flag on over the variable off", env: map[string]string{"GCM_ALLOW_DESTRUCTIVE": "false"},
 			args: []string{"-allow-destructive=true"}, want: refused},
+		// Off, the old name is ignored, and the new switch decides.
+		{name: "the flag off leaves the new one on", env: map[string]string{"GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-allow-destructive=false"}, on: true},
+		{name: "the flag off over the variable on is ignored, and the new one decides",
+			env:  map[string]string{"GCM_ALLOW_DESTRUCTIVE": "true", "GCM_ENABLE_DESTRUCTIVE": "true"},
+			args: []string{"-allow-destructive=false"}, on: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := define(t, tc.env, tc.args...).Build()
-			switch {
-			case tc.want == "" && err != nil:
+			if tc.want != "" {
+				if err == nil || err.Error() != tc.want {
+					t.Errorf("got %v\nwant %s", err, tc.want)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("refused: %v", err)
-			case tc.want == "" && c.EnableDestructive:
-				t.Error("the old name off turned the destructive tools on")
-			case tc.want != "" && (err == nil || err.Error() != tc.want):
-				t.Errorf("got %v\nwant %s", err, tc.want)
+			}
+			if c.EnableDestructive != tc.on {
+				t.Errorf("EnableDestructive = %t, want the new switch's %t", c.EnableDestructive, tc.on)
 			}
 		})
+	}
+}
+
+// --help shows the old flag as removed and what to use, with no
+// default: not a live option, and not the variable's value.
+func TestTheRemovedFlagsHelpSaysWhatToUse(t *testing.T) {
+	var help bytes.Buffer
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(&help)
+	Define(fs, func(name string) string {
+		if name == "GCM_ALLOW_DESTRUCTIVE" {
+			return "true"
+		}
+		return ""
+	})
+	fs.PrintDefaults()
+	if want := "  -allow-destructive string\n    \tremoved; use --enable-destructive\n"; !strings.Contains(help.String(), want) {
+		t.Errorf("--help does not say %q:\n%s", want, help.String())
+	}
+}
+
+// The destructive tools register with the switch on and read-only off.
+// Read-only wins over the switch, so registration, the server's
+// instructions and status read this one answer.
+func TestDestructiveRegisters(t *testing.T) {
+	for _, tc := range []struct {
+		enable, readOnly, want bool
+	}{
+		{enable: false, readOnly: false, want: false},
+		{enable: true, readOnly: false, want: true},
+		{enable: true, readOnly: true, want: false},
+		{enable: false, readOnly: true, want: false},
+	} {
+		c := Config{EnableDestructive: tc.enable, ReadOnly: tc.readOnly}
+		if got := c.DestructiveRegisters(); got != tc.want {
+			t.Errorf("EnableDestructive %t, ReadOnly %t: DestructiveRegisters = %t, want %t",
+				tc.enable, tc.readOnly, got, tc.want)
+		}
 	}
 }
 
@@ -452,8 +500,10 @@ func TestDefineReadsEachVariableOnce(t *testing.T) {
 	for _, v := range Vars() {
 		listed = append(listed, v.Name)
 	}
+	// 18 is the setting count today, on purpose: the floor moves with it,
+	// so a Define that reads nothing cannot pass.
 	if len(listed) < 18 {
-		t.Fatalf("Vars lists %d settings; Define reads more than that", len(listed))
+		t.Fatalf("Vars lists %d settings, want at least 18", len(listed))
 	}
 	if read := slices.Sorted(maps.Keys(reads)); !slices.Equal(listed, read) {
 		t.Errorf("Vars lists %v\nDefine reads %v", listed, read)
@@ -485,7 +535,7 @@ func TestVarsDescribeWhatBuildDoes(t *testing.T) {
 		if v.Switch {
 			switches++
 		}
-		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, flag, why string }) bool {
+		if removed := slices.ContainsFunc(removedSettings, func(r struct{ key, flag, use, why string }) bool {
 			return v.Name == EnvPrefix+r.key
 		}); removed != v.Removed {
 			t.Errorf("%s: Removed is %t, and it is a removed setting: %t", v.Name, v.Removed, removed)

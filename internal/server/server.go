@@ -92,7 +92,7 @@ func instructionsFor(cfg config.Config) string {
 	switch {
 	case cfg.ReadOnly:
 		middle = readOnlyInstructions
-	case cfg.EnableDestructive:
+	case cfg.DestructiveRegisters():
 		middle += " " + destructiveInstructions
 	}
 	return readInstructions + " " + middle + " " + tailInstructions

@@ -446,12 +446,13 @@ written. It refuses a reason for a variable the server no longer reads,
 a variable in `env` that the bundle leaves out or a release removed, a
 switch asked as anything but a boolean, defaults that configure the
 server at all, a required field's default included since Claude Desktop
-fills it in, any `env` on a platform override, which a host uses in
-place of `mcp_config.env`, an argument in `mcp_config.args`, since the
-bundle passes settings by `env` and an argument would configure the
-server past these checks, any `args` on a platform override, an empty
-list included, a toolsets field that does not list every toolset in
-order, and an empty `privacy_policies`. Read-only wins over
+may fill it in, a default that is a list or an object, any `env` on a
+platform override, which a host uses in place of `mcp_config.env`, a
+missing `mcp_config.args` or an argument in it, since the bundle passes
+settings by `env` and an argument would configure the server past these
+checks, any `args` on a platform override, an empty list included, a
+toolsets field that does not list every toolset in order, and an empty
+`privacy_policies`. Read-only wins over
 `enable_destructive` rather than refusing the pair, and both fields say
 so. The manifest lists no tools, since the settings change what
 registers, and carries no icon.
@@ -547,7 +548,8 @@ contradicted a document, which won.
 | A bundle install has a second approval behind the server, as Claude Code's ask rules are | **Refuted**, read 2026-10-23; Claude Desktop itself not probed. anthropics/mcpb `70fe3b34` and v2.1.2 declare the manifest's `tools` list for display, and nothing reads it at run time. Claude's connector docs: Desktop approves per tool, driven by the annotations, and "Always allow" skips the prompt "for that tool from now on". So every switch the bundle asks for defaults to the server's own, off, the bundle gate refuses one that does not, and the manifest lists no tools |
 | `privacy_policies` is optional for a bundle | **Refuted**. The manifest specification (anthropics/mcpb `70fe3b34`, MANIFEST.md) makes it "Required when the extension connects to external services (first- or third-party) that process user data". Neither the schema nor `mcpb validate` enforces it, so the bundle gate does. The manifest names Google's, https://policies.google.com/privacy, which answered 200 on 2026-10-24 |
 | A platform override's `env` is merged into `mcp_config.env` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.env = platformConfig.env \|\| result.env`. An override's `env`, an empty `{}` included, replaces the base, so the settings would not reach that platform. The bundle gate refuses any `env` on an override |
-| A platform override's `args` are added to `mcp_config.args` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.args = platformConfig.args \|\| result.args` and substitutes `${user_config.x}` into `args` as into `env`. An argument such as `--enable-destructive=true` reaches the server, and an override's `args`, an empty `[]` included, replaces the base. The bundle gate refuses an argument in `mcp_config.args` and any `args` on an override. The base keeps its `"args": []`: only the reference host was read, and Claude Desktop without the key is not probed |
+| A platform override's `args` are added to `mcp_config.args` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.args = platformConfig.args \|\| result.args` and substitutes `${user_config.x}` into `args` as into `env`. An argument such as `--enable-destructive=true` reaches the server, and an override's `args`, an empty `[]` included, replaces the base. The bundle gate refuses an argument in `mcp_config.args` and any `args` on an override. The base keeps its `"args": []`, and the gate refuses it missing: only the reference host was read, and Claude Desktop without the key is not probed |
+| A required setting's default reaches the server when the person gives none | **Refuted** for the reference host, read 2026-10-24: anthropics/mcpb `src/shared/config.ts` at v2.1.2. `getMcpConfigForManifest` sets each key's `default` first ("First, add defaults from manifest") and then `Object.assign(mergedConfig, userConfig)`, so the person's value wins. `hasRequiredConfigMissing` reads a required key from `const config = userConfig \|\| {}`, the person's values alone, and one missing skips the launch. So a required key's default reaches the server only as a value the person gave, which Claude Desktop's install form may fill in from the default; Desktop is not probed. The bundle gate substitutes a required key's default too, holding the bundle to a person who accepts it unread |
 | A bundle setting the person leaves empty reaches the server empty | **Refuted** for an optional key with no default: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, passes `${user_config.x}` through as written. A `""` default reaches the server as `""`, and a boolean as `"true"` or `"false"`. So every optional key has a default, and the bundle gate builds the configuration from the bundle's defaults and holds it to an unconfigured server's |
 | `defaults.run` covers every `run` step in a workflow | Most specific wins, and an explicit `shell: bash` also turns on pipefail. Without it a step on the Windows runner gets PowerShell, and the mangling shows up on the line that runs |
 

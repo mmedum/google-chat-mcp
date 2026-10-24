@@ -11,10 +11,13 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `status --json` carries `settings.destructive_registers`, whether the destructive tools register: `false` under `GCM_READ_ONLY` even with `settings.destructive` on. `status` says `true (read-only wins)` then.
+
 ### Changed
 
 - **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v7`, as Go requires from v7 on; install with `go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest`.
-- **Breaking:** `status --json` reports `schema_version` 2: `settings.destructive` says whether the destructive tools register, so it is `false` under `GCM_READ_ONLY`. It used to report the switch alone. Update a script that checks for `schema_version` 1. The text says `false (read-only wins)`.
 - The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
 
 ### Removed

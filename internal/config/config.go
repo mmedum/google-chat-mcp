@@ -139,6 +139,10 @@ type Config struct {
 // Enabled reports whether a toolset's tools should be registered.
 func (c Config) Enabled(t Toolset) bool { return slices.Contains(c.Toolsets, t) }
 
+// DestructiveRegisters reports whether the destructive tools register:
+// the switch on, and read-only off, since read-only wins.
+func (c Config) DestructiveRegisters() bool { return c.EnableDestructive && !c.ReadOnly }
+
 // FullSurface is c with every tool registrable: writes on, every
 // toolset, and the destructive tools. --dump-schemas writes this
 // surface, because the schema diff holds every released tool to it and
@@ -191,19 +195,20 @@ type Var struct {
 // still accepted. On, or a value that is not a boolean, is refused at
 // start: ignored, it would quietly leave the server otherwise than its
 // owner set it. A setting with a flag keeps it, answering as its
-// variable does, so the refusal says what to use instead. A setting
-// renamed later goes the same way, rather than answering to two names.
+// variable does, so the refusal says what to use instead, and --help
+// says it is removed and names use. A setting renamed later goes the
+// same way, rather than answering to two names.
 //
 // GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
 // marks than the server now sets, and on was every install's default.
 // The flags of the first two went in 6.0.0, and stay gone.
-var removedSettings = []struct{ key, flag, why string }{
+var removedSettings = []struct{ key, flag, use, why string }{
 	{key: "REQUIRE_PROMPT",
 		why: noQuestion + "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
 	{key: "ASK_BEFORE_SEND",
 		why: noQuestion + "list send_message and update_message under your client's ask rules, as the README shows"},
 	// The destructive switch's names until 6.1.0 renamed them.
-	{key: "ALLOW_DESTRUCTIVE", flag: "allow-destructive",
+	{key: "ALLOW_DESTRUCTIVE", flag: "allow-destructive", use: "--enable-destructive",
 		why: "it is " + EnvPrefix + "ENABLE_DESTRUCTIVE (--enable-destructive) now. Unset it, and set that in its place"},
 }
 
@@ -241,11 +246,12 @@ const (
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	s := &Settings{removed: make([]string, len(removedSettings))}
 	for i, r := range removedSettings {
-		s.removed[i] = env(EnvPrefix + r.key)
+		// The flag is registered empty and the variable read after, so
+		// --help shows no default for a setting nobody should set.
 		if r.flag != "" {
-			fs.StringVar(&s.removed[i], r.flag, s.removed[i], "removed, and refused unless off: "+r.why+
-				" [env "+EnvPrefix+r.key+"]")
+			fs.StringVar(&s.removed[i], r.flag, "", "removed; use "+r.use)
 		}
+		s.removed[i] = env(EnvPrefix + r.key)
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
@@ -268,7 +274,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	defSwitch(&s.ReadOnly, "read-only", "READ_ONLY", "register only the read-only tools")
 	defSwitch(&s.EnableDestructive, "enable-destructive", "ENABLE_DESTRUCTIVE",
 		"register the tools that delete, open a space, make a manager or add someone from outside the organization")
-	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+toolsetNames())
+	def(&s.Toolsets, "toolsets", "TOOLSETS", "all", "comma-separated tool groups to register, or all: "+ToolsetList())
 	def(&s.HTTPTimeout, "http-timeout", "HTTP_TIMEOUT_SECONDS", "10s", "per-request timeout for Google API calls")
 	def(&s.HTTPMaxRetries, "http-max-retries", "HTTP_MAX_RETRIES", "3", "retries for a 429 or 5xx from Google")
 	def(&s.SearchMaxPages, "search-max-pages", "SEARCH_MAX_PAGES", "10", "how many pages search_messages may scan before reporting a partial result")
@@ -290,7 +296,9 @@ func Vars() []Var {
 	return vars
 }
 
-func toolsetNames() string {
+// ToolsetList is every toolset a person may name, in registration
+// order, comma-separated.
+func ToolsetList() string {
 	names := make([]string, len(AllToolsets))
 	for i, t := range AllToolsets {
 		names[i] = string(t)
@@ -439,7 +447,7 @@ func parseToolsets(v string) ([]Toolset, error) {
 	}
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("%w: unknown toolsets %s (want %s, or all)",
-			ErrInvalid, strings.Join(unknown, ", "), toolsetNames())
+			ErrInvalid, strings.Join(unknown, ", "), ToolsetList())
 	}
 	out := make([]Toolset, 0, len(seen))
 	for _, t := range AllToolsets {

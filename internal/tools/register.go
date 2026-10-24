@@ -159,7 +159,7 @@ func registers(sp spec, cfg config.Config) bool {
 	if cfg.ReadOnly && ((sp.Kind != Read && sp.Kind != ReadWritesLocally) || sp.WriteScope) {
 		return false
 	}
-	return sp.Kind != Destructive || cfg.EnableDestructive
+	return sp.Kind != Destructive || cfg.DestructiveRegisters()
 }
 
 // interactionKey is Claude Code's mark for a tool it prompts for on
