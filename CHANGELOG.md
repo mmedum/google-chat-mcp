@@ -11,10 +11,12 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.0.1] - 2026-10-24
+
 ### Changed
 
 - The Claude Desktop bundle's OAuth client file is optional, so a person who signed in with `google-chat-mcp login` does not pick it again; left empty, the server uses the client that login recorded for the profile.
-- The Claude Desktop bundle's profile field, and the server's refusal of a profile name it does not accept, say what a name is: up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit, with capitals read as lowercase.
+- The Claude Desktop bundle's profile field says what a profile name may be, up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit, with capitals read as lowercase; the server's refusal of another name states the same rule.
 
 ### Fixed
 
@@ -776,7 +778,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...HEAD
+[7.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...v7.0.1
 [7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0
 [6.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v5.1.1...v6.0.0
