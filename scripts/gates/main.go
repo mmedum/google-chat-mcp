@@ -22,7 +22,7 @@
 //	go run ./scripts/gates config-vars
 //	go run ./scripts/gates scopes
 //	go run ./scripts/gates server-json VERSION CHECKSUMS
-//	go run ./scripts/gates mcpb-manifest VERSION MANIFEST
+//	go run ./scripts/gates mcpb-manifest VERSION [ROOT]
 //	go run ./scripts/gates mcpb-pack VERSION [DIST]
 package main
 
@@ -200,8 +200,8 @@ func init() {
 			doc: "the MCP registry entry, from a release's own checksum file",
 		},
 		"mcpb-manifest": {
-			run:   func(a []string, o, e io.Writer) int { return mcpbManifest(a[1], a[2], o, e) },
-			arity: 3, args: "VERSION MANIFEST", runsIn: manual,
+			run:   func(a []string, o, e io.Writer) int { return mcpbManifest(a[1], cmp.Or(argAt(a, 2), "."), o, e) },
+			arity: 2, maxArity: 3, args: "VERSION [ROOT]", runsIn: manual,
 			doc: "the bundle manifest with a real version in it",
 		},
 		"mcpb-pack": {

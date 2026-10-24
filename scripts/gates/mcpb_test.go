@@ -87,18 +87,19 @@ func readManifest(t *testing.T) (bundleManifest, map[string]any) {
 // passes for the real thing.
 func TestBundleManifestMatchesTheSchema(t *testing.T) {
 	root := repoRoot(t)
-	if got := schemaProblems(manifestSource, editedRaw(t, func(map[string]any) {}), root); len(got) != 0 {
+	if got := schemaProblems(editedRaw(t, func(map[string]any) {}), root); len(got) != 0 {
 		t.Errorf("the committed manifest: %q", got)
 	}
 	emptied := editedRaw(t, func(d map[string]any) { clear(d); d["name"] = server.Name })
-	if got := schemaProblems(manifestSource, emptied, root); !slices.Equal(got,
-		[]string{"the manifest has 1 top-level fields, expected the full one"}) {
+	if got := schemaProblems(emptied, root); !slices.Equal(got,
+		[]string{filepath.Join("packaging", "mcpb", "manifest.json") + " has 1 top-level fields, expected the full one"}) {
 		t.Errorf("an emptied manifest gives %q", got)
 	}
 	stub := t.TempDir()
 	put(t, stub, vendoredSchema, `{"type": "object", "properties": {"name": {"type": "string"}}}`)
-	if got := schemaProblems(manifestSource, editedRaw(t, func(map[string]any) {}), stub); !slices.Equal(got,
-		[]string{"the vendored schema has 1 properties, expected the published one"}) {
+	if got := schemaProblems(editedRaw(t, func(map[string]any) {}), stub); !slices.Equal(got,
+		[]string{filepath.Join(stub, "scripts", "gates", "testdata", "mcpb-manifest-v0.3.schema.json") +
+			" has 1 properties, expected the published one"}) {
 		t.Errorf("a stub schema gives %q", got)
 	}
 }
@@ -116,46 +117,68 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 	}
 }
 
+// twice is the refusal of a key given twice in one object, at its path.
+func twice(at string) string {
+	return "the manifest has " + at + " more than once; the gate's decode merges a repeated key, " +
+		"and the schema and the host keep the last, so they would read different documents"
+}
+
+// cased is the refusal of two keys in one object that differ only in
+// case, at their paths.
+func cased(first, second string) string {
+	return "the manifest has " + first + " and " + second + " in one object; the gate's decode matches a key " +
+		"to a field whatever its case, and the schema and the host do not, so they would read different documents"
+}
+
 // A key twice in one object is refused, whichever object it is in, and
-// nothing else is checked, since every other check would read a
-// document the host does not.
+// so are two that differ only in case, and nothing else is checked,
+// since every other check would read a document the host does not.
 func TestAManifestKeyGivenTwiceIsRefused(t *testing.T) {
 	committed := readRepoFile(t, manifestSource)
 	for _, tc := range []struct{ name, old, new, want string }{
-		{"at the top", `"name": "google-chat-mcp",`, `"name": "google-chat-mcp", "name": "google-chat-mcp",`, "name"},
-		{"an object", `"privacy_policies": [`, `"server": {"type": "binary"}, "privacy_policies": [`, "server"},
+		{"at the top", `"name": "google-chat-mcp",`, `"name": "google-chat-mcp", "name": "google-chat-mcp",`, twice("name")},
+		{"an object", `"privacy_policies": [`, `"server": {"type": "binary"}, "privacy_policies": [`, twice("server")},
 		{"in the environment", `"GCM_PROFILE": "${user_config.profile}",`,
-			`"GCM_PROFILE": "${user_config.profile}", "GCM_PROFILE": "work",`, "server.mcp_config.env.GCM_PROFILE"},
+			`"GCM_PROFILE": "${user_config.profile}", "GCM_PROFILE": "work",`, twice("server.mcp_config.env.GCM_PROFILE")},
+		{"in another case", `"command": "${__dirname}/server/google-chat-mcp-darwin",`,
+			`"command": "${__dirname}/server/google-chat-mcp-darwin", "Command": "${__dirname}/server/google-chat-mcp.exe",`,
+			cased("server.mcp_config.command", "server.mcp_config.Command")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(committed, tc.old) {
 				t.Fatalf("%s does not say %q", manifestSource, tc.old)
 			}
 			raw := []byte(strings.Replace(committed, tc.old, tc.new, 1))
-			want := "the manifest has " + tc.want + " more than once; the gate's decode merges a repeated key, " +
-				"and the schema and the host keep the last, so they would read different documents"
-			if got := manifestProblems(raw, stagedNames(), repoRoot(t)); !slices.Equal(got, []string{want}) {
-				t.Errorf("problems %q, want %q alone", got, want)
+			if got := manifestProblems(raw, stagedNames(), repoRoot(t)); !slices.Equal(got, []string{tc.want}) {
+				t.Errorf("problems %q, want %q alone", got, tc.want)
 			}
 		})
 	}
 }
 
-// A key is repeated only within one object, and each repeated key is
-// named once, by its path, a list's elements and a repeated object's
-// own keys included.
-func TestRepeatedKeysNameEachPathOnce(t *testing.T) {
+// A key is repeated only within one object, and each repeat, or each key
+// differing from an earlier one only in case, is named once, by a path
+// that says which key it is: a list's elements and a repeated object's
+// own keys included, and a key holding a dot or a bracket quoted. A
+// document the walk cannot read is refused rather than passed.
+func TestKeyProblemsNameEachPathOnce(t *testing.T) {
 	for _, tc := range []struct {
 		doc  string
 		want []string
 	}{
-		{`{"a": [{"b": 1, "b": 2, "b": 3}], "c": {"d": 1}, "d": 1}`, []string{"a[0].b"}},
-		{`{"x": {"y": 1}, "x": {"y": 1, "y": 2}}`, []string{"x", "x.y"}},
+		{`{"a": [{"b": 1, "b": 2, "b": 3}], "c": {"d": 1}, "d": 1}`, []string{twice("a[0].b")}},
+		{`{"x": {"y": 1}, "x": {"y": 1, "y": 2}}`, []string{twice("x"), twice("x.y")}},
 		{`{"server": {"type": "binary"}, "user_config": {"type": {"type": "boolean"}}}`, nil},
-		{`{"a": 1,`, nil},
+		{`{"env": {"a.b": 1, "a": {"b": 2}, "a.b": 3}}`, []string{twice(`env["a.b"]`)}},
+		{`{"a[0]": 1, "": 2, "a[0]": 3, "": 4}`, []string{twice(`["a[0]"]`), twice(`[""]`)}},
+		{`{"server": {"command": 1, "Command": 2, "COMMAND": 3, "command": 4}}`, []string{
+			cased("server.command", "server.Command"), cased("server.command", "server.COMMAND"),
+			twice("server.command")}},
+		{`{"\u212aey": 1, "key": 2}`, []string{cased("\u212aey", "key")}},
+		{`{"a": 1,`, []string{"the manifest's keys cannot be read: unexpected end of JSON input"}},
 	} {
-		if got := repeatedKeys([]byte(tc.doc)); !slices.Equal(got, tc.want) {
-			t.Errorf("repeatedKeys(%s) = %q, want %q", tc.doc, got, tc.want)
+		if got := keyProblems([]byte(tc.doc)); !slices.Equal(got, tc.want) {
+			t.Errorf("keyProblems(%s) =\n%q\nwant\n%q", tc.doc, got, tc.want)
 		}
 	}
 }
@@ -172,6 +195,27 @@ func TestThePlatformsAreTheStagedOnes(t *testing.T) {
 		"[darwin freebsd linux win32]"
 	if got := identityProblems(m, []string{"darwin", "freebsd", "linux", "win32"}); !slices.Equal(got, []string{want}) {
 		t.Errorf("a platform the manifest does not claim: %q, want %q", got, want)
+	}
+}
+
+// A platform the staged table gives two entry points is refused, rather
+// than spawning whichever the table lists first.
+func TestAPlatformGivenTwoEntryPointsIsRefused(t *testing.T) {
+	saved := binaries
+	t.Cleanup(func() { binaries = saved })
+	binaries = append(slices.Clone(saved), staged{"*linux_riscv64*/google-chat-mcp",
+		serverDir + "google-chat-mcp-linux-riscv64", "linux riscv64 binary", "linux"})
+	want := "the packer stages server/launch-linux.sh and server/google-chat-mcp-linux-riscv64 as the entry " +
+		"point for linux; a platform spawns one file"
+	got := manifestProblems(editedRaw(t, func(map[string]any) {}), stagedNames(), repoRoot(t))
+	if !slices.Contains(got, want) {
+		t.Errorf("problems %q, want %q among them", got, want)
+	}
+	if platforms := stagedPlatforms(); !slices.Equal(platforms, []string{"darwin", "linux", "win32"}) {
+		t.Errorf("stagedPlatforms = %q, want each platform once", platforms)
+	}
+	if file := entryPointFor("linux"); file != "server/launch-linux.sh" {
+		t.Errorf("linux spawns %s, want the launcher, the table's first", file)
 	}
 }
 
@@ -1195,6 +1239,49 @@ func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
 	}
 }
 
+// A default holding a ${...} reference is refused, naming the key: the
+// host may expand it, and the defaults check does not.
+func TestADefaultHoldingAReferenceIsRefused(t *testing.T) {
+	for _, tc := range []struct{ def, want string }{
+		{"${HOME}/chat", `user_config.local_dir defaults to "${HOME}/chat"; a default holds a value, not a ${...} ` +
+			`reference, which the host may expand`},
+		{"${user_config.profile}", `user_config.local_dir defaults to "${user_config.profile}"; a default holds a ` +
+			`value, not a ${...} reference, which the host may expand`},
+	} {
+		m := editedManifest(t, func(d map[string]any) { dig(d, "user_config", "local_dir")["default"] = tc.def })
+		if got := settingProblems(m, bundleLeftOut); !slices.Contains(got, tc.want) {
+			t.Errorf("a default of %q gives %q, want %q among them", tc.def, got, tc.want)
+		}
+	}
+	if got := settingProblems(editedManifest(t, func(map[string]any) {}), bundleLeftOut); len(got) != 0 {
+		t.Errorf("the committed manifest: %q", got)
+	}
+}
+
+// modulePath reads the module directive as Go writes it: after spaces
+// or a tab, quoted or not, with a comment after it or a line before it,
+// under Windows line endings too.
+func TestModulePathReadsTheDirective(t *testing.T) {
+	for _, tc := range []struct{ goMod, want string }{
+		{"module example.com/a\n\ngo 1.27\n", "example.com/a"},
+		{"module\texample.com/a\n", "example.com/a"},
+		{"module   example.com/a   // the module\n", "example.com/a"},
+		{"module \"example.com/a\"\n", "example.com/a"},
+		{"// module example.com/b\r\nmodule example.com/a\r\ngo 1.27\r\n", "example.com/a"},
+		{"go 1.27\n", "go.mod names no module"},
+	} {
+		root := t.TempDir()
+		put(t, root, goModSource, tc.goMod)
+		got, err := modulePath(root)
+		if err != nil {
+			got = err.Error()
+		}
+		if got != tc.want {
+			t.Errorf("modulePath of %q = %q, want %q", tc.goMod, got, tc.want)
+		}
+	}
+}
+
 // The profile and toolsets fields are held to what the server accepts.
 // A bundle that drops the profile field is told so once, and one that
 // leaves either setting out is refused, so the field check cannot pass
@@ -1228,25 +1315,34 @@ func TestTheFieldRulesHaveAFloor(t *testing.T) {
 }
 
 // A field the defaults change is named, an unexported one included
-// where its type compares; an unexported one that does not is reported
-// unnamed, rather than panicking.
+// where its type compares by what it holds; an unexported one that does
+// not is reported unnamed whenever it differs, whatever else does,
+// rather than panicking. A pointer is compared by what it points to,
+// never by its address.
 func TestTheConfigDiffNamesTheFieldsThatDiffer(t *testing.T) {
 	type cfg struct {
 		Shown  int
 		hidden int
 		rest   []string
 		held   any
+		at     *int
 	}
+	one, otherOne, two := 1, 1, 2
+	base := cfg{Shown: 1, hidden: 1, at: &one}
 	for _, tc := range []struct {
 		b    cfg
 		want []string
 	}{
-		{cfg{2, 1, nil, nil}, []string{"Shown"}},
-		{cfg{1, 2, nil, nil}, []string{"hidden"}},
-		{cfg{1, 1, []string{"x"}, nil}, []string{"an unexported field"}},
-		{cfg{1, 1, nil, nil}, nil},
+		{cfg{Shown: 2, hidden: 1, at: &one}, []string{"Shown"}},
+		{cfg{Shown: 1, hidden: 2, at: &one}, []string{"hidden"}},
+		{cfg{Shown: 1, hidden: 1, rest: []string{"x"}, at: &one}, []string{"an unexported field"}},
+		{cfg{Shown: 2, hidden: 2, rest: []string{"x"}, at: &one}, []string{"Shown", "hidden", "an unexported field"}},
+		{cfg{Shown: 1, hidden: 1, at: &otherOne}, nil},
+		{cfg{Shown: 1, hidden: 1, at: &two}, []string{"an unexported field"}},
+		{cfg{Shown: 1, hidden: 1}, []string{"an unexported field"}},
+		{cfg{Shown: 1, hidden: 1, at: &one}, nil},
 	} {
-		if got := fieldDiff(cfg{1, 1, nil, nil}, tc.b); !slices.Equal(got, tc.want) {
+		if got := fieldDiff(base, tc.b); !slices.Equal(got, tc.want) {
 			t.Errorf("fieldDiff against %+v = %q, want %q", tc.b, got, tc.want)
 		}
 	}

@@ -20,9 +20,6 @@ import (
 // AppDir is the directory name under the user's config directory.
 const AppDir = "google-chat-mcp"
 
-// DefaultProfile is the profile used when none is named.
-const DefaultProfile = "default"
-
 // ErrNotFound is returned when the profile has no config file yet.
 var ErrNotFound = errors.New("userconfig: no config file for this profile; run `google-chat-mcp login`")
 
@@ -117,7 +114,7 @@ func ProfileDir(profile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if profile == "" || profile == DefaultProfile {
+	if profile == "" || profile == config.DefaultProfile {
 		return base, nil
 	}
 	return filepath.Join(base, "profiles", profile), nil

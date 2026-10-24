@@ -440,17 +440,22 @@ person sets in another client's configuration, each under the
 variable's name without `GCM_`, lowercased: `client_secret`, `profile`,
 `read_only`, `enable_destructive`, `toolsets` and `local_dir`. The
 bundle gate derives that list from `config.Vars`, which records every
-variable Define reads and names the three read outside it: the config
+variable Define reads and names those read outside it: the config
 directory, its opt-in and the refresh token. It asks for every one, less
 the removed ones and less each one it gives a reason to leave out, so a
 setting added later is asked for until the manifest asks or a reason is
 written. A config test holds that every `GCM_` name the code spells is
-in that registry, `scripts/` and the live driver's and the evals' test
-files included, since they set the variables of the server they start.
-Every reader of a variable goes through `config.Lookup`, which drops the
-spaces around a value, so spaces alone are unset; a config test walks
-every variable in the registry, the three read outside Define through
-their own readers, and fails on one it has no reader for. The gate
+in that registry, every test file included, since tests set the
+variables of the server they start. A test may also spell one of the
+names the test lists for a variable the server does not read, each held
+to being spelled by a test and read by nothing. A `+` chain that another
+operand continues builds a name rather than spelling one, so its last
+word there is a prefix. Every reader of a variable goes through
+`config.Lookup`, which drops the spaces around a value, so spaces alone
+are unset; a config test walks every variable in the registry, those
+read outside Define through their own readers, states what each reads
+from a value with spaces around it and from spaces alone, and fails on
+one it has no row for. The gate
 refuses a reason for a variable the server no longer reads, a variable
 in `env` that the bundle leaves out or a release removed, a switch asked
 as anything but a boolean, defaults that configure the server at all, naming the fields they change, a required
@@ -463,12 +468,16 @@ platform override, an empty list included, an `entry_point` or a command
 that names no staged program (`LICENSE` and `README.md` are packed to be
 read, not run), an `entry_point` that is not the file the default
 command runs, a command that does not start with `${__dirname}/`, a
-claimed platform that spawns any file but the one staged for it,
+claimed platform that spawns any file but the one staged for it, a
+platform the staged table gives two entry points,
 `compatibility.platforms` other than the platforms the packer stages an
 entry point for, an override for a platform the bundle does not claim,
 a key given twice in one object of the committed manifest, which the
 gate's decode would merge while the schema and the host keep the last,
-a profile field that does not state `config.ProfileRule`, which the
+two keys in one object that differ only in case, which the decode would
+match to one field, a manifest whose keys the walk cannot read, a
+`user_config` default holding a `${...}` reference, which a host may
+expand and the defaults check does not, a profile field that does not state `config.ProfileRule`, which the
 configuration page must state too (the staleness gate holds it), a
 toolsets field that does not list every toolset in order, a bundle that stops asking
 for either of those two, and an empty `privacy_policies`. Written down from a
@@ -491,20 +500,55 @@ refusing the pair, and both fields say so. The gate is the
 function, `manifestProblems`, so the release packs nothing the tests
 refuse: the placeholder version, the schema reference, the vendored
 schema, the name and platforms, and the launcher and go.mod beside the
-manifest are in it. The gate and the packer read the committed manifest
-through `committedManifest`, once, from one root, and the packer ships
-the bytes it checked with the version stamped in. The stamped document is
-held to the vendored schema again, and the version to Semantic
-Versioning, since the schema takes any string; a bundle whose zip or
-file fails to close is not written. The manifest lists no tools, since
-the settings change what registers, and carries no icon.
+manifest are in it. The gate, the packer and `mcpb-manifest VERSION
+[ROOT]` read the committed manifest through `committedManifest`, once,
+with the schema, the launcher and go.mod from the same root, and the
+packer ships the bytes it checked with the version stamped in. go.mod's
+module is read by one `modulePath`, which the registry entry reads too.
+The version is held to Semantic Versioning, and a refusal says what is
+wrong with it, since the schema takes any string. The stamped document
+is not validated again: the edit puts that version where the
+placeholder was, and the schema would take it. `mcpb-manifest` writes
+its problems to stderr alone. A bundle whose zip or file fails to close
+is not written. The manifest lists no tools, since the settings change
+what registers, and carries no icon.
 
-The family sweep of 2026-10-24 brought this gate and the configuration
-to the rules the family's reviews found: `entry_point` held to the
-default command, the platforms derived from the staged table, a repeated
-key refused, the stamped manifest validated, the close tested, one
-`config.Lookup` for every reader, the config directory's opt-in
-included, and the name scan over `scripts/` and the drivers.
+The family sweep of 2026-10-24 changed what this gate and the
+configuration hold: every reader of a variable trims through
+`config.Lookup`, the configuration directory's opt-in included; the
+platforms and their entry points come from one staged table, and
+`entry_point` is the default command's file; the manifest's keys are
+checked before anything reads its decode; the version is held to
+Semantic Versioning; a bundle that fails to close is not written; and
+the name scan reads every test file. `/simplify` (one agent, four
+angles), `/code-review medium` and `/security-review` ran over
+`main...family-rules` the same day. Fixed from them: the name scan
+skipped the tests under `scripts/`, and read a prefix a `+` chain was
+building as a name; the spaces walk compared each value with the code's
+own reading of another, and now states what each variable reads; the
+stamped manifest's schema check could not fail, and is gone; the version
+refusal said "with no spaces" whatever was wrong; the staged platforms
+could list one twice; the schema check named its file in some messages
+only; a key holding a dot was ambiguous in a refusal, keys differing only
+in case passed, and so did a walk that failed; `mcpb-manifest` read a
+path of its own, past `committedManifest`, and now takes a root;
+`fieldDiff` reported a differing unnamed field only when no named one
+differed, and compared a pointer by its address; a default holding
+`${...}` passed; go.mod's module was read by a pattern that failed on a
+trailing comment, and the registry entry read it from the build instead;
+config typed the default profile userconfig named; and
+`config.Lookup`'s comment said it returns the name. `/security-review`
+found nothing at confidence 8 or above. Kept: the names a test spells
+for a variable the server does not read are a typed list, since a
+negative test's name cannot be derived, and the list is held both ways.
+The registry entry reads no manifest, so the family's rule that it read
+one through `committedManifest` has nothing to hold here. The
+local-files refusals in `internal/service`, two tool descriptions and an
+input's schema tag still spell `GCM_LOCAL_DIR` and `GCM_TOOLSETS` by
+hand, which the family's spelled-once rule would replace:
+`internal/service` imports no config, a struct tag cannot take a
+constant, and the name scan holds every spelling to the registry, so a
+misspelling fails.
 
 ## Evidence log
 
@@ -601,6 +645,7 @@ contradicted a document, which won.
 | A platform override's `args` are added to `mcp_config.args` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.args = platformConfig.args \|\| result.args` and substitutes `${user_config.x}` into `args` as into `env`. An argument such as `--enable-destructive=true` reaches the server, and an override's `args`, an empty `[]` included, replaces the base. The bundle gate refuses an argument in `mcp_config.args` and any `args` on an override. The base keeps its `"args": []`, and the gate refuses it missing: only the reference host was read, and Claude Desktop without the key is not probed |
 | A required setting's default reaches the server when the person gives none | **Refuted** for the reference host, read 2026-10-24: anthropics/mcpb `src/shared/config.ts` at v2.1.2. `getMcpConfigForManifest` sets each key's `default` first ("First, add defaults from manifest") and then `Object.assign(mergedConfig, userConfig)`, so the person's value wins. `hasRequiredConfigMissing` reads a required key from `const config = userConfig \|\| {}`, the person's values alone, and one missing skips the launch. So a required key's default reaches the server only as a value the person gave, which Claude Desktop's install form may fill in from the default; Desktop is not probed. The bundle gate substitutes a required key's default too, holding the bundle to a person who accepts it unread |
 | A bundle setting the person leaves empty reaches the server empty | **Refuted** for an optional key with no default: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, passes `${user_config.x}` through as written. A `""` default reaches the server as `""`, and a boolean as `"true"` or `"false"`. So every optional key has a default, and the bundle gate builds the configuration from the bundle's defaults and holds it to an unconfigured server's |
+| A `user_config` default reaches the server as written | **Refuted** for the specification, read 2026-10-24: anthropics/mcpb v2.1.2 MANIFEST.md L572 says a default "supports variable substitution", and L586-590 list `${HOME}`, `${DESKTOP}` and `${DOCUMENTS}` for one. The reference host, `src/shared/config.ts` at v2.1.2, builds its variables with the system directories first (L132-137) and each key's value, its default included, after them (L142-171), and replaces them in that order (L26), so a reference inside a substituted default is expanded only when its variable comes later. Claude Desktop is not probed. The defaults check expands none, so the bundle gate refuses a default holding `${` |
 | `defaults.run` covers every `run` step in a workflow | Most specific wins, and an explicit `shell: bash` also turns on pipefail. Without it a step on the Windows runner gets PowerShell, and the mangling shows up on the line that runs |
 
 ## Agent evals
