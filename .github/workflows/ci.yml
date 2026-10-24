@@ -114,7 +114,7 @@ jobs:
       # the mistake is public. `check` catches a config-level one — an
       # unknown key, a build id nothing refers to — for the cost of a
       # pinned binary.
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
         with:
           version: v2.18.1
           args: check
@@ -189,7 +189,7 @@ jobs:
           -skip '^TestLive$'
       - name: docs match the code
         run: go run ./scripts/gates staleness ./google-chat-mcp
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: schemas
           path: schemas.json
