@@ -168,9 +168,10 @@ type Settings struct {
 	CloudIdentityBase string
 	ClientSecretPath  string
 	LocalDir          string
-	// removed are the settings a release took out, as the environment
-	// gives them, read only to refuse one still set.
-	removed map[string]string
+	// removed are the settings a release took out, in removedSettings'
+	// order, as a flag or the environment gives them, read only to
+	// refuse one still set.
+	removed []string
 	// vars is every setting Define reads, in order.
 	vars []Var
 }
@@ -186,20 +187,24 @@ type Var struct {
 }
 
 // removedSettings are the settings a release took out, each with why
-// and what to do instead. Each was off by default, and off or unset is
+// and what to do instead. Each was off by default, and unset or off is
 // still accepted. On, or a value that is not a boolean, is refused at
 // start: ignored, it would quietly leave the server otherwise than its
-// owner set it. Their flags are gone. A setting renamed later goes the
-// same way, rather than answering to two names.
+// owner set it. A setting with a flag keeps it, answering as its
+// variable does, so the refusal says what to use instead. A setting
+// renamed later goes the same way, rather than answering to two names.
 //
 // GCM_INTERACTION_HINT went too, and is not read. Off asked for fewer
 // marks than the server now sets, and on was every install's default.
-var removedSettings = []struct{ key, why string }{
-	{"REQUIRE_PROMPT", noQuestion + "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
-	{"ASK_BEFORE_SEND", noQuestion + "list send_message and update_message under your client's ask rules, as the README shows"},
-	// The destructive switch's name until 6.1.0 renamed it.
-	{"ALLOW_DESTRUCTIVE", "it is " + EnvPrefix + "ENABLE_DESTRUCTIVE now. Unset it, and set " + EnvPrefix +
-		"ENABLE_DESTRUCTIVE or --enable-destructive in its place"},
+// The flags of the first two went in 6.0.0, and stay gone.
+var removedSettings = []struct{ key, flag, why string }{
+	{key: "REQUIRE_PROMPT",
+		why: noQuestion + "leave " + EnvPrefix + "ENABLE_DESTRUCTIVE off for a client that runs with nobody watching"},
+	{key: "ASK_BEFORE_SEND",
+		why: noQuestion + "list send_message and update_message under your client's ask rules, as the README shows"},
+	// The destructive switch's names until 6.1.0 renamed them.
+	{key: "ALLOW_DESTRUCTIVE", flag: "allow-destructive",
+		why: "it is " + EnvPrefix + "ENABLE_DESTRUCTIVE (--enable-destructive) now. Unset it, and set that in its place"},
 }
 
 // noQuestion is why the settings that made the server ask were removed.
@@ -209,11 +214,15 @@ const noQuestion = "the server no longer asks the person, and the client's own a
 // off.
 func (s *Settings) removedSet() []error {
 	var errs []error
-	for _, r := range removedSettings {
-		if on, err := parseBool(r.key, s.removed[r.key]); err == nil && !on {
+	for i, r := range removedSettings {
+		if on, err := parseBool(r.key, s.removed[i]); err == nil && !on {
 			continue
 		}
-		errs = append(errs, fmt.Errorf("%w: %s%s was removed: %s", ErrInvalid, EnvPrefix, r.key, r.why))
+		name := EnvPrefix + r.key
+		if r.flag != "" {
+			name += " (--" + r.flag + ")"
+		}
+		errs = append(errs, fmt.Errorf("%w: %s was removed: %s", ErrInvalid, name, r.why))
 	}
 	return errs
 }
@@ -230,9 +239,13 @@ const (
 // Define registers one flag per setting on fs, defaulting to the
 // matching GCM_* variable read through env.
 func Define(fs *flag.FlagSet, env func(string) string) *Settings {
-	s := &Settings{removed: map[string]string{}}
-	for _, r := range removedSettings {
-		s.removed[r.key] = env(EnvPrefix + r.key)
+	s := &Settings{removed: make([]string, len(removedSettings))}
+	for i, r := range removedSettings {
+		s.removed[i] = env(EnvPrefix + r.key)
+		if r.flag != "" {
+			fs.StringVar(&s.removed[i], r.flag, s.removed[i], "removed, and refused unless off: "+r.why+
+				" [env "+EnvPrefix+r.key+"]")
+		}
 		s.vars = append(s.vars, Var{Name: EnvPrefix + r.key, Removed: true})
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
@@ -275,18 +288,6 @@ func Vars() []Var {
 	vars := Define(fs, func(string) string { return "" }).vars
 	slices.SortFunc(vars, func(a, b Var) int { return strings.Compare(a.Name, b.Name) })
 	return vars
-}
-
-// EnvVars is every GCM_ variable Define reads, sorted: the names of
-// Vars. The staleness gate uses it to check that docs/configuration.md
-// documents every setting the server actually has.
-func EnvVars() []string {
-	vars := Vars()
-	names := make([]string, len(vars))
-	for i, v := range vars {
-		names[i] = v.Name
-	}
-	return names
 }
 
 func toolsetNames() string {

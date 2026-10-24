@@ -14,11 +14,12 @@ upgrading are marked **Breaking:** and say what to do.
 ### Changed
 
 - **Breaking:** the Go module path is now `github.com/mmedum/google-chat-mcp/v7`, as Go requires from v7 on; install with `go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest`.
+- **Breaking:** `status --json` reports `schema_version` 2: `settings.destructive` says whether the destructive tools register, so it is `false` under `GCM_READ_ONLY`. It used to report the switch alone. Update a script that checks for `schema_version` 1. The text says `false (read-only wins)`.
 - The Claude Desktop bundle's Read-only and `enable_destructive` descriptions say Read-only wins: with it on, `enable_destructive` registers nothing.
 
 ### Removed
 
-- **Breaking:** `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive`, the destructive switch's names before 6.1.0. The variable is refused at start unless `false`, and the flag is refused. Use `GCM_ENABLE_DESTRUCTIVE` and `--enable-destructive`.
+- **Breaking:** `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive`, the destructive switch's names before 6.1.0. Unset or off (`false`, `0`, `no`, `off` or empty), they start the server and do nothing; on, or a value that is not a boolean, is refused at start. Use `GCM_ENABLE_DESTRUCTIVE` and `--enable-destructive`.
 
 ## [6.1.0] - 2026-10-24
 

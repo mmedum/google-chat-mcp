@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -235,6 +236,64 @@ func TestStatusReportsTheSignedInProfile(t *testing.T) {
 	// list of what is missing rather than a silent partial install.
 	if !strings.Contains(stdout, "not granted") {
 		t.Errorf("status did not report the ungranted scopes:\n%s", stdout)
+	}
+}
+
+// status reports whether the destructive tools register, not the switch
+// alone: read-only wins, so with both on none of them is there. The
+// text says why it is false; the object is schema 2, which made this
+// field mean what registers.
+func TestStatusReportsWhetherTheDestructiveToolsRegister(t *testing.T) {
+	for _, tc := range []struct {
+		name, destructive, readOnly string
+		text                        string
+		object                      bool
+	}{
+		{"the switch off", "false", "false", "destructive:    false\n", false},
+		{"the switch on", "true", "false", "destructive:    true\n", true},
+		{"the switch on under read-only", "true", "true", "destructive:    false (read-only wins)\n", false},
+		{"read-only alone", "false", "true", "destructive:    false\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempProfile(t)
+			keyring.MockInit()
+			if err := userconfig.Save("default", userconfig.Config{
+				AccountEmail: "janedoe@example.com", TokenStore: "keyring", Scopes: scopes.All,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GCM_ENABLE_DESTRUCTIVE", tc.destructive)
+			t.Setenv("GCM_READ_ONLY", tc.readOnly)
+			t.Setenv("GCM_ALLOW_DESTRUCTIVE", "")
+
+			code, stdout, stderr := runCmd(t, "status")
+			if code != 0 {
+				t.Fatalf("status exited %d: %s", code, stderr)
+			}
+			if !strings.Contains(stdout, tc.text) {
+				t.Errorf("status did not print %q:\n%s", tc.text, stdout)
+			}
+
+			code, stdout, stderr = runCmd(t, "status", "--json")
+			if code != 0 {
+				t.Fatalf("status --json exited %d: %s", code, stderr)
+			}
+			var got struct {
+				SchemaVersion int `json:"schema_version"`
+				Settings      struct {
+					Destructive any `json:"destructive"`
+				} `json:"settings"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+				t.Fatalf("not JSON: %v\n%s", err, stdout)
+			}
+			if got.SchemaVersion != 2 {
+				t.Errorf("schema_version = %d, want 2", got.SchemaVersion)
+			}
+			if got.Settings.Destructive != tc.object {
+				t.Errorf("settings.destructive = %v, want %t", got.Settings.Destructive, tc.object)
+			}
+		})
 	}
 }
 

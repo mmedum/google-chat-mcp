@@ -18,8 +18,10 @@ import (
 
 // statusSchemaVersion is the version of the JSON object `status --json`
 // prints. A caller may branch on it; it changes only when a field is
-// removed or its meaning changes, never when one is added.
-const statusSchemaVersion = 1
+// removed or its meaning changes, never when one is added. 2:
+// settings.destructive is whether the destructive tools register, which
+// read-only overrides, rather than the switch.
+const statusSchemaVersion = 2
 
 // statusReport is everything `status` knows, collected once and rendered
 // either as the lines a person reads or as the object a script parses.
@@ -43,6 +45,9 @@ type statusReport struct {
 	Credentials statusCredentials `json:"credentials"`
 	Scopes      statusScopes      `json:"scopes"`
 	Settings    statusSettings    `json:"settings"`
+	// overridden is the destructive switch on under read-only, which the
+	// text says, so that false does not read as the switch left off.
+	overridden bool
 }
 
 type statusCredentials struct {
@@ -69,7 +74,9 @@ type statusScopes struct {
 }
 
 type statusSettings struct {
-	ReadOnly    bool     `json:"read_only"`
+	ReadOnly bool `json:"read_only"`
+	// Destructive is whether the destructive tools register: the switch
+	// on and read-only off.
 	Destructive bool     `json:"destructive"`
 	Toolsets    []string `json:"toolsets"`
 	LocalDir    *string  `json:"local_dir"`
@@ -90,13 +97,14 @@ func newStatusReport(cfg config.Config) (statusReport, error) {
 		Scopes:        statusScopes{Granted: []string{}, Missing: []string{}},
 		Settings: statusSettings{
 			ReadOnly:    cfg.ReadOnly,
-			Destructive: cfg.EnableDestructive,
+			Destructive: cfg.EnableDestructive && !cfg.ReadOnly,
 			Toolsets:    toolsetList(cfg.Toolsets),
 			LocalDir:    orNil(cfg.LocalDir),
 			ChatAPIBase: cfg.ChatAPIBase,
 			LogLevel:    string(cfg.LogLevel),
 			LogFormat:   string(cfg.LogFormat),
 		},
+		overridden: cfg.EnableDestructive && cfg.ReadOnly,
 	}
 	if dir, err := userconfig.ProfileDir(cfg.Profile); err == nil {
 		r.ConfigDir = orNil(dir)
@@ -155,7 +163,11 @@ func (r statusReport) writeText(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "scopes:         %s\n", strings.Join(r.Scopes.Granted, " "))
 	}
 	_, _ = fmt.Fprintf(w, "read-only:      %t\n", r.Settings.ReadOnly)
-	_, _ = fmt.Fprintf(w, "destructive:    %t\n", r.Settings.Destructive)
+	if r.overridden {
+		_, _ = fmt.Fprintln(w, "destructive:    false (read-only wins)")
+	} else {
+		_, _ = fmt.Fprintf(w, "destructive:    %t\n", r.Settings.Destructive)
+	}
 	_, _ = fmt.Fprintf(w, "toolsets:       %s\n", collapseToolsets(r.Settings.Toolsets))
 	_, _ = fmt.Fprintf(w, "local dir:      %s\n", orUnset(deref(r.Settings.LocalDir)))
 	_, _ = fmt.Fprintf(w, "chat api:       %s\n", r.Settings.ChatAPIBase)

@@ -32,6 +32,7 @@
     "entry_point": "server/google-chat-mcp-darwin",
     "mcp_config": {
       "command": "${__dirname}/server/google-chat-mcp-darwin",
+      "args": [],
       "env": {
         "GCM_CLIENT_SECRET": "${user_config.client_secret}",
         "GCM_PROFILE": "${user_config.profile}",
@@ -81,7 +82,7 @@
     "toolsets": {
       "type": "string",
       "title": "Toolsets",
-      "description": "Comma-separated tool groups to register: core, sections, pins, emoji, events, readstate, settings, availability and admin, or all. core is always on. Leave it empty for every group but admin. Only a Workspace administrator can use admin, and its scope needs a login run with `--toolsets all,admin`.",
+      "description": "Comma-separated tool groups to register, or all. The groups are core, sections, pins, emoji, events, readstate, settings, availability, admin. core is always on. Leave it empty for every group but admin. Only a Workspace administrator can use admin, and its scope needs a login run with `--toolsets all,admin`.",
       "default": "",
       "required": false
     },

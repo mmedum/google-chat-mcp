@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,7 +142,7 @@ func TestBundleManifestMatchesTheCode(t *testing.T) {
 	if m.Compatibility.ClaudeDesktop != ">=0.10.0" {
 		t.Errorf("compatibility.claude_desktop is %q, want the family's >=0.10.0", m.Compatibility.ClaudeDesktop)
 	}
-	for _, p := range settingProblems(m) {
+	for _, p := range settingProblems(m, bundleLeftOut) {
 		t.Error(p)
 	}
 
@@ -715,6 +716,10 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		{"a switch the bundle turns on", func(d map[string]any) {
 			dig(d, "user_config", "enable_destructive")["default"] = true
 		}, "the bundle's defaults configure the server otherwise than no environment does"},
+		{"a required switch the bundle turns on, which Claude Desktop fills in", func(d map[string]any) {
+			dig(d, "user_config", "enable_destructive")["default"] = true
+			dig(d, "user_config", "enable_destructive")["required"] = true
+		}, "the bundle's defaults configure the server otherwise than no environment does"},
 		{"a switch asked as text", func(d map[string]any) {
 			dig(d, "user_config", "read_only")["type"] = "string"
 			dig(d, "user_config", "read_only")["default"] = "false"
@@ -733,10 +738,7 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		}, "platform_overrides.linux.env is set"},
 		{"an argument that turns the deletes on", func(d map[string]any) {
 			dig(d, "server", "mcp_config")["args"] = []any{"--enable-destructive=true"}
-		}, "mcp_config.args is set, an empty list too"},
-		{"an empty argument list", func(d map[string]any) {
-			dig(d, "server", "mcp_config")["args"] = []any{}
-		}, "mcp_config.args is set, an empty list too"},
+		}, `mcp_config.args is ["--enable-destructive=true"]`},
 		{"an override's argument, which replaces the base", func(d map[string]any) {
 			dig(d, "server", "mcp_config", "platform_overrides", "linux")["args"] = []any{"--enable-destructive=true"}
 		}, "platform_overrides.linux.args is set"},
@@ -744,9 +746,15 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 			dig(d, "server", "mcp_config", "platform_overrides", "win32")["args"] = []any{}
 		}, "platform_overrides.win32.args is set"},
 		{"a toolset the description leaves out", func(d map[string]any) {
-			dig(d, "user_config", "toolsets")["description"] = "Comma-separated tool groups to register: core, " +
-				"sections, pins, emoji, events, readstate, settings and availability, or all."
-		}, "user_config.toolsets does not name the admin toolset"},
+			dig(d, "user_config", "toolsets")["description"] = "Comma-separated tool groups to register, or all. " +
+				"The groups are core, sections, pins, emoji, events, readstate, settings, availability."
+		}, `user_config.toolsets does not list the toolsets as ` +
+			`"core, sections, pins, emoji, events, readstate, settings, availability, admin"`},
+		{"every toolset's name, only as words in the prose", func(d map[string]any) {
+			dig(d, "user_config", "toolsets")["description"] = "Pick groups, or all: core is always on, and admin " +
+				"needs an administrator. The rest are sections, pins, emoji, events, readstate, settings and availability."
+		}, `user_config.toolsets does not list the toolsets as ` +
+			`"core, sections, pins, emoji, events, readstate, settings, availability, admin"`},
 		{"a setting the bundle no longer asks for", func(d map[string]any) {
 			delete(dig(d, "user_config"), "local_dir")
 			delete(dig(d, "server", "mcp_config", "env"), "GCM_LOCAL_DIR")
@@ -784,7 +792,7 @@ func TestSettingProblemsRefuseEachBreak(t *testing.T) {
 		}, "user_config asks for verbose, which is no setting's key"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			problems := settingProblems(editedManifest(t, tc.edit))
+			problems := settingProblems(editedManifest(t, tc.edit), bundleLeftOut)
 			if tc.want == "" {
 				if len(problems) > 0 {
 					t.Fatalf("the shape that ships was reported: %s", strings.Join(problems, "; "))
@@ -808,7 +816,7 @@ func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
 	}
 	asked, problems := bundleVarsFrom(
 		[]string{"GCM_ASKED", "GCM_LEFT_OUT", "GCM_REMOVED", "GCM_ADDED_LATER"},
-		[]config.Var{{Name: "GCM_ASKED"}, {Name: "GCM_REMOVED", Removed: true}},
+		map[string]config.Var{"GCM_ASKED": {Name: "GCM_ASKED"}, "GCM_REMOVED": {Name: "GCM_REMOVED", Removed: true}},
 		map[string]string{"GCM_LEFT_OUT": "a reason", "GCM_GONE": "a reason", "GCM_REMOVED": "a reason"},
 	)
 	if want := []string{"GCM_ASKED", "GCM_ADDED_LATER"}; !slices.Equal(asked, want) {
@@ -825,11 +833,12 @@ func TestBundleVarsAreDerivedFromTheSettings(t *testing.T) {
 
 // A stale exclusion fails the gate itself, not only the derivation.
 func TestSettingProblemsRefuseAStaleExclusion(t *testing.T) {
-	bundleLeftOut["GCM_GONE"] = "a reason"
-	t.Cleanup(func() { delete(bundleLeftOut, "GCM_GONE") })
+	leftOut := maps.Clone(bundleLeftOut)
+	leftOut["GCM_GONE"] = "a reason"
 	m, _ := readManifest(t)
-	if want := "bundleLeftOut names GCM_GONE, which the server does not read"; !slices.Contains(settingProblems(m), want) {
-		t.Errorf("settingProblems = %q, want %q among them", settingProblems(m), want)
+	want := "bundleLeftOut names GCM_GONE, which the server does not read"
+	if got := settingProblems(m, leftOut); !slices.Contains(got, want) {
+		t.Errorf("settingProblems = %q, want %q among them", got, want)
 	}
 }
 

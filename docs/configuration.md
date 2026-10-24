@@ -31,29 +31,31 @@ else.
 
 ### Removed settings
 
-A removed setting's flag is gone, so a flag left in your client's
-arguments stops the server from starting. Its variable is refused at
-start unless it is unset or `false`, its old default, because ignoring
-one would quietly leave the server otherwise than you set it.
+A removed setting is refused at start unless it is unset or off
+(`false`, `0`, `no`, `off` or empty), because ignoring one would quietly
+leave the server otherwise than you set it. Off, it does nothing.
 
 `GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` are the destructive
 switch's names before 6.1.0, which renamed them `GCM_ENABLE_DESTRUCTIVE`
-and `--enable-destructive`. A setting renamed later goes the same way:
-the old name is removed, not kept beside the new one.
+and `--enable-destructive`. The old flag still parses and answers as its
+variable does, so the refusal names the new one. A setting renamed
+later goes the same way: the old name is removed, not kept beside the
+new one.
 
 The server no longer asks you before a write; your client approves each
-call. Three settings went with the question. `GCM_REQUIRE_PROMPT` and
-`GCM_ASK_BEFORE_SEND` are refused unless `false`, as above.
-`GCM_INTERACTION_HINT` is ignored: only `delete_space`,
-`set_space_audience` and `delete_custom_emoji` carry the mark now, and
-Claude Code refuses those three when nobody is at the keyboard. A
-headless run that set it to `false` to use them loses them.
+call. Three settings went with the question, and their flags are gone,
+so a flag left in your client's arguments stops the server from
+starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused
+unless off, as above. `GCM_INTERACTION_HINT` is ignored: only
+`delete_space`, `set_space_audience` and `delete_custom_emoji` carry the
+mark now, and Claude Code refuses those three when nobody is at the
+keyboard. A headless run that set it to `false` to use them loses them.
 
 | Variable | Still accepted | Instead |
 |---|---|---|
-| `GCM_ALLOW_DESTRUCTIVE` | `false` | `GCM_ENABLE_DESTRUCTIVE` or `--enable-destructive`. |
-| `GCM_REQUIRE_PROMPT` | `false` | Leave `GCM_ENABLE_DESTRUCTIVE` off for a client that runs with nobody watching. |
-| `GCM_ASK_BEFORE_SEND` | `false` | List `send_message` and `update_message` under your client's ask rules. |
+| `GCM_ALLOW_DESTRUCTIVE` | unset or off | `GCM_ENABLE_DESTRUCTIVE` or `--enable-destructive`. |
+| `GCM_REQUIRE_PROMPT` | unset or off | Leave `GCM_ENABLE_DESTRUCTIVE` off for a client that runs with nobody watching. |
+| `GCM_ASK_BEFORE_SEND` | unset or off | List `send_message` and `update_message` under your client's ask rules. |
 | `GCM_INTERACTION_HINT` | any value, ignored | Nothing. |
 
 ## Credentials
