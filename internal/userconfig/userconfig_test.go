@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // tempBase points the package at a throwaway directory. A test dir sits
@@ -26,8 +28,8 @@ func setHome(t *testing.T, dir string) {
 func tempBase(t *testing.T) string {
 	t.Helper()
 	base := t.TempDir()
-	t.Setenv(EnvDir, base)
-	t.Setenv(EnvAllowOutsideHome, "1")
+	t.Setenv(config.EnvConfigDir, base)
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "1")
 	return base
 }
 
@@ -92,13 +94,13 @@ func TestBaseDirFallsBackToUserConfigDir(t *testing.T) {
 		t.Skipf("no user config dir on this system: %v", err)
 	}
 	for _, v := range []string{"", "  "} {
-		t.Setenv(EnvDir, v)
+		t.Setenv(config.EnvConfigDir, v)
 		got, err := BaseDir()
 		if err != nil {
-			t.Fatalf("%s=%q: BaseDir: %v", EnvDir, v, err)
+			t.Fatalf("%s=%q: BaseDir: %v", config.EnvConfigDir, v, err)
 		}
 		if got != filepath.Join(want, AppDir) {
-			t.Errorf("%s=%q: BaseDir() = %q, want it under %q", EnvDir, v, got, want)
+			t.Errorf("%s=%q: BaseDir() = %q, want it under %q", config.EnvConfigDir, v, got, want)
 		}
 	}
 }
@@ -109,8 +111,8 @@ func TestBaseDirFallsBackToUserConfigDir(t *testing.T) {
 func TestBaseDirRefusesAPathOutsideHome(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
-	t.Setenv(EnvDir, t.TempDir()) // a sibling of home, not under it
-	t.Setenv(EnvAllowOutsideHome, "")
+	t.Setenv(config.EnvConfigDir, t.TempDir()) // a sibling of home, not under it
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "")
 
 	if _, err := BaseDir(); !errors.Is(err, ErrOutsideHome) {
 		t.Fatalf("err = %v, want ErrOutsideHome", err)
@@ -120,8 +122,8 @@ func TestBaseDirRefusesAPathOutsideHome(t *testing.T) {
 func TestBaseDirAllowsAPathOutsideHomeWithTheOptIn(t *testing.T) {
 	outside := t.TempDir()
 	setHome(t, t.TempDir())
-	t.Setenv(EnvDir, outside)
-	t.Setenv(EnvAllowOutsideHome, "1")
+	t.Setenv(config.EnvConfigDir, outside)
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "1")
 
 	got, err := BaseDir()
 	if err != nil {
@@ -136,8 +138,8 @@ func TestBaseDirAllowsAPathUnderHome(t *testing.T) {
 	home := t.TempDir()
 	under := filepath.Join(home, ".config", AppDir)
 	setHome(t, home)
-	t.Setenv(EnvDir, under)
-	t.Setenv(EnvAllowOutsideHome, "")
+	t.Setenv(config.EnvConfigDir, under)
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "")
 
 	got, err := BaseDir()
 	if err != nil {
@@ -159,8 +161,8 @@ func TestBaseDirAllowsAPathUnderALinkedHome(t *testing.T) {
 		t.Skipf("no symlinks here: %v", err)
 	}
 	setHome(t, link)
-	t.Setenv(EnvDir, filepath.Join(real, ".config", AppDir))
-	t.Setenv(EnvAllowOutsideHome, "")
+	t.Setenv(config.EnvConfigDir, filepath.Join(real, ".config", AppDir))
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "")
 
 	if _, err := BaseDir(); err != nil {
 		t.Errorf("a directory under home, named through the link, must be allowed: %v", err)
@@ -321,7 +323,7 @@ func TestPathHelpersReportAMissingConfigDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows resolves the config dir from a different variable")
 	}
-	t.Setenv(EnvDir, "")
+	t.Setenv(config.EnvConfigDir, "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "")
 

@@ -39,6 +39,23 @@ const (
 	changelogPath       = "CHANGELOG.md"
 )
 
+// configDocProblems holds the configuration page to the code. It names
+// every GCM_ variable the server reads, a removed one it refuses
+// included, and says what a profile name is in the words the server
+// refuses one with.
+func configDocProblems(doc string) []string {
+	var problems []string
+	for _, v := range config.EnvVars() {
+		if !strings.Contains(doc, v) {
+			problems = append(problems, fmt.Sprintf("%s does not mention %s", configDocPath, v))
+		}
+	}
+	if !strings.Contains(doc, config.ProfileRule) {
+		problems = append(problems, fmt.Sprintf("%s does not say a profile name is %q", configDocPath, config.ProfileRule))
+	}
+	return problems
+}
+
 func staleness(args []string, stdout, stderr io.Writer) int {
 	bin := binaryArg(args)
 
@@ -93,13 +110,9 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 		fail("%s", p)
 	}
 
-	// The configuration page must name every GCM_ variable the server
-	// reads, a removed one it refuses included.
 	if configDoc, ok := load(configDocPath); ok {
-		for _, v := range config.EnvVars() {
-			if !strings.Contains(configDoc, v) {
-				fail("%s does not mention %s", configDocPath, v)
-			}
+		for _, p := range configDocProblems(configDoc) {
+			fail("%s", p)
 		}
 	}
 

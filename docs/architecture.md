@@ -457,7 +457,10 @@ argument would configure the server past these checks, any `args` on a
 platform override, an empty list included, an `entry_point` or a command
 that names no staged program (`LICENSE` and `README.md` are packed to be
 read, not run), a command that does not start with `${__dirname}/`, a
-profile field that does not state `config.ProfileRule`, a toolsets field
+claimed platform that spawns any file but the one staged for it, an
+override for a platform the bundle does not claim, a profile field that
+does not state `config.ProfileRule`, which the configuration page must
+state too (the staleness gate holds it), a toolsets field
 that does not list every toolset in order, a bundle that stops asking
 for either of those two, and an empty `privacy_policies`. Written down from a
 `/code-review high` rather than changed: the defaults check reads
@@ -471,11 +474,12 @@ refuses to a declared list, both ways. Each key in a declared set is a
 switch with a title, and every other field in its set names that title.
 The list is empty: Read-only wins over `enable_destructive` rather than
 refusing the pair, and both fields say so. The gate is the
-`scripts/gates` tests, and they and the packer run one function,
-`manifestProblems`, so the release packs nothing the tests refuse: the
-placeholder version, the schema reference, the vendored schema, the
-name and platforms, and the launcher and go.mod beside the manifest are
-in it. The manifest lists no tools, since the settings change what
+`scripts/gates` tests, and they, the packer and `mcpb-manifest` run one
+function, `manifestProblems`, so the release packs nothing the tests
+refuse: the placeholder version, the schema reference, the vendored
+schema, the name and platforms, and the launcher and go.mod beside the
+manifest are in it. The packer reads the manifest once and ships the
+bytes it checked. The manifest lists no tools, since the settings change what
 registers, and carries no icon.
 
 ## Evidence log

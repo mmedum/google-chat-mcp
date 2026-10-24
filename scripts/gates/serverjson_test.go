@@ -189,73 +189,98 @@ func TestGitHubRepoRefusesAnythingElse(t *testing.T) {
 	}
 }
 
-func TestMCPBManifestStampsTheVersion(t *testing.T) {
-	const manifest = `{
-      "manifest_version": "0.3",
-      "name": "google-chat-mcp",
-      "version": "0.0.0-dev",
-      "server": {"type": "binary"}
-    }`
+// runManifest runs mcpb-manifest on raw from the repository root, where
+// the checks read the schema, the launcher and go.mod.
+func runManifest(t *testing.T, version string, raw []byte) (stdout, stderr string, code int) {
+	t.Helper()
+	path := write(t, "manifest.json", string(raw))
+	t.Chdir(repoRoot(t))
 	var out, errOut bytes.Buffer
-	path := write(t, "manifest.json", manifest)
-	if code := run([]string{"mcpb-manifest", "v2.0.0", path}, &out, &errOut); code != 0 {
-		t.Fatalf("exit %d: %s", code, errOut.String())
+	code = run([]string{"mcpb-manifest", version, path}, &out, &errOut)
+	return out.String(), errOut.String(), code
+}
+
+// The committed manifest comes out byte for byte, its version stamped.
+func TestMCPBManifestStampsTheVersion(t *testing.T) {
+	committed := readRepoFile(t, manifestSource)
+	out, errOut, code := runManifest(t, "v2.0.0", []byte(committed))
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
 	}
 	var stamped map[string]any
-	if err := json.Unmarshal(out.Bytes(), &stamped); err != nil {
-		t.Fatalf("%v\n%s", err, out.String())
+	if err := json.Unmarshal([]byte(out), &stamped); err != nil {
+		t.Fatalf("%v\n%s", err, out)
 	}
 	if stamped["version"] != "2.0.0" {
 		t.Errorf("version %v, want the tag without its v", stamped["version"])
 	}
-	// Everything else is carried through rather than rewritten.
-	if stamped["name"] != "google-chat-mcp" || stamped["manifest_version"] != "0.3" {
-		t.Errorf("the rest of the manifest did not survive: %s", out.String())
-	}
-	if _, ok := stamped["server"].(map[string]any); !ok {
-		t.Errorf("the server block did not survive: %s", out.String())
+	if want := strings.Replace(committed, `"0.0.0-dev"`, `"2.0.0"`, 1); out != want {
+		t.Errorf("the rest of the manifest was rewritten:\n%s", out)
 	}
 }
 
+// mcpb-manifest runs every check the packer runs, so it prints no
+// manifest the packer would refuse.
 func TestMCPBManifestRefusesWhatItCannotStamp(t *testing.T) {
 	tests := []struct {
-		name, version, body, want string
+		name, version string
+		raw           []byte
+		want          string
 	}{
 		{
 			name:    "already stamped",
 			version: "2.0.0",
-			body:    `{"version": "1.9.0"}`,
-			want:    "expected the placeholder",
+			raw:     editedRaw(t, func(d map[string]any) { d["version"] = "1.9.0" }),
+			want:    `the manifest carries version "1.9.0"; the committed one carries the placeholder "0.0.0-dev"`,
 		},
 		{
 			name:    "no version at all",
 			version: "2.0.0",
-			body:    `{"name": "google-chat-mcp"}`,
-			want:    "expected the placeholder",
+			raw:     editedRaw(t, func(d map[string]any) { delete(d, "version") }),
+			want:    `the manifest carries version ""; the committed one carries the placeholder "0.0.0-dev"`,
+		},
+		{
+			name:    "a manifest the packer refuses",
+			version: "2.0.0",
+			raw:     editedRaw(t, func(d map[string]any) { d["name"] = "google-chat" }),
+			want:    `manifest name "google-chat", server name "google-chat-mcp"`,
 		},
 		{
 			name:    "not json",
 			version: "2.0.0",
-			body:    "manifest_version: 0.3\n",
-			want:    "manifest.json",
+			raw:     []byte("manifest_version: 0.3\n"),
+			want:    "manifest.json: invalid character",
 		},
 		{
 			name:    "no version given",
 			version: "v",
-			body:    `{"version": "0.0.0-dev"}`,
+			raw:     []byte(readRepoFile(t, manifestSource)),
 			want:    "empty version",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var out, errOut bytes.Buffer
-			path := write(t, "manifest.json", tt.body)
-			if code := run([]string{"mcpb-manifest", tt.version, path}, &out, &errOut); code == 0 {
-				t.Fatalf("stamped it anyway:\n%s", out.String())
+			out, errOut, code := runManifest(t, tt.version, tt.raw)
+			if code == 0 {
+				t.Fatalf("stamped it anyway:\n%s", out)
 			}
-			if !strings.Contains(errOut.String(), tt.want) {
-				t.Errorf("error %q does not say %q", errOut.String(), tt.want)
+			if !strings.Contains(errOut, tt.want) {
+				t.Errorf("error %q does not say %q", errOut, tt.want)
 			}
 		})
+	}
+}
+
+// The substitution replaces the version and nothing else, or refuses.
+func TestRenderManifestReplacesTheVersionAlone(t *testing.T) {
+	for _, tc := range []struct{ name, raw, want string }{
+		{"the placeholder twice", `{"version": "0.0.0-dev", "x": "0.0.0-dev"}`,
+			`the manifest spells "0.0.0-dev" 2 times; the substitution needs exactly one`},
+		{"the placeholder somewhere else", `{"x": "0.0.0-dev", "version": "1.9.0"}`,
+			`the substitution set version to "1.9.0", wanted "2.0.0"`},
+	} {
+		if _, err := renderManifest("2.0.0", []byte(tc.raw)); err == nil || err.Error() != tc.want {
+			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
+		}
 	}
 }

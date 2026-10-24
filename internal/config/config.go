@@ -203,6 +203,11 @@ const (
 // envOnly is every variable read outside Define, for Vars.
 var envOnly = []string{EnvConfigDir, EnvConfigDirAllowOutsideHome, EnvRefreshToken}
 
+// Blank reports whether a variable's value leaves it unset: empty, or
+// spaces alone, so a form field cleared to a space means the default
+// rather than a value the server refuses.
+func Blank(v string) bool { return strings.TrimSpace(v) == "" }
+
 // removedSettings are the settings a release took out, each with why
 // and what to do instead. Each was off by default, and unset or off is
 // still accepted. On, or a value that is not a boolean, is refused at
@@ -269,9 +274,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
 		value := env(v.Name)
-		// Spaces alone are unset too: a form field cleared to a space
-		// means the default, not a value Build refuses.
-		if strings.TrimSpace(value) == "" {
+		if Blank(value) {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
@@ -307,14 +310,19 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 // recorded rather than listed, so they cannot fall behind. The bundle
 // and staleness gates derive what they hold from these.
 func Vars() []Var {
-	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	vars := Define(fs, func(string) string { return "" }).vars
+	vars := defined()
 	for _, name := range envOnly {
 		vars = append(vars, Var{Name: name})
 	}
 	slices.SortFunc(vars, func(a, b Var) int { return strings.Compare(a.Name, b.Name) })
 	return vars
+}
+
+// defined is every variable Define reads, in the order it reads them.
+func defined() []Var {
+	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return Define(fs, func(string) string { return "" }).vars
 }
 
 // EnvVars is the names of Vars, sorted.

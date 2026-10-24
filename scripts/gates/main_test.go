@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // write puts a schema dump in a temp file and returns its path.
@@ -240,38 +238,6 @@ func TestToolNamesSorted(t *testing.T) {
 	}
 	if out.String() != "get_space\nsend_message\n" {
 		t.Errorf("got %q", out.String())
-	}
-}
-
-// The staleness gate reads this list, so a variable the server reads and
-// this misses is a documentation hole the gate cannot see.
-func TestConfigVars(t *testing.T) {
-	got := config.EnvVars()
-	want := []string{
-		"GCM_ALLOW_DESTRUCTIVE",
-		"GCM_ASK_BEFORE_SEND",
-		"GCM_CHAT_API_BASE",
-		"GCM_CLIENT_SECRET",
-		"GCM_CLOUD_IDENTITY_API_BASE",
-		"GCM_CONFIG_DIR",
-		"GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME",
-		"GCM_DIRECTORY_CACHE_TTL_SECONDS",
-		"GCM_ENABLE_DESTRUCTIVE",
-		"GCM_HTTP_MAX_RETRIES",
-		"GCM_HTTP_TIMEOUT_SECONDS",
-		"GCM_LOCAL_DIR",
-		"GCM_LOG_FORMAT",
-		"GCM_LOG_LEVEL",
-		"GCM_PEOPLE_API_BASE",
-		"GCM_PROFILE",
-		"GCM_READ_ONLY",
-		"GCM_REFRESH_TOKEN",
-		"GCM_REQUIRE_PROMPT",
-		"GCM_SEARCH_MAX_PAGES",
-		"GCM_TOOLSETS",
-	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("config vars:\n got %v\nwant %v", got, want)
 	}
 }
 

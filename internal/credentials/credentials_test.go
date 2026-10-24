@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 type memKeyring struct {
@@ -61,7 +63,7 @@ func newStore(t *testing.T, kr Backend) (*Store, *[]string) {
 func TestEnvWins(t *testing.T) {
 	s, _ := newStore(t, &memKeyring{data: map[string]string{"google-chat-mcp/default": "from-keyring"}})
 	s.Env = func(k string) string {
-		if k == EnvVar {
+		if k == config.EnvRefreshToken {
 			return "from-env"
 		}
 		return ""

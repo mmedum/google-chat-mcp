@@ -34,6 +34,10 @@ func define(t *testing.T, env map[string]string, args ...string) *Settings {
 	return s
 }
 
+// definedFloor is how many variables Define reads today, on purpose: the
+// floor moves with it, so a Define that reads nothing cannot pass.
+const definedFloor = 18
+
 // A setting given as spaces alone is unset, as an empty one is, so a
 // form field cleared to a space starts the server with the default. A
 // removed setting of spaces is off.
@@ -42,19 +46,15 @@ func TestASettingOfSpacesIsUnset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := 0
-	for _, v := range Vars() {
-		if slices.Contains(envOnly, v.Name) {
-			continue
-		}
-		n++
+	vars := defined()
+	if len(vars) < definedFloor {
+		t.Fatalf("Define reads %d settings, want at least %d", len(vars), definedFloor)
+	}
+	for _, v := range vars {
 		got, err := define(t, map[string]string{v.Name: "  "}).Build()
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Errorf("%s=\"  \": %+v, %v; want the unconfigured configuration", v.Name, got, err)
 		}
-	}
-	if n < 18 {
-		t.Errorf("checked %d settings, want every one Define reads", n)
 	}
 }
 
@@ -695,27 +695,24 @@ func TestARemovedFlagNamesItsReplacement(t *testing.T) {
 	}
 }
 
-// Define reads each variable once, and Vars lists each once. Two
+// Define reads each variable once, and records each once for Vars. Two
 // settings on one variable would leave it to whichever Build reads
-// last, and a duplicate in Vars would ask the bundle for it twice.
+// last.
 func TestDefineReadsEachVariableOnce(t *testing.T) {
 	reads := map[string]int{}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.SetOutput(&bytes.Buffer{})
 	Define(fs, func(name string) string { reads[name]++; return "" })
 	var listed []string
-	for _, v := range Vars() {
-		if !slices.Contains(envOnly, v.Name) {
-			listed = append(listed, v.Name)
-		}
+	for _, v := range defined() {
+		listed = append(listed, v.Name)
 	}
-	// 18 is the setting count today, on purpose: the floor moves with it,
-	// so a Define that reads nothing cannot pass.
-	if len(listed) < 18 {
-		t.Fatalf("Vars lists %d settings, want at least 18", len(listed))
+	slices.Sort(listed)
+	if len(listed) < definedFloor {
+		t.Fatalf("Define records %d settings, want at least %d", len(listed), definedFloor)
 	}
 	if read := slices.Sorted(maps.Keys(reads)); !slices.Equal(listed, read) {
-		t.Errorf("Vars lists %v\nDefine reads %v", listed, read)
+		t.Errorf("Define records %v\nDefine reads %v", listed, read)
 	}
 	for name, n := range reads {
 		if n != 1 {

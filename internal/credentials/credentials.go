@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/zalando/go-keyring"
@@ -29,9 +28,6 @@ import (
 
 // ServiceName is the keyring service identifier.
 const ServiceName = "google-chat-mcp"
-
-// EnvVar is the environment override.
-const EnvVar = config.EnvRefreshToken
 
 // Source identifies where a token came from.
 type Source string
@@ -96,9 +92,8 @@ func (s *Store) env(k string) string {
 }
 
 // envToken is the refresh token the environment sets, or "" for none.
-// Spaces alone are unset, as for every setting.
 func (s *Store) envToken() string {
-	if v := s.env(EnvVar); strings.TrimSpace(v) != "" {
+	if v := s.env(config.EnvRefreshToken); !config.Blank(v) {
 		return v
 	}
 	return ""

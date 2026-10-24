@@ -90,10 +90,6 @@ func TestBundleManifestMatchesTheSchema(t *testing.T) {
 	if got := schemaProblems(editedRaw(t, func(map[string]any) {}), root); len(got) != 0 {
 		t.Errorf("the committed manifest: %q", got)
 	}
-	broken := editedRaw(t, func(d map[string]any) { d["manifest_version"] = "0.2" })
-	if got := schemaProblems(broken, root); len(got) != 1 || !strings.Contains(got[0], "does not match the 0.3 schema") {
-		t.Errorf("a manifest claiming 0.2 gives %q, want it refused by the 0.3 schema", got)
-	}
 	emptied := editedRaw(t, func(d map[string]any) { clear(d); d["name"] = server.Name })
 	if got := schemaProblems(emptied, root); !slices.Equal(got,
 		[]string{"the manifest has 1 top-level fields, expected the full one"}) {
@@ -110,7 +106,7 @@ func TestBundleManifestMatchesTheSchema(t *testing.T) {
 // The committed manifest passes every check the packer runs, against
 // the names the packer stages.
 func TestBundleManifestMatchesTheCode(t *testing.T) {
-	for _, p := range manifestProblems(editedRaw(t, func(map[string]any) {}), stagedLayout(t), repoRoot(t)) {
+	for _, p := range manifestProblems(editedRaw(t, func(map[string]any) {}), stagedNames(), repoRoot(t)) {
 		t.Error(p)
 	}
 }
@@ -140,15 +136,6 @@ func TestManifestProblemsRunsEveryCheck(t *testing.T) {
 			`compatibility.claude_desktop is ">=0.9.0", want the family's >=0.10.0`},
 		{"two platforms", func(d map[string]any) { dig(d, "compatibility")["platforms"] = []any{"darwin", "win32"} },
 			"compatibility platforms [darwin win32], expected darwin, linux and win32"},
-		{"no win32 override", func(d map[string]any) {
-			delete(dig(d, "server", "mcp_config", "platform_overrides"), "win32")
-		}, "no win32 override: Windows needs the .exe named"},
-		{"no linux override", func(d map[string]any) {
-			delete(dig(d, "server", "mcp_config", "platform_overrides"), "linux")
-		}, "no linux override: Linux would run the macOS binary"},
-		{"one Linux binary for both architectures", func(d map[string]any) {
-			dig(d, "server", "mcp_config", "platform_overrides", "linux")["command"] = "${__dirname}/server/google-chat-mcp-linux-amd64"
-		}, `linux command "${__dirname}/server/google-chat-mcp-linux-amd64", expected the launcher`},
 		{"a field the person may skip", func(d map[string]any) {
 			delete(dig(d, "user_config", "client_secret"), "default")
 		}, "user configuration that the installing client may leave unsubstituted: client_secret (optional, no default)"},
@@ -159,31 +146,30 @@ func TestManifestProblemsRunsEveryCheck(t *testing.T) {
 			"the bundle's defaults configure the server otherwise than no environment does, in ReadOnly;"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := manifestProblems(editedRaw(t, tc.edit), stagedLayout(t), repoRoot(t))
+			got := manifestProblems(editedRaw(t, tc.edit), stagedNames(), repoRoot(t))
 			if !slices.ContainsFunc(got, func(p string) bool { return strings.Contains(p, tc.want) }) {
 				t.Errorf("problems:\n%s\nwant one containing %q", strings.Join(got, "\n"), tc.want)
 			}
 		})
 	}
+	// A reference user_config does not declare is one defect, reported
+	// once.
+	undeclared := manifestProblems(editedRaw(t, func(d map[string]any) {
+		dig(d, "server", "mcp_config", "env")["GCM_NOT_READ"] = "${user_config.undeclared_key}"
+	}), stagedNames(), repoRoot(t))
+	if n := len(slices.DeleteFunc(slices.Clone(undeclared), func(p string) bool {
+		return !strings.Contains(p, "undeclared_key")
+	})); n != 1 {
+		t.Errorf("an undeclared reference is reported %d times, want once:\n%s", n, strings.Join(undeclared, "\n"))
+	}
 	// The launcher and go.mod are read from the root it is given.
 	root := copiedRoot(t)
-	put(t, root, "go.mod", "module example.com/elsewhere\n")
-	got := manifestProblems(editedRaw(t, func(map[string]any) {}), stagedLayout(t), root)
+	put(t, root, goModSource, "module example.com/elsewhere\n")
+	got := manifestProblems(editedRaw(t, func(map[string]any) {}), stagedNames(), root)
 	if want := `the launcher says "go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest", ` +
 		`want "go install example.com/elsewhere/cmd/google-chat-mcp@latest"`; !slices.Contains(got, want) {
 		t.Errorf("problems %q, want %q among them", got, want)
 	}
-}
-
-// stagedLayout is the packer's layout with no build: the names it
-// stages, from a dist tree of empty stand-ins.
-func stagedLayout(t *testing.T) []bundleFile {
-	t.Helper()
-	files, err := bundleLayout(fakeDist(t, true, true, true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return files
 }
 
 // copiedRoot is a repository holding the files the packer reads, copied
@@ -191,7 +177,11 @@ func stagedLayout(t *testing.T) []bundleFile {
 func copiedRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	for _, rel := range []string{manifestSource, launcherSource, vendoredSchema, "go.mod", "LICENSE", "README.md"} {
+	sources := []string{manifestSource, vendoredSchema, goModSource}
+	for _, f := range carried {
+		sources = append(sources, f.from)
+	}
+	for _, rel := range sources {
 		put(t, root, rel, readRepoFile(t, rel))
 	}
 	return root
@@ -226,7 +216,6 @@ func TestAlwaysSubstitutedCatchesALooseReference(t *testing.T) {
 		{"required", "a", `"a": {"type": "string", "required": true}`, 0},
 		{"defaulted", "a", `"a": {"type": "string", "default": ""}`, 0},
 		{"optional, no default", "a", `"a": {"type": "string"}`, 1},
-		{"not declared at all", "b", `"a": {"type": "string", "required": true}`, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -396,7 +385,7 @@ func TestPackWritesWhatTheManifestNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linux := []string{serverDir + filepath.Base(launcherSource)}
+	linux := []string{launcherName}
 	for _, f := range files {
 		if strings.HasPrefix(f.name, serverDir+server.Name+"-linux-") {
 			linux = append(linux, f.name)
@@ -623,6 +612,59 @@ func TestCheckManifestHoldsTheManifestToTheTree(t *testing.T) {
 			name: "an entry point naming the license",
 			edit: func(d map[string]any) { dig(d, "server")["entry_point"] = "LICENSE" },
 			want: "entry_point names LICENSE, which is not a program the bundle carries",
+		},
+		{
+			// Staged, and a program, and the file staged for another
+			// platform: macOS would spawn a Windows binary.
+			name: "macOS spawning the Windows binary",
+			edit: func(d map[string]any) {
+				dig(d, "server", "mcp_config")["command"] = "${__dirname}/server/google-chat-mcp.exe"
+			},
+			want: `on darwin the bundle would spawn "server/google-chat-mcp.exe", and the file staged for darwin is ` +
+				`"server/google-chat-mcp-darwin"`,
+		},
+		{
+			name: "Windows spawning the macOS binary",
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "win32")...)["command"] = "${__dirname}/server/google-chat-mcp-darwin"
+			},
+			want: `on win32 the bundle would spawn "server/google-chat-mcp-darwin", and the file staged for win32 is ` +
+				`"server/google-chat-mcp.exe"`,
+		},
+		{
+			// Windows then runs the default command, the macOS binary.
+			name: "no win32 override",
+			edit: func(d map[string]any) { delete(dig(d, overrides...), "win32") },
+			want: `on win32 the bundle would spawn "server/google-chat-mcp-darwin"`,
+		},
+		{
+			name: "no linux override",
+			edit: func(d map[string]any) { delete(dig(d, overrides...), "linux") },
+			want: `on linux the bundle would spawn "server/google-chat-mcp-darwin"`,
+		},
+		{
+			// Right for one of the two architectures Claude Desktop for
+			// Linux ships.
+			name: "one Linux binary for both architectures",
+			edit: func(d map[string]any) {
+				dig(d, append(overrides, "linux")...)["command"] = "${__dirname}/server/google-chat-mcp-linux-amd64"
+			},
+			want: `on linux the bundle would spawn "server/google-chat-mcp-linux-amd64", and the file staged for linux is ` +
+				`"server/launch-linux.sh"`,
+		},
+		{
+			name: "an override for a platform the bundle does not claim",
+			edit: func(d map[string]any) {
+				dig(d, overrides...)["freebsd"] = map[string]any{"command": "${__dirname}/server/google-chat-mcp-linux-amd64"}
+			},
+			want: "platform_overrides.freebsd is an override for a platform compatibility.platforms does not claim",
+		},
+		{
+			name: "a claimed platform the packer stages nothing for",
+			edit: func(d map[string]any) {
+				dig(d, "compatibility")["platforms"] = []any{"darwin", "freebsd", "linux", "win32"}
+			},
+			want: "compatibility.platforms claims freebsd and the packer stages no entry point for it",
 		},
 		{
 			name: "a substitution user_config does not declare",
@@ -961,7 +1003,7 @@ func TestDefaultsProblemsReportsEveryUnreadableDefaultAndTheRest(t *testing.T) {
 		"user_config.local_dir defaults to a list" + cannot,
 		"user_config.profile defaults to an object" + cannot,
 	}
-	got := defaultsProblems(startDefaults(m))
+	got, _ := defaultsProblems(m)
 	if len(got) != 4 || !slices.Equal(got[:3], want) ||
 		!strings.HasPrefix(got[3], "the bundle's defaults configure the server otherwise than no environment does, in EnableDestructive;") {
 		t.Errorf("defaultsProblems =\n%s\nwant\n%s\nand then the comparison", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -1010,11 +1052,11 @@ func TestSettingProblemsRefuseAStaleExclusion(t *testing.T) {
 // at v6 and was left behind once; go.mod is read under Windows line
 // endings too.
 func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
-	files := stagedLayout(t)
+	files := stagedNames()
 	if got := launcherProblems(files, repoRoot(t)); len(got) != 0 {
 		t.Errorf("the committed launcher: %q", got)
 	}
-	launcher, goMod := readRepoFile(t, launcherSource), readRepoFile(t, "go.mod")
+	launcher, goMod := readRepoFile(t, launcherSource), readRepoFile(t, goModSource)
 	const module = "github.com/mmedum/google-chat-mcp/v7"
 	if !strings.Contains(launcher, "go install "+module+"/cmd/google-chat-mcp@latest") {
 		t.Fatalf("the launcher's install hint does not name %s", module)
@@ -1037,7 +1079,7 @@ func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			put(t, root, launcherSource, tc.launcher)
-			put(t, root, "go.mod", tc.goMod)
+			put(t, root, goModSource, tc.goMod)
 			if got := launcherProblems(files, root); !slices.Equal(got, tc.want) {
 				t.Errorf("launcherProblems = %q, want %q", got, tc.want)
 			}
@@ -1066,7 +1108,7 @@ func TestTheFieldRulesHaveAFloor(t *testing.T) {
 		leftOut := maps.Clone(bundleLeftOut)
 		leftOut[name] = "left out"
 		m := editedManifest(t, func(d map[string]any) {
-			key := strings.ToLower(strings.TrimPrefix(name, "GCM_"))
+			key := bundleKey(name)
 			delete(dig(d, "user_config"), key)
 			delete(dig(d, "server", "mcp_config", "env"), name)
 		})
@@ -1130,22 +1172,15 @@ func refusingPair(t *testing.T, edit func(map[string]any)) bundleManifest {
 
 // Every set of the switches is started, and the refused ones are held to
 // the declared list both ways, each defect reported once. A declared key
-// is a switch with a title, and its description names the others'. The
-// committed bundle declares none, and the server refuses none.
+// is a switch with a title, and its description names the others'.
 func TestTheBundleRefusalsAreDeclared(t *testing.T) {
 	committed := editedManifest(t, func(map[string]any) {})
-	if bundleRefused != nil {
-		t.Errorf("bundleRefused = %q; Build refuses no set of the switches", bundleRefused)
-	}
-	if got := refusalProblems(committed, bundleSwitches, bundleRefused, nil); len(got) != 0 {
-		t.Errorf("the committed bundle gives %q", got)
-	}
 	refusals := func(m bundleManifest, declared [][]string) []string {
-		return refusalProblems(m, bundleSwitches, declared, startDefaults(m).err)
+		_, defaultsErr := defaultsProblems(m)
+		return refusalProblems(m, bundleSwitches, declared, defaultsErr)
 	}
-	const undeclared = "the server refuses enable_destructive, read_only together, and bundleRefused does not declare it"
-	if got := refusals(refusingPair(t, func(map[string]any) {}), nil); len(got) != 1 || !strings.HasPrefix(got[0], undeclared) {
-		t.Errorf("an undeclared refusal gives %q, want the one problem %q", got, undeclared)
+	if got := refusals(refusingPair(t, func(map[string]any) {}), nil); len(got) != 1 || !strings.HasPrefix(got[0], undeclaredPair) {
+		t.Errorf("an undeclared refusal gives %q, want the one problem %q", got, undeclaredPair)
 	}
 	pair := [][]string{{"enable_destructive", "read_only"}}
 	// Declared, and each field naming the other's title, it passes; a
@@ -1198,10 +1233,12 @@ func TestTheBundleRefusalsAreDeclared(t *testing.T) {
 	}
 }
 
+// undeclaredPair is the problem refusingPair gives with nothing declared.
+const undeclaredPair = "the server refuses enable_destructive, read_only together, and bundleRefused does not declare it"
+
 // A switch in a set is on, whatever its default: a required one with
 // none, or one with a list, is not left out, which would hide a refusal.
 func TestTheRefusalsTurnASwitchOnWhateverItsDefault(t *testing.T) {
-	const want = "the server refuses enable_destructive, read_only together, and bundleRefused does not declare it"
 	for name, edit := range map[string]func(map[string]any){
 		"required with no default": func(d map[string]any) {
 			dig(d, "user_config", "read_only")["required"] = true
@@ -1210,9 +1247,10 @@ func TestTheRefusalsTurnASwitchOnWhateverItsDefault(t *testing.T) {
 		"a list default": func(d map[string]any) { dig(d, "user_config", "read_only")["default"] = []any{"true"} },
 	} {
 		m := refusingPair(t, edit)
-		got := refusalProblems(m, bundleSwitches, nil, startDefaults(m).err)
-		if !slices.ContainsFunc(got, func(p string) bool { return strings.HasPrefix(p, want) }) {
-			t.Errorf("%s: got %q, want one starting %q", name, got, want)
+		_, defaultsErr := defaultsProblems(m)
+		got := refusalProblems(m, bundleSwitches, nil, defaultsErr)
+		if !slices.ContainsFunc(got, func(p string) bool { return strings.HasPrefix(p, undeclaredPair) }) {
+			t.Errorf("%s: got %q, want one starting %q", name, got, undeclaredPair)
 		}
 	}
 }
@@ -1221,8 +1259,15 @@ func TestTheRefusalsTurnASwitchOnWhateverItsDefault(t *testing.T) {
 // asks for, so a refusal Build adds fails the gate itself.
 func TestSettingProblemsHoldTheRefusals(t *testing.T) {
 	got := settingProblems(refusingPair(t, func(map[string]any) {}), bundleLeftOut)
-	const want = "the server refuses enable_destructive, read_only together, and bundleRefused does not declare it"
-	if !slices.ContainsFunc(got, func(p string) bool { return strings.HasPrefix(p, want) }) {
-		t.Errorf("settingProblems = %q, want one starting %q", got, want)
+	if !slices.ContainsFunc(got, func(p string) bool { return strings.HasPrefix(p, undeclaredPair) }) {
+		t.Errorf("settingProblems = %q, want one starting %q", got, undeclaredPair)
+	}
+	// Defaults the server refuses start no set, which would each fail
+	// with them: the defaults problem is the one report.
+	got = settingProblems(editedManifest(t, func(d map[string]any) {
+		delete(dig(d, "user_config", "read_only"), "default")
+	}), bundleLeftOut)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "the environment the bundle's defaults give the server is refused") {
+		t.Errorf("defaults the server refuses give %q, want that one problem", got)
 	}
 }

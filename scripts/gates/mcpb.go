@@ -96,6 +96,13 @@ var manifestSource = filepath.Join("packaging", "mcpb", "manifest.json")
 // launcherSource is the Linux launcher.
 var launcherSource = filepath.Join("packaging", "mcpb", "launch-linux.sh")
 
+// launcherName is the launcher inside the bundle, and Linux's entry
+// point.
+var launcherName = serverDir + filepath.Base(launcherSource)
+
+// goModSource is go.mod, which the launcher's install hint is held to.
+const goModSource = "go.mod"
+
 // manifestName is where the manifest sits inside the bundle. The
 // installer looks at the root and nowhere else.
 const manifestName = "manifest.json"
@@ -144,6 +151,7 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(err)
 	}
+	// Read once: the bytes checked are the bytes shipped.
 	committed, err := os.ReadFile(manifestSource)
 	if err != nil {
 		return fail(err)
@@ -154,7 +162,7 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	manifest, err := renderManifest(version, manifestSource)
+	manifest, err := renderManifest(version, committed)
 	if err != nil {
 		return fail(err)
 	}
@@ -173,7 +181,7 @@ func mcpbPack(args []string, stdout, stderr io.Writer) int {
 // about to be packed, the settings, and the launcher and go.mod beside
 // it. raw is the committed manifest and files the staged layout; root
 // is the repository the schema, the launcher and go.mod are read from.
-// The tests are the gate, and run it on the staged names with no build.
+// The tests are the gate, and run it on stagedNames, with no build.
 func manifestProblems(raw []byte, files []bundleFile, root string) []string {
 	var m bundleManifest
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -244,11 +252,7 @@ const claudeDesktopFloor = ">=0.10.0"
 // identityProblems holds what the manifest says it is to the server and
 // to the family: the server's name and description, a binary, the
 // family's Claude Desktop floor, and all three platforms Claude Desktop
-// runs on. A manifest cannot pick a binary by architecture, so each
-// platform it claims has to work on both: macOS through the universal
-// binary, Windows through amd64 under emulation, and Linux through a
-// launcher that reads `uname -m`, since Claude Desktop for Linux ships
-// x64 and arm64.
+// runs on. checkManifest holds each platform to the file staged for it.
 func identityProblems(m bundleManifest) []string {
 	var problems []string
 	if m.Name != server.Name {
@@ -268,19 +272,6 @@ func identityProblems(m bundleManifest) []string {
 	if got := m.Compatibility.Platforms; !slices.Equal(got, []string{"darwin", "linux", "win32"}) {
 		problems = append(problems, fmt.Sprintf("compatibility platforms %v, expected darwin, linux and win32", got))
 	}
-	overrides := m.Server.MCPConfig.PlatformOverrides
-	if _, ok := overrides["win32"]; !ok {
-		problems = append(problems, "no win32 override: Windows needs the .exe named")
-	}
-	// Linux must not fall through to the default command, which is the
-	// macOS universal binary.
-	switch linux, ok := overrides["linux"]; {
-	case !ok:
-		problems = append(problems, "no linux override: Linux would run the macOS binary")
-	case !strings.HasSuffix(linux.Command, "launch-linux.sh"):
-		problems = append(problems, fmt.Sprintf("linux command %q, expected the launcher: a single named binary "+
-			"is wrong for one of the two architectures Claude Desktop for Linux supports", linux.Command))
-	}
 	return problems
 }
 
@@ -288,16 +279,12 @@ func identityProblems(m bundleManifest) []string {
 // standing. A setting that is neither required nor defaulted is one the
 // person installing can skip, and the reference host then hands the
 // server the literal ${user_config.key}, which starts it with nonsense
-// in its configuration, so the manifest may not have any.
+// in its configuration, so the manifest may not have any. A reference
+// user_config does not declare is checkManifest's to report.
 func alwaysSubstituted(m bundleManifest) []string {
 	var loose []string
 	for _, key := range m.references() {
-		cfg, ok := m.UserConfig[key]
-		if !ok {
-			loose = append(loose, key+" (not declared)")
-			continue
-		}
-		if !cfg.Required && cfg.Default == nil {
+		if cfg, ok := m.UserConfig[key]; ok && !cfg.Required && cfg.Default == nil {
 			loose = append(loose, key+" (optional, no default)")
 		}
 	}
@@ -340,7 +327,7 @@ func launcherProblems(files []bundleFile, root string) []string {
 		problems = append(problems, fmt.Sprintf("the launcher runs %v and the packer stages %v", named, staged))
 	}
 
-	goMod, err := os.ReadFile(filepath.Join(root, "go.mod")) //nolint:gosec // a path this repository owns
+	goMod, err := os.ReadFile(filepath.Join(root, goModSource)) //nolint:gosec // a path this repository owns
 	if err != nil {
 		return append(problems, err.Error())
 	}
@@ -361,12 +348,15 @@ func launcherProblems(files []bundleFile, root string) []string {
 	return problems
 }
 
-// bundleLayout is what goes into the bundle, ordered by the name each
-// file takes inside it.
-//
-// Sorted rather than left in the order written below, so the archive's
-// order is a property of the bundle rather than of how this literal
-// happens to be arranged.
+// staged is one built file going into the bundle: where to find it under
+// dist, what it is called inside, and the manifest platform it is the
+// entry point for, or empty for one carried but never spawned.
+type staged struct {
+	glob, as, what string
+	platform       string
+}
+
+// binaries are the four built files the bundle carries.
 //
 // A manifest picks a binary by platform and has no key for the
 // architecture, so every platform it claims has to work on both. macOS
@@ -374,26 +364,66 @@ func launcherProblems(files []bundleFile, root string) []string {
 // its arm64 build runs under emulation. Linux has neither, and Claude
 // Desktop for Linux ships x64 and arm64 both, so the bundle carries both
 // Linux binaries and a launcher that picks between them at start.
-func bundleLayout(dist string) ([]bundleFile, error) {
-	files := []bundleFile{
-		{name: serverDir + "launch-linux.sh", from: launcherSource},
-		{name: "LICENSE", from: "LICENSE"},
-		{name: "README.md", from: "README.md"},
+var binaries = []staged{
+	{"*darwin_all*/google-chat-mcp", serverDir + "google-chat-mcp-darwin", "darwin universal binary", "darwin"},
+	{"*windows_amd64*/google-chat-mcp.exe", serverDir + "google-chat-mcp.exe", "windows amd64 binary", "win32"},
+	// Neither Linux binary is an entry point: the launcher is, and it
+	// picks between these two from `uname -m`.
+	{"*linux_amd64*/google-chat-mcp", serverDir + "google-chat-mcp-linux-amd64", "linux amd64 binary", ""},
+	{"*linux_arm64*/google-chat-mcp", serverDir + "google-chat-mcp-linux-arm64", "linux arm64 binary", ""},
+}
+
+// carried are the files the bundle takes from the repository rather
+// than from the build.
+var carried = []bundleFile{
+	{name: launcherName, from: launcherSource},
+	{name: "LICENSE", from: "LICENSE"},
+	{name: "README.md", from: "README.md"},
+}
+
+// entryPointFor is the file a platform spawns: its own binary, or the
+// launcher where the platform needs one binary per architecture.
+func entryPointFor(platform string) string {
+	if platform == "linux" {
+		return launcherName
 	}
-	for _, b := range []struct{ name, glob, what string }{
-		{serverDir + "google-chat-mcp-darwin", "*darwin_all*/google-chat-mcp", "darwin universal binary"},
-		{serverDir + "google-chat-mcp.exe", "*windows_amd64*/google-chat-mcp.exe", "windows amd64 binary"},
-		{serverDir + "google-chat-mcp-linux-amd64", "*linux_amd64*/google-chat-mcp", "linux amd64 binary"},
-		{serverDir + "google-chat-mcp-linux-arm64", "*linux_arm64*/google-chat-mcp", "linux arm64 binary"},
-	} {
+	for _, b := range binaries {
+		if b.platform == platform {
+			return b.as
+		}
+	}
+	return ""
+}
+
+// bundleLayout is what goes into the bundle, ordered by the name each
+// file takes inside it.
+//
+// Sorted rather than left in the order written above, so the archive's
+// order is a property of the bundle rather than of how those literals
+// happen to be arranged.
+func bundleLayout(dist string) ([]bundleFile, error) {
+	files := slices.Clone(carried)
+	for _, b := range binaries {
 		from, err := only(dist, b.glob, b.what)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, bundleFile{name: b.name, from: from})
+		files = append(files, bundleFile{name: b.as, from: from})
 	}
 	slices.SortFunc(files, func(a, b bundleFile) int { return cmp.Compare(a.name, b.name) })
 	return files, nil
+}
+
+// stagedNames is the layout with no build: the names bundleLayout gives,
+// the built files with no source. The checks are referential, so the
+// names are all they read.
+func stagedNames() []bundleFile {
+	files := slices.Clone(carried)
+	for _, b := range binaries {
+		files = append(files, bundleFile{name: b.as})
+	}
+	slices.SortFunc(files, func(a, b bundleFile) int { return cmp.Compare(a.name, b.name) })
+	return files
 }
 
 // only is the one file under dist matching the glob.
@@ -450,6 +480,10 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 	// shadowing it here would let a later edit reach for the registry
 	// and silently get this instead.
 	byPlatform := m.commands()
+	// runs is the program each command spawns. A command that names
+	// none is reported here and left out, so the platform check below
+	// does not report it again.
+	runs := map[string]string{}
 	for _, platform := range slices.Sorted(maps.Keys(byPlatform)) {
 		command := byPlatform[platform]
 		// ${__dirname} is the one path the specification fixes to the
@@ -465,6 +499,41 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 		case !programs[rel]:
 			problems = append(problems, fmt.Sprintf(
 				"the %s command names %s, which is not a program the bundle carries", platform, rel))
+		default:
+			runs[platform] = rel
+		}
+	}
+
+	// An override for a platform the bundle does not claim reaches
+	// nobody: the host picks an override by platform.
+	claimed := m.Compatibility.Platforms
+	for _, platform := range slices.Sorted(maps.Keys(m.Server.MCPConfig.PlatformOverrides)) {
+		if len(claimed) > 0 && !slices.Contains(claimed, platform) {
+			problems = append(problems, fmt.Sprintf(
+				"platform_overrides.%s is an override for a platform compatibility.platforms does not claim (%s), "+
+					"so nothing will ever use it", platform, strings.Join(claimed, ", ")))
+		}
+	}
+	// Every platform the bundle claims spawns the file staged for it, not
+	// merely a staged program: with no win32 override, Windows would run
+	// the default command, the macOS binary, which really is in the
+	// bundle.
+	for _, platform := range claimed {
+		want := entryPointFor(platform)
+		if want == "" {
+			problems = append(problems, fmt.Sprintf(
+				"compatibility.platforms claims %s and the packer stages no entry point for it", platform))
+			continue
+		}
+		from := "default"
+		if _, ok := byPlatform[platform]; ok {
+			from = platform
+		}
+		if got, ok := runs[from]; ok && got != want {
+			problems = append(problems, fmt.Sprintf(
+				"on %s the bundle would spawn %q, and the file staged for %s is %q. Give %s a "+
+					"platform_overrides entry, or make the default command name %q",
+				platform, got, platform, want, platform, want))
 		}
 	}
 
@@ -534,46 +603,30 @@ func modeFor(name string) fs.FileMode {
 	return 0o644
 }
 
-// renderManifest is the bundle manifest with a real version in it.
+// renderManifest is the committed manifest, raw, with a real version in
+// it. raw is the bytes manifestProblems checked, which holds them to the
+// placeholder, so the bytes checked are the bytes shipped.
 //
-// Decoded, edited as text, then decoded again. The first decode is what
-// makes this more than a text substitution: the file has to be JSON, and
-// it has to be carrying the placeholder, which is what a manifest that
-// skipped this step does not. The second proves the edit left JSON
-// behind, carrying the version asked for.
+// Edited as text, then decoded, which proves the edit left JSON behind,
+// carrying the version asked for.
 //
-// The edit itself is on the bytes rather than on the decoded value,
+// The edit itself is on the bytes rather than on a decoded value,
 // because re-encoding a map is not a neutral act. Go sorts map keys, so
 // the shipped manifest would come out alphabetized — unreviewable
 // against the source — and its encoder escapes `<`, `>` and `&`, so the
 // `<that file>` in the long description would ship as `\u003cthat
 // file\u003e`. Both are legal JSON and neither is what anyone wrote.
-func renderManifest(version, path string) ([]byte, error) {
+func renderManifest(version string, raw []byte) ([]byte, error) {
 	semver := strings.TrimPrefix(version, "v")
 	if semver == "" {
 		return nil, fmt.Errorf("empty version")
-	}
-	raw, err := os.ReadFile(path) //nolint:gosec // a path the release passes in
-	if err != nil {
-		return nil, err
-	}
-	var manifest struct {
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	if manifest.Version != placeholderVersion {
-		return nil, fmt.Errorf("%s carries version %q, expected the placeholder %q",
-			path, manifest.Version, placeholderVersion)
 	}
 
 	// Exactly one, or the edit is ambiguous and the wrong string could
 	// be the one replaced.
 	quoted := []byte(`"` + placeholderVersion + `"`)
 	if n := bytes.Count(raw, quoted); n != 1 {
-		return nil, fmt.Errorf("%s spells %s %d times; the substitution needs exactly one",
-			path, quoted, n)
+		return nil, fmt.Errorf("the manifest spells %s %d times; the substitution needs exactly one", quoted, n)
 	}
 	out := bytes.Replace(raw, quoted, []byte(`"`+semver+`"`), 1)
 
@@ -581,11 +634,10 @@ func renderManifest(version, path string) ([]byte, error) {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(out, &check); err != nil {
-		return nil, fmt.Errorf("%s: the substitution did not leave valid JSON: %w", path, err)
+		return nil, fmt.Errorf("the substitution did not leave valid JSON: %w", err)
 	}
 	if check.Version != semver {
-		return nil, fmt.Errorf("%s: the substitution set version to %q, wanted %q",
-			path, check.Version, semver)
+		return nil, fmt.Errorf("the substitution set version to %q, wanted %q", check.Version, semver)
 	}
 	// The manifest is a text file, and the source ends with a newline.
 	if !bytes.HasSuffix(out, []byte("\n")) {
@@ -595,9 +647,22 @@ func renderManifest(version, path string) ([]byte, error) {
 }
 
 // mcpbManifest prints the bundle manifest with the release's version in
-// it.
+// it, once it passes every check the packer runs, on the names the
+// packer stages. It runs from the repository root, which the checks
+// read the schema, the launcher and go.mod from.
 func mcpbManifest(version, manifestPath string, stdout, stderr io.Writer) int {
-	out, err := renderManifest(version, manifestPath)
+	raw, err := os.ReadFile(manifestPath) //nolint:gosec // a path the maintainer passes in
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "mcpb-manifest:", err)
+		return 1
+	}
+	if problems := manifestProblems(raw, stagedNames(), "."); len(problems) > 0 {
+		for _, p := range problems {
+			_, _ = fmt.Fprintln(stderr, "mcpb-manifest: "+p)
+		}
+		return 1
+	}
+	out, err := renderManifest(version, raw)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "mcpb-manifest:", err)
 		return 1
@@ -756,9 +821,6 @@ func bundleKey(name string) string {
 	return strings.ToLower(strings.TrimPrefix(name, config.EnvPrefix))
 }
 
-// toolsetsVar is the setting whose field has to list every toolset.
-const toolsetsVar = config.EnvPrefix + "TOOLSETS"
-
 // fieldRule is the exact words a setting's field must carry, since the
 // server refuses anything else at start, and what a field without them
 // fails to do.
@@ -767,11 +829,9 @@ type fieldRule struct{ words, fails string }
 // fieldRules are the settings whose field says what the server accepts.
 // The toolsets are the whole list, in order: a word check passes on
 // "settings" or "events" anywhere in the prose.
-func fieldRules() map[string]fieldRule {
-	return map[string]fieldRule{
-		config.EnvPrefix + "PROFILE": {words: config.ProfileRule, fails: "say a profile name is"},
-		toolsetsVar:                  {words: config.ToolsetList(), fails: "list the toolsets as"},
-	}
+var fieldRules = map[string]fieldRule{
+	config.EnvPrefix + "PROFILE":  {words: config.ProfileRule, fails: "say a profile name is"},
+	config.EnvPrefix + "TOOLSETS": {words: config.ToolsetList(), fails: "list the toolsets as"},
 }
 
 // settingProblems holds what the bundle asks for to the server's own
@@ -800,14 +860,11 @@ func fieldRules() map[string]fieldRule {
 // and which neither the schema nor `mcpb validate` enforces. leftOut is
 // bundleLeftOut, or a test's.
 func settingProblems(m bundleManifest, leftOut map[string]string) []string {
-	settings := config.Vars()
 	vars := map[string]config.Var{}
-	names := make([]string, 0, len(settings))
-	for _, v := range settings {
+	for _, v := range config.Vars() {
 		vars[v.Name] = v
-		names = append(names, v.Name)
 	}
-	bundleVars, problems := bundleVarsFrom(names, vars, leftOut)
+	bundleVars, problems := bundleVarsFrom(config.EnvVars(), vars, leftOut)
 
 	if len(m.PrivacyPolicies) == 0 {
 		problems = append(problems, "privacy_policies is empty; the manifest specification requires one for a "+
@@ -835,7 +892,6 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 				platform))
 		}
 	}
-	rules := fieldRules()
 	var switches []string
 	asked := map[string]bool{}
 	for _, name := range bundleVars {
@@ -856,14 +912,14 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 					key, cmp.Or(opt.Type, "field with no type"), name))
 			}
 		}
-		if rule, ok := rules[name]; ok && !strings.Contains(opt.Description, rule.words) {
+		if rule, ok := fieldRules[name]; ok && !strings.Contains(opt.Description, rule.words) {
 			problems = append(problems, fmt.Sprintf("user_config.%s does not %s %q", key, rule.fails, rule.words))
 		}
 	}
-	for _, name := range slices.Sorted(maps.Keys(rules)) {
+	for _, name := range slices.Sorted(maps.Keys(fieldRules)) {
 		if !slices.Contains(bundleVars, name) {
 			problems = append(problems, fmt.Sprintf("the bundle asks for no %s, so nothing holds its field to %q",
-				name, rules[name].words))
+				name, fieldRules[name].words))
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(m.UserConfig)) {
@@ -885,9 +941,9 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 		}
 	}
 	slices.Sort(switches)
-	defaults := startDefaults(m)
-	problems = append(problems, defaultsProblems(defaults)...)
-	return append(problems, refusalProblems(m, switches, bundleRefused, defaults.err)...)
+	defaults, defaultsErr := defaultsProblems(m)
+	problems = append(problems, defaults...)
+	return append(problems, refusalProblems(m, switches, bundleRefused, defaultsErr)...)
 }
 
 // hostEnv is the environment the reference host builds from the
@@ -949,46 +1005,34 @@ func loadEnv(env map[string]string) (config.Config, error) {
 	return config.Load(nil, func(name string) string { return env[name] })
 }
 
-// bundleDefaults is the environment a host builds from the bundle's
-// defaults, and what the server starts with it, built once for the
-// defaults and refusal checks.
-type bundleDefaults struct {
-	env, unreadable map[string]string
-	config          config.Config
-	err             error
-}
-
-func startDefaults(m bundleManifest) bundleDefaults {
-	var d bundleDefaults
-	d.env, d.unreadable = hostEnv(m)
-	d.config, d.err = loadEnv(d.env)
-	return d
-}
-
 // defaultsProblems reports a bundle whose defaults configure the server
 // otherwise than no environment does, naming the fields that differ. A
 // default that is a list or an object is reported rather than guessed
 // at, every one in key order, and the comparison still runs over the
-// rest.
-func defaultsProblems(d bundleDefaults) []string {
-	var problems []string
-	for _, key := range slices.Sorted(maps.Keys(d.unreadable)) {
+// rest. defaultsErr is what the server refuses the defaults with, which
+// decides whether refusalProblems starts the sets of switches.
+func defaultsProblems(m bundleManifest) (problems []string, defaultsErr error) {
+	env, unreadable := hostEnv(m)
+	for _, key := range slices.Sorted(maps.Keys(unreadable)) {
 		problems = append(problems, fmt.Sprintf("user_config.%s defaults to %s, which the defaults check cannot "+
-			"build an environment from: give it a boolean, a string or a number", key, d.unreadable[key]))
+			"build an environment from: give it a boolean, a string or a number", key, unreadable[key]))
 	}
-	if d.err != nil {
-		return append(problems, fmt.Sprintf("the environment the bundle's defaults give the server is refused: %v", d.err))
+	got, defaultsErr := loadEnv(env)
+	if defaultsErr != nil {
+		problems = append(problems, fmt.Sprintf("the environment the bundle's defaults give the server is refused: %v",
+			defaultsErr))
+		return problems, defaultsErr
 	}
 	want, err := loadEnv(nil)
 	if err != nil {
-		return append(problems, fmt.Sprintf("an unconfigured server is refused: %v", err))
+		return append(problems, fmt.Sprintf("an unconfigured server is refused: %v", err)), nil
 	}
-	if diff := configDiff(d.config, want); len(diff) > 0 {
+	if diff := configDiff(got, want); len(diff) > 0 {
 		problems = append(problems, fmt.Sprintf("the bundle's defaults configure the server otherwise than no "+
 			"environment does, in %s; a bundle install may turn on nothing an unconfigured server leaves off",
 			strings.Join(diff, ", ")))
 	}
-	return problems
+	return problems, nil
 }
 
 // configDiff names the fields two configurations disagree on.

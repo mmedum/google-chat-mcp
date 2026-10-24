@@ -17,7 +17,6 @@ import (
 
 	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
 	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
 	"github.com/mmedum/google-chat-mcp/v7/internal/doctor"
 	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
 	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
@@ -160,7 +159,7 @@ func cmdLogout(args []string, stdout, stderr io.Writer) int {
 	// resolver above right when we had neither.
 	if store.EnvOverride() {
 		_, _ = fmt.Fprintf(stderr, "note: %s is set; logout cannot revoke or remove it, "+
-			"and the server will keep using it.\n", credentials.EnvVar)
+			"and the server will keep using it.\n", config.EnvRefreshToken)
 	}
 	if err := userconfig.Remove(cfg.Profile); err != nil {
 		return fail(stderr, "%v", err)
