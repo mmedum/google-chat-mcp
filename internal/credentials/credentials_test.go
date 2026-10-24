@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 type memKeyring struct {
@@ -61,7 +63,7 @@ func newStore(t *testing.T, kr Backend) (*Store, *[]string) {
 func TestEnvWins(t *testing.T) {
 	s, _ := newStore(t, &memKeyring{data: map[string]string{"google-chat-mcp/default": "from-keyring"}})
 	s.Env = func(k string) string {
-		if k == EnvVar {
+		if k == config.EnvRefreshToken {
 			return "from-env"
 		}
 		return ""
@@ -69,6 +71,28 @@ func TestEnvWins(t *testing.T) {
 	tok, src, err := s.Resolve()
 	if err != nil || tok != "from-env" || src != SourceEnv {
 		t.Fatalf("got %q %q %v", tok, src, err)
+	}
+}
+
+// A refresh token of spaces alone is unset, so the keyring's is used.
+func TestAnEnvTokenOfSpacesIsUnset(t *testing.T) {
+	s, _ := newStore(t, &memKeyring{data: map[string]string{"google-chat-mcp/default": "from-keyring"}})
+	s.Env = func(string) string { return "  " }
+	tok, src, err := s.Resolve()
+	if err != nil || tok != "from-keyring" || src != SourceKeyring {
+		t.Errorf("Resolve = %q/%q/%v, want the keyring's token", tok, src, err)
+	}
+	if s.EnvOverride() {
+		t.Error("EnvOverride is true for a token of spaces, so logout would say the server keeps using it")
+	}
+	s.Env = func(string) string { return "from-env" }
+	if !s.EnvOverride() {
+		t.Error("EnvOverride is false for a token the environment sets")
+	}
+	// A token pasted with spaces or a newline is sent without them.
+	s.Env = func(string) string { return " from-env\n" }
+	if tok, src, err := s.Resolve(); err != nil || tok != "from-env" || src != SourceEnv {
+		t.Errorf("Resolve = %q/%q/%v, want the trimmed environment token", tok, src, err)
 	}
 }
 

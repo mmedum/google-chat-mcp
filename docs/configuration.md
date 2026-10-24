@@ -2,8 +2,9 @@
 
 Every setting has an environment variable and a command-line flag. The
 flag wins over the environment, and the environment wins over the
-default. Settings are validated once at start, and every problem is
-reported at once rather than one per run.
+default. A variable set to spaces alone is unset, as an empty one is.
+Settings are validated once at start, and every problem is reported at
+once rather than one per run.
 
 Environment variables are the practical route: an MCP client passes a
 stdio server a command, its arguments and its environment, and nothing
@@ -13,7 +14,7 @@ else.
 
 | Variable | Flag | Default | What it does |
 |---|---|---|---|
-| `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. Lowercase letters, digits, `_` and `-`, up to 64 characters. |
+| `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. A name is up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit; capitals are read as lowercase, and any other name stops the server at start. |
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
 | `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |

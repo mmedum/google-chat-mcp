@@ -397,6 +397,9 @@ func TestLoginWithoutAClientSaysWhereToGetOne(t *testing.T) {
 	if !strings.Contains(stderr, "gcp-setup") {
 		t.Errorf("stderr = %q, want it to point at the setup document", stderr)
 	}
+	if !strings.Contains(stderr, "or set GCM_CLIENT_SECRET.") {
+		t.Errorf("stderr = %q, want it to name the variable", stderr)
+	}
 }
 
 // The argument is checked before anything reaches Google, so a mistyped

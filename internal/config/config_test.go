@@ -4,11 +4,18 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +32,211 @@ func define(t *testing.T, env map[string]string, args ...string) *Settings {
 		t.Fatalf("parse: %v", err)
 	}
 	return s
+}
+
+// definedFloor is how many variables Define reads today, on purpose: the
+// floor moves with it, so a Define that reads nothing cannot pass.
+const definedFloor = 18
+
+// A setting given as spaces alone is unset, as an empty one is, so a
+// form field cleared to a space starts the server with the default. A
+// removed setting of spaces is off.
+func TestASettingOfSpacesIsUnset(t *testing.T) {
+	want, err := define(t, nil).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	vars := defined()
+	if len(vars) < definedFloor {
+		t.Fatalf("Define reads %d settings, want at least %d", len(vars), definedFloor)
+	}
+	for _, v := range vars {
+		got, err := define(t, map[string]string{v.Name: "  "}).Build()
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s=\"  \": %+v, %v; want the unconfigured configuration", v.Name, got, err)
+		}
+	}
+}
+
+// A profile name is held to ProfileRule, and the refusal says it. Only A
+// to Z are lowered: a character Unicode folds into a to z, such as the
+// Kelvin sign, is refused rather than renamed to another profile.
+func TestProfileRule(t *testing.T) {
+	if ProfileRule != "up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit" {
+		t.Errorf("ProfileRule = %q", ProfileRule)
+	}
+	for _, tc := range []struct{ name, want string }{
+		{"Work", "work"}, {" work ", "work"}, {"a", "a"}, {"9-", "9-"}, {"a-b_c", "a-b_c"},
+		{strings.Repeat("a", 64), strings.Repeat("a", 64)},
+	} {
+		if c, err := define(t, map[string]string{"GCM_PROFILE": tc.name}).Build(); err != nil || c.Profile != tc.want {
+			t.Errorf("GCM_PROFILE=%q: profile %q, %v; want %q", tc.name, c.Profile, err, tc.want)
+		}
+	}
+	for _, name := range []string{strings.Repeat("a", 65), "-a", "_a", "a.b", "a b", "caf\u00e9", "\u212aey"} {
+		_, err := define(t, map[string]string{"GCM_PROFILE": name}).Build()
+		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "must be "+ProfileRule) {
+			t.Errorf("GCM_PROFILE=%q: %v; want it refused, naming the rule", name, err)
+		}
+	}
+}
+
+// Load is Define, Parse and Build: a flag is read, and an unknown one
+// refused.
+func TestLoad(t *testing.T) {
+	c, err := Load([]string{"-read-only", "true"}, func(string) string { return "" })
+	if err != nil || !c.ReadOnly {
+		t.Errorf("Load = %+v, %v; want read-only", c, err)
+	}
+	if _, err := Load([]string{"-unknown"}, func(string) string { return "" }); err == nil {
+		t.Error("an unknown flag was accepted")
+	}
+}
+
+// EnvVars is every variable the server reads, the removed ones and the
+// three read outside Define included.
+func TestEnvVars(t *testing.T) {
+	want := []string{
+		"GCM_ALLOW_DESTRUCTIVE", "GCM_ASK_BEFORE_SEND", "GCM_CHAT_API_BASE", "GCM_CLIENT_SECRET",
+		"GCM_CLOUD_IDENTITY_API_BASE", "GCM_CONFIG_DIR", "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME",
+		"GCM_DIRECTORY_CACHE_TTL_SECONDS", "GCM_ENABLE_DESTRUCTIVE", "GCM_HTTP_MAX_RETRIES",
+		"GCM_HTTP_TIMEOUT_SECONDS", "GCM_LOCAL_DIR", "GCM_LOG_FORMAT", "GCM_LOG_LEVEL", "GCM_PEOPLE_API_BASE",
+		"GCM_PROFILE", "GCM_READ_ONLY", "GCM_REFRESH_TOKEN", "GCM_REQUIRE_PROMPT", "GCM_SEARCH_MAX_PAGES",
+		"GCM_TOOLSETS",
+	}
+	if got := EnvVars(); !slices.Equal(got, want) {
+		t.Errorf("EnvVars =\n%v\nwant\n%v", got, want)
+	}
+}
+
+// Every GCM_ variable the server's code spells is one EnvVars lists, so
+// a variable read outside Define cannot escape the bundle and staleness
+// gates. A name is seen as a string literal, or as a chain of literals
+// and EnvPrefix joined by +; one built from any other constant, or
+// through a format verb, is not seen. The scan must find a name outside
+// this package in each root, or it read too little.
+func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
+	known := map[string]bool{}
+	for _, name := range EnvVars() {
+		known[name] = true
+	}
+	name := regexp.MustCompile(`^GCM_[A-Z0-9][A-Z0-9_]*$`)
+	found := map[string]string{}
+	elsewhere := map[string]int{}
+	fset := token.NewFileSet()
+	roots := []string{"../../cmd", "../../internal"}
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+			outside := filepath.Dir(path) != filepath.Join("..", "..", "internal", "config")
+			spell := func(s string, at token.Pos) {
+				for _, word := range strings.FieldsFunc(s, func(r rune) bool {
+					return r != '_' && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+				}) {
+					if name.MatchString(word) {
+						found[word] = fset.Position(at).String()
+						if outside {
+							elsewhere[root]++
+						}
+					}
+				}
+			}
+			var visit func(n ast.Node) bool
+			visit = func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.BinaryExpr:
+					if n.Op != token.ADD {
+						return true
+					}
+					// A + chain is read in order: each run of literals
+					// and EnvPrefix is one string, and any other operand
+					// ends the run and is read on its own.
+					run, at := "", n.Pos()
+					for _, op := range operands(n) {
+						if s, ok := joined(op); ok {
+							if run == "" {
+								at = op.Pos()
+							}
+							run += s
+							continue
+						}
+						spell(run, at)
+						run = ""
+						ast.Inspect(op, visit)
+					}
+					spell(run, at)
+					return false
+				case *ast.BasicLit:
+					if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
+						spell(s, n.Pos())
+					}
+				}
+				return true
+			}
+			ast.Inspect(f, visit)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, root := range roots {
+		if elsewhere[root] == 0 {
+			t.Errorf("the scan found no GCM_ name in %s outside internal/config; it read too little", root)
+		}
+	}
+	for _, v := range slices.Sorted(maps.Keys(found)) {
+		if !known[v] {
+			t.Errorf("%s names %s, which EnvVars does not list", found[v], v)
+		}
+	}
+}
+
+// operands is a + chain's operands in order, through parentheses.
+func operands(e ast.Expr) []ast.Expr {
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		if e.Op == token.ADD {
+			return append(operands(e.X), operands(e.Y)...)
+		}
+	case *ast.ParenExpr:
+		if b, ok := e.X.(*ast.BinaryExpr); ok && b.Op == token.ADD {
+			return operands(b)
+		}
+	}
+	return []ast.Expr{e}
+}
+
+// joined is a + chain of string literals and EnvPrefix as one string.
+func joined(e ast.Expr) (string, bool) {
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		x, ok := joined(e.X)
+		if !ok {
+			return "", false
+		}
+		y, ok := joined(e.Y)
+		return x + y, ok
+	case *ast.ParenExpr:
+		return joined(e.X)
+	case *ast.BasicLit:
+		s, err := strconv.Unquote(e.Value)
+		return s, e.Kind == token.STRING && err == nil
+	case *ast.Ident:
+		return EnvPrefix, e.Name == "EnvPrefix"
+	case *ast.SelectorExpr:
+		return EnvPrefix, e.Sel.Name == "EnvPrefix"
+	}
+	return "", false
 }
 
 func TestDefaults(t *testing.T) {
@@ -164,7 +376,7 @@ func TestInvalidValuesAreRejected(t *testing.T) {
 		{"timeout out of range", map[string]string{"GCM_HTTP_TIMEOUT_SECONDS": "0"}, "http-timeout"},
 		{"timeout unparsable", map[string]string{"GCM_HTTP_TIMEOUT_SECONDS": "soon"}, "http-timeout"},
 		{"api base not a url", map[string]string{"GCM_CHAT_API_BASE": "chat.googleapis.com"}, "chat-api-base"},
-		{"api base empty", map[string]string{"GCM_CHAT_API_BASE": "  "}, "chat-api-base"},
+		{"api base empty", map[string]string{"GCM_CHAT_API_BASE": "/"}, "chat-api-base must not be empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := define(t, tc.env).Build()
@@ -515,30 +727,34 @@ func TestARemovedFlagNamesItsReplacement(t *testing.T) {
 	}
 }
 
-// Define reads each variable once, and Vars lists each once. Two
+// Define reads each variable once, and records each once for Vars. Two
 // settings on one variable would leave it to whichever Build reads
-// last, and a duplicate in Vars would ask the bundle for it twice.
+// last.
 func TestDefineReadsEachVariableOnce(t *testing.T) {
 	reads := map[string]int{}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.SetOutput(&bytes.Buffer{})
 	Define(fs, func(name string) string { reads[name]++; return "" })
 	var listed []string
-	for _, v := range Vars() {
+	for _, v := range defined() {
 		listed = append(listed, v.Name)
 	}
-	// 18 is the setting count today, on purpose: the floor moves with it,
-	// so a Define that reads nothing cannot pass.
-	if len(listed) < 18 {
-		t.Fatalf("Vars lists %d settings, want at least 18", len(listed))
+	slices.Sort(listed)
+	if len(listed) < definedFloor {
+		t.Fatalf("Define records %d settings, want at least %d", len(listed), definedFloor)
 	}
 	if read := slices.Sorted(maps.Keys(reads)); !slices.Equal(listed, read) {
-		t.Errorf("Vars lists %v\nDefine reads %v", listed, read)
+		t.Errorf("Define records %v\nDefine reads %v", listed, read)
 	}
 	for name, n := range reads {
 		if n != 1 {
 			t.Errorf("Define reads %s %d times", name, n)
 		}
+	}
+	// A variable Define reads and something outside it reads too would
+	// be read under two rules; EnvVars lists it twice, so this sees it.
+	if names := EnvVars(); !slices.Equal(names, slices.Compact(slices.Clone(names))) {
+		t.Errorf("EnvVars names a variable twice: %v", names)
 	}
 }
 

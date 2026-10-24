@@ -13,13 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // AppDir is the directory name under the user's config directory.
 const AppDir = "google-chat-mcp"
-
-// EnvDir overrides the base directory (tests, unusual setups).
-const EnvDir = "GCM_CONFIG_DIR"
 
 // DefaultProfile is the profile used when none is named.
 const DefaultProfile = "default"
@@ -36,9 +35,6 @@ type Config struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// EnvAllowOutsideHome opts an override out of the home-directory check.
-const EnvAllowOutsideHome = "GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME"
-
 // ErrOutsideHome is returned when the override points outside the home
 // directory without the opt-in.
 var ErrOutsideHome = errors.New("userconfig: config dir resolves outside the home directory")
@@ -51,20 +47,20 @@ var ErrOutsideHome = errors.New("userconfig: config dir resolves outside the hom
 // something sensitive, so it is refused unless the caller says they
 // meant it.
 func BaseDir() (string, error) {
-	v := os.Getenv(EnvDir)
-	if v == "" {
+	v := strings.TrimSpace(os.Getenv(config.EnvConfigDir))
+	if config.Blank(v) {
 		d, err := os.UserConfigDir()
 		if err != nil {
 			return "", fmt.Errorf("userconfig: locate user config dir: %w", err)
 		}
 		return filepath.Join(d, AppDir), nil
 	}
-	if os.Getenv(EnvAllowOutsideHome) == "1" {
+	if os.Getenv(config.EnvConfigDirAllowOutsideHome) == "1" {
 		return v, nil
 	}
 	abs, err := filepath.Abs(v)
 	if err != nil {
-		return "", fmt.Errorf("userconfig: resolve %s=%q: %w", EnvDir, v, err)
+		return "", fmt.Errorf("userconfig: resolve %s=%q: %w", config.EnvConfigDir, v, err)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -73,7 +69,7 @@ func BaseDir() (string, error) {
 	}
 	if !withinDir(realPath(home), realPath(abs)) {
 		return "", fmt.Errorf("%w: %s=%q. Set %s=1 to use it anyway",
-			ErrOutsideHome, EnvDir, v, EnvAllowOutsideHome)
+			ErrOutsideHome, config.EnvConfigDir, v, config.EnvConfigDirAllowOutsideHome)
 	}
 	return v, nil
 }

@@ -439,25 +439,51 @@ root, and claims Claude Desktop 0.10.0 or later. It asks for what a
 person sets in another client's configuration, each under the
 variable's name without `GCM_`, lowercased: `client_secret`, `profile`,
 `read_only`, `enable_destructive`, `toolsets` and `local_dir`. The
-bundle gate derives that list: every variable the server reads, less the
-removed ones and less each one it gives a reason to leave out, so a
+bundle gate derives that list from `config.Vars`, which records every
+variable Define reads and names the three read outside it: the config
+directory, its opt-in and the refresh token. It asks for every one, less
+the removed ones and less each one it gives a reason to leave out, so a
 setting added later is asked for until the manifest asks or a reason is
-written. It refuses a reason for a variable the server no longer reads,
-a variable in `env` that the bundle leaves out or a release removed, a
-switch asked as anything but a boolean, defaults that configure the
-server at all, a required field's default included since Claude Desktop
-may fill it in, a default that is a list or an object, any `env` on a
-platform override, which a host uses in place of `mcp_config.env`, a
-missing `mcp_config.args` or an argument in it, since the bundle passes
-settings by `env` and an argument would configure the server past these
-checks, any `args` on a platform override, an empty list included, a
-toolsets field that does not list every toolset in order, and an empty
-`privacy_policies`. Written down from a `/code-review high` rather than
-changed: the defaults check reads `mcp_config.env` alone. The refusals
-of an argument and of an override's `env` are what keep it sound, so
-relaxing either needs the defaults check to read the same. Read-only wins over
-`enable_destructive` rather than refusing the pair, and both fields say
-so. The manifest lists no tools, since the settings change what
+written. A config test holds that every `GCM_` name the code spells is
+in that registry. The gate refuses a reason for a variable the server no
+longer reads, a variable in `env` that the bundle leaves out or a
+release removed, a switch asked as anything but a boolean, defaults that
+configure the server at all, naming the fields they change, a required
+field's default included since Claude Desktop may fill it in, a default
+that is a list or an object, any `env` on a platform override, which a
+host uses in place of `mcp_config.env`, a missing `mcp_config.args` or
+an argument in it, since the bundle passes settings by `env` and an
+argument would configure the server past these checks, any `args` on a
+platform override, an empty list included, an `entry_point` or a command
+that names no staged program (`LICENSE` and `README.md` are packed to be
+read, not run), a command that does not start with `${__dirname}/`, a
+claimed platform that spawns any file but the one staged for it, an
+override for a platform the bundle does not claim, a profile field that
+does not state `config.ProfileRule`, which the configuration page must
+state too (the staleness gate holds it), a toolsets field
+that does not list every toolset in order, a bundle that stops asking
+for either of those two, and an empty `privacy_policies`. Written down from a
+`/code-review high` rather than changed: the defaults check reads
+`mcp_config.env` alone. The refusals of an argument and of an override's
+`env` are what keep it sound, so relaxing either needs the defaults
+check to read the same. Kept from the 7.0.1 `/simplify` and
+`/code-review medium`: `configDiff`, a one-line wrapper over
+`fieldDiff` that keeps the gate's call typed; and the optional OAuth
+client field, which the reference host fills with its `""` default as
+it does every optional field, Claude Desktop not probed.
+
+The gate also starts every set of the switches over the defaults, each
+switch in a set on whatever its default, and holds the sets the server
+refuses to a declared list, both ways. Each key in a declared set is a
+switch with a title, and every other field in its set names that title.
+The list is empty: Read-only wins over `enable_destructive` rather than
+refusing the pair, and both fields say so. The gate is the
+`scripts/gates` tests, and they, the packer and `mcpb-manifest` run one
+function, `manifestProblems`, so the release packs nothing the tests
+refuse: the placeholder version, the schema reference, the vendored
+schema, the name and platforms, and the launcher and go.mod beside the
+manifest are in it. The packer reads the manifest once and ships the
+bytes it checked. The manifest lists no tools, since the settings change what
 registers, and carries no icon.
 
 ## Evidence log
@@ -550,6 +576,7 @@ contradicted a document, which won.
 | The registry enforces its MCPB rules in code, not in the published schema | A hash, a github.com or gitlab.com release-asset URL carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL before it accepts the entry — so the entry can only be published after the release exists |
 | A bundle install has a second approval behind the server, as Claude Code's ask rules are | **Refuted**, read 2026-10-23; Claude Desktop itself not probed. anthropics/mcpb `70fe3b34` and v2.1.2 declare the manifest's `tools` list for display, and nothing reads it at run time. Claude's connector docs: Desktop approves per tool, driven by the annotations, and "Always allow" skips the prompt "for that tool from now on". So every switch the bundle asks for defaults to the server's own, off, the bundle gate refuses one that does not, and the manifest lists no tools |
 | `privacy_policies` is optional for a bundle | **Refuted**. The manifest specification (anthropics/mcpb `70fe3b34`, MANIFEST.md) makes it "Required when the extension connects to external services (first- or third-party) that process user data". Neither the schema nor `mcpb validate` enforces it, so the bundle gate does. The manifest names Google's, https://policies.google.com/privacy, which answered 200 on 2026-10-24 |
+| Any `command` the specification shows runs from the bundle | **Refined**, read 2026-10-24; Claude Desktop not probed. anthropics/mcpb v2.1.2: MANIFEST.md L497 and L510-515 give a binary the command `server/my-server`, and L532 says `${__dirname}` "is replaced with the absolute path to the extension's directory"; `src/shared/config.ts` L118, L133 and L173-176 substitute variables in `command` and resolve no path. The specification shows a relative command once and never says what it is resolved against, and the reference host passes it to the spawn as written. `${__dirname}` is the one form whose meaning the specification fixes. The bundle gate requires every command to start with `${__dirname}/` and to name a staged program, as the committed manifest's do, and refuses a relative or absolute one; a probe of Claude Desktop's working directory would settle the relative form |
 | A platform override's `env` is merged into `mcp_config.env` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.env = platformConfig.env \|\| result.env`. An override's `env`, an empty `{}` included, replaces the base, so the settings would not reach that platform. The bundle gate refuses any `env` on an override |
 | A platform override's `args` are added to `mcp_config.args` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.args = platformConfig.args \|\| result.args` and substitutes `${user_config.x}` into `args` as into `env`. An argument such as `--enable-destructive=true` reaches the server, and an override's `args`, an empty `[]` included, replaces the base. The bundle gate refuses an argument in `mcp_config.args` and any `args` on an override. The base keeps its `"args": []`, and the gate refuses it missing: only the reference host was read, and Claude Desktop without the key is not probed |
 | A required setting's default reaches the server when the person gives none | **Refuted** for the reference host, read 2026-10-24: anthropics/mcpb `src/shared/config.ts` at v2.1.2. `getMcpConfigForManifest` sets each key's `default` first ("First, add defaults from manifest") and then `Object.assign(mergedConfig, userConfig)`, so the person's value wins. `hasRequiredConfigMissing` reads a required key from `const config = userConfig \|\| {}`, the person's values alone, and one missing skips the launch. So a required key's default reaches the server only as a value the person gave, which Claude Desktop's install form may fill in from the default; Desktop is not probed. The bundle gate substitutes a required key's default too, holding the bundle to a person who accepts it unread |

@@ -8,8 +8,6 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // tempProfile points the config directory at a temporary one. No test
@@ -19,8 +17,8 @@ import (
 func tempProfile(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv(userconfig.EnvDir, dir)
-	t.Setenv(userconfig.EnvAllowOutsideHome, "1")
+	t.Setenv(config.EnvConfigDir, dir)
+	t.Setenv(config.EnvConfigDirAllowOutsideHome, "1")
 	return dir
 }
 
@@ -157,7 +155,7 @@ func TestLogoutIgnoresTheEnvironmentOverride(t *testing.T) {
 	if _, err := store.Save("stored-refresh-token"); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	t.Setenv(credentials.EnvVar, "environment-refresh-token")
+	t.Setenv(config.EnvRefreshToken, "environment-refresh-token")
 
 	got, _, err := store.ResolveStored()
 	if err != nil {

@@ -180,7 +180,7 @@ type Settings struct {
 	vars []Var
 }
 
-// Var is one setting Define reads.
+// Var is one variable the server reads.
 type Var struct {
 	// Name is the environment variable.
 	Name string
@@ -189,6 +189,24 @@ type Var struct {
 	// Removed marks a setting a release took out, read only to refuse it.
 	Removed bool
 }
+
+// The variables read outside Define. internal/userconfig reads the
+// profile directory and its opt-in before any flag is parsed, and
+// internal/credentials the refresh token; each takes its name from
+// here, so config imports neither.
+const (
+	EnvConfigDir                 = EnvPrefix + "CONFIG_DIR"
+	EnvConfigDirAllowOutsideHome = EnvPrefix + "CONFIG_DIR_ALLOW_OUTSIDE_HOME"
+	EnvRefreshToken              = EnvPrefix + "REFRESH_TOKEN"
+)
+
+// envOnly is every variable read outside Define, for Vars.
+var envOnly = []string{EnvConfigDir, EnvConfigDirAllowOutsideHome, EnvRefreshToken}
+
+// Blank reports whether a variable's value leaves it unset: empty, or
+// spaces alone, so a form field cleared to a space means the default
+// rather than a value the server refuses.
+func Blank(v string) bool { return strings.TrimSpace(v) == "" }
 
 // removedSettings are the settings a release took out, each with why
 // and what to do instead. Each was off by default, and unset or off is
@@ -256,7 +274,7 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	}
 	bind := func(p *string, name, fallback, usage string, v Var) {
 		value := env(v.Name)
-		if value == "" {
+		if Blank(value) {
 			value = fallback
 		}
 		fs.StringVar(p, name, value, usage+" [env "+v.Name+"]")
@@ -287,13 +305,45 @@ func Define(fs *flag.FlagSet, env func(string) string) *Settings {
 	return s
 }
 
-// Vars is every setting Define reads, sorted by variable.
+// Vars is every variable the server reads, sorted by name: Define's,
+// the removed ones included, and the ones read outside it. Define's are
+// recorded rather than listed, so they cannot fall behind. The bundle
+// and staleness gates derive what they hold from these.
 func Vars() []Var {
-	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	vars := Define(fs, func(string) string { return "" }).vars
+	vars := defined()
+	for _, name := range envOnly {
+		vars = append(vars, Var{Name: name})
+	}
 	slices.SortFunc(vars, func(a, b Var) int { return strings.Compare(a.Name, b.Name) })
 	return vars
+}
+
+// defined is every variable Define reads, in the order it reads them.
+func defined() []Var {
+	fs := flag.NewFlagSet("vars", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return Define(fs, func(string) string { return "" }).vars
+}
+
+// EnvVars is the names of Vars, sorted.
+func EnvVars() []string {
+	vars := Vars()
+	names := make([]string, 0, len(vars))
+	for _, v := range vars {
+		names = append(names, v.Name)
+	}
+	return names
+}
+
+// Load is Define, Parse and Build for a caller with no flags of its own.
+func Load(args []string, env func(string) string) (Config, error) {
+	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	s := Define(fs, env)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, err
+	}
+	return s.Build()
 }
 
 // ToolsetList is every toolset a person may name, in registration
@@ -306,11 +356,26 @@ func ToolsetList() string {
 	return strings.Join(names, ", ")
 }
 
+// ProfileRule is profilePattern in words, which Build's refusal and the
+// bundle's profile field both give.
+const ProfileRule = "up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit"
+
 var (
 	profilePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 	logLevels      = map[LogLevel]bool{LogDebug: true, LogInfo: true, LogWarn: true, LogError: true}
 	logFormats     = map[LogFormat]bool{LogText: true, LogJSON: true}
 )
+
+// asciiLower lowers A to Z alone, so a character Unicode folds into a
+// to z, such as the Kelvin sign, is refused rather than renamed.
+func asciiLower(s string) string {
+	return strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, s)
+}
 
 // ErrInvalid wraps every validation failure.
 var ErrInvalid = errors.New("config: invalid")
@@ -321,9 +386,9 @@ func (s *Settings) Build() (Config, error) {
 	var c Config
 	var errs []error
 
-	c.Profile = strings.ToLower(strings.TrimSpace(s.Profile))
+	c.Profile = asciiLower(strings.TrimSpace(s.Profile))
 	if !profilePattern.MatchString(c.Profile) {
-		errs = append(errs, fmt.Errorf("%w: profile %q must match %s", ErrInvalid, s.Profile, profilePattern))
+		errs = append(errs, fmt.Errorf("%w: profile %q must be %s", ErrInvalid, s.Profile, ProfileRule))
 	}
 
 	c.LogLevel = LogLevel(strings.ToLower(strings.TrimSpace(s.LogLevel)))

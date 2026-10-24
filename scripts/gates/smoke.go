@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
 )
 
 // The smoke gate drives the built binary the way a host does: over
@@ -285,11 +284,11 @@ func isolatedEnv(configDir string) []string {
 		}
 	}
 	return append(env,
-		userconfig.EnvDir+"="+configDir,
+		config.EnvConfigDir+"="+configDir,
 		// A temporary directory is outside the home directory on most
 		// platforms and inside it on Windows. BaseDir refuses the first
 		// for a real override; this opts past the question entirely.
-		userconfig.EnvAllowOutsideHome+"=1",
+		config.EnvConfigDirAllowOutsideHome+"=1",
 		config.EnvPrefix+"LOG_LEVEL="+string(config.LogError),
 	)
 }

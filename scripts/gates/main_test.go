@@ -241,38 +241,6 @@ func TestToolNamesSorted(t *testing.T) {
 	}
 }
 
-// The staleness gate reads this list, so a variable the server reads and
-// this misses is a documentation hole the gate cannot see.
-func TestConfigVars(t *testing.T) {
-	got := configVars()
-	want := []string{
-		"GCM_ALLOW_DESTRUCTIVE",
-		"GCM_ASK_BEFORE_SEND",
-		"GCM_CHAT_API_BASE",
-		"GCM_CLIENT_SECRET",
-		"GCM_CLOUD_IDENTITY_API_BASE",
-		"GCM_CONFIG_DIR",
-		"GCM_CONFIG_DIR_ALLOW_OUTSIDE_HOME",
-		"GCM_DIRECTORY_CACHE_TTL_SECONDS",
-		"GCM_ENABLE_DESTRUCTIVE",
-		"GCM_HTTP_MAX_RETRIES",
-		"GCM_HTTP_TIMEOUT_SECONDS",
-		"GCM_LOCAL_DIR",
-		"GCM_LOG_FORMAT",
-		"GCM_LOG_LEVEL",
-		"GCM_PEOPLE_API_BASE",
-		"GCM_PROFILE",
-		"GCM_READ_ONLY",
-		"GCM_REFRESH_TOKEN",
-		"GCM_REQUIRE_PROMPT",
-		"GCM_SEARCH_MAX_PAGES",
-		"GCM_TOOLSETS",
-	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("config vars:\n got %v\nwant %v", got, want)
-	}
-}
-
 func TestUsageErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{},

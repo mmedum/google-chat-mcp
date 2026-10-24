@@ -19,16 +19,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/mmedum/google-chat-mcp/v7/internal/config"
 )
 
 // ServiceName is the keyring service identifier.
 const ServiceName = "google-chat-mcp"
-
-// EnvVar is the environment override.
-const EnvVar = "GCM_REFRESH_TOKEN"
 
 // Source identifies where a token came from.
 type Source string
@@ -92,9 +92,21 @@ func (s *Store) env(k string) string {
 	return os.Getenv(k)
 }
 
+// envToken is the refresh token the environment sets, or "" for none.
+func (s *Store) envToken() string {
+	if v := s.env(config.EnvRefreshToken); !config.Blank(v) {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// EnvOverride reports whether the environment sets a refresh token,
+// which Resolve then returns in place of the stored one.
+func (s *Store) EnvOverride() bool { return s.envToken() != "" }
+
 // Resolve returns the refresh token and where it came from.
 func (s *Store) Resolve() (string, Source, error) {
-	if v := s.env(EnvVar); v != "" {
+	if v := s.envToken(); v != "" {
 		return v, SourceEnv, nil
 	}
 	return s.ResolveStored()
