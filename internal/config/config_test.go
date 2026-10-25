@@ -96,7 +96,7 @@ func TestEnvVars(t *testing.T) {
 // this list spells none of them itself.
 var notRead = []string{
 	"ADDED_LATER", "ASKED", "CONFIG_DIRECTORY", "GONE", "INTERACTION_HINT", "LEFT_OUT", "LOCALDIR",
-	"NOT_READ", "REMOVED", "TOOLSET",
+	"NOT_READ", "REMOVED", "TOOLSET", "WHOLE",
 }
 
 // Every GCM_ name the code spells is one EnvVars lists, so a variable
@@ -149,9 +149,9 @@ func TestEveryVariableTheCodeNamesIsInEnvVars(t *testing.T) {
 	}
 }
 
-// The scan reads a test file as it reads code, and a + chain in order: a
-// run of literals that another operand continues ends in a prefix, not a
-// name, unless something ends the name inside the run.
+// The scan reads a test file as it reads code, and a + chain in order,
+// each run whole: a run ending in _ before another operand is a prefix,
+// and one ending in a name's last character ends in that name.
 func TestTheNameScanReadsChainsInOrder(t *testing.T) {
 	root := t.TempDir()
 	for name, body := range map[string]string{
@@ -160,6 +160,7 @@ func TestTheNameScanReadsChainsInOrder(t *testing.T) {
 			"\tprefix = EnvPrefix + \"ENABLE_\" + kind\n" +
 			"\tended  = \"set \" + kind + EnvPrefix + \"GONE\"\n" +
 			"\tspaced = config.EnvPrefix + \"NOT_READ \" + kind\n" +
+			"\twhole  = EnvPrefix + \"WHOLE\" + suffix\n" +
 			")\n",
 		"code_test.go": "package p\n" +
 			"func init() { os.Setenv(EnvPrefix+\"ADDED_LATER\", \"\") }\n",
@@ -173,7 +174,7 @@ func TestTheNameScanReadsChainsInOrder(t *testing.T) {
 		got = append(got, fmt.Sprintf("%s:%d %s test=%t", filepath.Base(s.at.Filename), s.at.Line, s.name, s.test))
 	}
 	want := []string{"code.go:4 GCM_GONE test=false", "code.go:5 GCM_NOT_READ test=false",
-		"code_test.go:2 GCM_ADDED_LATER test=true"}
+		"code.go:6 GCM_WHOLE test=false", "code_test.go:2 GCM_ADDED_LATER test=true"}
 	if !slices.Equal(got, want) {
 		t.Errorf("spellings =\n%q\nwant\n%q", got, want)
 	}
@@ -191,13 +192,13 @@ type spelling struct {
 // spellings is every GCM_ name the Go files under root spell, test files
 // included, in the order the walk reads them. A name is seen as a string
 // literal, or as a run of literals and EnvPrefix joined by +; one built
-// from any other constant, or through a format verb, is not seen. A run
-// that another operand continues is building a name, so its last word is
-// a prefix rather than a name when nothing ends it inside the run:
-// EnvPrefix + "ENABLE_" + kind spells none.
+// from any other constant, or through a format verb, is not seen. A name
+// ends in a capital or a digit, so a run another operand continues, read
+// whole, spells none when it ends in a prefix: EnvPrefix + "ENABLE_" +
+// kind spells none.
 func spellings(t *testing.T, root string) []spelling {
 	t.Helper()
-	name := regexp.MustCompile(`^GCM_[A-Z0-9][A-Z0-9_]*$`)
+	name := regexp.MustCompile(`^GCM_[A-Z0-9_]*[A-Z0-9]$`)
 	inName := func(r rune) bool { return r == '_' || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') }
 	var out []spelling
 	fset := token.NewFileSet()
@@ -209,14 +210,9 @@ func spellings(t *testing.T, root string) []spelling {
 		if err != nil {
 			return err
 		}
-		// spell records the names s spells; continued is another operand
-		// following s in its chain.
-		spell := func(s string, at token.Pos, continued bool) {
-			words := strings.FieldsFunc(s, func(r rune) bool { return !inName(r) })
-			if continued && s != "" && inName(rune(s[len(s)-1])) {
-				words = words[:len(words)-1]
-			}
-			for _, word := range words {
+		// spell records the names s spells.
+		spell := func(s string, at token.Pos) {
+			for _, word := range strings.FieldsFunc(s, func(r rune) bool { return !inName(r) }) {
 				if name.MatchString(word) {
 					out = append(out, spelling{name: word, at: fset.Position(at), dir: filepath.Dir(path),
 						test: strings.HasSuffix(path, "_test.go")})
@@ -242,15 +238,15 @@ func spellings(t *testing.T, root string) []spelling {
 						run += s
 						continue
 					}
-					spell(run, at, true)
+					spell(run, at)
 					run = ""
 					ast.Inspect(op, visit)
 				}
-				spell(run, at, false)
+				spell(run, at)
 				return false
 			case *ast.BasicLit:
 				if s, err := strconv.Unquote(n.Value); n.Kind == token.STRING && err == nil {
-					spell(s, n.Pos(), false)
+					spell(s, n.Pos())
 				}
 			}
 			return true
