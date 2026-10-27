@@ -67,6 +67,7 @@ chat	Message	cards	out	this server sends and reads text, not cards or interactio
 chat	Message	cardsV2	out	this server sends and reads text, not cards or interactions
 chat	Message	matchedUrl	out	this server sends and reads text, not cards or interactions
 chat	Message	slashCommand	out	this server sends and reads text, not cards or interactions
+chat	Message	elements	out	citations and cited sources an app attaches to a generated reply, published 2026-10-27; no tool writes them, and the text a person reads is in text
 chat	Message	silent	out	no tool sends a message without notifying; send_message notifies, which is the point of sending it
 chat	Space	importModeExpireTime	out	import mode is a migration state no tool enters or reports
 chat	PermissionSettings	viewSpaceMembership	out	published 2026-09; no tool sets or reports who may see the member list yet

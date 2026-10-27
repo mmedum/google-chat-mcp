@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v7.0.2",
+  "version": "v7.1.0",
   "sdk": "v1.8.0",
   "tools": [
     {
@@ -3319,7 +3319,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "List the reactions on a single message: who reacted and with what. Default limit 50, max 200; page with page_token and next_page_token. Custom emoji are left out, having no character to show.",
+      "description": "List the reactions on a single message: who reacted, by name and email as a message's sender is, and with what. Default limit 50, max 200; page with page_token and next_page_token. Custom emoji are left out, having no character to show.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -3365,6 +3365,20 @@
                   "description": "the reaction's resource name; remove_reaction takes it",
                   "type": "string"
                 },
+                "user_display_name": {
+                  "description": "who reacted: their name, or null when Google gave none",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "user_email": {
+                  "description": "who reacted: their email address, or null when it could not be resolved",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "user_id": {
                   "description": "who reacted, users/{id}",
                   "type": "string"
@@ -3373,7 +3387,9 @@
               "required": [
                 "reaction_name",
                 "emoji",
-                "user_id"
+                "user_id",
+                "user_email",
+                "user_display_name"
               ],
               "type": "object"
             },
