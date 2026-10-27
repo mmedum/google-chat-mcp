@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
 )
 
 // DownloadAttachmentInput names one attachment on one message.
@@ -182,6 +182,9 @@ func writeStream(file *os.File, path string, body io.Reader) (int64, string, err
 // UploadAttachmentInput is one local file to put in a space.
 type UploadAttachmentInput struct {
 	Space string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
 	// Path is a file inside GCM_LOCAL_DIR, absolute or relative to it.
 	Path string
 	// FileName overrides the name the file is given in Chat. Empty
@@ -237,6 +240,9 @@ func (s *Service) UploadAttachment(ctx context.Context, in UploadAttachmentInput
 		Bytes:       info.Size(),
 		ContentType: contentType,
 		DryRun:      in.DryRun,
+	}
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
 	}
 	if in.DryRun {
 		// The metadata part is the whole request body Google reads; the

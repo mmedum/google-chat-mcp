@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
 )
 
 // Class is the leading tag on a tool error. The model reads these, so

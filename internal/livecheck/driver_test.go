@@ -151,6 +151,15 @@ func (d *driver) call(name string, args map[string]any) result {
 // Cleanup uses it, because it must still say what it could not do once
 // the binary has gone.
 func (d *driver) try(name string, args map[string]any) (result, error) {
+	// A write that names a space says what it is called, so its prompt
+	// names it. The scratch space's name changes during the run, which
+	// the driver tracks, so a step that names no other passes the
+	// current one.
+	if namesItsSpace[name] && args["space_id"] == d.space {
+		if _, given := args["space_display_name"]; !given {
+			args["space_display_name"] = d.name
+		}
+	}
 	res, err := d.callTool(d.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
 		return result{}, err
@@ -402,4 +411,13 @@ func (d *driver) writeLocal(name, body string) string {
 func isNameRune(r rune) bool {
 	return r == '/' || r == '-' || r == '_' || r == '.' ||
 		(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+// namesItsSpace is every tool that takes space_display_name beside
+// space_id. TestEveryToolThatNamesASpaceIsFilledIn holds it to the
+// surface.
+var namesItsSpace = map[string]bool{
+	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true,
+	"move_space_to_section": true, "send_message": true, "update_space": true,
+	"update_space_notification_setting": true, "upload_attachment": true,
 }

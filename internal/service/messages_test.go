@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API
@@ -442,9 +442,9 @@ func assertClass(t *testing.T, err error, want Class) {
 // The body is posted exactly as it arrived. A server that trimmed,
 // prefixed or suffixed a message would be editing what somebody said.
 func TestSendMessagePostsTheTextVerbatim(t *testing.T) {
-	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`))
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`)))
 	body := "  hello\n\nworld  "
-	got, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/A", Text: body})
+	got, err := s.SendMessage(writeCtx(), SendMessageInput{SpaceDisplayName: "Team", Space: "spaces/A", Text: body})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -481,9 +481,10 @@ func TestSendMessageInMarkdown(t *testing.T) {
 		{name: "chat syntax", markdown: false, want: `{"text":"**hi** [there](https://example.com)"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
+			s, rec := recorded(t, named(ok(`{"name":"spaces/A/messages/1"}`)))
 			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-				Space: "spaces/A", Text: "**hi** [there](https://example.com)", Markdown: tc.markdown,
+				SpaceDisplayName: "Team",
+				Space:            "spaces/A", Text: "**hi** [there](https://example.com)", Markdown: tc.markdown,
 			}); err != nil {
 				t.Fatalf("SendMessage: %v", err)
 			}
@@ -523,9 +524,10 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, rec := recorded(t, quoteBackend(tc.created, tc.updated))
+			s, rec := recorded(t, named(quoteBackend(tc.created, tc.updated)))
 			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-				Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9",
+				SpaceDisplayName: "Team",
+				Space:            "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9",
 			}); err != nil {
 				t.Fatalf("SendMessage: %v", err)
 			}
@@ -539,15 +541,16 @@ func TestSendMessageQuotesWithTheQuotedMessagesTimestamp(t *testing.T) {
 // A message read by its client-assigned id comes back under its real
 // name, and the quote names that.
 func TestSendMessageQuotesByGooglesName(t *testing.T) {
-	s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+	s, rec := recorded(t, named(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			fmt.Fprint(w, `{"name":"spaces/A/messages/9","createTime":"2026-01-02T03:04:05Z"}`)
 			return
 		}
 		fmt.Fprint(w, `{"name":"spaces/A/messages/1"}`)
-	})
+	}))
 	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/client-abc",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Text: "agreed", Quote: "spaces/A/messages/client-abc",
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -559,9 +562,10 @@ func TestSendMessageQuotesByGooglesName(t *testing.T) {
 // A dry run of a quote reads the quoted message, so the preview is the
 // body a post would send, and posts nothing.
 func TestSendMessageDryRunOfAQuoteReadsButDoesNotPost(t *testing.T) {
-	s, rec := recorded(t, quoteBackend("2026-01-02T03:04:05Z", ""))
+	s, rec := recorded(t, named(quoteBackend("2026-01-02T03:04:05Z", "")))
 	got, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Text: "agreed", Quote: "spaces/A/messages/9", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
@@ -595,9 +599,10 @@ func TestSendMessageRefusesABadQuote(t *testing.T) {
 }
 
 func TestSendMessageRepliesInAThread(t *testing.T) {
-	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`))
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`)))
 	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/A", Text: "hi", Thread: "spaces/A/threads/T",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Text: "hi", Thread: "spaces/A/threads/T",
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -609,15 +614,18 @@ func TestSendMessageRepliesInAThread(t *testing.T) {
 // A dry run is a preview, so nothing may reach Google, and the body it
 // shows has to be the body a real post would send.
 func TestSendMessageDryRunPostsNothing(t *testing.T) {
-	s, rec := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A/messages/1"}`)))
 	got, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/A", Text: "hello", Thread: "spaces/A/threads/T", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Text: "hello", Thread: "spaces/A/threads/T", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
-	if rec.len() != 0 {
-		t.Errorf("a dry run made %d requests", rec.len())
+	// It reads the space, to hold space_display_name to it, and writes
+	// nothing.
+	if w := rec.writes(); w != 0 {
+		t.Errorf("a dry run made %d writes", w)
 	}
 	if !got.DryRun || got.Name != "" || got.Thread != "" {
 		t.Errorf("result = %+v, want nothing created", got)
@@ -656,11 +664,12 @@ func TestSendMessageRejectsBadInput(t *testing.T) {
 // The cap counts characters, not bytes: it is what the schema
 // documents and what a person writing a message counts.
 func TestMessageLengthIsCountedInCharacters(t *testing.T) {
-	s, _ := recorded(t, ok(`{"name":"spaces/A/messages/1"}`))
+	s, _ := recorded(t, named(ok(`{"name":"spaces/A/messages/1"}`)))
 	// Four bytes each, so a byte count would reject this at a quarter
 	// of the documented limit.
 	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/A", Text: strings.Repeat("😀", maxMessageText),
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Text: strings.Repeat("😀", maxMessageText),
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
@@ -983,7 +992,7 @@ func TestDeleteThreadTakesTheReplies(t *testing.T) {
 // Editing and deleting need the restricted-tier umbrella, and the
 // person has to be told which string to grant.
 func TestMessageWritesNameTheirScopes(t *testing.T) {
-	s := newService(t, status(403,
+	s := newNamedService(t, status(403,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	for _, tc := range []struct {
 		name string
@@ -991,7 +1000,7 @@ func TestMessageWritesNameTheirScopes(t *testing.T) {
 		want string
 	}{
 		{"send", func() error {
-			_, err := s.SendMessage(writeCtx(), SendMessageInput{Space: "spaces/A", Text: "hi"})
+			_, err := s.SendMessage(writeCtx(), SendMessageInput{SpaceDisplayName: "Team", Space: "spaces/A", Text: "hi"})
 			return err
 		}, scopes.MessagesCreate},
 		{"update", func() error {
@@ -1085,15 +1094,16 @@ func TestAReplyChoosesItsFallback(t *testing.T) {
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			var got string
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+			s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 				got = r.URL.Query().Get("messageReplyOption")
 				fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1"}`)
 			})
 			if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-				Space:         "spaces/AAAAspace1",
-				Text:          "hello",
-				Thread:        "spaces/AAAAspace1/threads/AAAAthread1",
-				ReplyFallback: tc.fallback,
+				SpaceDisplayName: "Team",
+				Space:            "spaces/AAAAspace1",
+				Text:             "hello",
+				Thread:           "spaces/AAAAspace1/threads/AAAAthread1",
+				ReplyFallback:    tc.fallback,
 			}); err != nil {
 				t.Fatalf("SendMessage: %v", err)
 			}
@@ -1110,7 +1120,7 @@ func TestAReplyChoosesItsFallback(t *testing.T) {
 func TestAMentionIsPostedVerbatim(t *testing.T) {
 	const text = "<users/janedoe@example.com> can you look at this? cc <users/johndoe@example.com>"
 	var sent string
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Text string `json:"text"`
 		}
@@ -1121,7 +1131,8 @@ func TestAMentionIsPostedVerbatim(t *testing.T) {
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1"}`)
 	})
 	if _, err := s.SendMessage(writeCtx(), SendMessageInput{
-		Space: "spaces/AAAAspace1", Text: text,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Text: text,
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}

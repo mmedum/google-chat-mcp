@@ -19,9 +19,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/server"
-	"github.com/mmedum/google-chat-mcp/v7/internal/version"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/server"
+	"github.com/mmedum/google-chat-mcp/v8/internal/version"
 )
 
 // below takes them as io.Writer, so nothing else can reach stdout.

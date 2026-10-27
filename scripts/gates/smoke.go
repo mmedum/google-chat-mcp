@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
 )
 
 // The smoke gate drives the built binary the way a host does: over

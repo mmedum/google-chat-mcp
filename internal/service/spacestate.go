@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
 )
 
 // Pins, read state and notification settings.
@@ -187,6 +187,9 @@ func (s *Service) GetThreadReadState(ctx context.Context, space, thread string) 
 // MarkReadInput moves the caller's read mark in a space.
 type MarkReadInput struct {
 	Space string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
 	// From is required when marking unread, and is the time to rewind
 	// to: every top-level message after it becomes unread. Ignored when
 	// marking read.
@@ -242,6 +245,9 @@ func (s *Service) setReadState(ctx context.Context, in MarkReadInput, at time.Ti
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
 	out := &MarkReadResult{LastReadTime: at, Unread: unread, DryRun: in.DryRun}
 	if in.DryRun {
 		return out, nil
@@ -288,6 +294,9 @@ func (s *Service) GetSpaceNotificationSetting(ctx context.Context, space string)
 // UpdateNotificationInput changes one or both settings.
 type UpdateNotificationInput struct {
 	Space string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
 	// Notify and Mute are empty for "leave this alone". Sending a mask
 	// for a field with no value would clear it.
 	Notify string
@@ -330,6 +339,9 @@ func (s *Service) UpdateSpaceNotificationSetting(
 		return nil, Invalidf("pass notification_setting, mute_setting, or both")
 	}
 
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
 	out := &UpdateNotificationResult{DryRun: in.DryRun}
 	if in.DryRun {
 		rendered, err := renderBody(body)

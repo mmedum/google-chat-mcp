@@ -22,8 +22,8 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/server"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/server"
 )
 
 // The Claude Desktop bundle.

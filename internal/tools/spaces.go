@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // Output types are deliberate shadows of the wire types, not embeds of
@@ -305,11 +305,12 @@ type CreateSpaceOutput struct {
 // UpdateSpaceInput is an edit of a space's name, description or
 // audience.
 type UpdateSpaceInput struct {
-	SpaceID     string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}"`
-	DisplayName *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
-	Description *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
-	Audience    string  `json:"audience,omitempty" jsonschema:"private to make the space private again; omit it to leave access alone. Opening a space to a target audience is set_space_audience's, and anything else here is refused. Change it in a call of its own"`
-	DryRun      bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
+	SpaceID          string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}"`
+	SpaceDisplayName string  `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	DisplayName      *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
+	Description      *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
+	Audience         string  `json:"audience,omitempty" jsonschema:"private to make the space private again; omit it to leave access alone. Opening a space to a target audience is set_space_audience's, and anything else here is refused. Change it in a call of its own"`
+	DryRun           bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
 
 // SetSpaceAudienceInput opens a space to a target audience.
@@ -402,7 +403,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
-			Space: in.SpaceID, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,
 			DryRun: in.DryRun,
 		})
 		if err != nil {

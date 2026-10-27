@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // PinOutput is one pinned message.
@@ -63,15 +63,17 @@ type GetThreadReadStateInput struct {
 
 // MarkSpaceReadInput names a space to mark read.
 type MarkSpaceReadInput struct {
-	SpaceID string `json:"space_id" jsonschema:"the space, spaces/{id}"`
-	DryRun  bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
+	SpaceID          string `json:"space_id" jsonschema:"the space, spaces/{id}"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
 }
 
 // MarkSpaceUnreadInput names a space and where to rewind to.
 type MarkSpaceUnreadInput struct {
-	SpaceID  string `json:"space_id" jsonschema:"the space, spaces/{id}"`
-	FromTime string `json:"from_time" jsonschema:"rewind your read mark to this time, RFC 3339: every top-level message after it becomes unread. get_messages reports each message's timestamp, so pass the timestamp of the message you want to come back to"`
-	DryRun   bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
+	SpaceID          string `json:"space_id" jsonschema:"the space, spaces/{id}"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	FromTime         string `json:"from_time" jsonschema:"rewind your read mark to this time, RFC 3339: every top-level message after it becomes unread. get_messages reports each message's timestamp, so pass the timestamp of the message you want to come back to"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
 }
 
 // MarkReadOutput is where the read mark now stands.
@@ -97,6 +99,7 @@ type GetSpaceNotificationSettingInput struct {
 // UpdateSpaceNotificationSettingInput changes one or both settings.
 type UpdateSpaceNotificationSettingInput struct {
 	SpaceID             string `json:"space_id" jsonschema:"the space, spaces/{id}"`
+	SpaceDisplayName    string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
 	NotificationSetting string `json:"notification_setting,omitempty" jsonschema:"ALL, MAIN_CONVERSATIONS, FOR_YOU or OFF; omit to leave it alone"`
 	MuteSetting         string `json:"mute_setting,omitempty" jsonschema:"MUTED or UNMUTED; omit to leave it alone. MUTED silences the space whatever the other setting says"`
 	DryRun              bool   `json:"dry_run,omitempty" jsonschema:"return the request body without changing anything"`
@@ -195,7 +198,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Kind:    Write,
 		Toolset: config.ToolsetReadState,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkSpaceReadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
-		got, err := d.Service.MarkSpaceRead(ctx, service.MarkReadInput{Space: in.SpaceID, DryRun: in.DryRun})
+		got, err := d.Service.MarkSpaceRead(ctx, service.MarkReadInput{Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DryRun: in.DryRun})
 		if err != nil {
 			return nil, MarkReadOutput{}, err
 		}
@@ -211,7 +214,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Toolset: config.ToolsetReadState,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkSpaceUnreadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
 		got, err := d.Service.MarkSpaceUnread(ctx, service.MarkReadInput{
-			Space: in.SpaceID, From: in.FromTime, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, From: in.FromTime, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, MarkReadOutput{}, err
@@ -244,7 +247,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Toolset: config.ToolsetSettings,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceNotificationSettingInput) (*mcp.CallToolResult, UpdateSpaceNotificationSettingOutput, error) {
 		got, err := d.Service.UpdateSpaceNotificationSetting(ctx, service.UpdateNotificationInput{
-			Space: in.SpaceID, Notify: in.NotificationSetting, Mute: in.MuteSetting, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Notify: in.NotificationSetting, Mute: in.MuteSetting, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, UpdateSpaceNotificationSettingOutput{}, err

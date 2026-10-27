@@ -5,8 +5,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // SectionOutput is one group in the caller's sidebar.
@@ -166,10 +166,11 @@ type PositionSectionOutput struct {
 
 // MoveSpaceToSectionInput files one space under one section.
 type MoveSpaceToSectionInput struct {
-	SpaceID     string `json:"space_id" jsonschema:"the space to file, spaces/{id}"`
-	SectionName string `json:"section_name" jsonschema:"where to file it, users/{user}/sections/{section}"`
-	ItemName    string `json:"item_name,omitempty" jsonschema:"the space's current sidebar entry, from list_section_items. Passing it skips a lookup, which is what makes a bulk sort cost one listing per section instead of a request per space. Nothing re-checks that it belongs to space_id, so a mismatched pair files the wrong space"`
-	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"look up where the space sits without moving it"`
+	SpaceID          string `json:"space_id" jsonschema:"the space to file, spaces/{id}"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	SectionName      string `json:"section_name" jsonschema:"where to file it, users/{user}/sections/{section}"`
+	ItemName         string `json:"item_name,omitempty" jsonschema:"the space's current sidebar entry, from list_section_items. Passing it skips a lookup, which is what makes a bulk sort cost one listing per section instead of a request per space. Nothing re-checks that it belongs to space_id, so a mismatched pair files the wrong space"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"look up where the space sits without moving it"`
 }
 
 // MoveSpaceToSectionOutput says where the space was and where it went.
@@ -273,7 +274,7 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MoveSpaceToSectionInput) (*mcp.CallToolResult, MoveSpaceToSectionOutput, error) {
 		got, err := d.Service.MoveSpaceToSection(ctx, service.MoveSpaceToSectionInput{
-			Space: in.SpaceID, Section: in.SectionName, Item: in.ItemName, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Section: in.SectionName, Item: in.ItemName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, MoveSpaceToSectionOutput{}, err

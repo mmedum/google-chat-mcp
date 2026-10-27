@@ -65,9 +65,10 @@ func TestAnUnconfirmedSendNamesItsMessageID(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var sent lastID
-			s := newService(t, tc.handler(t, &sent))
+			s := newNamedService(t, tc.handler(t, &sent))
 			_, err := s.SendMessage(context.Background(), SendMessageInput{
-				Space: "spaces/AAAAspace1", Text: "hello", ClientMessageID: tc.given})
+				SpaceDisplayName: "Team",
+				Space:            "spaces/AAAAspace1", Text: "hello", ClientMessageID: tc.given})
 			sentID := sent.get()
 			if sentID == "" || (tc.given != "" && sentID != tc.given) {
 				t.Fatalf("messageId sent = %q, want %q or a minted one", sentID, tc.given)

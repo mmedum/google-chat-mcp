@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // SpaceKind is a space's type, in Google's spelling. The tool surface
@@ -551,9 +551,12 @@ func (s *Service) setupSpace(ctx context.Context, kind, displayName string, emai
 // UpdateSpaceInput is an edit of a space's name, description or
 // audience. A nil field is one the caller did not ask to change.
 type UpdateSpaceInput struct {
-	Space       string
-	DisplayName *string
-	Description *string
+	Space string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
+	DisplayName      *string
+	Description      *string
 	// Audience is Private to make the space private; blank leaves it
 	// alone, and anything else is refused.
 	Audience string
@@ -639,6 +642,9 @@ func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*Update
 			}
 		}
 		body, out.UpdateMask = gchat.BuildUpdateSpace(out.DisplayName, out.Description, guidelines)
+	}
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
 	}
 	return s.patchSpace(ctx, body, out)
 }

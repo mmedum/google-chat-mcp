@@ -11,6 +11,11 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `send_message`, `upload_attachment`, `add_member`, `add_external_member`, `update_space`, `update_space_notification_setting`, `mark_space_read`, `mark_space_unread` and `move_space_to_section` take a required `space_display_name`: a named space by its name as `list_spaces` gives it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. The client's prompt that approves a call shows its arguments, and a space's id names nothing a person recognizes. The name is checked against the space before anything is written, dry runs included, and a call naming another space is refused `[stale]`; each of these writes reads the space first.
+- **Breaking:** the module path is `github.com/mmedum/google-chat-mcp/v8`. Install with `go install github.com/mmedum/google-chat-mcp/v8/cmd/google-chat-mcp@latest`.
+
 ## [7.1.0] - 2026-10-27
 
 ### Added

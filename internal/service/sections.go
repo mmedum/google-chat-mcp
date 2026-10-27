@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // Section listing limits, as the tool schema documents them.
@@ -386,8 +386,11 @@ func (s *Service) PositionSection(ctx context.Context, in PositionSectionInput) 
 
 // MoveSpaceToSectionInput files one space under one section.
 type MoveSpaceToSectionInput struct {
-	Space   string
-	Section string
+	Space string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
+	Section          string
 	// Item is the space's current section item, when the caller
 	// already knows it. It skips the lookup.
 	Item   string
@@ -441,6 +444,9 @@ func (s *Service) MoveSpaceToSection(ctx context.Context, in MoveSpaceToSectionI
 		return nil, err
 	}
 
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
 	from := sectionOfItem(item)
 	out := &MoveSpaceToSectionResult{
 		Space:   space,

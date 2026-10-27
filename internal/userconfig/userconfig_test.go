@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
 )
 
 // tempBase points the package at a throwaway directory. A test dir sits

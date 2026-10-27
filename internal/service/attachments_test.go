@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
 )
 
 // localDir is a throwaway directory with its links already resolved,
@@ -104,9 +104,9 @@ func TestADownloadOfUnstatedLengthIsKept(t *testing.T) {
 // sparse, so neither costs the disk space it reports.
 func TestUploadAttachmentTakesUpToGooglesLimit(t *testing.T) {
 	dir := localDir(t)
-	s := newTransferService(t, dir, func(http.ResponseWriter, *http.Request) {
+	s := newTransferService(t, dir, named(func(http.ResponseWriter, *http.Request) {
 		t.Error("a dry run must not reach Google")
-	})
+	}))
 	for _, tc := range []struct {
 		size    int64
 		refused bool
@@ -124,7 +124,8 @@ func TestUploadAttachmentTakesUpToGooglesLimit(t *testing.T) {
 		}
 		_ = f.Close()
 		_, err = s.UploadAttachment(context.Background(), UploadAttachmentInput{
-			Space: "spaces/AAAAspace1", Path: path, DryRun: true,
+			SpaceDisplayName: "Team",
+			Space:            "spaces/AAAAspace1", Path: path, DryRun: true,
 		})
 		if tc.refused {
 			assertClass(t, err, ClassInvalid)
@@ -388,15 +389,16 @@ func TestUploadAttachmentSendsTheFile(t *testing.T) {
 	}
 	var gotPath, gotType, gotBody string
 	var gotLength int64
-	s := newTransferService(t, dir, func(w http.ResponseWriter, r *http.Request) {
+	s := newTransferService(t, dir, named(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotType, gotLength = r.URL.Path, r.Header.Get("Content-Type"), r.ContentLength
 		body, _ := io.ReadAll(r.Body)
 		gotBody = string(body)
 		fmt.Fprint(w, `{"attachmentDataRef":{"attachmentUploadToken":"AAAAuploadtoken1"}}`)
-	})
+	}))
 
 	got, err := s.UploadAttachment(context.Background(), UploadAttachmentInput{
-		Space: "spaces/AAAAspace1", Path: "notes.txt",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Path: "notes.txt",
 	})
 	if err != nil {
 		t.Fatalf("UploadAttachment: %v", err)
@@ -432,11 +434,12 @@ func TestUploadAttachmentDryRunSendsNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s := newTransferService(t, dir, func(http.ResponseWriter, *http.Request) {
+	s := newTransferService(t, dir, named(func(http.ResponseWriter, *http.Request) {
 		t.Error("a dry run reached Google")
-	})
+	}))
 	got, err := s.UploadAttachment(gchat.WithoutWrites(context.Background()), UploadAttachmentInput{
-		Space: "spaces/AAAAspace1", Path: "notes.txt", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Path: "notes.txt", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("UploadAttachment: %v", err)
@@ -518,13 +521,14 @@ func TestAnUploadCannotEscapeAPreview(t *testing.T) {
 // carries it.
 func TestSendMessageCarriesAnUploadedFile(t *testing.T) {
 	var body map[string]any
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/messages/AAAAmsg1",
 		  "thread":{"name":"spaces/AAAAspace1/threads/AAAAthread1"}}`)
 	})
 	if _, err := s.SendMessage(context.Background(), SendMessageInput{
-		Space: "spaces/AAAAspace1", Text: "here are the notes", UploadToken: "AAAAuploadtoken1",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Text: "here are the notes", UploadToken: "AAAAuploadtoken1",
 	}); err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}

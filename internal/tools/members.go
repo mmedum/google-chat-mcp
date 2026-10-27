@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // MemberOutput is one row of a space's membership.
@@ -114,10 +114,11 @@ func registerMembers(s *mcp.Server, d Deps) {
 
 // AddMemberInput invites one person into a space.
 type AddMemberInput struct {
-	SpaceID   string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}"`
-	UserEmail string `json:"user_email,omitempty" jsonschema:"their email address; search_people turns a name into one. Pass this or group_name, not both"`
-	GroupName string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message. Refused in a space that admits people from outside the organization"`
-	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
+	SpaceID          string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	UserEmail        string `json:"user_email,omitempty" jsonschema:"their email address; search_people turns a name into one. Pass this or group_name, not both"`
+	GroupName        string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message. Refused in a space that admits people from outside the organization"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"return the request body without inviting anyone"`
 }
 
 // GetMemberInput names one membership.
@@ -144,9 +145,10 @@ type PromoteMemberInput struct {
 // AddExternalMemberInput invites someone from outside the organization,
 // or a Google Group that may bring them in.
 type AddExternalMemberInput struct {
-	SpaceID   string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization"`
-	UserEmail string `json:"user_email,omitempty" jsonschema:"their email address. Whoever it is can read what is already in the space. Pass this or group_name, not both"`
-	GroupName string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Its members from outside the organization join with it, and so does anyone added to the group later"`
+	SpaceID          string `json:"space_id" jsonschema:"the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	UserEmail        string `json:"user_email,omitempty" jsonschema:"their email address. Whoever it is can read what is already in the space. Pass this or group_name, not both"`
+	GroupName        string `json:"group_name,omitempty" jsonschema:"a Google Group to add, groups/{id}; find_group turns the group's email address into one. Its members from outside the organization join with it, and so does anyone added to the group later"`
 	// GroupEmail is the witness: groups/{id} tells the person approving
 	// the call nothing, and the address does.
 	GroupEmail string `json:"group_email,omitempty" jsonschema:"required with group_name: the group's email address, as find_group reports it. The group is read first, a dry run included, and the call is refused [stale] when its address differs"`
@@ -200,7 +202,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
 		got, err := d.Service.AddMember(ctx, service.AddMemberInput{
-			Space: in.SpaceID, Email: in.UserEmail, Group: in.GroupName, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Email: in.UserEmail, Group: in.GroupName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, AddMemberOutput{}, err
@@ -219,7 +221,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 		Kind: Destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddExternalMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
 		got, err := d.Service.AddExternalMember(ctx, service.AddMemberInput{
-			Space: in.SpaceID, Email: in.UserEmail, Group: in.GroupName, GroupEmail: in.GroupEmail, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Email: in.UserEmail, Group: in.GroupName, GroupEmail: in.GroupEmail, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, AddMemberOutput{}, err

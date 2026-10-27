@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/redact"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v7/internal/version"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v8/internal/version"
 )
 
 // statusSchemaVersion is the version of the JSON object `status --json`
