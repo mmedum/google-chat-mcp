@@ -50,6 +50,9 @@ type server struct {
 	cs  *mcp.ClientSession
 	ctx context.Context
 	dir string // GCM_LOCAL_DIR, shared with the server the model drives
+	// names is what seed called each scratch space, which a write
+	// naming the space repeats.
+	names map[string]string
 }
 
 func binPath(t *testing.T) string {
@@ -144,12 +147,15 @@ func (s *server) seed(name string) string {
 	var out struct {
 		SpaceID string `json:"space_id"`
 	}
-	s.into(s.must("create_space", map[string]any{
-		"display_name": fmt.Sprintf("%s %s %d (safe to delete)", spacePrefix, name, time.Now().Unix()),
-	}), &out)
+	displayName := fmt.Sprintf("%s %s %d (safe to delete)", spacePrefix, name, time.Now().Unix())
+	s.into(s.must("create_space", map[string]any{"display_name": displayName}), &out)
 	if out.SpaceID == "" {
 		s.t.Fatal("create_space returned no space_id")
 	}
+	if s.names == nil {
+		s.names = map[string]string{}
+	}
+	s.names[out.SpaceID] = displayName
 	return out.SpaceID
 }
 
@@ -183,7 +189,7 @@ type message struct {
 // something for the model to act on. thread may be empty.
 func (s *server) post(space, text, thread string) message {
 	s.t.Helper()
-	args := map[string]any{"space_id": space, "text": text}
+	args := map[string]any{"space_id": space, "space_display_name": s.names[space], "text": text}
 	if thread != "" {
 		args["thread_name"] = thread
 	}

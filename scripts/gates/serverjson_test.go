@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/server"
+	"github.com/mmedum/google-chat-mcp/v8/internal/server"
 )
 
 // testdata/server-2025-12-11.schema.json is the registry's published
@@ -196,10 +196,10 @@ func TestGitHubRepoRefusesAnythingElse(t *testing.T) {
 		{module: "github.com/mmedum/google-chat-mcp", owner: "mmedum", name: "google-chat-mcp", ok: true},
 		// A module at v2 or above: the major version is Go's, not the
 		// repository's, so it comes off.
-		{module: "github.com/mmedum/google-chat-mcp/v7", owner: "mmedum", name: "google-chat-mcp", ok: true},
+		{module: "github.com/mmedum/google-chat-mcp/v8", owner: "mmedum", name: "google-chat-mcp", ok: true},
 		{module: "github.com/mmedum/google-chat-mcp/v10", owner: "mmedum", name: "google-chat-mcp", ok: true},
 		{module: "gitlab.com/mmedum/google-chat-mcp"},
-		{module: "github.com/mmedum/google-chat-mcp/v7/v2"},
+		{module: "github.com/mmedum/google-chat-mcp/v8/v2"},
 		{module: "github.com/mmedum/google-chat-mcp/internal"},
 		{module: "github.com/mmedum/google-chat-mcp/v0"},
 		{module: "github.com/mmedum"},
@@ -322,7 +322,7 @@ func TestMCPBManifestReadsOneRoot(t *testing.T) {
 	put(t, root, goModSource, "module example.com/elsewhere\n")
 	var out, errOut bytes.Buffer
 	code := run([]string{"mcpb-manifest", "2.0.0", root}, &out, &errOut)
-	want := `mcpb-manifest: the launcher says "go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest", ` +
+	want := `mcpb-manifest: the launcher says "go install github.com/mmedum/google-chat-mcp/v8/cmd/google-chat-mcp@latest", ` +
 		`want "go install example.com/elsewhere/cmd/google-chat-mcp@latest"` + "\n"
 	if code != 1 || out.String() != "" || errOut.String() != want {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing, and %q", code, out.String(), errOut.String(), want)

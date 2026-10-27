@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // SectionsParent addresses the caller's own sidebar. Google accepts

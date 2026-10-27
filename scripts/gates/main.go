@@ -38,8 +38,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

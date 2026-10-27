@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // The API-coverage gate holds the gap between Google's APIs and this

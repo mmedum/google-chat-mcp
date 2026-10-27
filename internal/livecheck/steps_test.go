@@ -925,6 +925,15 @@ var steps = []step{
 
 	// A post that notifies everyone in the space is refused; an ordinary
 	// one is not. The scratch space holds only this account.
+	{"a post naming another space is refused", "send_message", func(d *driver) {
+		res := d.call("send_message", map[string]any{
+			"space_id": d.space, "space_display_name": "not " + d.name, "text": "livecheck names the wrong space",
+		})
+		if !res.IsError || !strings.HasPrefix(res.Text, "[stale]") {
+			d.t.Errorf("a post naming another space: %s", d.redact(res.Text))
+		}
+	}},
+
 	{"a post that mentions everyone is refused", "send_message", func(d *driver) {
 		res := d.call("send_message", map[string]any{"space_id": d.space, "text": "livecheck mentions <users/all> and will delete it"})
 		if !res.IsError || !strings.HasPrefix(res.Text, "[blocked]") {

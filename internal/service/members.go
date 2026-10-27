@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's
@@ -419,7 +419,10 @@ func (s *Service) updateMemberRole(ctx context.Context, in UpdateMemberRoleInput
 // space.
 type AddMemberInput struct {
 	Space string
-	Email string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
+	Email            string
 	// Group is "groups/{id}", whose id comes from the Cloud Identity
 	// API. Exactly one of Email and Group.
 	Group string
@@ -511,6 +514,9 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 		}
 		out.Email = email
 		body = gchat.BuildAddMember(email, "")
+	}
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
 	}
 	if in.DryRun {
 		rendered, err := renderBody(body)

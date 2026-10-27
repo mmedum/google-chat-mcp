@@ -14,9 +14,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
-	"github.com/mmedum/google-chat-mcp/v7/internal/tools"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/tools"
 )
 
 // Name is the MCP server name.
@@ -66,7 +66,10 @@ const readInstructions = "Google Chat tools. Start with list_spaces to find a sp
 // writeInstructions are dropped under GCM_READ_ONLY, along with the
 // tools they name.
 const writeInstructions = "Write with send_message, which posts the text exactly as given, and find_direct_message " +
-	"to reach one person. Most write tools take dry_run, which returns the request body without sending it."
+	"to reach one person. A write to a space takes space_display_name beside space_id, so the prompt that approves " +
+	"it names the space: a named space by the name list_spaces gives, a direct message by the other person's " +
+	"email, a group chat by the other members' emails. It is checked, and a call naming another space is refused " +
+	"[stale]. Most write tools take dry_run, which returns the request body without sending it."
 
 // destructiveInstructions follow them when GCM_ENABLE_DESTRUCTIVE
 // registers the tools they describe.

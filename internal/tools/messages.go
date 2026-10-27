@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // MessageOutput is one message in a listing.
@@ -432,15 +432,16 @@ func messageLinks(links []service.MessageLink) []MessageLinkOutput {
 
 // SendMessageInput is one message to post.
 type SendMessageInput struct {
-	SpaceID         string `json:"space_id" jsonschema:"the space to post in, spaces/{id}, from list_spaces or find_direct_message"`
-	Text            string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. A mention of everyone in the space, <users/all>, is refused"`
-	ThreadName      string `json:"thread_name,omitempty" jsonschema:"reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one"`
-	ReplyFallback   bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
-	UploadToken     string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
-	ClientMessageID string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
-	QuoteMessage    string `json:"quote_message,omitempty" jsonschema:"quote this message above the text, as a reply to it: spaces/{space}/messages/{message}, in the same space. Google refuses to forward a message under a person's sign-in, so one from another space cannot be quoted"`
-	Markdown        bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">; a mention of everyone in the space is refused here too"`
-	DryRun          bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
+	SpaceID          string `json:"space_id" jsonschema:"the space to post in, spaces/{id}, from list_spaces or find_direct_message"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	Text             string `json:"text" jsonschema:"the message body, 1 to 4096 characters; posted exactly as given. To @mention someone, write <users/their@address> in the text: Google resolves the address itself when the server is signed in as a person, which this one is. A mention of everyone in the space, <users/all>, is refused"`
+	ThreadName       string `json:"thread_name,omitempty" jsonschema:"reply in this thread, spaces/{space}/threads/{thread}; omit to start a new one"`
+	ReplyFallback    bool   `json:"reply_fallback,omitempty" jsonschema:"if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected"`
+	UploadToken      string `json:"attachment_upload_token,omitempty" jsonschema:"attach a file uploaded beforehand: the upload_token from upload_attachment, for the same space. One file per message, and the token is spent once it is posted"`
+	ClientMessageID  string `json:"client_message_id,omitempty" jsonschema:"an id you choose, so that repeating this exact call lands on the same message instead of posting a second one. Must start with 'client-', be at most 63 characters, and hold only lowercase letters, digits and hyphens. Set it whenever you might retry"`
+	QuoteMessage     string `json:"quote_message,omitempty" jsonschema:"quote this message above the text, as a reply to it: spaces/{space}/messages/{message}, in the same space. Google refuses to forward a message under a person's sign-in, so one from another space cannot be quoted"`
+	Markdown         bool   `json:"markdown,omitempty" jsonschema:"read the text as standard Markdown rather than Chat's own syntax: **bold**, [label](https://example.com), lists and code blocks. A mention is then written <chat-user data-email=\"their@address\">; a mention of everyone in the space is refused here too"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"return the request body without posting; call again without it to post"`
 }
 
 // SendMessageOutput is what was posted, or what a dry run would post.
@@ -498,7 +499,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SendMessageInput) (*mcp.CallToolResult, SendMessageOutput, error) {
 		got, err := d.Service.SendMessage(ctx, service.SendMessageInput{
-			Space: in.SpaceID, Text: in.Text, Thread: in.ThreadName,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Text: in.Text, Thread: in.ThreadName,
 			ReplyFallback: in.ReplyFallback, UploadToken: in.UploadToken,
 			ClientMessageID: in.ClientMessageID, Markdown: in.Markdown, DryRun: in.DryRun,
 			Quote: in.QuoteMessage,

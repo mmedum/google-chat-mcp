@@ -106,12 +106,12 @@ func TestThePerPersonResourcesNestUnderTheCaller(t *testing.T) {
 func TestMarkSpaceReadReportsWhatGoogleRecorded(t *testing.T) {
 	var mask string
 	var body map[string]any
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 		mask = r.URL.Query().Get("updateMask")
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		fmt.Fprint(w, `{"name":"users/123/spaces/AAAAspace1/spaceReadState","lastReadTime":"2026-01-02T03:04:05Z"}`)
 	})
-	got, err := s.MarkSpaceRead(context.Background(), MarkReadInput{Space: "spaces/AAAAspace1"})
+	got, err := s.MarkSpaceRead(context.Background(), MarkReadInput{SpaceDisplayName: "Team", Space: "spaces/AAAAspace1"})
 	if err != nil {
 		t.Fatalf("MarkSpaceRead: %v", err)
 	}
@@ -151,15 +151,15 @@ func TestNotificationUpdateMasksOnlyWhatWasAsked(t *testing.T) {
 		in   UpdateNotificationInput
 		want string
 	}{
-		{"one field", UpdateNotificationInput{Space: "spaces/AAAAspace1", Mute: "MUTED"}, "muteSetting"},
+		{"one field", UpdateNotificationInput{SpaceDisplayName: "Team", Space: "spaces/AAAAspace1", Mute: "MUTED"}, "muteSetting"},
 		{
-			"both", UpdateNotificationInput{Space: "spaces/AAAAspace1", Notify: "OFF", Mute: "MUTED"},
+			"both", UpdateNotificationInput{SpaceDisplayName: "Team", Space: "spaces/AAAAspace1", Notify: "OFF", Mute: "MUTED"},
 			"notificationSetting,muteSetting",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var mask string
-			s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+			s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 				mask = r.URL.Query().Get("updateMask")
 				fmt.Fprint(w, `{"name":"x","notificationSetting":"OFF","muteSetting":"MUTED"}`)
 			})
@@ -203,7 +203,7 @@ func TestNotificationEnumsDegrade(t *testing.T) {
 
 // Every write here has a dry run, and a dry run reaches nothing.
 func TestSpaceStateDryRunsSendNothing(t *testing.T) {
-	s := newService(t, func(http.ResponseWriter, *http.Request) {
+	s := newNamedService(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("a dry run must not reach Google")
 	})
 	if _, err := s.PinMessage(context.Background(), PinInput{
@@ -217,12 +217,14 @@ func TestSpaceStateDryRunsSendNothing(t *testing.T) {
 		t.Errorf("unpin: %v", err)
 	}
 	if _, err := s.MarkSpaceRead(context.Background(), MarkReadInput{
-		Space: "spaces/AAAAspace1", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", DryRun: true,
 	}); err != nil {
 		t.Errorf("mark read: %v", err)
 	}
 	got, err := s.UpdateSpaceNotificationSetting(context.Background(), UpdateNotificationInput{
-		Space: "spaces/AAAAspace1", Mute: "MUTED", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Mute: "MUTED", DryRun: true,
 	})
 	if err != nil {
 		t.Errorf("notification: %v", err)

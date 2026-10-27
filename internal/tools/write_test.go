@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
 )
 
 // counter records the method of every request a tool call made. A dry
@@ -44,11 +45,11 @@ func (c *counter) writes() []string {
 }
 
 func TestSendMessageThroughASession(t *testing.T) {
-	cs := session(t, func(w http.ResponseWriter, _ *http.Request) {
+	cs := session(t, named(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"name":"spaces/A/messages/1","thread":{"name":"spaces/A/threads/T"}}`)
-	})
+	}))
 	var out SendMessageOutput
-	call(t, cs, "send_message", map[string]any{"space_id": "spaces/A", "text": "hello"}, &out)
+	call(t, cs, "send_message", map[string]any{"space_id": "spaces/A", "space_display_name": "Team", "text": "hello"}, &out)
 	if out.MessageID == nil || *out.MessageID != "spaces/A/messages/1" {
 		t.Errorf("message id = %v", out.MessageID)
 	}
@@ -73,15 +74,15 @@ func TestEveryDryRunWritesNothing(t *testing.T) {
 		args  map[string]any
 		reads bool
 	}{
-		{"send_message", map[string]any{"space_id": "spaces/A", "text": "hello"}, false},
+		{"send_message", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "text": "hello"}, true},
 		{"update_message", map[string]any{"message_name": "spaces/A/messages/1", "text": "edited"}, false},
 		{"delete_message", map[string]any{"message_name": "spaces/A/messages/1", "text_start": "the standup moved to 10"}, true},
 		{"delete_thread", map[string]any{"message_name": "spaces/A/messages/1", "text_start": "the standup moved to 10"}, true},
 		{"create_group_chat", map[string]any{"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}}, false},
 		{"create_space", map[string]any{"display_name": "Team", "member_emails": []string{"janedoe@example.com"}}, false},
-		{"update_space", map[string]any{"space_id": "spaces/A", "display_name": "Renamed"}, false},
-		{"add_member", map[string]any{"space_id": "spaces/A", "user_email": "janedoe@example.com"}, true},
-		{"add_external_member", map[string]any{"space_id": "spaces/A", "user_email": "guest@example.org"}, false},
+		{"update_space", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "display_name": "Renamed"}, true},
+		{"add_member", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "user_email": "janedoe@example.com"}, true},
+		{"add_external_member", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "user_email": "guest@example.org"}, true},
 		{"remove_member", map[string]any{"membership_name": "spaces/A/members/M"}, false},
 		{"create_section", map[string]any{"display_name": "Clients"}, false},
 		{"rename_section", map[string]any{"section_name": "users/me/sections/S", "display_name": "Clients"}, false},
@@ -93,14 +94,14 @@ func TestEveryDryRunWritesNothing(t *testing.T) {
 		{"set_space_audience", map[string]any{"space_id": "spaces/A", "audience": "default", "display_name": "Team standup"}, true},
 		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
 		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
-		{"mark_space_read", map[string]any{"space_id": "spaces/A"}, false},
-		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "from_time": "2026-01-02T03:04:05Z"}, false},
-		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "mute_setting": "MUTED"}, false},
+		{"mark_space_read", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup"}, true},
+		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "from_time": "2026-01-02T03:04:05Z"}, true},
+		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "mute_setting": "MUTED"}, true},
 		{"set_availability", map[string]any{"state": "AWAY"}, false},
 		{"set_custom_status", map[string]any{"text": "in a workshop", "emoji": "🎉"}, false},
 		{"create_custom_emoji", map[string]any{"emoji_name": ":team-flag:", "image_path": "emoji.png"}, false},
 		{"delete_custom_emoji", map[string]any{"name": "customEmojis/AAAAemoji1", "emoji_name": ":test-emoji:"}, true},
-		{"upload_attachment", map[string]any{"space_id": "spaces/A", "local_path": "emoji.png"}, false},
+		{"upload_attachment", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "local_path": "emoji.png"}, true},
 	} {
 		covered[tc.tool] = true
 		t.Run(tc.tool, func(t *testing.T) {
@@ -155,12 +156,12 @@ func TestEveryDryRunWritesNothing(t *testing.T) {
 // the table's stub does not answer. What it must not do is write.
 func TestTheMoveDryRunReadsButDoesNotWrite(t *testing.T) {
 	c := &counter{}
-	cs := session(t, c.wrap(func(w http.ResponseWriter, _ *http.Request) {
+	cs := session(t, c.wrap(named(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`)
-	}))
+	})))
 	var out MoveSpaceToSectionOutput
 	call(t, cs, "move_space_to_section", map[string]any{
-		"space_id": "spaces/A", "section_name": "users/123/sections/T", "dry_run": true,
+		"space_id": "spaces/A", "space_display_name": "Team", "section_name": "users/123/sections/T", "dry_run": true,
 	}, &out)
 	if out.Moved || out.FromSection != "users/123/sections/S" {
 		t.Errorf("result = %+v", out)
@@ -200,7 +201,7 @@ func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
 			return
 		}
 		if r.Method == http.MethodGet {
-			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","externalUserAllowed":true}`)
+			fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","displayName":"Team","externalUserAllowed":true}`)
 			return
 		}
 		var body map[string]any
@@ -208,7 +209,7 @@ func TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal(t *testing.T) {
 		sent = append(sent, body)
 		fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
 	})
-	args := map[string]any{"space_id": "spaces/A", "group_name": "groups/AAAAgroup1"}
+	args := map[string]any{"space_id": "spaces/A", "space_display_name": "Team", "group_name": "groups/AAAAgroup1"}
 	res := call(t, cs, "add_member", args, nil)
 	if !res.IsError || !strings.HasPrefix(errorText(t, res), "[blocked]") {
 		t.Fatalf("add_member added a group to a space that admits outsiders: %+v", res)
@@ -385,4 +386,18 @@ func dryRunTools(t *testing.T) []string {
 		t.Fatalf("found %d tools taking dry_run, below the floor of 20: %v", len(out), out)
 	}
 	return out
+}
+
+// named answers the read of one space, which every write that names a
+// space makes first, with a space called "Team", and hands every other
+// request to h.
+func named(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && regexp.MustCompile(`/spaces/[^/:]+$`).MatchString(r.URL.Path) {
+			fmt.Fprintf(w, `{"name":%q,"displayName":"Team","spaceType":"SPACE"}`,
+				r.URL.Path[strings.LastIndex(r.URL.Path, "spaces/"):])
+			return
+		}
+		h(w, r)
+	}
 }

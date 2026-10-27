@@ -6,7 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mmedum/google-chat-mcp/v7/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v8/internal/redact"
 	"io"
 	"os"
 	"slices"
@@ -15,13 +15,13 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/doctor"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
-	"github.com/mmedum/google-chat-mcp/v7/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v8/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/doctor"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
 )
 
 // cmdLogin runs the loopback OAuth flow and stores the refresh token.

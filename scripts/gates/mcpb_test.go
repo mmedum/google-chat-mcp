@@ -19,8 +19,8 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/server"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/server"
 )
 
 // The Claude Desktop bundle is built once a year at most, on a runner,
@@ -274,7 +274,7 @@ func TestManifestProblemsRunsEveryCheck(t *testing.T) {
 	root := copiedRoot(t)
 	put(t, root, goModSource, "module example.com/elsewhere\n")
 	got := manifestProblems(editedRaw(t, func(map[string]any) {}), stagedNames(), root)
-	if want := `the launcher says "go install github.com/mmedum/google-chat-mcp/v7/cmd/google-chat-mcp@latest", ` +
+	if want := `the launcher says "go install github.com/mmedum/google-chat-mcp/v8/cmd/google-chat-mcp@latest", ` +
 		`want "go install example.com/elsewhere/cmd/google-chat-mcp@latest"`; !slices.Contains(got, want) {
 		t.Errorf("problems %q, want %q among them", got, want)
 	}
@@ -1209,7 +1209,7 @@ func TestTheLauncherRunsWhatThePackerStages(t *testing.T) {
 		t.Errorf("the committed launcher: %q", got)
 	}
 	launcher, goMod := readRepoFile(t, launcherSource), readRepoFile(t, goModSource)
-	const module = "github.com/mmedum/google-chat-mcp/v7"
+	const module = "github.com/mmedum/google-chat-mcp/v8"
 	if !strings.Contains(launcher, "go install "+module+"/cmd/google-chat-mcp@latest") {
 		t.Fatalf("the launcher's install hint does not name %s", module)
 	}

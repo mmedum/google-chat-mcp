@@ -9,17 +9,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 type staticToken string
@@ -711,13 +712,13 @@ func TestUpdateSpaceMasksWhatItChanges(t *testing.T) {
 		wantInBody  string
 		wantMissing string
 	}{
-		{"name only", UpdateSpaceInput{Space: "spaces/A", DisplayName: &name},
+		{"name only", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", DisplayName: &name},
 			"displayName", `"displayName":"Renamed"`, "spaceDetails"},
-		{"description only", UpdateSpaceInput{Space: "spaces/A", Description: &description},
+		{"description only", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Description: &description},
 			"spaceDetails", `"description":"What this room is for"`, "displayName"},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
-			s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+			s, rec := recorded(t, named(ok(`{"name":"spaces/A"}`)))
 			got, err := s.UpdateSpace(context.Background(), tc.in)
 			if err != nil {
 				t.Fatalf("UpdateSpace: %v", err)
@@ -743,9 +744,10 @@ func TestUpdateSpaceMasksWhatItChanges(t *testing.T) {
 // caller asks for it.
 func TestUpdateSpaceCanClearADescription(t *testing.T) {
 	empty := ""
-	s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A"}`)))
 	if _, err := s.UpdateSpace(context.Background(), UpdateSpaceInput{
-		Space: "spaces/A", Description: &empty,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Description: &empty,
 	}); err != nil {
 		t.Fatalf("UpdateSpace: %v", err)
 	}
@@ -781,8 +783,8 @@ func TestUpdateSpaceRejectsAnEmptyEdit(t *testing.T) {
 // set_space_audience's.
 func TestUpdateSpaceMakesASpacePrivateAndNeverOpensOne(t *testing.T) {
 	for _, audience := range []string{"private", " Private "} {
-		s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
-		got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: audience})
+		s, rec := recorded(t, named(ok(`{"name":"spaces/A"}`)))
+		got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Audience: audience})
 		if err != nil {
 			t.Fatalf("UpdateSpace %q: %v", audience, err)
 		}
@@ -794,9 +796,9 @@ func TestUpdateSpaceMakesASpacePrivateAndNeverOpensOne(t *testing.T) {
 			t.Errorf("%q: reported audience = %v", audience, got.Audience)
 		}
 	}
-	s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A"}`)))
 	for _, audience := range []string{"default", "audiences/AAAAaudience1"} {
-		_, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: audience})
+		_, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Audience: audience})
 		assertClass(t, err, ClassBlocked)
 	}
 	if rec.len() != 0 {
@@ -879,14 +881,16 @@ func TestUpdateSpaceKeepsTheGuidelines(t *testing.T) {
 		wantBody string
 		wantGets int
 	}{
-		{"a new description", UpdateSpaceInput{Space: "spaces/A", Description: &description},
-			`{"spaceDetails":{"description":"What this room is for","guidelines":"Be kind"}}`, 1},
-		{"a rename", UpdateSpaceInput{Space: "spaces/A", DisplayName: &name}, `{"displayName":"Renamed"}`, 0},
+		{"a new description", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Description: &description},
+			`{"spaceDetails":{"description":"What this room is for","guidelines":"Be kind"}}`, 2},
+		{"a rename", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", DisplayName: &name}, `{"displayName":"Renamed"}`, 1},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
+			// One read holds space_display_name to the space; a new
+			// description reads it again for the guidelines.
 			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
-					fmt.Fprint(w, `{"name":"spaces/A","spaceDetails":{"description":"Old","guidelines":"Be kind"}}`)
+					fmt.Fprint(w, `{"name":"spaces/A","displayName":"Team","spaceDetails":{"description":"Old","guidelines":"Be kind"}}`)
 					return
 				}
 				fmt.Fprint(w, `{"name":"spaces/A"}`)
@@ -903,8 +907,8 @@ func TestUpdateSpaceKeepsTheGuidelines(t *testing.T) {
 		})
 	}
 
-	s, rec := recorded(t, ok(`{"name":"spaces/A","spaceDetails":{"guidelines":"Be kind"}}`))
-	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Description: &description, DryRun: true})
+	s, rec := recorded(t, ok(`{"name":"spaces/A","displayName":"Team","spaceDetails":{"guidelines":"Be kind"}}`))
+	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Description: &description, DryRun: true})
 	if err != nil {
 		t.Fatalf("UpdateSpace dry run: %v", err)
 	}
@@ -943,8 +947,8 @@ func TestUpdateSpaceRefusesAnAudienceBesideOtherFields(t *testing.T) {
 // audience at all: the rename goes through and access is not touched.
 func TestUpdateSpaceTakesABlankAudienceAsLeftAlone(t *testing.T) {
 	name := "Renamed"
-	s, rec := recorded(t, ok(`{"name":"spaces/A"}`))
-	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", DisplayName: &name, Audience: " "})
+	s, rec := recorded(t, named(ok(`{"name":"spaces/A"}`)))
+	got, err := s.UpdateSpace(writeCtx(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", DisplayName: &name, Audience: " "})
 	if err != nil {
 		t.Fatalf("UpdateSpace: %v", err)
 	}
@@ -952,9 +956,10 @@ func TestUpdateSpaceTakesABlankAudienceAsLeftAlone(t *testing.T) {
 		t.Errorf("mask = %q, audience = %v; want a rename alone", m, got.Audience)
 	}
 
-	_, err = s.UpdateSpace(writeCtx(), UpdateSpaceInput{Space: "spaces/A", Audience: ""})
+	_, err = s.UpdateSpace(writeCtx(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Audience: ""})
 	assertClass(t, err, ClassInvalid)
-	if rec.len() != 1 {
+	// The rename read the space and wrote; the empty edit did neither.
+	if rec.len() != 2 {
 		t.Errorf("an empty edit reached Google")
 	}
 }
@@ -981,15 +986,18 @@ func TestCreateSpaceRefusesAnAudience(t *testing.T) {
 
 func TestUpdateSpaceDryRunChangesNothing(t *testing.T) {
 	name := "Renamed"
-	s, rec := recorded(t, ok(`{}`))
+	s, rec := recorded(t, named(ok(`{}`)))
 	got, err := s.UpdateSpace(context.Background(), UpdateSpaceInput{
-		Space: "spaces/A", DisplayName: &name, DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", DisplayName: &name, DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("UpdateSpace: %v", err)
 	}
-	if rec.len() != 0 {
-		t.Errorf("a dry run made %d requests", rec.len())
+	// It reads the space, to hold space_display_name to it, and writes
+	// nothing.
+	if w := rec.writes(); w != 0 {
+		t.Errorf("a dry run made %d writes", w)
 	}
 	if !got.DryRun || got.UpdateMask != "displayName" || got.Rendered["displayName"] != "Renamed" {
 		t.Errorf("result = %+v", got)
@@ -997,7 +1005,7 @@ func TestUpdateSpaceDryRunChangesNothing(t *testing.T) {
 }
 
 func TestSpaceWritesNameTheirScopes(t *testing.T) {
-	s := newService(t, status(403,
+	s := newNamedService(t, status(403,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	name := "Renamed"
 	for _, tc := range []struct {
@@ -1012,7 +1020,7 @@ func TestSpaceWritesNameTheirScopes(t *testing.T) {
 			return err
 		}, scopes.SpacesCreate},
 		{"update", func() error {
-			_, err := s.UpdateSpace(context.Background(), UpdateSpaceInput{Space: "spaces/A", DisplayName: &name})
+			_, err := s.UpdateSpace(context.Background(), UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", DisplayName: &name})
 			return err
 		}, scopes.Spaces},
 	} {
@@ -1022,3 +1030,26 @@ func TestSpaceWritesNameTheirScopes(t *testing.T) {
 
 // writeCtx is a context a write may be made under.
 func writeCtx() context.Context { return context.Background() }
+
+// bareSpace is the path of a read of one space, which is what the check
+// every write that names a space makes before it writes.
+var bareSpace = regexp.MustCompile(`/spaces/[^/:]+$`)
+
+// named answers that read with a space called "Team", the name these
+// tests pass as space_display_name, and hands every other request to h.
+func named(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && bareSpace.MatchString(r.URL.Path) {
+			fmt.Fprintf(w, `{"name":%q,"displayName":"Team","spaceType":"SPACE"}`,
+				r.URL.Path[strings.LastIndex(r.URL.Path, "spaces/"):])
+			return
+		}
+		h(w, r)
+	}
+}
+
+// newNamedService is newService for a write that names a space.
+func newNamedService(t *testing.T, handler http.HandlerFunc) *Service {
+	t.Helper()
+	return newService(t, named(handler))
+}

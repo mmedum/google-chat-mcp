@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 // Message limits. These are this server's, not Google's: the tool
@@ -539,7 +539,10 @@ const maxMessageText = 4096
 // SendMessageInput is one message to post.
 type SendMessageInput struct {
 	Space string
-	Text  string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
+	Text             string
 	// Thread replies to an existing thread. Empty starts a new one.
 	Thread string
 	// ReplyFallback starts a new thread when the one named is gone,
@@ -606,6 +609,9 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 		}
 	}
 
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
 	body := gchat.BuildSendMessage(text, thread, strings.TrimSpace(in.UploadToken))
 	if in.Markdown {
 		body.MarkupSyntax = gchat.MarkupMarkdown

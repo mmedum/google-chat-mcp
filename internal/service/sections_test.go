@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 const sectionPage = `{"sections":[
@@ -409,7 +409,7 @@ func TestPositionSectionSurvivesAResponseWithNoRank(t *testing.T) {
 
 func TestMoveSpaceToSectionFilesASpace(t *testing.T) {
 	c := &calls{}
-	s := newService(t, c.wrap(func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, c.wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			fmt.Fprint(w, `{"sectionItem":{"name":"users/123/sections/T/items/spaces%2FA","space":"spaces/A"}}`)
 			return
@@ -417,7 +417,8 @@ func TestMoveSpaceToSectionFilesASpace(t *testing.T) {
 		fmt.Fprint(w, `{"sectionItems":[{"name":"users/123/sections/S/items/spaces%2FA","space":"spaces/A"}]}`)
 	}))
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/123/sections/T",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/123/sections/T",
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)
@@ -436,7 +437,7 @@ func TestMoveSpaceToSectionFilesASpace(t *testing.T) {
 // The item's id survives a move, so a response this server cannot read
 // still yields the right name rather than an error.
 func TestMoveSpaceToSectionDerivesTheNewNameWhenGoogleGivesNone(t *testing.T) {
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			fmt.Fprint(w, `{}`)
 			return
@@ -444,7 +445,8 @@ func TestMoveSpaceToSectionDerivesTheNewNameWhenGoogleGivesNone(t *testing.T) {
 		fmt.Fprint(w, `{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`)
 	})
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/123/sections/T",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/123/sections/T",
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)
@@ -459,10 +461,11 @@ func TestMoveSpaceToSectionDerivesTheNewNameWhenGoogleGivesNone(t *testing.T) {
 // would call every already-filed space a move and write to all of them.
 func TestMoveSpaceToSectionIsANoOpWhenTheSpaceIsAlreadyFiled(t *testing.T) {
 	c := &calls{}
-	s := newService(t, c.wrap(ok(
+	s := newNamedService(t, c.wrap(ok(
 		`{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`)))
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/me/sections/S",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/me/sections/S",
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)
@@ -499,9 +502,10 @@ func TestSameSectionComparesTheSectionNotTheSpelling(t *testing.T) {
 // The hint exists to skip a lookup, so taking it must cost no request.
 func TestMoveSpaceToSectionTrustsTheItemHint(t *testing.T) {
 	c := &calls{}
-	s := newService(t, c.wrap(ok(`{"sectionItem":{"name":"users/123/sections/T/items/III"}}`)))
+	s := newNamedService(t, c.wrap(ok(`{"sectionItem":{"name":"users/123/sections/T/items/III"}}`)))
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/123/sections/T", Item: "users/123/sections/S/items/III",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/123/sections/T", Item: "users/123/sections/S/items/III",
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)
@@ -549,10 +553,11 @@ func TestMoveSpaceToSectionReportsASpaceWithNoSidebarEntry(t *testing.T) {
 // preview is for, and writes nothing.
 func TestMoveSpaceToSectionDryRunLooksButDoesNotWrite(t *testing.T) {
 	c := &calls{}
-	s := newService(t, c.wrap(ok(
+	s := newNamedService(t, c.wrap(ok(
 		`{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`)))
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/123/sections/T", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/123/sections/T", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)
@@ -573,9 +578,10 @@ func TestMoveSpaceToSectionDryRunLooksButDoesNotWrite(t *testing.T) {
 // Moved false means both "skipped" and "dry run", so the rendered body
 // is the only thing that tells them apart.
 func TestAnAlreadyFiledDryRunShowsNoBody(t *testing.T) {
-	s := newService(t, ok(`{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`))
+	s := newNamedService(t, ok(`{"sectionItems":[{"name":"users/123/sections/S/items/III","space":"spaces/A"}]}`))
 	got, err := s.MoveSpaceToSection(context.Background(), MoveSpaceToSectionInput{
-		Space: "spaces/A", Section: "users/123/sections/S", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Section: "users/123/sections/S", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("MoveSpaceToSection: %v", err)

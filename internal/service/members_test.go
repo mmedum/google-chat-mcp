@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
 )
 
 const membershipPage = `{"memberships":[
@@ -188,9 +188,10 @@ func noGuests(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func TestAddMemberInvitesByEmail(t *testing.T) {
-	s, rec := recorded(t, noGuests(ok(`{"name":"spaces/A/members/M"}`)))
+	s, rec := recorded(t, named(noGuests(ok(`{"name":"spaces/A/members/M"}`))))
 	got, err := s.AddMember(writeCtx(), AddMemberInput{
-		Space: "spaces/A", Email: "janedoe@example.com",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Email: "janedoe@example.com",
 	})
 	if err != nil {
 		t.Fatalf("AddMember: %v", err)
@@ -210,8 +211,8 @@ func TestAddMemberInvitesByEmail(t *testing.T) {
 // The membership that already exists belongs to whoever invited them
 // first. Returning it would say this call added them when it did not.
 func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
-	s := newService(t, noGuests(status(409, `{"error":{"status":"ALREADY_EXISTS","message":"already a member"}}`)))
-	_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
+	s := newNamedService(t, noGuests(status(409, `{"error":{"status":"ALREADY_EXISTS","message":"already a member"}}`)))
+	_, err := s.AddMember(writeCtx(), AddMemberInput{SpaceDisplayName: "Team", Space: "spaces/A", Email: "janedoe@example.com"})
 	assertClass(t, err, ClassInvalid)
 	if !strings.Contains(err.Error(), "janedoe@example.com") {
 		t.Errorf("error = %q, want it to name the person", err)
@@ -220,9 +221,10 @@ func TestAddMemberReportsSomeoneAlreadyInTheSpace(t *testing.T) {
 
 // A dry run reads the space, as the invite would, and invites nobody.
 func TestAddMemberDryRunInvitesNobody(t *testing.T) {
-	s, rec := recorded(t, noGuests(ok(`{"name":"spaces/A/members/M"}`)))
+	s, rec := recorded(t, named(noGuests(ok(`{"name":"spaces/A/members/M"}`))))
 	got, err := s.AddMember(writeCtx(), AddMemberInput{
-		Space: "spaces/A", Email: "janedoe@example.com", DryRun: true,
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Email: "janedoe@example.com", DryRun: true,
 	})
 	if err != nil {
 		t.Fatalf("AddMember: %v", err)
@@ -354,11 +356,11 @@ func TestRemoveMemberDryRunRemovesNobody(t *testing.T) {
 }
 
 func TestMemberWritesNameTheirScope(t *testing.T) {
-	s := newService(t, status(403,
+	s := newNamedService(t, status(403,
 		`{"error":{"status":"PERMISSION_DENIED","message":"Request had insufficient authentication scopes."}}`))
 	for _, run := range []func() error{
 		func() error {
-			_, err := s.AddExternalMember(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com"})
+			_, err := s.AddExternalMember(writeCtx(), AddMemberInput{SpaceDisplayName: "Team", Space: "spaces/A", Email: "janedoe@example.com"})
 			return err
 		},
 		func() error {
@@ -391,7 +393,7 @@ func TestAddMemberRefusesSomeoneFromOutside(t *testing.T) {
 		wantReads int
 	}{
 		{"in the directory", `{"externalUserAllowed":true}`,
-			ok(`{"people":[{"emailAddresses":[{"value":"JaneDoe@example.com"}]}]}`), false, false, "", 2},
+			ok(`{"people":[{"emailAddresses":[{"value":"JaneDoe@example.com"}]}]}`), false, false, "", 3},
 		{"not in the directory", `{"externalUserAllowed":true}`, ok(`{}`), false, false, ClassBlocked, 2},
 		{"a neighbor of the address", `{"externalUserAllowed":true}`,
 			ok(`{"people":[{"emailAddresses":[{"value":"janedoe@example.com.invalid"}]}]}`), false, false, ClassBlocked, 2},
@@ -400,14 +402,18 @@ func TestAddMemberRefusesSomeoneFromOutside(t *testing.T) {
 		{"a directory scope not granted", `{"externalUserAllowed":true}`, status(403, noScope), false, false, ClassScope, 2},
 		{"a directory that failed", `{"externalUserAllowed":true}`,
 			status(503, `{"error":{"code":503,"status":"UNAVAILABLE","message":"try later"}}`), false, false, ClassServer, 2},
-		{"a space that does not say", `{}`, ok(`{}`), false, false, "", 1},
-		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, ok(`{}`), false, false, "", 1},
-		{"through add_external_member", `{"externalUserAllowed":true}`, ok(`{}`), true, false, "", 0},
+		{"a space that does not say", `{}`, ok(`{}`), false, false, "", 2},
+		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, ok(`{}`), false, false, "", 2},
+		{"through add_external_member", `{"externalUserAllowed":true}`, ok(`{}`), true, false, "", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			// Every space here is called Team, the name the write
+			// passes; the space read's other fields are the case.
+			space := strings.Replace(tc.space, "{", `{"displayName":"Team",`, 1)
+			space = strings.Replace(space, `"Team",}`, `"Team"}`, 1)
 			s, rec := recorded(t, route(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
-					fmt.Fprint(w, tc.space)
+					fmt.Fprint(w, space)
 					return
 				}
 				fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
@@ -416,7 +422,7 @@ func TestAddMemberRefusesSomeoneFromOutside(t *testing.T) {
 			if tc.external {
 				add = s.AddExternalMember
 			}
-			_, err := add(writeCtx(), AddMemberInput{Space: "spaces/A", Email: "janedoe@example.com", DryRun: tc.dryRun})
+			_, err := add(writeCtx(), AddMemberInput{SpaceDisplayName: "Team", Space: "spaces/A", Email: "janedoe@example.com", DryRun: tc.dryRun})
 			reads, writes := rec.count(http.MethodGet), rec.writes()
 			// A failed read is retried, so the floor is what matters.
 			if reads < tc.wantReads || (tc.wantErr != ClassServer && reads != tc.wantReads) {
@@ -455,18 +461,20 @@ func TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted(t *testing.T) {
 	}{
 		{"a space that admits outsiders", `{"externalUserAllowed":true}`, false, ClassBlocked, 1},
 		{"a space that admits outsiders, in a dry run", `{"externalUserAllowed":true}`, true, ClassBlocked, 1},
-		{"a space that does not say", `{}`, false, "", 1},
-		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, false, "", 1},
+		{"a space that does not say", `{}`, false, "", 2},
+		{"a space that admits nobody from outside", `{"externalUserAllowed":false}`, false, "", 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			space := strings.Replace(tc.space, "{", `{"displayName":"Team",`, 1)
+			space = strings.Replace(space, `"Team",}`, `"Team"}`, 1)
 			s, rec := recorded(t, route(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
-					fmt.Fprint(w, tc.space)
+					fmt.Fprint(w, space)
 					return
 				}
 				fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
 			}, known))
-			_, err := s.AddMember(writeCtx(), AddMemberInput{Space: "spaces/A", Group: "groups/AAAAgroup1", DryRun: tc.dryRun})
+			_, err := s.AddMember(writeCtx(), AddMemberInput{SpaceDisplayName: "Team", Space: "spaces/A", Group: "groups/AAAAgroup1", DryRun: tc.dryRun})
 			if reads := rec.count(http.MethodGet); reads != tc.wantReads {
 				t.Errorf("%d reads, want %d", reads, tc.wantReads)
 			}
@@ -508,7 +516,7 @@ func TestAddExternalMemberHoldsAGroupToItsAddress(t *testing.T) {
 		wantErr   Class
 		wantReads int
 	}{
-		{"the group's address, in another case", " Team@Example.com ", ok(group), false, "", 1},
+		{"the group's address, in another case", " Team@Example.com ", ok(group), false, "", 2},
 		{"another address", "other@example.com", ok(group), false, ClassStale, 1},
 		{"another address, in a dry run", "other@example.com", ok(group), true, ClassStale, 1},
 		{"no address", "", ok(group), false, ClassInvalid, 0},
@@ -516,7 +524,7 @@ func TestAddExternalMemberHoldsAGroupToItsAddress(t *testing.T) {
 		{"a group that is gone", "team@example.com", status(404, gone), false, ClassNotFound, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
+			s, rec := recorded(t, named(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasPrefix(r.URL.Path, "/cloudidentity/"):
 					tc.read(w, r)
@@ -525,9 +533,10 @@ func TestAddExternalMemberHoldsAGroupToItsAddress(t *testing.T) {
 				default:
 					fmt.Fprint(w, `{"name":"spaces/A/members/M"}`)
 				}
-			})
+			}))
 			_, err := s.AddExternalMember(writeCtx(), AddMemberInput{
-				Space: "spaces/A", Group: "groups/AAAAgroup1", GroupEmail: tc.witness, DryRun: tc.dryRun,
+				SpaceDisplayName: "Team",
+				Space:            "spaces/A", Group: "groups/AAAAgroup1", GroupEmail: tc.witness, DryRun: tc.dryRun,
 			})
 			if reads := rec.count(http.MethodGet); reads != tc.wantReads {
 				t.Errorf("%d reads, want %d", reads, tc.wantReads)
@@ -556,9 +565,10 @@ func TestAddExternalMemberHoldsAGroupToItsAddress(t *testing.T) {
 // The tools that hand Google a caller-supplied address all say what to
 // check, because the address is nearly always what Google objected to.
 func TestAddMemberExplainsAnAddressGoogleWillNotTake(t *testing.T) {
-	s := newService(t, noGuests(status(400, `{"error":{"status":"INVALID_ARGUMENT","message":"invalid member"}}`)))
+	s := newNamedService(t, noGuests(status(400, `{"error":{"status":"INVALID_ARGUMENT","message":"invalid member"}}`)))
 	_, err := s.AddMember(writeCtx(), AddMemberInput{
-		Space: "spaces/A", Email: "janedoe@example.com",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/A", Email: "janedoe@example.com",
 	})
 	assertClass(t, err, ClassInvalid)
 	if !strings.Contains(err.Error(), "directory") || !strings.Contains(err.Error(), "janedoe@example.com") {
@@ -670,13 +680,14 @@ func TestUpdateMemberRoleDryRun(t *testing.T) {
 // two shapes are not mixed.
 func TestAddMemberTakesAGroupOrAPerson(t *testing.T) {
 	var body map[string]any
-	s := newService(t, func(w http.ResponseWriter, r *http.Request) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		fmt.Fprint(w, `{"name":"spaces/AAAAspace1/members/AAAAmember1","role":"ROLE_MANAGER"}`)
 	})
 
 	got, err := s.AddMember(writeCtx(), AddMemberInput{
-		Space: "spaces/AAAAspace1", Group: "groups/AAAAgroup1",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Group: "groups/AAAAgroup1",
 	})
 	if err != nil {
 		t.Fatalf("AddMember: %v", err)
@@ -696,7 +707,8 @@ func TestAddMemberTakesAGroupOrAPerson(t *testing.T) {
 	}
 
 	_, err = s.AddMember(writeCtx(), AddMemberInput{
-		Space: "spaces/AAAAspace1", Email: "janedoe@example.com", Group: "groups/AAAAgroup1",
+		SpaceDisplayName: "Team",
+		Space:            "spaces/AAAAspace1", Email: "janedoe@example.com", Group: "groups/AAAAgroup1",
 	})
 	assertClass(t, err, ClassInvalid)
 }

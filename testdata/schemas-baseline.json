@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v7.1.0",
+  "version": "v8.0.0",
   "sdk": "v1.8.0",
   "tools": [
     {
@@ -30,6 +30,10 @@
             "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Its members from outside the organization join with it, and so does anyone added to the group later",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space to invite them into, spaces/{id}. It has to be one that admits people from outside the organization",
             "type": "string"
@@ -40,7 +44,8 @@
           }
         },
         "required": [
-          "space_id"
+          "space_id",
+          "space_display_name"
         ],
         "type": "object"
       },
@@ -113,6 +118,10 @@
             "description": "a Google Group to add, groups/{id}; find_group turns the group's email address into one. Google allows a group only in a named space, never a group chat or a direct message. Refused in a space that admits people from outside the organization",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space to invite them into, spaces/{id}",
             "type": "string"
@@ -123,7 +132,8 @@
           }
         },
         "required": [
-          "space_id"
+          "space_id",
+          "space_display_name"
         ],
         "type": "object"
       },
@@ -3791,13 +3801,18 @@
             "description": "check the arguments without changing anything",
             "type": "boolean"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space, spaces/{id}",
             "type": "string"
           }
         },
         "required": [
-          "space_id"
+          "space_id",
+          "space_display_name"
         ],
         "type": "object"
       },
@@ -3851,6 +3866,10 @@
             "description": "rewind your read mark to this time, RFC 3339: every top-level message after it becomes unread. get_messages reports each message's timestamp, so pass the timestamp of the message you want to come back to",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space, spaces/{id}",
             "type": "string"
@@ -3858,6 +3877,7 @@
         },
         "required": [
           "space_id",
+          "space_display_name",
           "from_time"
         ],
         "type": "object"
@@ -3916,6 +3936,10 @@
             "description": "where to file it, users/{user}/sections/{section}",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space to file, spaces/{id}",
             "type": "string"
@@ -3923,6 +3947,7 @@
         },
         "required": [
           "space_id",
+          "space_display_name",
           "section_name"
         ],
         "type": "object"
@@ -5139,6 +5164,10 @@
             "description": "if the thread named is gone, start a new thread instead of failing. Only meaningful with thread_name; the default fails, so a reply never lands somewhere unexpected",
             "type": "boolean"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space to post in, spaces/{id}, from list_spaces or find_direct_message",
             "type": "string"
@@ -5154,6 +5183,7 @@
         },
         "required": [
           "space_id",
+          "space_display_name",
           "text"
         ],
         "type": "object"
@@ -5704,13 +5734,18 @@
             "description": "return the patch body and its mask without applying them",
             "type": "boolean"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space to edit, spaces/{id}",
             "type": "string"
           }
         },
         "required": [
-          "space_id"
+          "space_id",
+          "space_display_name"
         ],
         "type": "object"
       },
@@ -5798,13 +5833,18 @@
             "description": "ALL, MAIN_CONVERSATIONS, FOR_YOU or OFF; omit to leave it alone",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space, spaces/{id}",
             "type": "string"
           }
         },
         "required": [
-          "space_id"
+          "space_id",
+          "space_display_name"
         ],
         "type": "object"
       },
@@ -5870,6 +5910,10 @@
             "description": "the file to send, inside the server's local directory. A bare name is taken as being in that directory; a path outside it is refused",
             "type": "string"
           },
+          "space_display_name": {
+            "description": "what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused",
+            "type": "string"
+          },
           "space_id": {
             "description": "the space the file is for, spaces/{id}. The token only works for this space",
             "type": "string"
@@ -5877,6 +5921,7 @@
         },
         "required": [
           "space_id",
+          "space_display_name",
           "local_path"
         ],
         "type": "object"

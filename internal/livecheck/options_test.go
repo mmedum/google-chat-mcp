@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,18 +42,24 @@ import (
 // which is a reason; "nobody got round to it" is not, and none of these
 // says that.
 var excusedOptions = map[string]string{
-	"create_space.member_emails":                     "would put a real colleague in a scratch space; a live run involves nobody else",
-	"download_attachment.attachment_name":            "the by-name form of a download the step already makes by message",
-	"get_messages.since":                             "a time bound on a space minutes old, where every bound is degenerate",
-	"list_space_events.since":                        "same: the scratch space has no history to bound",
-	"list_space_events.until":                        "same",
-	"list_members.expand_groups":                     "the scratch space has no Google Group in it: LIVE_GROUP_EMAIL is looked up and added nowhere",
-	"list_spaces.space_type":                         "filters the account's own spaces rather than the scratch one, so it reads what this run did not create",
-	"remove_reaction.reaction_name":                  "the by-name form of a removal the step already makes by emoji",
-	"search_people.sources":                          "narrows to one upstream; the step asserts a directory hit, which the default already reaches",
-	"send_message.reply_fallback":                    "needs a thread that has since been deleted to fall back from",
-	"update_space_notification_setting.mute_setting": "the same call the notification step makes, with a different field",
-	"upload_attachment.file_name":                    "renames an upload the step already makes under its own name",
+	"add_member.space_display_name":                        "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"mark_space_read.space_display_name":                   "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"mark_space_unread.space_display_name":                 "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"update_space.space_display_name":                      "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"update_space_notification_setting.space_display_name": "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"upload_attachment.space_display_name":                 "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"create_space.member_emails":                           "would put a real colleague in a scratch space; a live run involves nobody else",
+	"download_attachment.attachment_name":                  "the by-name form of a download the step already makes by message",
+	"get_messages.since":                                   "a time bound on a space minutes old, where every bound is degenerate",
+	"list_space_events.since":                              "same: the scratch space has no history to bound",
+	"list_space_events.until":                              "same",
+	"list_members.expand_groups":                           "the scratch space has no Google Group in it: LIVE_GROUP_EMAIL is looked up and added nowhere",
+	"list_spaces.space_type":                               "filters the account's own spaces rather than the scratch one, so it reads what this run did not create",
+	"remove_reaction.reaction_name":                        "the by-name form of a removal the step already makes by emoji",
+	"search_people.sources":                                "narrows to one upstream; the step asserts a directory hit, which the default already reaches",
+	"send_message.reply_fallback":                          "needs a thread that has since been deleted to fall back from",
+	"update_space_notification_setting.mute_setting":       "the same call the notification step makes, with a different field",
+	"upload_attachment.file_name":                          "renames an upload the step already makes under its own name",
 }
 
 // excusedPatterns excuse a whole class of option with one reason, because
@@ -299,4 +306,17 @@ func slicesContains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// The driver fills in space_display_name for exactly the tools that take
+// it, so a tool that gains the argument cannot run unnamed here.
+func TestEveryToolThatNamesASpaceIsFilledIn(t *testing.T) {
+	for name, options := range toolOptions(t) {
+		switch takes := slices.Contains(options, "space_display_name"); {
+		case takes && !namesItsSpace[name]:
+			t.Errorf("%s takes space_display_name and namesItsSpace leaves it out", name)
+		case !takes && namesItsSpace[name]:
+			t.Errorf("%s takes no space_display_name and namesItsSpace names it", name)
+		}
+	}
 }

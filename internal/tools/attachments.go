@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 // DownloadAttachmentInput names one attachment on one message.
@@ -66,7 +66,7 @@ func registerAttachments(s *mcp.Server, d Deps) {
 		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UploadAttachmentInput) (*mcp.CallToolResult, UploadAttachmentOutput, error) {
 		got, err := d.Service.UploadAttachment(ctx, service.UploadAttachmentInput{
-			Space: in.SpaceID, Path: in.LocalPath, FileName: in.FileName, DryRun: in.DryRun,
+			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Path: in.LocalPath, FileName: in.FileName, DryRun: in.DryRun,
 		})
 		if err != nil {
 			return nil, UploadAttachmentOutput{}, err
@@ -84,10 +84,11 @@ func registerAttachments(s *mcp.Server, d Deps) {
 
 // UploadAttachmentInput is one local file to put in a space.
 type UploadAttachmentInput struct {
-	SpaceID   string `json:"space_id" jsonschema:"the space the file is for, spaces/{id}. The token only works for this space"`
-	LocalPath string `json:"local_path" jsonschema:"the file to send, inside the server's local directory. A bare name is taken as being in that directory; a path outside it is refused"`
-	FileName  string `json:"file_name,omitempty" jsonschema:"the name the file gets in Chat, with its extension. Omit to keep the name it has on disk"`
-	DryRun    bool   `json:"dry_run,omitempty" jsonschema:"report the file and the request metadata without uploading; call again without it to upload"`
+	SpaceID          string `json:"space_id" jsonschema:"the space the file is for, spaces/{id}. The token only works for this space"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	LocalPath        string `json:"local_path" jsonschema:"the file to send, inside the server's local directory. A bare name is taken as being in that directory; a path outside it is refused"`
+	FileName         string `json:"file_name,omitempty" jsonschema:"the name the file gets in Chat, with its extension. Omit to keep the name it has on disk"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"report the file and the request metadata without uploading; call again without it to upload"`
 }
 
 // UploadAttachmentOutput is the reference send_message attaches with.

@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v7/internal/config"
-	"github.com/mmedum/google-chat-mcp/v7/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v7/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v7/internal/service"
+	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v8/internal/service"
 )
 
 type staticToken string
@@ -287,7 +287,7 @@ var toolArgs = map[string]map[string]any{
 	"list_spaces":                       {},
 	"search_spaces":                     {"display_name": "Engineering"},
 	"download_attachment":               {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1"},
-	"upload_attachment":                 {"space_id": "spaces/AAAAspace1", "local_path": "emoji.png"},
+	"upload_attachment":                 {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "local_path": "emoji.png"},
 	"list_space_events":                 {"space_id": "spaces/AAAAspace1", "event_types": []any{"message_created"}},
 	"get_space_event":                   {"event_name": "spaces/AAAAspace1/spaceEvents/AAAAevent1"},
 	"get_member":                        {"membership_name": "spaces/AAAAspace1/members/AAAAmember1"},
@@ -304,10 +304,10 @@ var toolArgs = map[string]map[string]any{
 	"unpin_message":                     {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "dry_run": true},
 	"get_space_read_state":              {"space_id": "spaces/AAAAspace1"},
 	"get_thread_read_state":             {"space_id": "spaces/AAAAspace1", "thread_name": "spaces/AAAAspace1/threads/AAAAthread1"},
-	"mark_space_read":                   {"space_id": "spaces/AAAAspace1", "dry_run": true},
-	"mark_space_unread":                 {"space_id": "spaces/AAAAspace1", "from_time": "2026-01-02T03:04:05Z", "dry_run": true},
+	"mark_space_read":                   {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "dry_run": true},
+	"mark_space_unread":                 {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "from_time": "2026-01-02T03:04:05Z", "dry_run": true},
 	"get_space_notification_setting":    {"space_id": "spaces/AAAAspace1"},
-	"update_space_notification_setting": {"space_id": "spaces/AAAAspace1", "mute_setting": "MUTED", "dry_run": true},
+	"update_space_notification_setting": {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "mute_setting": "MUTED", "dry_run": true},
 	"update_member_role":                {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MEMBER", "dry_run": true},
 	"promote_member":                    {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MANAGER", "confirm": true},
 	"find_group_chats":                  {"member_emails": []any{"janedoe@example.com"}},
@@ -323,7 +323,7 @@ var toolArgs = map[string]map[string]any{
 	"list_reactions":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1"},
 	"list_sections":                     {},
 	"list_section_items":                {"section_name": "users/me/sections/AAAAsection1"},
-	"send_message":                      {"space_id": "spaces/AAAAspace1", "text": "hello"},
+	"send_message":                      {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "text": "hello"},
 	"update_message":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text": "edited"},
 	"delete_message":                    {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text_start": "the standup moved to 10", "confirm": true},
 	"delete_thread":                     {"message_name": "spaces/AAAAspace1/messages/AAAAmsg1", "text_start": "the standup moved to 10", "confirm": true},
@@ -332,15 +332,15 @@ var toolArgs = map[string]map[string]any{
 	"create_group_chat":                 {"member_emails": []string{"janedoe@example.com", "johndoe@example.com"}},
 	"create_space":                      {"display_name": "Team standup", "member_emails": []string{"janedoe@example.com"}},
 	"set_space_audience":                {"space_id": "spaces/AAAAspace1", "audience": "default", "display_name": "Team standup", "confirm": true},
-	"update_space":                      {"space_id": "spaces/AAAAspace1", "display_name": "Renamed"},
-	"add_member":                        {"space_id": "spaces/AAAAspace1", "user_email": "janedoe@example.com"},
-	"add_external_member":               {"space_id": "spaces/AAAAspace1", "user_email": "guest@example.org", "confirm": true},
+	"update_space":                      {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "display_name": "Renamed"},
+	"add_member":                        {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "user_email": "janedoe@example.com"},
+	"add_external_member":               {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "user_email": "guest@example.org", "confirm": true},
 	"remove_member":                     {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "confirm": true},
 	"create_section":                    {"display_name": "Clients"},
 	"rename_section":                    {"section_name": "users/me/sections/AAAAsection1", "display_name": "Clients"},
 	"delete_section":                    {"section_name": "users/me/sections/AAAAsection1", "confirm": true},
 	"position_section":                  {"section_name": "users/me/sections/AAAAsection1", "relative_position": "START"},
-	"move_space_to_section":             {"space_id": "spaces/AAAAspace1", "section_name": "users/me/sections/AAAAsection1", "item_name": "users/me/sections/AAAAsection1/items/AAAAitem1"},
+	"move_space_to_section":             {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "section_name": "users/me/sections/AAAAsection1", "item_name": "users/me/sections/AAAAsection1/items/AAAAitem1"},
 }
 
 // everyRegisteredTool checks the table above still covers the surface,
