@@ -324,3 +324,40 @@ func TestADuplicateReactionSaysWhereToLookWhenItCannotIdentifyTheCaller(t *testi
 		t.Errorf("error = %q, want it to say where to look", err)
 	}
 }
+
+// Chat names a reaction's user by id alone. The page's people are
+// resolved in one People batch, as a page of senders is, and someone
+// the directory cannot see keeps their reaction with no name.
+func TestListReactionsNamesWhoReacted(t *testing.T) {
+	const twoReactions = `{"reactions":[
+	  {"name":"spaces/A/messages/1/reactions/R1","emoji":{"unicode":"👍"},"user":{"name":"users/1"}},
+	  {"name":"spaces/A/messages/1/reactions/R2","emoji":{"unicode":"🎉"},"user":{"name":"users/2"}}
+	]}`
+	var batches int
+	counted := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) { batches++; h(w, r) }
+	}
+
+	s := newService(t, route(ok(twoReactions), counted(people("janedoe@example.com", "Jane D."))))
+	got, err := s.ListReactions(context.Background(), ListReactionsInput{Message: "spaces/A/messages/1"})
+	if err != nil {
+		t.Fatalf("ListReactions: %v", err)
+	}
+	for _, r := range got.Reactions {
+		if r.Email != "janedoe@example.com" || r.DisplayName != "Jane D." {
+			t.Errorf("reaction %s = %+v, want Jane D. <janedoe@example.com>", r.Name, r)
+		}
+	}
+	if batches != 1 {
+		t.Errorf("%d People requests for one page, want 1", batches)
+	}
+
+	s = newService(t, route(ok(twoReactions), nobody()))
+	got, err = s.ListReactions(context.Background(), ListReactionsInput{Message: "spaces/A/messages/1"})
+	if err != nil {
+		t.Fatalf("ListReactions: %v", err)
+	}
+	if len(got.Reactions) != 2 || got.Reactions[0].Email != "" || got.Reactions[0].DisplayName != "" {
+		t.Errorf("reactions = %+v, want both kept and nobody named", got.Reactions)
+	}
+}

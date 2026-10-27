@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `list_reactions` names who reacted: `user_email` and `user_display_name`, resolved as a message's sender is and null when neither Chat nor the People API says. Chat gives a reaction's user as an id alone, and `get_member` cannot name someone who is in the space through a group.
+
 ## [7.0.2] - 2026-10-24
 
 ### Fixed

@@ -421,15 +421,22 @@ var steps = []step{
 		d.must("add_reaction", map[string]any{"message_name": d.posted, "emoji": "👍"})
 	}},
 
-	{"the reaction is listed", "list_reactions", func(d *driver) {
+	{"the reaction is listed, naming who reacted", "list_reactions", func(d *driver) {
 		var out struct {
 			Reactions []struct {
-				Emoji string `json:"emoji"`
+				Emoji     string  `json:"emoji"`
+				UserEmail *string `json:"user_email"`
 			} `json:"reactions"`
 		}
 		d.into(d.must("list_reactions", map[string]any{"message_name": d.posted}), &out)
 		if len(out.Reactions) == 0 {
 			d.t.Error("list_reactions returned nothing after one was added")
+			return
+		}
+		// Chat names a reaction's user by id alone; the server resolves
+		// the address, as it does a sender's.
+		if got := out.Reactions[0].UserEmail; got == nil || !strings.EqualFold(*got, d.email) {
+			d.t.Error("the reaction does not name the signed-in account")
 		}
 	}},
 

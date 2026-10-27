@@ -13,6 +13,10 @@ type ReactionOutput struct {
 	ReactionName string `json:"reaction_name" jsonschema:"the reaction's resource name; remove_reaction takes it"`
 	Emoji        string `json:"emoji" jsonschema:"the emoji character"`
 	UserID       string `json:"user_id" jsonschema:"who reacted, users/{id}"`
+	// user_email and user_display_name are null when neither Chat nor
+	// the People API said who it is, as a message's sender fields are.
+	UserEmail       *string `json:"user_email" jsonschema:"who reacted: their email address, or null when it could not be resolved"`
+	UserDisplayName *string `json:"user_display_name" jsonschema:"who reacted: their name, or null when Google gave none"`
 }
 
 // ListReactionsOutput is a page of reactions.
@@ -31,7 +35,8 @@ type ListReactionsInput struct {
 func registerReactions(s *mcp.Server, d Deps) {
 	register(s, d, spec{
 		Name: "list_reactions",
-		Description: "List the reactions on a single message: who reacted and with what. Default limit 50, max 200; " +
+		Description: "List the reactions on a single message: who reacted, by name and email as a message's sender is, " +
+			"and with what. Default limit 50, max 200; " +
 			"page with page_token and next_page_token. Custom emoji are left out, having no character to show.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ListReactionsInput) (*mcp.CallToolResult, ListReactionsOutput, error) {
@@ -48,6 +53,7 @@ func registerReactions(s *mcp.Server, d Deps) {
 		for _, r := range got.Reactions {
 			out.Reactions = append(out.Reactions, ReactionOutput{
 				ReactionName: r.Name, Emoji: r.Emoji, UserID: r.UserID,
+				UserEmail: nullable(r.Email), UserDisplayName: nullable(r.DisplayName),
 			})
 		}
 		return nil, out, nil

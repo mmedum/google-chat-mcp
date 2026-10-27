@@ -15,11 +15,15 @@ const (
 	maxReactionLimit     = 200
 )
 
-// Reaction is one person's reaction to a message.
+// Reaction is one person's reaction to a message. Email and
+// DisplayName are who reacted, resolved as a message's sender is; empty
+// when neither Chat nor the People API said.
 type Reaction struct {
-	Name   string
-	Emoji  string
-	UserID string
+	Name        string
+	Emoji       string
+	UserID      string
+	Email       string
+	DisplayName string
 }
 
 // ListReactionsInput selects a page of a message's reactions.
@@ -59,17 +63,27 @@ func (s *Service) ListReactions(ctx context.Context, in ListReactionsInput) (*Li
 		Reactions:     make([]Reaction, 0, len(resp.Reactions)),
 		NextPageToken: resp.NextPageToken,
 	}
+	users := make([]*gchat.User, 0, len(resp.Reactions))
 	for _, r := range resp.Reactions {
 		if r.Emoji == nil || r.Emoji.Unicode == "" || r.User == nil {
 			// A custom emoji has no unicode character, so there is
 			// nothing to show for it in a listing keyed on one.
 			continue
 		}
+		users = append(users, r.User)
 		out.Reactions = append(out.Reactions, Reaction{
 			Name:   r.Name,
 			Emoji:  r.Emoji.Unicode,
 			UserID: r.User.Name,
 		})
+	}
+	// Chat names a reaction's user by id alone, and get_member cannot
+	// name someone in the space through a group, so the page's people
+	// are resolved in one batch, as a page of messages' senders are.
+	people := s.resolvePeople(ctx, users)
+	for i := range out.Reactions {
+		person := people[out.Reactions[i].UserID]
+		out.Reactions[i].Email, out.Reactions[i].DisplayName = person.Email, person.DisplayName
 	}
 	return out, nil
 }
