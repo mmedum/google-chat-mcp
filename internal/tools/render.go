@@ -774,7 +774,7 @@ func (o RemoveMemberOutput) Render() string {
 
 // Render is one reaction.
 func (o ReactionOutput) Render() string {
-	return meta(o.ReactionName, o.Emoji, o.UserID)
+	return meta(o.ReactionName, o.Emoji, person(o.UserID, o.UserDisplayName, o.UserEmail))
 }
 
 // Render lists the reactions on a message.

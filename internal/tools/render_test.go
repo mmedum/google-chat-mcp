@@ -336,6 +336,15 @@ func TestRenderings(t *testing.T) {
 			avoid: []string{"Removed"},
 		},
 		{
+			name: "a reaction names who reacted, or their id when nobody said",
+			out: ListReactionsOutput{Reactions: []ReactionOutput{
+				{ReactionName: "spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreact1", Emoji: "👍", UserID: "users/1",
+					UserDisplayName: ptr("Jane D."), UserEmail: ptr("janedoe@example.com")},
+				{ReactionName: "spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreact2", Emoji: "🎉", UserID: "users/2"},
+			}},
+			want: []string{"2 reactions", "👍", "Jane D. <janedoe@example.com> (users/1)", "🎉", "users/2"},
+		},
+		{
 			name: "adding a reaction names the emoji and the resource",
 			out:  AddReactionOutput{ReactionName: "spaces/AAAAspace1/messages/AAAAmsg1/reactions/AAAAreact1", Emoji: "👍", UserID: "users/1"},
 			want: []string{"Reacted 👍", "reactions/AAAAreact1"},

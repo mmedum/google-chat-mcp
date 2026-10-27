@@ -11,6 +11,12 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-10-27
+
+### Added
+
+- `list_reactions` names who reacted: `user_email` and `user_display_name`, resolved as a message's sender is and null when neither Chat nor the People API says. Chat gives a reaction's user as an id alone, and `get_member` cannot name someone who is in the space through a group.
+
 ## [7.0.2] - 2026-10-24
 
 ### Fixed
@@ -784,7 +790,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...HEAD
+[7.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...v7.1.0
 [7.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...v7.0.2
 [7.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...v7.0.1
 [7.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v6.1.0...v7.0.0

@@ -272,11 +272,17 @@ func TestListMembersExpandsGroupsThroughASession(t *testing.T) {
 }
 
 func TestListReactionsThroughASession(t *testing.T) {
-	cs := session(t, body(`{"reactions":[{"name":"spaces/A/messages/1/reactions/R1","emoji":{"unicode":"👍"},"user":{"name":"users/1"}}]}`))
+	cs := session(t, chatAndPeople(
+		body(`{"reactions":[{"name":"spaces/A/messages/1/reactions/R1","emoji":{"unicode":"👍"},"user":{"name":"users/1"}}]}`),
+		body(`{"responses":[{"requestedResourceName":"people/1","person":{"emailAddresses":[{"value":"janedoe@example.com"}],"names":[{"displayName":"Jane D."}]}}]}`),
+	))
 	var out ListReactionsOutput
 	call(t, cs, "list_reactions", map[string]any{"message_name": "spaces/A/messages/1"}, &out)
 	if len(out.Reactions) != 1 || out.Reactions[0].Emoji != "👍" {
 		t.Errorf("list_reactions = %+v", out)
+	}
+	if r := out.Reactions[0]; deref(r.UserEmail) != "janedoe@example.com" || deref(r.UserDisplayName) != "Jane D." {
+		t.Errorf("who reacted = %v, %v; want Jane D. <janedoe@example.com>", r.UserDisplayName, r.UserEmail)
 	}
 	if out.NextPageToken != nil {
 		t.Error("a single page should report no next page")

@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-24",
+  "fetched": "2026-10-27",
   "apis": [
     {
       "api": "chat",
@@ -186,6 +186,22 @@
           ]
         },
         {
+          "name": "Citation",
+          "properties": [
+            "citedSources",
+            "id"
+          ]
+        },
+        {
+          "name": "CitedSource",
+          "properties": [
+            "footer",
+            "snippet",
+            "title",
+            "uri"
+          ]
+        },
+        {
           "name": "Color",
           "properties": [
             "alpha",
@@ -320,6 +336,19 @@
           ]
         },
         {
+          "name": "Elements",
+          "properties": [
+            "citations",
+            "citedSources"
+          ]
+        },
+        {
+          "name": "ElementsImage",
+          "properties": [
+            "imageUri"
+          ]
+        },
+        {
           "name": "Emoji",
           "properties": [
             "customEmoji",
@@ -342,6 +371,12 @@
           "properties": [
             "nextPageToken",
             "spaces"
+          ]
+        },
+        {
+          "name": "Footer",
+          "properties": [
+            "text"
           ]
         },
         {
@@ -1054,6 +1089,7 @@
             "createTime",
             "deleteTime",
             "deletionMetadata",
+            "elements",
             "emojiReactionSummaries",
             "fallbackText",
             "formattedText",
@@ -1337,6 +1373,13 @@
             "commandName",
             "triggersDialog",
             "type"
+          ]
+        },
+        {
+          "name": "Snippet",
+          "properties": [
+            "imagePreview",
+            "text"
           ]
         },
         {
