@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [8.0.0] - 2026-10-27
+
 ### Changed
 
 - **Breaking:** `send_message`, `upload_attachment`, `add_member`, `add_external_member`, `update_space`, `update_space_notification_setting`, `mark_space_read`, `mark_space_unread` and `move_space_to_section` take a required `space_display_name`: a named space by its name as `list_spaces` gives it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. The client's prompt that approves a call shows its arguments, and a space's id names nothing a person recognizes. The name is checked against the space before anything is written, dry runs included, and a call naming another space is refused `[stale]`; each of these writes reads the space first.
@@ -795,7 +797,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...HEAD
+[8.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...v8.0.0
 [7.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...v7.1.0
 [7.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...v7.0.2
 [7.0.1]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.0...v7.0.1
