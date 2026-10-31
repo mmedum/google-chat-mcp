@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-10-31
+
 ### Changed
 
 - The fifteen tools that replace or remove something now say `destructiveHint: true`, as the MCP spec reads `false` as "only additive updates": `update_message`, `update_space`, `update_member_role`, `admin_update_space`, `admin_update_member_role`, `remove_reaction`, `unpin_message`, `rename_section`, `position_section`, `move_space_to_section`, `set_availability`, `set_custom_status`, `mark_space_read`, `mark_space_unread` and `update_space_notification_setting`. claude.ai, ChatGPT and Codex may now ask before these; if you run them unattended there, allow them again. They still need no `GCM_ENABLE_DESTRUCTIVE` and no `confirm`.
@@ -828,7 +830,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...HEAD
+[9.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...v9.1.0
 [9.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...v9.0.0
 [8.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...v8.0.0
 [7.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...v7.1.0
