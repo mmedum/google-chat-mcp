@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-10-31
+
 ### Added
 
 - Tools for a Workspace administrator, in the `admin` toolset, that act on any space in the organization, including spaces you are not in. `admin_search_spaces`, `admin_get_space`, `admin_list_members` and `admin_get_member` read. `admin_update_space` changes a named space's name, description or guidelines, and says what each was before. `admin_update_member_role` makes a manager an ordinary member.
@@ -20,7 +22,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Changed
 
 - **Breaking:** the module path is `github.com/mmedum/google-chat-mcp/v9`. Install with `go install github.com/mmedum/google-chat-mcp/v9/cmd/google-chat-mcp@latest`.
-- **Breaking:** if you use the `admin` toolset, add `chat.admin.memberships.readonly`, `chat.admin.spaces` and `chat.admin.memberships` to your OAuth consent screen, plus `chat.admin.delete` with `GCM_ENABLE_DESTRUCTIVE=true`, and run `google-chat-mcp login` again. `login` now asks for them; under `GCM_READ_ONLY` it asks only for `chat.admin.memberships.readonly`. Until you do, the new admin tools return `[scope]`.
+- **Breaking:** if you use the `admin` toolset, add `chat.admin.spaces.readonly`, `chat.admin.memberships.readonly`, `chat.admin.spaces` and `chat.admin.memberships` to your OAuth consent screen, plus `chat.admin.delete` with `GCM_ENABLE_DESTRUCTIVE=true`, and run `google-chat-mcp login` again. `login` now asks for them; under `GCM_READ_ONLY` it asks only for the two `.readonly` scopes. Until you do, the new admin tools return `[scope]`.
 
 ### Removed
 
@@ -816,7 +818,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...HEAD
+[9.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...v9.0.0
 [8.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...v8.0.0
 [7.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...v7.1.0
 [7.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...v7.0.2
