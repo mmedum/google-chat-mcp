@@ -314,6 +314,31 @@ func TestGetSpaceKeepsWhatGoogleDidNotSay(t *testing.T) {
 	}
 }
 
+// Google writes a time it does not have as the Unix epoch, as an
+// administrator's read of a space did for its last active time.
+func TestGetSpaceReadsTheEpochAsNoTime(t *testing.T) {
+	for _, tc := range []struct {
+		sent string
+		want time.Time
+	}{
+		{"1970-01-01T00:00:00Z", time.Time{}},
+		{"1970-01-01T00:00:00.5Z", time.Date(1970, 1, 1, 0, 0, 0, 500000000, time.UTC)},
+		{"1970-01-01T00:00:01Z", time.Date(1970, 1, 1, 0, 0, 1, 0, time.UTC)},
+		{"2026-01-03T09:00:00Z", time.Date(2026, 1, 3, 9, 0, 0, 0, time.UTC)},
+	} {
+		s := newService(t, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprintf(w, `{"name":"spaces/A","spaceType":"SPACE","displayName":"Team","lastActiveTime":%q}`, tc.sent)
+		})
+		got, err := s.GetSpace(context.Background(), "spaces/A")
+		if err != nil {
+			t.Fatalf("GetSpace with lastActiveTime %s: %v", tc.sent, err)
+		}
+		if !got.LastActiveTime.Equal(tc.want) {
+			t.Errorf("lastActiveTime %s read as %v, want %v", tc.sent, got.LastActiveTime, tc.want)
+		}
+	}
+}
+
 func TestGetSpaceReadsWhoCanFindIt(t *testing.T) {
 	s := newService(t, func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"name":"spaces/A","spaceType":"SPACE","displayName":"Team",
@@ -678,6 +703,27 @@ func TestEachLimitTakesItsMaximumAndRefusesOneMore(t *testing.T) {
 			_, err := s.CreateSpace(ctx, CreateSpaceInput{DisplayName: "Team", MemberEmails: members(n), DryRun: true})
 			return err
 		}, 20},
+		// Google's limits on a space count UTF-16 units: a two-byte
+		// letter counts once and an emoji twice, as it did live.
+		{"space description, two-byte letters", func(n int) error {
+			d := strings.Repeat("é", n)
+			_, err := s.UpdateSpace(ctx, UpdateSpaceInput{Space: "spaces/A", SpaceDisplayName: "Team", Description: &d, DryRun: true})
+			return err
+		}, 4096},
+		{"space description, emoji", func(n int) error {
+			d := strings.Repeat("😀", n)
+			_, err := s.UpdateSpace(ctx, UpdateSpaceInput{Space: "spaces/A", SpaceDisplayName: "Team", Description: &d, DryRun: true})
+			return err
+		}, 2048},
+		{"space guidelines, emoji", func(n int) error {
+			g := strings.Repeat("😀", n)
+			_, err := s.UpdateSpace(ctx, UpdateSpaceInput{Space: "spaces/A", SpaceDisplayName: "Team", Guidelines: &g, DryRun: true})
+			return err
+		}, 2500},
+		{"space name, emoji", func(n int) error {
+			_, err := s.CreateSpace(ctx, CreateSpaceInput{DisplayName: strings.Repeat("😀", n), DryRun: true})
+			return err
+		}, 64},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var se *Error
@@ -764,7 +810,7 @@ func TestUpdateSpaceCanClearADescription(t *testing.T) {
 
 func TestUpdateSpaceRejectsAnEmptyEdit(t *testing.T) {
 	s, rec := recorded(t, ok(`{}`))
-	long := strings.Repeat("x", maxSpaceDescription+1)
+	long := strings.Repeat("x", 4097)
 	blank := "   "
 	for _, tc := range []struct {
 		name string

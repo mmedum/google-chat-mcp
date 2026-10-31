@@ -60,6 +60,8 @@ func TestAnnotationsAreConsistent(t *testing.T) {
 		{Read, "Read", true, false, false},
 		{Write, "Write", false, false, false},
 		{WriteIdempotent, "WriteIdempotent", false, false, true},
+		{Overwrite, "Overwrite", false, true, false},
+		{OverwriteIdempotent, "OverwriteIdempotent", false, true, true},
 		{Destructive, "Destructive", false, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

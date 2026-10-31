@@ -128,8 +128,9 @@ docs said thirteen when the server registered twenty-five.
 
 ### One `Kind` decides three things
 
-`register` takes a tool's `Kind` — read, write, idempotent write,
-destructive — and derives from it the MCP annotations, whether
+`register` takes a tool's `Kind` — read, write, overwrite, each write
+idempotent or not, destructive — and derives from it the MCP
+annotations, whether
 `GCM_READ_ONLY` leaves the tool registered, and whether it needs
 `GCM_ENABLE_DESTRUCTIVE` to be registered at all. Three rules enforced by
 author discipline is three ways to be quietly wrong. Two more are held
@@ -139,9 +140,13 @@ destructive tool carries the mark.
 Annotations decide what a client prompts for, so they are exact.
 `readOnlyHint` goes only on a tool that changes nothing in Chat, since
 VS Code ignores `destructiveHint` and prompts on every tool without
-`readOnlyHint`. `destructiveHint` is true on the destructive kind and
-nowhere else: Codex prompts by it, and claude.ai and ChatGPT document
-that it decides theirs. But an annotation is a request, not a control.
+`readOnlyHint`. `destructiveHint` is false only on a write that adds
+and replaces nothing, since the spec reads false as "only additive
+updates". A tool that overwrites or removes something says true, a
+message edit or a removed reaction as much as a delete; what sets a
+delete apart is the flag that registers it and its `confirm`, not the
+hint. Codex prompts by it, and claude.ai and ChatGPT document that it
+decides theirs. But an annotation is a request, not a control.
 The spec says clients must treat annotations as untrusted, and every
 widely used client has a mode or a setting that runs a listed tool with
 nobody approving the call: Claude Code's auto and bypassPermissions
@@ -699,10 +704,13 @@ contradicted a document, which won.
 | Who may reply changes only where members cannot post | Neither the Space reference nor the Chat Help Center says when `replyMessages` can change. Live, 2026-10-31: in a space where members post, Google refused it to the space's own manager as "the permission settings are immutable", even when the patch changed nothing, and refused it under admin access as "permission denied … or the resource doesn't exist". In a space created as `ANNOUNCEMENT_SPACE` it changed both ways, as the manager and as an administrator. A patch without `managersAllowed` is refused as "Invalid combination of permissions". So the server refuses `reply_messages` where `postMessages` gives members the right, before anything is sent |
 | An administrator's search must say whose spaces | The spaces.search reference: "`customer` is required when `useAdminAccess` is set to `true`", and `customers/my_customer` is its only value. This server sent `use_admin_access` without it until 2026-10-31, and the live driver had never run it. A live run on 2026-10-31 searched with the clause, every administrator filter and each order |
 | An administrator's member listing needs a member type filter | The members.list reference (updated 2025-07-16) requires `member.type = "HUMAN"` or `member.type != "BOT"` under admin access, and lists no apps. The server sends `member.type != "BOT"`, the one that can keep Google Group memberships, since a filter drops a group that does not match it. Whether `showInvited` works under admin access is not documented. Read 2026-10-31. A live run that day listed members with the filter; `showInvited` under admin access is still untested |
-| A space description may be 4,096 characters | The Space reference (updated 2026-09-30): "Supports up to 4,096 characters", and 5,000 for guidelines. The 150 this server enforces on descriptions matches an old Ruby client library's docs, and the Chat Help Center gives no number. Read 2026-10-31. The cap stays until a live run settles which limit Google enforces |
+| Google counts a space's name, description and guidelines in UTF-16 units | The Space reference (updated 2026-09-30) allows a description of 4,096 characters and guidelines of 5,000; Google's own refusal of a long name says 128. The 150 this server enforced on descriptions matched an old Ruby client library's docs. Live, 2026-10-31: 4,096 two-byte letters (8,192 bytes) were kept and 2,049 emoji (4,098 UTF-16 units) were refused, "Maximum length of the field is 4096"; guidelines and names went the same way at 5,000 and 128. So Google counts UTF-16 units, not bytes and not characters, and an emoji counts as two. The live driver writes and reads back a 4,096-unit description with emoji in it |
 | Members see an administrator's change, but not who made it | The admin-overview guide (updated 2026-10-09), "What users see in Chat": "The organization's administrator performed" the action, and it "does not identify the administrator". The Reports API's Chat events record `actor_type` ADMIN for a space's details, name, deletion and memberships; no event covers a permission change. Read 2026-10-31 |
 | One Admin console privilege covers an administrator's reads and writes | Admin Help a/answer/13369245: "Super admins have the manage chat and spaces privilege by default". The privilege list, a/answer/1219251, has no read-only form of it. So reads and writes part at the OAuth scope, not at the privilege. Read 2026-10-31 |
-| Granular consent is not on by default for a desktop client | Google's granular-permissions page (updated 2026-10-30) has it always on for web, Android and iOS clients only; a desktop client gets it with `enable_granular_consent=true`, and an app the administrator marks Trusted skips it. So a person cannot count on declining one scope at login. Read 2026-10-31 |
+| A desktop client's login can grant some scopes and not others | Google's native-app guide (updated 2026-10-30), step 6: "users may not grant your app access to all of them". The exceptions are "apps marked as Trusted" and Workspace Enterprise apps with domain-wide delegation, which "either receive all requested scopes or none". The granular-permissions page (updated 2026-10-30) ties `enable_granular_consent` to client ids "created before 2019", so login does not send it. Read 2026-10-31. This reverses a reading of the granular-permissions page earlier that day, which took it to say a desktop client gets the choice only with that parameter |
+| An Internal app needs no scope list on its consent screen | Google's configure-oauth-consent guide (updated 2026-09-03): "you only need to list scopes for apps used by people outside your Google Workspace organization", and for internal apps "scopes aren't listed on the consent screen". The setup guide said a scope off the screen is never granted; it now asks for the list on External apps only. Read 2026-10-31. Live the same day: an Internal app's token held 18 scopes its Data Access page does not list. Several have no broader scope listed there that could account for them, among them `chat.spaces`, `chat.delete`, `contacts.readonly` and the `chat.users` scopes |
+| Google writes a time it does not have as the Unix epoch | Live, 2026-10-31: an administrator's spaces.get answered `lastActiveTime` `1970-01-01T00:00:00Z` for a space whose search row gave a time in October 2026. The reference does not mention it. Every timestamp the server reads now takes the epoch as absent. `TestGetSpaceReadsTheEpochAsNoTime` holds it |
+| `destructiveHint` false means the tool only adds | The MCP schema (2025-11-25), `ToolAnnotations`: "If false, the tool performs only additive updates", and the default is true. So a tool that replaces or removes anything says true, a message edit and a removed reaction included, though it needs no flag here. Read 2026-10-31. The `Overwrite` kinds carry it, on fifteen tools |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 | A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
 

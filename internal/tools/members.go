@@ -228,7 +228,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"Demoting the last manager may leave nobody able to administer the space. Making someone a manager " +
 			"is refused [blocked] here; promote_member does it. Role is the only thing this changes. Set dry_run " +
 			"to see the request body without sending it.",
-		Kind: Write,
+		Kind: Overwrite,
 	}, updateMemberRole(d))
 
 	register(s, d, spec{

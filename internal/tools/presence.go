@@ -141,7 +141,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 		Description: "Set your own Chat presence to ACTIVE, AWAY or DO_NOT_DISTURB. Do not disturb needs an " +
 			"expiry — minutes or until — which Google requires and caps at a year. Other people see this, so it " +
 			"is worth asking before silencing someone's notifications on their behalf.",
-		Kind:    Write,
+		Kind:    Overwrite,
 		Toolset: config.ToolsetAvailability,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SetAvailabilityInput) (*mcp.CallToolResult, SetAvailabilityOutput, error) {
 		got, err := d.Service.SetAvailability(ctx, service.SetAvailabilityInput{
@@ -161,7 +161,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 		Description: "Set the text and emoji beside your name in Chat, or clear it. Google wants both together " +
 			"and refuses one without the other; a custom emoji is not accepted here, only a Unicode one. An " +
 			"expiry is optional, unlike do-not-disturb's. Everyone who sees you in Chat sees this.",
-		Kind:    Write,
+		Kind:    Overwrite,
 		Toolset: config.ToolsetAvailability,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SetCustomStatusInput) (*mcp.CallToolResult, SetCustomStatusOutput, error) {
 		got, err := d.Service.SetCustomStatus(ctx, service.SetCustomStatusInput{

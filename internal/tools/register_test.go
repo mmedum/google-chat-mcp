@@ -86,12 +86,14 @@ func TestReadOnlyLeavesOutEveryWrite(t *testing.T) {
 		spec{Name: "a_read", Description: "d", Kind: Read},
 		spec{Name: "a_write", Description: "d", Kind: Write},
 		spec{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
+		spec{Name: "an_overwrite", Description: "d", Kind: Overwrite},
+		spec{Name: "an_idempotent_overwrite", Description: "d", Kind: OverwriteIdempotent},
 		spec{Name: "a_delete", Description: "d", Kind: Destructive},
 	)
 	if _, ok := got["a_read"]; !ok {
 		t.Error("a read tool should survive read-only mode")
 	}
-	for _, name := range []string{"a_write", "an_idempotent_write", "a_delete"} {
+	for _, name := range []string{"a_write", "an_idempotent_write", "an_overwrite", "an_idempotent_overwrite", "a_delete"} {
 		if _, ok := got[name]; ok {
 			t.Errorf("%q is registered in read-only mode", name)
 		}
@@ -124,10 +126,12 @@ func TestADestructiveToolIsRegisteredOnlyWhenAllowed(t *testing.T) {
 		{Name: "a_read", Description: "d", Kind: Read},
 		{Name: "a_write", Description: "d", Kind: Write},
 		{Name: "an_idempotent_write", Description: "d", Kind: WriteIdempotent},
+		{Name: "an_overwrite", Description: "d", Kind: Overwrite},
+		{Name: "an_idempotent_overwrite", Description: "d", Kind: OverwriteIdempotent},
 		{Name: "a_delete", Description: "d", Kind: Destructive},
 	}
 	refused := registered(t, allToolsets(), specs...)
-	for _, name := range []string{"a_read", "a_write", "an_idempotent_write"} {
+	for _, name := range []string{"a_read", "a_write", "an_idempotent_write", "an_overwrite", "an_idempotent_overwrite"} {
 		if _, ok := refused[name]; !ok {
 			t.Errorf("%q was taken out with the destructive tools", name)
 		}

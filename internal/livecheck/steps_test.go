@@ -706,15 +706,21 @@ var steps = []step{
 	// the guidelines and sends them back. The scratch space has none to
 	// keep; what this settles is that the read before the patch and the
 	// patch with guidelines left out still land, and the description
-	// reads back.
+	// reads back. It is the longest the server lets through: 4,096 as
+	// Google counts, in UTF-16 units, here 3,823 characters and 4,916
+	// bytes of letters, two-byte letters and emoji. A cap above what
+	// Google keeps fails here. The server once capped it at 150, then
+	// counted characters, and Google refused 4,096 of those that held
+	// emoji.
 	{"the description changes", "update_space", func(d *driver) {
-		d.must("update_space", map[string]any{"space_id": d.space, "description": "livecheck scratch space"})
+		long := strings.Repeat("livecheck é 😀 ", 273) + "é"
+		d.must("update_space", map[string]any{"space_id": d.space, "description": long})
 		var out struct {
-			Description *string `json:"description"`
+			Description string `json:"description"`
 		}
 		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
-		if out.Description == nil || *out.Description != "livecheck scratch space" {
-			d.t.Error("the description did not read back as it was set")
+		if out.Description != long {
+			d.t.Error("a description of 4,096 UTF-16 units did not read back as it was set")
 		}
 	}},
 

@@ -11,6 +11,16 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- The fifteen tools that replace or remove something now say `destructiveHint: true`, as the MCP spec reads `false` as "only additive updates": `update_message`, `update_space`, `update_member_role`, `admin_update_space`, `admin_update_member_role`, `remove_reaction`, `unpin_message`, `rename_section`, `position_section`, `move_space_to_section`, `set_availability`, `set_custom_status`, `mark_space_read`, `mark_space_unread` and `update_space_notification_setting`. claude.ai, ChatGPT and Codex may now ask before these; if you run them unattended there, allow them again. They still need no `GCM_ENABLE_DESTRUCTIVE` and no `confirm`.
+- `update_space` and `admin_update_space` take a description of up to 4,096 characters, Google's limit, instead of 150. A space's name, description and guidelines are now counted the way Google counts them, with an emoji counting as two, so a text Google would refuse is refused before it is sent.
+
+### Fixed
+
+- `admin_get_space` reported a space's last active time as 1970-01-01 when Google did not have it. Google writes a time it lacks as the Unix epoch, and every timestamp the server reads is now null when Google sends it.
+- The setup guide and runbook said a scope must be on the consent screen to be granted. Google asks for the list only on External apps, so an Internal app can skip that step. They also say now that an app your Workspace administrator marks Trusted grants every scope or none at login.
+
 ## [9.0.0] - 2026-10-31
 
 ### Added

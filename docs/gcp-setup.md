@@ -44,9 +44,12 @@ for verification.
 
 ## 4. Add the scopes
 
-Same screen, the **Scopes** step. Click *Add or remove scopes* and paste
-all of these. A scope that is not on this screen is not granted, and the
-tool that needs it fails with an error naming it.
+For an **External** app, open **Data Access**, click *Add or remove
+scopes* and paste all of these. Google asks for the list only from apps
+used by people outside your Workspace organization: for an **Internal**
+app, "scopes aren't listed on the consent screen" (Google's
+configure-oauth-consent guide, updated 2026-09-03), so an Internal app
+can skip this step. Listing them there anyway does no harm.
 
 ```
 openid
@@ -78,11 +81,11 @@ https://www.googleapis.com/auth/contacts.readonly
 https://www.googleapis.com/auth/cloud-identity.groups.readonly
 ```
 
-You do not have to grant them all when you log in. Google's granular
-consent lets you tick them individually, and a tool whose scope you
-declined returns an error naming what is missing rather than failing in
-some other way. What you cannot do is grant a scope that is not on this
-screen.
+You do not have to grant them all when you log in. Google lets you tick
+them individually, and a tool whose scope you declined returns an error
+naming what is missing rather than failing in some other way. The
+exception is an app your Workspace administrator marks Trusted: Google
+then skips that choice, and the login grants every scope or none.
 
 Five administrator scopes are deliberately not in that list:
 
@@ -104,9 +107,9 @@ them only when the admin toolset is on, as in `GCM_TOOLSETS=all,admin`:
 - `chat.admin.delete` only with `GCM_ENABLE_DESTRUCTIVE=true` as well.
   It deletes any space in the organization.
 
-Add the ones your settings ask for to this screen, or leave the admin
-toolset off. Run `login` with the same settings your MCP client uses,
-or it asks for a different set.
+On an External app, add the ones your settings ask for to this screen.
+Run `login` with the same settings your MCP client uses, or it asks for
+a different set.
 
 Most sit in Google's *sensitive* tier. Three are *restricted*:
 `chat.messages`, `chat.spaces` and `chat.delete`, and so is
