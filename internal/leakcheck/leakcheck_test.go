@@ -137,8 +137,8 @@ func TestWhatIsAllowed(t *testing.T) {
 	}
 }
 
-// The check that keeps the check honest: every tracked file, every
-// rule. This is the one that fails a build.
+// The check that keeps the check honest: every file git tracks or
+// would commit, every rule. This is the one that fails a build.
 // A warning for anyone checking this gate rather than reading it: the
 // fixture convention this repository documents, `spaces/AAAAspace1`, is
 // itself one of the shapes the gate counts as invented. Probing it with
@@ -158,18 +158,15 @@ func TestTheRepositoryIsClean(t *testing.T) {
 	}
 	dir := strings.TrimSpace(string(root))
 
-	listed, err := exec.Command("git", "-C", dir, "ls-files").Output()
+	listed, err := repoFiles(dir)
 	if err != nil {
-		t.Fatalf("git ls-files: %v", err)
+		t.Fatalf("listing the repository: %v", err)
 	}
 
 	var findings []Finding
 	var tracked, scanned, binary int
 	var unreadable []string
-	for _, path := range strings.Split(strings.TrimSpace(string(listed)), "\n") {
-		if path == "" {
-			continue
-		}
+	for _, path := range listed {
 		tracked++
 		// This package names the shapes it looks for, so it is the one
 		// file guaranteed to contain them.
@@ -196,9 +193,9 @@ func TestTheRepositoryIsClean(t *testing.T) {
 	// same output, so a scan that read nothing has to fail rather than
 	// pass quietly — the failure this whole package exists to avoid, and
 	// the one the history scan below already guards against.
-	t.Logf("scanned %d of %d tracked files, %d binary", scanned, tracked, binary)
+	t.Logf("scanned %d of %d tracked or new files, %d binary", scanned, tracked, binary)
 	if tracked > 0 && scanned == 0 {
-		t.Fatalf("%d tracked files and none read: the scan is looking at nothing", tracked)
+		t.Fatalf("%d tracked or new files and none read: the scan is looking at nothing", tracked)
 	}
 	// A stated floor rather than one read back from the scan: the tree
 	// holds over 170 text files, and a scan that reads far fewer has
@@ -217,6 +214,70 @@ func TestTheRepositoryIsClean(t *testing.T) {
 	}
 	if len(findings) > 0 {
 		t.Log("use janedoe@example.com, spaces/AAAAspace1 and the like instead")
+	}
+}
+
+// repoFiles lists every file git tracks, plus every file it would
+// commit: new and not ignored. A new file is the one most likely to
+// carry a real id, and it is untracked until the commit that would
+// carry the id. Tracked files alone let one through on 2026-10-31,
+// caught only by the history scan after the commit.
+func repoFiles(dir string) ([]string, error) {
+	out, err := exec.Command("git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, path := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if path != "" {
+			files = append(files, path)
+		}
+	}
+	return files, nil
+}
+
+// The scan reads a file git does not know yet, and leaves out what git
+// ignores, such as build output.
+func TestTheScanReadsFilesNotYetCommitted(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("no git: %v", err)
+	}
+	// A git hook exports GIT_DIR and GIT_INDEX_FILE, which would point
+	// the commands below at the real repository's index.
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "GIT_") {
+			t.Setenv(k, "")
+			_ = os.Unsetenv(k)
+		}
+	}
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "-q")
+	write("tracked.go", "package x\n")
+	write(".gitignore", "ignored.bin\n")
+	git("add", ".")
+	write("new_test.go", "package x\n")
+	write("ignored.bin", "\x00")
+
+	got, err := repoFiles(dir)
+	if err != nil {
+		t.Fatalf("repoFiles: %v", err)
+	}
+	slices.Sort(got)
+	want := []string{".gitignore", "new_test.go", "tracked.go"}
+	if !slices.Equal(got, want) {
+		t.Errorf("repoFiles listed %q, want %q", got, want)
 	}
 }
 
@@ -425,22 +486,12 @@ func TestNoBuildOutputInTheTree(t *testing.T) {
 	}
 	dir := strings.TrimSpace(string(root))
 
-	list := func(args ...string) []string {
-		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
-		if err != nil {
-			t.Fatalf("git %s: %v", strings.Join(args, " "), err)
-		}
-		var paths []string
-		for _, p := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if p != "" {
-				paths = append(paths, p)
-			}
-		}
-		return paths
-	}
 	// Tracked, and untracked-but-not-ignored. The second is the half
 	// that fires before a mistake can be committed.
-	paths := append(list("ls-files"), list("ls-files", "--others", "--exclude-standard")...)
+	paths, err := repoFiles(dir)
+	if err != nil {
+		t.Fatalf("listing the repository: %v", err)
+	}
 
 	examined := 0
 	for _, path := range paths {

@@ -53,9 +53,9 @@ type AdminSearchSpacesOutput struct {
 type AdminUpdateSpaceInput struct {
 	SpaceID          string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}, from admin_search_spaces"`
 	SpaceDisplayName string  `json:"space_display_name" jsonschema:"what the space is called now, as admin_search_spaces or admin_get_space shows it, so the prompt that approves this call names it. Checked against the space before anything is written; a call naming another space is refused [stale]"`
-	DisplayName      *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
-	Description      *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
-	Guidelines       *string `json:"guidelines,omitempty" jsonschema:"new guidelines, the space's rules and etiquette, up to 5000 characters; omit to leave them alone. Pass an empty string to clear them"`
+	DisplayName      *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters, an emoji counting as two; omit to leave it alone"`
+	Description      *string `json:"description,omitempty" jsonschema:"a new description, up to 4,096 characters, an emoji counting as two; omit to leave it alone. Pass an empty string to clear it"`
+	Guidelines       *string `json:"guidelines,omitempty" jsonschema:"new guidelines, the space's rules and etiquette, up to 5,000 characters, an emoji counting as two; omit to leave them alone. Pass an empty string to clear them"`
 	DryRun           bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
 
@@ -189,7 +189,7 @@ func registerAdmin(s *mcp.Server, d Deps) {
 			"alone and sends it back. The reply says what each changed field was before, so a change can be put " +
 			"back. Members see that the organization's administrator made the change. Set dry_run to see the " +
 			"patch body first. update_space edits a space you are in.",
-		Kind: Write,
+		Kind: Overwrite,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AdminUpdateSpaceInput) (*mcp.CallToolResult, AdminUpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName,
@@ -256,7 +256,7 @@ func registerAdmin(s *mcp.Server, d Deps) {
 		Description: "Make a manager or an assistant manager of any space an ordinary member again, as an " +
 			"administrator: role MEMBER. Making someone a manager is refused [blocked] here; " +
 			"admin_promote_member does it. Set dry_run to see the request body without sending it.",
-		Kind: Write,
+		Kind: Overwrite,
 	}, updateMemberRole(d))
 
 	register(s, d, spec{

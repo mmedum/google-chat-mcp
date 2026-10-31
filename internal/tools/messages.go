@@ -522,7 +522,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 			"and editing them needs an identity this server does not have. An edit that newly mentions everyone in " +
 			"the space, <users/all>, is refused [blocked], since it notifies every member. Set dry_run to see the " +
 			"patch body without applying it. Needs the restricted-tier chat.messages scope.",
-		Kind: Write,
+		Kind: Overwrite,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMessageInput) (*mcp.CallToolResult, UpdateMessageOutput, error) {
 		got, err := d.Service.UpdateMessage(ctx, service.UpdateMessageInput{
 			Message: in.MessageName, Text: in.Text, DryRun: in.DryRun,

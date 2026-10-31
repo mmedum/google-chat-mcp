@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v9.0.0",
+  "version": "v9.1.0",
   "sdk": "v1.8.0",
   "tools": [
     {
@@ -1133,7 +1133,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -1197,7 +1197,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -1207,14 +1207,14 @@
         "additionalProperties": false,
         "properties": {
           "description": {
-            "description": "a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it",
+            "description": "a new description, up to 4,096 characters, an emoji counting as two; omit to leave it alone. Pass an empty string to clear it",
             "type": [
               "null",
               "string"
             ]
           },
           "display_name": {
-            "description": "a new name, 1 to 128 characters; omit to leave it alone",
+            "description": "a new name, 1 to 128 characters, an emoji counting as two; omit to leave it alone",
             "type": [
               "null",
               "string"
@@ -1225,7 +1225,7 @@
             "type": "boolean"
           },
           "guidelines": {
-            "description": "new guidelines, the space's rules and etiquette, up to 5000 characters; omit to leave them alone. Pass an empty string to clear them",
+            "description": "new guidelines, the space's rules and etiquette, up to 5,000 characters, an emoji counting as two; omit to leave them alone. Pass an empty string to clear them",
             "type": [
               "null",
               "string"
@@ -1671,7 +1671,7 @@
             "type": "string"
           },
           "display_name": {
-            "description": "what to call the space, 1 to 128 characters",
+            "description": "what to call the space, 1 to 128 characters, an emoji counting as two",
             "type": "string"
           },
           "dry_run": {
@@ -5080,7 +5080,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -5141,7 +5141,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -5207,7 +5207,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -5355,7 +5355,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -5550,7 +5550,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -5603,7 +5603,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6519,7 +6519,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6598,7 +6598,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6799,7 +6799,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6859,7 +6859,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6923,7 +6923,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -6987,7 +6987,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false
@@ -7001,14 +7001,14 @@
             "type": "string"
           },
           "description": {
-            "description": "a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it",
+            "description": "a new description, up to 4,096 characters, an emoji counting as two; omit to leave it alone. Pass an empty string to clear it",
             "type": [
               "null",
               "string"
             ]
           },
           "display_name": {
-            "description": "a new name, 1 to 128 characters; omit to leave it alone",
+            "description": "a new name, 1 to 128 characters, an emoji counting as two; omit to leave it alone",
             "type": [
               "null",
               "string"
@@ -7096,7 +7096,7 @@
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": true,
         "readOnlyHint": false

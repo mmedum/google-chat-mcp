@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
@@ -496,8 +497,11 @@ func (s *Service) GetSpace(ctx context.Context, name string) (*SpaceDetails, err
 // members on a create, and the tool schemas cap it lower so an agent
 // flow cannot make a room of fifty people by accident.
 const (
+	// Google's, as its refusal says: "must not exceed 128 characters".
 	maxSpaceDisplayName = 128
-	maxSpaceDescription = 150
+	// Google's: the Space reference "Supports up to 4,096 characters",
+	// and a live run writes and reads back that many.
+	maxSpaceDescription = 4096
 	// A group chat needs people in it to be one. A named space does
 	// not: a space of one's own is a legitimate thing to make, and
 	// requiring a second person meant the only way to try delete_space
@@ -507,6 +511,23 @@ const (
 	minSpaceMembers     = 0
 	maxSetupMembers     = 20
 )
+
+// requireSpaceText bounds a space's name, description or guidelines by
+// Google's own limit, counted the way Google counts it: in UTF-16 code
+// units, so an emoji counts as two and an accented letter as one. Live
+// on 2026-10-31, Google kept 4,096 two-byte letters in a description
+// and refused 2,049 emoji, which are 4,098 units; names and guidelines
+// went the same way at 128 and 5,000.
+func requireSpaceText(field, value string, maximum int) error {
+	n := 0
+	for _, r := range value {
+		n += utf16.RuneLen(r)
+	}
+	if n > maximum {
+		return Invalidf("%s is %d characters as Google counts them, above its maximum of %d: an emoji counts as two", field, n, maximum)
+	}
+	return nil
+}
 
 // FindDirectMessage returns the direct-message space shared with one
 // person, creating it when there is none yet.
@@ -622,6 +643,9 @@ func (s *Service) CreateGroupChat(ctx context.Context, in CreateSpaceInput) (*Cr
 func (s *Service) CreateSpace(ctx context.Context, in CreateSpaceInput) (*CreateSpaceResult, error) {
 	name, err := requireDisplayName(in.DisplayName, maxSpaceDisplayName)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireSpaceText("display_name", name, maxSpaceDisplayName); err != nil {
 		return nil, err
 	}
 	emails, err := requireEmails("member_emails", in.MemberEmails, minSpaceMembers, maxSetupMembers)
@@ -743,18 +767,20 @@ func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*Update
 		if err != nil {
 			return nil, err
 		}
+		if err := requireSpaceText("display_name", name, maxSpaceDisplayName); err != nil {
+			return nil, err
+		}
 		out.DisplayName = &name
 	}
-	// An empty value is a deliberate clear, which requireText rejects;
-	// anything else is bounded the same way as every other text this
-	// server sends.
-	if out.Description != nil && *out.Description != "" {
-		if _, err := requireText("description", *out.Description, maxSpaceDescription); err != nil {
+	// An empty value is a deliberate clear; anything else is bounded
+	// by Google's limit, counted as Google counts it.
+	if out.Description != nil {
+		if err := requireSpaceText("description", *out.Description, maxSpaceDescription); err != nil {
 			return nil, err
 		}
 	}
-	if out.Guidelines != nil && *out.Guidelines != "" {
-		if _, err := requireText("guidelines", *out.Guidelines, maxSpaceGuidelines); err != nil {
+	if out.Guidelines != nil {
+		if err := requireSpaceText("guidelines", *out.Guidelines, maxSpaceGuidelines); err != nil {
 			return nil, err
 		}
 	}

@@ -18,19 +18,19 @@ parse. Nothing it prints is committed anywhere; it is for you.
 The message names the exact scope URL and the command that fixes it.
 Google's own 403 does not, which is why this server rewrites it.
 
-Two things have to line up. The scope must be on your OAuth consent
-screen — see [`gcp-setup.md`](gcp-setup.md) — and you must have granted
-it. If a scope is missing from the consent screen, adding it to the
-request changes nothing: the grant comes back without it and the 403
-repeats.
+You must have granted the scope. On an External app it must also be on
+your consent screen's scope list — see [`gcp-setup.md`](gcp-setup.md),
+section 4. An Internal app needs no list. Then log in again:
 
 ```bash
 google-chat-mcp login --client-secret ./client_secret.json
 ```
 
-Google's granular consent lets you tick scopes individually at grant
-time, so a partial grant is a normal state, not a broken one. The tools
-you did not grant for return this error; the rest keep working.
+Google lets you tick scopes individually at grant time, so a partial
+grant is a normal state, not a broken one. The tools you did not grant
+for return this error; the rest keep working. An app your Workspace
+administrator marks Trusted is the exception: its login grants every
+scope or none.
 
 Sections are their own grant. `chat.users.sections` is not implied by
 `chat.spaces` — a sidebar section is per-user client state, not space
@@ -213,8 +213,8 @@ signed-in account can see.
   API is off on the project your OAuth client belongs to. Enable it
   (`docs/gcp-setup.md`, section 2), wait a minute, and try again.
 - **`[scope]` naming `cloud-identity.groups.readonly`.** The token
-  predates the scope. Add it to the consent screen and run
-  `google-chat-mcp login` again.
+  predates the scope. Run `google-chat-mcp login` again, after adding
+  the scope to the consent screen if the app is External.
 - **`[forbidden]` saying no group is visible.** No group has that
   address, or its owner keeps it visible to its own members only.
   Google answers both the same way, so check the spelling first. The

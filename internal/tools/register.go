@@ -39,10 +39,20 @@ const (
 	// facts apart in prose at the call site is exactly what register
 	// exists to stop.
 	ReadWritesLocally
-	// Write changes something and destroys nothing.
+	// Write adds something and replaces nothing.
 	Write
 	// WriteIdempotent additionally lands the same way twice.
 	WriteIdempotent
+	// Overwrite replaces or removes something a later call can set
+	// again: a message's text, a space's details or settings, a role, a
+	// reaction, a pin, a section's name or place, a status, a read
+	// marker. The spec reads destructiveHint false as "only additive
+	// updates", so these say true, and a client that prompts by it
+	// prompts for them. They are not Destructive here: nothing is lost
+	// for good, so they need neither GCM_ENABLE_DESTRUCTIVE nor confirm.
+	Overwrite
+	// OverwriteIdempotent additionally lands the same way twice.
+	OverwriteIdempotent
 	// Destructive cannot be taken back: it removes something, opens a
 	// space to an audience, makes someone a manager or adds someone from
 	// outside the organization. It is registered only under
@@ -90,6 +100,10 @@ func (k Kind) annotations() *mcp.ToolAnnotations {
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)}
 	case WriteIdempotent:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: true, OpenWorldHint: ptr(true)}
+	case Overwrite:
+		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)}
+	case OverwriteIdempotent:
+		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), IdempotentHint: true, OpenWorldHint: ptr(true)}
 	case Destructive:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), IdempotentHint: true, OpenWorldHint: ptr(true)}
 	default:

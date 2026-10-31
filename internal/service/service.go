@@ -423,12 +423,18 @@ func (s *Service) warnUnparsed(event string, dropped, total int) {
 // error. Google renaming createTime must not shorten a listing, and a
 // row of zero timestamps is a visible symptom where a missing row is
 // not; every caller here has an id and a body to show regardless.
+//
+// The Unix epoch becomes the zero time too: it is a protobuf Timestamp
+// of zero, which is how Google writes a time it does not have. An
+// administrator's read of a space sent it as the last active time,
+// while the search gave that space's real one (live, 2026-10-31).
+// Nothing in Chat happened in 1970.
 func parseTime(v string) time.Time {
 	if v == "" {
 		return time.Time{}
 	}
 	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
+	if err != nil || t.Equal(time.Unix(0, 0)) {
 		return time.Time{}
 	}
 	return t.UTC()

@@ -289,7 +289,7 @@ type CreateGroupChatInput struct {
 
 // CreateSpaceInput is a new named space.
 type CreateSpaceInput struct {
-	DisplayName  string   `json:"display_name" jsonschema:"what to call the space, 1 to 128 characters"`
+	DisplayName  string   `json:"display_name" jsonschema:"what to call the space, 1 to 128 characters, an emoji counting as two"`
 	MemberEmails []string `json:"member_emails,omitempty" jsonschema:"up to 20 email addresses, not counting you; Google adds the signed-in account itself. Omit it for a space of your own, which you can invite people to later with add_member"`
 	Audience     string   `json:"audience,omitempty" jsonschema:"private, or omit it: a space is created private. Opening one to a target audience is set_space_audience's, and anything else here is refused"`
 	DryRun       bool     `json:"dry_run,omitempty" jsonschema:"return the request body without creating anything"`
@@ -322,8 +322,8 @@ type CreateSpaceOutput struct {
 type UpdateSpaceInput struct {
 	SpaceID          string  `json:"space_id" jsonschema:"the space to edit, spaces/{id}"`
 	SpaceDisplayName string  `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
-	DisplayName      *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters; omit to leave it alone"`
-	Description      *string `json:"description,omitempty" jsonschema:"a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it"`
+	DisplayName      *string `json:"display_name,omitempty" jsonschema:"a new name, 1 to 128 characters, an emoji counting as two; omit to leave it alone"`
+	Description      *string `json:"description,omitempty" jsonschema:"a new description, up to 4,096 characters, an emoji counting as two; omit to leave it alone. Pass an empty string to clear it"`
 	Audience         string  `json:"audience,omitempty" jsonschema:"private to make the space private again; omit it to leave access alone. Opening a space to a target audience is set_space_audience's, and anything else here is refused. Change it in a call of its own"`
 	DryRun           bool    `json:"dry_run,omitempty" jsonschema:"return the patch body and its mask without applying them"`
 }
@@ -415,7 +415,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			"makes a space private; Google takes it only on its own, from a space manager. Opening a space to " +
 			"an audience is set_space_audience's. Set dry_run to see the patch body first. Needs the " +
 			"restricted-tier chat.spaces scope.",
-		Kind: Write,
+		Kind: Overwrite,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,

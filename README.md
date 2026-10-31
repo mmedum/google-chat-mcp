@@ -88,8 +88,8 @@ You need your own OAuth client. It takes about fifteen minutes once, and
 [`docs/gcp-setup.md`](docs/gcp-setup.md) walks through it. In short:
 create a project, enable the Google Chat API, the People API and the
 Cloud Identity API,
-configure the consent screen with the scopes this server asks for, and
-create an **OAuth 2.0 Client ID** of type **Desktop app**. Download the
+configure the consent screen, list the scopes this server asks for if
+the app is External, and create an **OAuth 2.0 Client ID** of type **Desktop app**. Download the
 JSON.
 
 Then log in:
@@ -291,7 +291,9 @@ client that includes resources in its context:
   Claude Code asks for the tools you list under `permissions.ask`.
   claude.ai and Codex prompt for a tool marked `destructiveHint`, which
   every tool in the list above that needs `GCM_ENABLE_DESTRUCTIVE`
-  carries. VS Code prompts for every tool that changes anything,
+  carries, and so does every write that replaces or removes something,
+  such as `update_message`, `update_space` or `remove_reaction`. VS
+  Code prompts for every tool that changes anything,
   `download_attachment` included. In Claude Code, put the writes that
   post, invite, share or delete under `permissions.ask` in your settings,
   with the name you gave the server in place of `google-chat`:
