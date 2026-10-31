@@ -83,7 +83,7 @@
     "toolsets": {
       "type": "string",
       "title": "Toolsets",
-      "description": "Comma-separated tool groups to register, or all. The groups are core, sections, pins, emoji, events, readstate, settings, availability, admin. core is always on. Leave it empty for every group but admin. Only a Workspace administrator can use admin, and its scope needs a login run with `--toolsets all,admin`.",
+      "description": "Comma-separated tool groups to register, or all. The groups are core, sections, pins, emoji, events, readstate, settings, availability, admin. core is always on. Leave it empty for every group but admin. Only a Workspace administrator can use admin, and its scopes need a login run with `--toolsets all,admin`.",
       "default": "",
       "required": false
     },

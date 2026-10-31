@@ -10,7 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 // The rule this file enforces: a log line may say when a call happened,

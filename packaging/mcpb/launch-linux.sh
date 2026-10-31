@@ -26,7 +26,7 @@ case $(uname -m) in
     # English on it corrupts the session before the client's first
     # request completes.
     echo "google-chat-mcp: no binary in this bundle for $(uname -m)." \
-         "Install with: go install github.com/mmedum/google-chat-mcp/v8/cmd/google-chat-mcp@latest" >&2
+         "Install with: go install github.com/mmedum/google-chat-mcp/v9/cmd/google-chat-mcp@latest" >&2
     exit 1
     ;;
 esac

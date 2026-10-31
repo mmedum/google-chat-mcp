@@ -14,9 +14,9 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/userconfig"
 )
 
 // A client going away is the ordinary end of a session, and the exit
@@ -71,12 +71,16 @@ func TestAccountSuffix(t *testing.T) {
 	}
 }
 
-// "all" is a claim about the whole set, so it may only be printed when
-// the set really is whole. Printing it for a narrowed server would tell
-// a reader the opposite of what is registered.
+// "all" is what GCM_TOOLSETS=all registers, every set but admin, so it
+// is printed for exactly that set. Printing it for a narrowed server, or
+// for one with admin on, would tell a reader the opposite of what is
+// registered.
 func TestJoinToolsetsOnlySaysAllWhenItIsAll(t *testing.T) {
-	if got := joinToolsets(config.AllToolsets); got != "all" {
-		t.Errorf("every toolset joined to %q, want \"all\"", got)
+	if got := joinToolsets(config.DefaultToolsets()); got != "all" {
+		t.Errorf("the default toolsets joined to %q, want \"all\"", got)
+	}
+	if got := joinToolsets(config.AllToolsets); got != "all, admin" {
+		t.Errorf("every toolset joined to %q, want \"all, admin\"", got)
 	}
 	got := joinToolsets([]config.Toolset{config.ToolsetCore, config.ToolsetPins})
 	if got == "all" {
@@ -126,6 +130,30 @@ func TestLoginAsksForWhatTheSettingsAllow(t *testing.T) {
 	}
 	if !slicesContains(got, scopes.AdminSpacesReadonly) {
 		t.Errorf("login with the admin toolset asks for %v, want the admin scope among them", got)
+	}
+}
+
+// The scope that deletes any space in the Workspace reaches login only
+// with the admin toolset and the destructive flag both on, which is the
+// one configuration that registers admin_delete_space.
+func TestLoginAsksForTheAdminDeleteOnlyWithDeletesOn(t *testing.T) {
+	for _, tc := range []struct {
+		toolsets, destructive string
+		want                  bool
+	}{
+		{"core,admin", "false", false},
+		{"core", "true", false},
+		{"core,admin", "true", true},
+	} {
+		t.Run(tc.toolsets+" destructive="+tc.destructive, func(t *testing.T) {
+			tempProfile(t)
+			t.Setenv("GCM_TOOLSETS", tc.toolsets)
+			t.Setenv("GCM_ENABLE_DESTRUCTIVE", tc.destructive)
+			got := requestedScopes(loadedConfig(t))
+			if slicesContains(got, scopes.AdminDelete) != tc.want {
+				t.Errorf("login asks for %v; want chat.admin.delete among them: %v", got, tc.want)
+			}
+		})
 	}
 }
 

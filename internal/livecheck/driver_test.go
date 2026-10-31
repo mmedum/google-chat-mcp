@@ -117,8 +117,10 @@ func connect(t *testing.T) *driver {
 	// real account, which is worse than the failure.
 	// The switch's removed old name is emptied, which is unset, so one
 	// left on in the shell cannot stop the server.
+	// The admin toolset is on for the admin steps, which need an
+	// administrator's account and a login that asked for its scopes.
 	cmd.Env = append(os.Environ(), "GCM_LOG_LEVEL=warn", "GCM_LOCAL_DIR="+dir,
-		"GCM_ENABLE_DESTRUCTIVE=true", "GCM_ALLOW_DESTRUCTIVE=")
+		"GCM_ENABLE_DESTRUCTIVE=true", "GCM_ALLOW_DESTRUCTIVE=", "GCM_TOOLSETS=all,admin")
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "livecheck", Version: "0"}, nil).
 		Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
@@ -277,6 +279,7 @@ func (d *driver) record(name string) {
 // have opened it, it is made private first, whatever stopped the run.
 func (d *driver) drop() {
 	d.t.Helper()
+	d.dropAdminSpace()
 	if d.space == "" {
 		return
 	}
@@ -420,4 +423,5 @@ var namesItsSpace = map[string]bool{
 	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true,
 	"move_space_to_section": true, "send_message": true, "update_space": true,
 	"update_space_notification_setting": true, "upload_attachment": true,
+	"admin_add_member": true, "admin_update_space": true, "admin_update_space_permissions": true,
 }

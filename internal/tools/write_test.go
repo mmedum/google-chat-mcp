@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 // counter records the method of every request a tool call made. A dry
@@ -311,9 +311,14 @@ func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
 	destructive := []string{
 		"add_external_member", "delete_custom_emoji", "delete_message", "delete_section", "delete_space",
 		"delete_thread", "promote_member", "remove_member", "set_space_audience",
+		"admin_add_member", "admin_delete_space", "admin_promote_member", "admin_remove_member",
+		"admin_update_space_permissions",
 	}
 	got := registeredNames(t, config.Config{Toolsets: config.AllToolsets})
-	for _, name := range []string{"send_message", "add_member", "move_space_to_section", "update_space", "unpin_message", "remove_reaction"} {
+	for _, name := range []string{
+		"send_message", "add_member", "move_space_to_section", "update_space", "unpin_message", "remove_reaction",
+		"admin_update_space", "admin_update_member_role",
+	} {
 		if !slices.Contains(got, name) {
 			t.Errorf("%q is not registered by default", name)
 		}
@@ -341,7 +346,7 @@ func TestTheWholeSurfaceIsRegisteredByDefault(t *testing.T) {
 // client's to approve, sending and deleting a message included, since a
 // mark there would ask once per message of a bulk delete.
 func TestOnlyTheMarkedSetAsksForAPerson(t *testing.T) {
-	cs := session(t, func(http.ResponseWriter, *http.Request) {})
+	cs := fullSession(t, func(http.ResponseWriter, *http.Request) {})
 	list, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
@@ -353,7 +358,7 @@ func TestOnlyTheMarkedSetAsksForAPerson(t *testing.T) {
 		}
 	}
 	slices.Sort(marked)
-	if want := []string{"delete_custom_emoji", "delete_space", "set_space_audience"}; !slices.Equal(marked, want) {
+	if want := []string{"admin_delete_space", "delete_custom_emoji", "delete_space", "set_space_audience"}; !slices.Equal(marked, want) {
 		t.Errorf("marked %v, want %v", marked, want)
 	}
 }

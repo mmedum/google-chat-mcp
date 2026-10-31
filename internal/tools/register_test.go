@@ -3,13 +3,18 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
 )
 
 type probeIn struct {
@@ -170,6 +175,12 @@ func TestRegistrationRefusesAnUnguardedDestructiveTool(t *testing.T) {
 					return nil, probeOut{}, nil
 				})
 		}, "tools: a_write carries the mark and is not Destructive"},
+		{"an admin tool in another toolset", func(s *mcp.Server) {
+			register(s, Deps{Config: cfg}, spec{Name: "admin_read", Description: "d", Kind: Read, Toolset: config.ToolsetPins},
+				func(context.Context, *mcp.CallToolRequest, dryRunProbe) (*mcp.CallToolResult, probeOut, error) {
+					return nil, probeOut{}, nil
+				})
+		}, "tools: admin_read runs as an administrator and is not in the admin toolset"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -178,6 +189,67 @@ func TestRegistrationRefusesAnUnguardedDestructiveTool(t *testing.T) {
 				}
 			}()
 			tc.add(mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil))
+		})
+	}
+}
+
+// The admin tools exist only when the admin toolset is named: "all" is
+// every set but admin, so the default surface carries none of them.
+func TestAdminToolsNeedTheAdminToolset(t *testing.T) {
+	isAdmin := func(name string) bool { return strings.HasPrefix(name, "admin_") }
+	if got := slices.DeleteFunc(registeredNames(t, config.Config{Toolsets: config.DefaultToolsets(), EnableDestructive: true}),
+		func(n string) bool { return !isAdmin(n) }); len(got) != 0 {
+		t.Errorf("the default surface registers %v", got)
+	}
+	got := slices.DeleteFunc(registeredNames(t, config.Config{}.FullSurface()), func(n string) bool { return !isAdmin(n) })
+	want := []string{
+		"admin_add_member", "admin_delete_space", "admin_get_member", "admin_get_space", "admin_list_members",
+		"admin_promote_member", "admin_remove_member", "admin_search_spaces", "admin_update_member_role",
+		"admin_update_space", "admin_update_space_permissions",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("with the admin toolset: %v\nwant %v", got, want)
+	}
+}
+
+// Every Chat call an admin tool makes runs as an administrator, the read
+// its guard makes included, and an ordinary tool's never does.
+func TestAnAdminToolsCallsRunAsTheAdministrator(t *testing.T) {
+	for _, tc := range []struct {
+		tool  string
+		args  map[string]any
+		admin bool
+	}{
+		{"get_space", map[string]any{"space_id": "spaces/AAAAspace1"}, false},
+		{"search_spaces", map[string]any{"display_name": "Team"}, false},
+		{"admin_get_space", map[string]any{"space_id": "spaces/AAAAspace1"}, true},
+		{"update_space", map[string]any{"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "description": "x"}, false},
+		{"admin_update_space", map[string]any{"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "description": "x"}, true},
+	} {
+		t.Run(fmt.Sprintf("%s admin=%v", tc.tool, tc.admin), func(t *testing.T) {
+			var mu sync.Mutex
+			var flags []bool
+			cs := fullSession(t, func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/v1/") {
+					mu.Lock()
+					flags = append(flags, r.URL.Query().Get("useAdminAccess") == "true")
+					mu.Unlock()
+				}
+				fmt.Fprint(w, `{"name":"spaces/AAAAspace1","displayName":"Team standup","spaceType":"SPACE"}`)
+			})
+			if res := call(t, cs, tc.tool, tc.args, nil); res.IsError {
+				t.Fatalf("%s: %s", tc.tool, errorText(t, res))
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(flags) == 0 {
+				t.Fatalf("%s made no Chat call", tc.tool)
+			}
+			for i, f := range flags {
+				if f != tc.admin {
+					t.Errorf("%s: Chat call %d useAdminAccess = %v, want %v", tc.tool, i+1, f, tc.admin)
+				}
+			}
 		})
 	}
 }

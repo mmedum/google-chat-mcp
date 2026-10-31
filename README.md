@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mmedum/google-chat-mcp/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mmedum/google-chat-mcp?sort=semver)](https://github.com/mmedum/google-chat-mcp/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v8.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v8)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mmedum/google-chat-mcp/v9.svg)](https://pkg.go.dev/github.com/mmedum/google-chat-mcp/v9)
 [![License: Apache 2.0](https://img.shields.io/github/license/mmedum/google-chat-mcp)](./LICENSE)
 
 Google Chat as MCP tools. Read, search and write to your spaces, DMs and sidebar.
@@ -25,14 +25,14 @@ app with your name on it.
 That also puts the user-scoped half of Chat in reach, which an app
 identity cannot get to at all: your sidebar sections, how far you have
 read in a space or a thread, your availability and custom status, and
-your organization's custom emoji. Fifty-eight tools cover it, most writes
+your organization's custom emoji. Sixty-nine tools cover it, most writes
 take `dry_run`, and nothing is requested at login beyond the scopes the
 tools you are actually using need.
 
 ## Install
 
 ```bash
-go install github.com/mmedum/google-chat-mcp/v8/cmd/google-chat-mcp@latest
+go install github.com/mmedum/google-chat-mcp/v9/cmd/google-chat-mcp@latest
 ```
 
 Or take a signed archive from the
@@ -174,7 +174,7 @@ and the three tools that move them say so.
 | `whoami` | Which account the stored credentials belong to | `openid email profile` |
 | `list_spaces` | Spaces, group chats and direct messages you are in | `chat.spaces.readonly` |
 | `get_space` | One space by resource name | `chat.spaces.readonly` |
-| `search_spaces` | Named spaces you are in, by display name; every space with `use_admin_access` | `chat.spaces.readonly`; `chat.admin.spaces.readonly` for `use_admin_access` |
+| `search_spaces` | Named spaces you are in, by display name | `chat.spaces.readonly` |
 | `find_group_chats` | The group chats holding exactly you and the people you name | `chat.memberships.readonly`, `chat.spaces.readonly` |
 | `find_direct_message` | The direct message with one person, created if there is none yet | `chat.spaces.readonly`, `chat.spaces.create` |
 | `get_messages` | Recent messages in a space, newest first, senders resolved to names | `chat.messages.readonly` |
@@ -233,6 +233,27 @@ and the three tools that move them say so.
 Sections are your own sidebar. Nothing there changes a space, and nobody
 else sees it.
 
+The `admin` toolset is for a Workspace administrator, and is off unless
+`GCM_TOOLSETS` names it, as in `all,admin`. Its tools act on any named
+space in the organization, spaces you are not in included, with your
+administrator privileges. None of them reads messages: Google offers no
+administrator access to those.
+[`docs/gcp-setup.md`](docs/gcp-setup.md) lists the scopes it adds.
+
+| Tool | What it does | Scope |
+|---|---|---|
+| `admin_search_spaces` | Every named space in the organization, by name, age, activity or history, each with its description | `chat.admin.spaces.readonly` |
+| `admin_get_space` | Any space by resource name, its permission settings included | `chat.admin.spaces.readonly` |
+| `admin_list_members` | Who is in any space, resolved as `list_members` resolves them | `chat.admin.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
+| `admin_get_member` | One membership of any space | `chat.admin.memberships.readonly`, `directory.readonly`, `cloud-identity.groups.readonly` |
+| `admin_update_space` | Rename any named space, or change its description or guidelines, and say what each was before | `chat.admin.spaces` |
+| `admin_update_space_permissions` | Change who besides the managers may manage members, edit details, turn history on or off, use @all, manage apps and webhooks, and reply, with `GCM_ENABLE_DESTRUCTIVE` | `chat.admin.spaces` |
+| `admin_update_member_role` | Make a manager of any space an ordinary member again | `chat.admin.memberships` |
+| `admin_promote_member` | Make someone a manager of any space, with `GCM_ENABLE_DESTRUCTIVE` | `chat.admin.memberships` |
+| `admin_add_member` | Add someone in your organization to any named space, never a Google Group and never yourself, with `GCM_ENABLE_DESTRUCTIVE` | `chat.admin.memberships`; `chat.admin.spaces.readonly`, `directory.readonly` to check the space and the address |
+| `admin_remove_member` | Remove a membership of any space, with `GCM_ENABLE_DESTRUCTIVE`. Already gone counts as success | `chat.admin.memberships` |
+| `admin_delete_space` | Delete any named space and everything in it, with `GCM_ENABLE_DESTRUCTIVE` | `chat.admin.delete`; `chat.admin.spaces.readonly` to check the name |
+
 Three resources carry the same content as the matching tools, for a
 client that includes resources in its context:
 
@@ -242,7 +263,7 @@ client that includes resources in its context:
 
 ## Safety
 
-- **`dry_run` on 29 write tools.** It returns the request body that
+- **`dry_run` on 36 write tools.** It returns the request body that
   would have been sent, and the call cannot write: the flag puts the
   request on a context the HTTP client refuses to write under, so a
   tool that forgot its own preview branch fails loudly instead of
@@ -258,13 +279,14 @@ client that includes resources in its context:
   takes another login.
 - **What cannot be taken back is not registered unless you say so.**
   The deletes, `delete_thread`, `set_space_audience`, `promote_member`
-  and `add_external_member` exist only with `GCM_ENABLE_DESTRUCTIVE=true`.
-  Each call then says `confirm: true`. `delete_message`,
-  `delete_thread`, `delete_space`, `delete_custom_emoji` and
-  `set_space_audience` also repeat what they act on: how the message
-  begins, or the space's or the emoji's name. The server reads the target
-  first and refuses `[stale]` when it differs, so the call your client
-  shows you says which message or space goes.
+  and `add_external_member` exist only with `GCM_ENABLE_DESTRUCTIVE=true`,
+  and so do the admin tools that delete, promote, add someone or change
+  a space's permissions. Each call then says `confirm: true`.
+  `delete_message`, `delete_thread`, `delete_space`, `admin_delete_space`,
+  `delete_custom_emoji` and `set_space_audience` also repeat what they act
+  on: how the message begins, or the space's or the emoji's name. The
+  server reads the target first and refuses `[stale]` when it differs, so
+  the call your client shows you says which message or space goes.
 - **Your client approves each call; the server asks you nothing.**
   Claude Code asks for the tools you list under `permissions.ask`.
   claude.ai and Codex prompt for a tool marked `destructiveHint`, which
@@ -287,16 +309,23 @@ client that includes resources in its context:
         "mcp__google-chat__remove_member", "mcp__google-chat__update_space",
         "mcp__google-chat__pin_message", "mcp__google-chat__create_custom_emoji",
         "mcp__google-chat__delete_message", "mcp__google-chat__delete_thread",
-        "mcp__google-chat__delete_section"
+        "mcp__google-chat__delete_section",
+        "mcp__google-chat__admin_update_space",
+        "mcp__google-chat__admin_update_space_permissions",
+        "mcp__google-chat__admin_update_member_role",
+        "mcp__google-chat__admin_promote_member",
+        "mcp__google-chat__admin_add_member",
+        "mcp__google-chat__admin_remove_member"
       ]
     }
   }
   ```
 
-  `delete_space`, `set_space_audience` and `delete_custom_emoji` need no
-  rule: they carry Claude Code's `requiresUserInteraction` mark, so Claude
-  Code 2.1.199 or later asks on every call in every interactive mode, and
-  refuses them where nobody can be asked.
+  `delete_space`, `admin_delete_space`, `set_space_audience` and
+  `delete_custom_emoji` need no rule: they carry Claude Code's
+  `requiresUserInteraction` mark, so Claude Code 2.1.199 or later asks
+  on every call in every interactive mode, and refuses them where nobody
+  can be asked.
 - **Nothing reaches the whole space or past it by default.** A post or
   an edit that mentions everyone, `<users/all>`, is refused. A space is
   created private, and `update_space` does not open one. In a space that

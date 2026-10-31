@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // ListMembersOptions narrows spaces.members.list.
@@ -25,10 +25,23 @@ type ListMembersOptions struct {
 }
 
 // ListMembers returns one page of a space's memberships.
+//
+// Under admin access Google requires a member type filter, and takes
+// only member.type = "HUMAN" or member.type != "BOT" (members.list
+// reference, 2025-07-16). The second is the one that can keep Google
+// Group memberships, which a filter on HUMAN would drop: Google returns
+// a group only when it matches the filter.
 func (c *Client) ListMembers(ctx context.Context, o ListMembersOptions) (*ListMembershipsResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)
-	if o.Filter != "" {
-		q.Set("filter", o.Filter)
+	filter := o.Filter
+	if AdminAccess(ctx) {
+		if filter != "" {
+			filter += " AND "
+		}
+		filter += adminMemberFilter
+	}
+	if filter != "" {
+		q.Set("filter", filter)
 	}
 	if o.ShowGroups {
 		q.Set("showGroups", "true")
@@ -38,14 +51,19 @@ func (c *Client) ListMembers(ctx context.Context, o ListMembersOptions) (*ListMe
 	}
 	var out ListMembershipsResponse
 	err := c.do(ctx, request{
-		method: "GET",
-		name:   o.Space,
-		path:   "members",
-		query:  q,
-		scope:  scopes.MembershipsReadonly,
+		method:     "GET",
+		name:       o.Space,
+		path:       "members",
+		query:      q,
+		scope:      scopes.MembershipsReadonly,
+		adminScope: scopes.AdminMembershipsReadonly,
 	}, &out)
 	return &out, err
 }
+
+// adminMemberFilter is the member type filter Google requires of a
+// membership listing under admin access.
+const adminMemberFilter = `member.type != "BOT"`
 
 // MemberTypeHuman is the only member type a user-authenticated caller
 // can add. Chat apps are added by an administrator, not through this.
@@ -111,11 +129,12 @@ func BuildAddGroup(group, role string) *MembershipRequest {
 func (c *Client) UpdateMemberRole(ctx context.Context, name, role string) (*Membership, error) {
 	var out Membership
 	err := c.do(ctx, request{
-		method: "PATCH",
-		name:   name,
-		query:  url.Values{"updateMask": {"role"}},
-		body:   &MembershipRequest{Role: role},
-		scope:  scopes.Memberships,
+		method:     "PATCH",
+		name:       name,
+		query:      url.Values{"updateMask": {"role"}},
+		body:       &MembershipRequest{Role: role},
+		scope:      scopes.Memberships,
+		adminScope: scopes.AdminMemberships,
 	}, &out)
 	return &out, err
 }
@@ -124,11 +143,12 @@ func (c *Client) UpdateMemberRole(ctx context.Context, name, role string) (*Memb
 func (c *Client) AddMember(ctx context.Context, space string, body *MembershipRequest) (*Membership, error) {
 	var out Membership
 	err := c.do(ctx, request{
-		method: "POST",
-		name:   space,
-		path:   "members",
-		body:   body,
-		scope:  scopes.Memberships,
+		method:     "POST",
+		name:       space,
+		path:       "members",
+		body:       body,
+		scope:      scopes.Memberships,
+		adminScope: scopes.AdminMemberships,
 	}, &out)
 	return &out, err
 }
@@ -141,11 +161,13 @@ func (c *Client) AddMember(ctx context.Context, space string, body *MembershipRe
 // both as a 403 once a space keeps no history.
 func (c *Client) GetMembership(ctx context.Context, name string) (*Membership, error) {
 	var out Membership
-	err := c.do(ctx, request{method: "GET", name: name, scope: scopes.MembershipsReadonly}, &out)
+	err := c.do(ctx, request{
+		method: "GET", name: name, scope: scopes.MembershipsReadonly, adminScope: scopes.AdminMembershipsReadonly,
+	}, &out)
 	return &out, err
 }
 
 // RemoveMember deletes a membership. name is "spaces/{s}/members/{m}".
 func (c *Client) RemoveMember(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.Memberships)
+	return c.deleteName(ctx, name, scopes.Memberships, scopes.AdminMemberships)
 }

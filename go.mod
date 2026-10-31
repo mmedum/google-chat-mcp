@@ -1,4 +1,4 @@
-module github.com/mmedum/google-chat-mcp/v8
+module github.com/mmedum/google-chat-mcp/v9
 
 go 1.27.3
 

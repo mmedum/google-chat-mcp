@@ -48,9 +48,11 @@ var excused = map[string]string{
 		"and the scratch space is deleted before the move could be undone",
 	"position_section": "reorders the account's sidebar",
 
-	// Only a Workspace administrator can call it, and turning its
-	// toolset on widens what login asks for.
-	"search_spaces": "administrator-only, and its toolset is off by default",
+	// A space nobody is in is gone within seconds (live, 2026-10-31), so
+	// the one membership a single account can remove takes the scratch
+	// space with it. Checked by hand that day, in a space with a second
+	// person in it.
+	"admin_remove_member": "removing this account empties the space, and Google deletes an empty space",
 }
 
 // registeredTools asks the built binary what it registers. It needs no

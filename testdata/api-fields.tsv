@@ -199,6 +199,7 @@ chat	SetUpSpaceRequest	requestId	out	create_space builds the body itself and sen
 -	GroupRef	*	local	the Google Group half of a membership request body
 -	MemberRef	*	local	the member half of a membership request body
 -	MembershipRequest	*	local	the spaces.members.create body: the member or group being added
+-	PermissionRequest	*	local	one permission in an admin_update_space_permissions body: who holds it, every role spelled out
 -	ReactionRequest	*	local	the messages.reactions.create body: the emoji being added
 -	SearchContactsResponse	*	local	people.searchContacts, whose response this server shapes for its own reading
 -	SectionRequest	*	local	the users.sections.create body: the fields a custom section is made from

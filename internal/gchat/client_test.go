@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // staticToken is a TokenSource that never calls Google.
@@ -705,46 +705,18 @@ func TestEveryCallNamesItsScope(t *testing.T) {
 	// that writes is named here, and its tool is not registered under
 	// GCM_READ_ONLY; the one read sent as a POST is named too.
 	readOnly := map[string]bool{}
-	for _, s := range scopes.Requested(false, true) {
+	for _, s := range scopes.Requested(false, true, false) {
 		readOnly[s] = true
 	}
 	readsThroughAWriteScope := map[string]bool{"GetSpaceNotificationSetting": true}
 	readsByPost := map[string]bool{"SearchMessages": true}
 
-	ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
-	errType := reflect.TypeOf((*error)(nil)).Elem()
-	client := reflect.ValueOf(c)
-
-	// Nothing on the client but these two stays out of it, and they are
-	// named rather than counted: a floor to clear leaves room for a
-	// method to fall out of the filter unnoticed.
-	notCalls := map[string]bool{"DriftCount": true, "DriftPaths": true}
-
 	var checked int
-	for i := range client.NumMethod() {
-		name := client.Type().Method(i).Name
-		fn := client.Method(i)
-		sig := fn.Type()
-		// A call to Google takes a context first and returns an error
-		// last. DriftCount and DriftPaths do neither.
-		if sig.NumIn() == 0 || sig.In(0) != ctxType ||
-			sig.NumOut() == 0 || sig.Out(sig.NumOut()-1) != errType {
-			if !notCalls[name] {
-				t.Errorf("%s is neither a call to Google nor one of %v", name, notCalls)
-			}
-			continue
-		}
-		args := []reflect.Value{reflect.ValueOf(context.Background())}
-		for j := 1; j < sig.NumIn(); j++ {
-			args = append(args, reflect.New(sig.In(j)).Elem())
-		}
-		results := fn.Call(args)
-		err, _ := results[len(results)-1].Interface().(error)
-
+	total := callEveryMethod(t, c, context.Background(), func(name string, err error) {
 		var apiErr *APIError
 		if !errors.As(err, &apiErr) {
 			t.Errorf("%s: err = %v, want the stub's 403", name, err)
-			continue
+			return
 		}
 		if !asked[apiErr.Scope] {
 			t.Errorf("%s: scope = %q, which login does not ask for", name, apiErr.Scope)
@@ -754,10 +726,51 @@ func TestEveryCallNamesItsScope(t *testing.T) {
 			t.Errorf("%s reads and names %q, which a read-only login does not ask for", name, apiErr.Scope)
 		}
 		checked++
+	})
+	if checked != total {
+		t.Errorf("checked %d calls, want all %d", checked, total)
 	}
-	if want := client.NumMethod() - len(notCalls); checked != want {
-		t.Errorf("checked %d calls, want all %d", checked, want)
+}
+
+// callEveryMethod calls every method on c that reaches Google, each with
+// ctx and zero values for its other arguments, and hands check its name
+// and the error it returned. It reports how many it called.
+//
+// A call to Google takes a context first and returns an error last.
+// Nothing on the client but DriftCount and DriftPaths does neither, and
+// they are named rather than counted: a floor to clear leaves room for a
+// method to fall out of the filter unnoticed.
+func callEveryMethod(t *testing.T, c *Client, ctx context.Context, check func(name string, err error)) int {
+	t.Helper()
+	notCalls := map[string]bool{"DriftCount": true, "DriftPaths": true}
+	ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
+	errType := reflect.TypeOf((*error)(nil)).Elem()
+	client := reflect.ValueOf(c)
+	called := 0
+	for i := range client.NumMethod() {
+		name := client.Type().Method(i).Name
+		fn := client.Method(i)
+		sig := fn.Type()
+		if sig.NumIn() == 0 || sig.In(0) != ctxType ||
+			sig.NumOut() == 0 || sig.Out(sig.NumOut()-1) != errType {
+			if !notCalls[name] {
+				t.Errorf("%s is neither a call to Google nor one of %v", name, notCalls)
+			}
+			continue
+		}
+		args := []reflect.Value{reflect.ValueOf(ctx)}
+		for j := 1; j < sig.NumIn(); j++ {
+			args = append(args, reflect.New(sig.In(j)).Elem())
+		}
+		results := fn.Call(args)
+		err, _ := results[len(results)-1].Interface().(error)
+		check(name, err)
+		called++
 	}
+	if want := client.NumMethod() - len(notCalls); called != want {
+		t.Errorf("called %d methods, want all %d", called, want)
+	}
+	return called
 }
 
 func TestCredentialsGoOnlyToTheConfiguredHosts(t *testing.T) {

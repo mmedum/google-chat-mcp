@@ -6,22 +6,21 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mmedum/google-chat-mcp/v8/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v9/internal/redact"
 	"io"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/doctor"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
-	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v9/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/doctor"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/userconfig"
 )
 
 // cmdLogin runs the loopback OAuth flow and stores the refresh token.
@@ -242,12 +241,13 @@ const doctorTimeout = 2 * time.Minute
 const revokeTimeout = 30 * time.Second
 
 // requestedScopes is the scope set login asks for under cfg: the
-// administrator's scope only with the toolset of that name, since
-// nobody but an administrator can use it, and the read-only scopes
+// administrator's scopes only with the toolset of that name, since
+// nobody but an administrator can use them, the one that deletes any
+// space only with the destructive flag as well, and the read-only scopes
 // alone under GCM_READ_ONLY, so a read-only server holds a token that
-// cannot write; turning writes back on costs a second login.
+// cannot write. Turning writes or deletes on costs a second login.
 func requestedScopes(cfg config.Config) []string {
-	return scopes.Requested(cfg.Enabled(config.ToolsetAdmin), cfg.ReadOnly)
+	return scopes.Requested(cfg.Enabled(config.ToolsetAdmin), cfg.ReadOnly, cfg.DestructiveRegisters())
 }
 
 // grantedScopes reads the scopes Google actually granted, which can be
@@ -289,16 +289,7 @@ func accountSuffix(email string) string {
 	return " as " + redact.Account(email)
 }
 
-func joinToolsets(ts []config.Toolset) string {
-	names := make([]string, len(ts))
-	for i, t := range ts {
-		names[i] = string(t)
-	}
-	if slices.Equal(names, toolsetNames()) {
-		return "all"
-	}
-	return strings.Join(names, ", ")
-}
+func joinToolsets(ts []config.Toolset) string { return collapseToolsets(toolsetList(ts)) }
 
 func toolsetNames() []string {
 	names := make([]string, len(config.AllToolsets))

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // Userinfo returns the OpenID Connect profile of the token's owner.
@@ -44,7 +44,9 @@ func (c *Client) ListSpaces(ctx context.Context, o ListSpacesOptions) (*ListSpac
 // GetSpace returns one space. name is "spaces/{id}".
 func (c *Client) GetSpace(ctx context.Context, name string) (*Space, error) {
 	var out Space
-	err := c.do(ctx, request{method: "GET", name: name, scope: scopes.SpacesReadonly}, &out)
+	err := c.do(ctx, request{
+		method: "GET", name: name, scope: scopes.SpacesReadonly, adminScope: scopes.AdminSpacesReadonly,
+	}, &out)
 	return &out, err
 }
 
@@ -88,38 +90,45 @@ type SearchSpacesOptions struct {
 	// PageToken continues a previous call. Google returns one only
 	// under admin access.
 	PageToken string
-	// UseAdminAccess searches every space in the Workspace rather than
-	// the caller's own, and needs an administrator's scope. The admin
-	// toolset is what allows it.
-	UseAdminAccess bool
 }
 
 // SearchSpaces finds named spaces by display name and metadata.
 //
-// Without admin access it reaches only spaces the caller has joined, and
-// it finds only named spaces: Google's own grammar requires
-// spaceType = "SPACE". Group chats are what find_group_chats is for.
+// Without admin access it reaches only spaces the caller has joined.
+// Under WithAdminAccess it reaches every space in the Workspace, and
+// the query has to say whose: Google requires
+// customer = "customers/my_customer" there. Either way it finds only
+// named spaces: Google's own grammar requires spaceType = "SPACE".
+// Group chats are what find_group_chats is for.
 func (c *Client) SearchSpaces(ctx context.Context, o SearchSpacesOptions) (*SearchSpacesResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)
-	q.Set("query", o.Query)
+	query := o.Query
+	if AdminAccess(ctx) {
+		// "customer is required when useAdminAccess is set to true", and
+		// customers/my_customer is the only value it takes (spaces.search
+		// reference). Without it every administrator's search is refused.
+		query = adminSearchCustomer + " AND " + query
+	}
+	q.Set("query", query)
 	if o.OrderBy != "" {
 		q.Set("orderBy", o.OrderBy)
 	}
-	scope := scopes.SpacesReadonly
-	if o.UseAdminAccess {
-		q.Set("useAdminAccess", "true")
-		scope = scopes.AdminSpacesReadonly
-	}
 	var out SearchSpacesResponse
 	err := c.do(ctx, request{
-		method: "GET",
-		path:   "spaces",
-		verb:   "search",
-		query:  q,
-		scope:  scope,
+		method:     "GET",
+		path:       "spaces",
+		verb:       "search",
+		query:      q,
+		scope:      scopes.SpacesReadonly,
+		adminScope: scopes.AdminSpacesReadonly,
 	}, &out)
 	return &out, err
 }
+
+// adminSearchCustomer says whose spaces an administrator's search
+// covers. Google requires it under admin access and takes no other
+// value.
+const adminSearchCustomer = `customer = "customers/my_customer"`
 
 // Group chat search limits Google documents for spaces.findGroupChats,
 // checked against the REST reference on 2026-09-05.
@@ -233,38 +242,64 @@ type UpdateSpaceRequest struct {
 	DisplayName *string             `json:"displayName,omitempty"`
 	Details     *UpdateSpaceDetails `json:"spaceDetails,omitempty"`
 	Access      *AudienceRequest    `json:"accessSettings,omitempty"`
+	Permissions PermissionsRequest  `json:"permissionSettings,omitempty"`
 }
 
 // UpdateSpaceDetails is the spaceDetails half of a patch body.
 //
-// Description carries no omitempty, unlike the response type: clearing
-// a description is a real edit, and omitting the field would send an
-// empty object that changes nothing. Guidelines are only ever what the
-// space already had, resent so the patch does not clear them.
+// Neither field carries omitempty, unlike the response type: clearing
+// one is a real edit, and Google takes the two together, so a field left
+// out is a field cleared. The one the caller did not change is resent as
+// the space has it.
 type UpdateSpaceDetails struct {
 	Description string `json:"description"`
-	Guidelines  string `json:"guidelines,omitempty"`
+	Guidelines  string `json:"guidelines"`
 }
 
 // BuildUpdateSpace renders a space patch and the mask that goes with
 // it. A nil argument is a field the caller did not ask to change.
 //
 // Google's updateMask takes only top-level paths here, so editing the
-// description masks the whole spaceDetails object and clears anything
-// else in it that was not resent. guidelines is what the space has, and
-// goes with the description so they stay; it is ignored without one.
-func BuildUpdateSpace(displayName, description *string, guidelines string) (*UpdateSpaceRequest, string) {
+// description or the guidelines masks the whole spaceDetails object and
+// clears anything in it that was not resent. current is what the space
+// has, and fills in whichever of the two the caller left alone.
+func BuildUpdateSpace(displayName, description, guidelines *string, current SpaceDetails) (*UpdateSpaceRequest, string) {
 	body := &UpdateSpaceRequest{}
 	mask := make([]string, 0, 2)
 	if displayName != nil {
 		body.DisplayName = displayName
 		mask = append(mask, "displayName")
 	}
-	if description != nil {
-		body.Details = &UpdateSpaceDetails{Description: *description, Guidelines: guidelines}
+	if description != nil || guidelines != nil {
+		// The same two fields with the request's tags, which keep an
+		// empty value on the wire.
+		details := UpdateSpaceDetails(current)
+		if description != nil {
+			details.Description = *description
+		}
+		if guidelines != nil {
+			details.Guidelines = *guidelines
+		}
+		body.Details = &details
 		mask = append(mask, "spaceDetails")
 	}
 	return body, strings.Join(mask, ",")
+}
+
+// PermissionsRequest is the permissionSettings half of a patch body:
+// only the settings the caller changes, each one whole, keyed by
+// Google's field name. Google refuses it beside any other mask, so it
+// is always a patch of its own, masked permission_settings.{key}.
+type PermissionsRequest map[string]PermissionRequest
+
+// PermissionRequest is who holds one permission.
+//
+// No omitempty, unlike the response type: a false takes the permission
+// away, and a field left out would read as one left alone.
+type PermissionRequest struct {
+	ManagersAllowed          bool `json:"managersAllowed"`
+	AssistantManagersAllowed bool `json:"assistantManagersAllowed"`
+	MembersAllowed           bool `json:"membersAllowed"`
 }
 
 // BuildUpdateSpaceAudience renders the patch that sets who can find and
@@ -283,11 +318,12 @@ func BuildUpdateSpaceAudience(audience string) (*UpdateSpaceRequest, string) {
 func (c *Client) UpdateSpace(ctx context.Context, name string, body *UpdateSpaceRequest, mask string) (*Space, error) {
 	var out Space
 	err := c.do(ctx, request{
-		method: "PATCH",
-		name:   name,
-		query:  url.Values{"updateMask": {mask}},
-		body:   body,
-		scope:  scopes.Spaces,
+		method:     "PATCH",
+		name:       name,
+		query:      url.Values{"updateMask": {mask}},
+		body:       body,
+		scope:      scopes.Spaces,
+		adminScope: scopes.AdminSpaces,
 	}, &out)
 	return &out, err
 }

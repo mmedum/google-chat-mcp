@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
 )
 
 // Member limits. The 200 is this server's, well under Google's
@@ -387,12 +387,12 @@ func (s *Service) updateMemberRole(ctx context.Context, in UpdateMemberRoleInput
 	}
 	switch {
 	case promote && role == gchat.RoleMember:
-		return nil, Invalidf("promote_member makes someone a manager or an assistant manager; " +
-			"update_member_role makes them an ordinary member")
+		return nil, Invalidf("%s makes someone a manager or an assistant manager; %s makes them an ordinary member",
+			toolName(ctx, "promote_member"), toolName(ctx, "update_member_role"))
 	case !promote && role != gchat.RoleMember:
 		return nil, Failf(ClassBlocked, "a manager controls the space, its settings and its members, so "+
-			"update_member_role does not make one; nothing was sent. promote_member does, when "+
-			"%sENABLE_DESTRUCTIVE=true", config.EnvPrefix)
+			"%s does not make one; nothing was sent. %s does, when %sENABLE_DESTRUCTIVE=true",
+			toolName(ctx, "update_member_role"), toolName(ctx, "promote_member"), config.EnvPrefix)
 	}
 
 	out := &UpdateMemberRoleResult{Name: name, Role: in.Role, DryRun: in.DryRun}
@@ -563,21 +563,40 @@ func (s *Service) refuseOutsider(ctx context.Context, space, email string) error
 	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
 		return err
 	}
-	found, err := s.client.SearchDirectoryPeople(ctx, email, 10, true)
+	people, err := s.directoryMembers(ctx, email)
 	if err != nil {
 		if failed := Classify(err); worthReporting(failed) {
 			return failed
 		}
 		return outsiderRefused(email, space, " Your organization's directory could not be read to tell.")
 	}
-	for _, p := range found.People {
-		for _, addr := range p.EmailAddrs {
-			if strings.EqualFold(strings.TrimSpace(addr.Value), email) {
-				return nil
-			}
+	for _, p := range people {
+		if hasEmail(p, email) {
+			return nil
 		}
 	}
 	return outsiderRefused(email, space, "")
+}
+
+// directoryMembers asks the organization's directory, its members only,
+// who carries an address. A contact an administrator shared is someone
+// outside, which is why contacts are left out.
+func (s *Service) directoryMembers(ctx context.Context, email string) ([]gchat.Person, error) {
+	found, err := s.client.SearchDirectoryPeople(ctx, email, 10, true)
+	if err != nil {
+		return nil, err
+	}
+	return found.People, nil
+}
+
+// hasEmail reports whether a directory person carries the address.
+func hasEmail(p gchat.Person, email string) bool {
+	for _, addr := range p.EmailAddrs {
+		if strings.EqualFold(strings.TrimSpace(addr.Value), email) {
+			return true
+		}
+	}
+	return false
 }
 
 // refuseGroup refuses adding a Google Group to a space that admits
@@ -665,6 +684,90 @@ func outsiderRefused(email, space, why string) error {
 		"organization, who can read what is already in it.%s add_member adds only people inside the "+
 		"organization; nothing was sent. add_external_member adds someone from outside, when "+
 		"%sENABLE_DESTRUCTIVE=true", email, space, why, config.EnvPrefix)
+}
+
+// AdminAddMember invites someone inside the organization into any
+// named space in the Workspace, as an administrator.
+//
+// It adds people and never a Google Group, and never the caller: either
+// would put the signed-in account into a space it could not read
+// before, and from then on every tool here reads that space's messages
+// as the caller. This server never widens its own reach (the standard's
+// §3, "The model never widens its own reach"). A group the caller
+// belongs to would add the caller with it, and no check at add time can
+// see a later change to the group, which is why groups are refused
+// rather than checked.
+//
+// The address is looked up once, and the one answer settles both
+// questions: whether it is someone in the organization, since Google
+// does not let an administrator add anyone else (spaces.members.create
+// reference), and whether it is the caller under another address. So
+// the outsider check add_member makes is not made again.
+func (s *Service) AdminAddMember(ctx context.Context, in AddMemberInput) (*AddMemberResult, error) {
+	if in.Group != "" || in.GroupEmail != "" {
+		return nil, Failf(ClassBlocked, "admin_add_member adds people, not Google Groups: a group you are in would "+
+			"add you to the space, and with you every tool here; nothing was sent.")
+	}
+	if _, err := requireSpace(in.Space); err != nil {
+		return nil, err
+	}
+	if err := requireWitness(in.Space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
+	email, err := requireEmail("user_email", in.Email)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.vetAdminInvitee(ctx, email); err != nil {
+		return nil, err
+	}
+	in.Email = email
+	return s.addMember(ctx, in, true)
+}
+
+// vetAdminInvitee refuses an address that is not someone in the
+// organization, or that is the caller's own account by its primary
+// address or any other the directory knows it by. A directory that
+// cannot be read cannot tell an alias from anyone else, and vouches for
+// nobody: an administrator's account always has one.
+func (s *Service) vetAdminInvitee(ctx context.Context, email string) error {
+	sub, mine, err := s.caller(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(mine), email) {
+		return selfRefused(email, "")
+	}
+	people, err := s.directoryMembers(ctx, email)
+	if err != nil {
+		if failed := Classify(err); worthReporting(failed) {
+			return failed
+		}
+		return Failf(ClassBlocked, "your organization's directory could not be read to tell whether %s is your own "+
+			"account or someone in the organization, so it was not added; nothing was sent.", email)
+	}
+	known := false
+	for _, p := range people {
+		if !hasEmail(p, email) {
+			continue
+		}
+		if p.ResourceName == "people/"+sub {
+			return selfRefused(email, " The directory says it is one of your own addresses.")
+		}
+		known = true
+	}
+	if !known {
+		return Failf(ClassBlocked, "%s is not in your organization's directory, and Google does not let an "+
+			"administrator add someone from outside; nothing was sent.", email)
+	}
+	return nil
+}
+
+// selfRefused is admin_add_member's refusal of the caller's own account.
+func selfRefused(email, why string) error {
+	return Failf(ClassBlocked, "%s is your own account.%s Adding yourself to a space as an administrator would let "+
+		"every tool here read what is in it, and this server never widens its own reach; nothing was sent. Join "+
+		"through the Admin console if you mean to.", email, why)
 }
 
 // membershipRemoved reports whether a membership Google handed back is

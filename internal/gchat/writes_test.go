@@ -315,11 +315,12 @@ func TestBuildUpdateSpaceMasksWhatItSends(t *testing.T) {
 		wantBody    string
 	}{
 		{"name only", &name, nil, "displayName", `{"displayName":"Team"}`},
-		{"description only", nil, &description, "spaceDetails", `{"spaceDetails":{"description":""}}`},
-		{"both", &name, &description, "displayName,spaceDetails", `{"displayName":"Team","spaceDetails":{"description":""}}`},
+		{"description only", nil, &description, "spaceDetails", `{"spaceDetails":{"description":"","guidelines":""}}`},
+		{"both", &name, &description, "displayName,spaceDetails",
+			`{"displayName":"Team","spaceDetails":{"description":"","guidelines":""}}`},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
-			body, mask := BuildUpdateSpace(tc.displayName, tc.description, "")
+			body, mask := BuildUpdateSpace(tc.displayName, tc.description, nil, SpaceDetails{})
 			if mask != tc.wantMask {
 				t.Errorf("mask = %q, want %q", mask, tc.wantMask)
 			}
@@ -338,7 +339,7 @@ func TestBuildUpdateSpaceMasksWhatItSends(t *testing.T) {
 // an empty object and change nothing.
 func TestAnEmptyDescriptionIsStillSent(t *testing.T) {
 	empty := ""
-	body, _ := BuildUpdateSpace(nil, &empty, "")
+	body, _ := BuildUpdateSpace(nil, &empty, nil, SpaceDetails{Description: "Old"})
 	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -348,21 +349,30 @@ func TestAnEmptyDescriptionIsStillSent(t *testing.T) {
 	}
 }
 
-// The mask covers all of spaceDetails, so the guidelines a space has go
-// back with a new description, and only with one: a rename sends none.
-func TestBuildUpdateSpaceResendsTheGuidelines(t *testing.T) {
-	name, description := "Team", "What we do"
+// The mask covers all of spaceDetails, so whichever of the description
+// and the guidelines a call leaves alone goes back as the space has it,
+// and a rename sends neither.
+func TestBuildUpdateSpaceResendsWhatItLeavesAlone(t *testing.T) {
+	name, description, guidelines, empty := "Team", "What we do", "No spam", ""
 	for _, tc := range []struct {
 		label       string
 		displayName *string
 		description *string
+		guidelines  *string
 		wantBody    string
 	}{
-		{"with a description", nil, &description, `{"spaceDetails":{"description":"What we do","guidelines":"Be kind"}}`},
-		{"with a rename alone", &name, nil, `{"displayName":"Team"}`},
+		{"a description keeps the guidelines", nil, &description, nil,
+			`{"spaceDetails":{"description":"What we do","guidelines":"Be kind"}}`},
+		{"guidelines keep the description", nil, nil, &guidelines,
+			`{"spaceDetails":{"description":"Old","guidelines":"No spam"}}`},
+		{"both replace both", nil, &description, &guidelines,
+			`{"spaceDetails":{"description":"What we do","guidelines":"No spam"}}`},
+		{"guidelines cleared", nil, nil, &empty, `{"spaceDetails":{"description":"Old","guidelines":""}}`},
+		{"a rename alone", &name, nil, nil, `{"displayName":"Team"}`},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
-			body, _ := BuildUpdateSpace(tc.displayName, tc.description, "Be kind")
+			body, _ := BuildUpdateSpace(tc.displayName, tc.description, tc.guidelines,
+				SpaceDetails{Description: "Old", Guidelines: "Be kind"})
 			raw, err := json.Marshal(body)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 type memKeyring struct {

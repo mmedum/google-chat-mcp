@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // Pins, read state and notification settings: the three things Chat
@@ -58,7 +58,7 @@ func (c *Client) PinMessage(ctx context.Context, space, message string) (*Messag
 
 // UnpinMessage removes a pin. name is "spaces/{s}/messagePins/{p}".
 func (c *Client) UnpinMessage(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.Pins)
+	return c.deleteName(ctx, name, scopes.Pins, "")
 }
 
 // GetSpaceReadState returns how far the caller has read in a space.

@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 type staticToken string
@@ -52,6 +52,14 @@ func sessionWithToolsets(t *testing.T, handler http.HandlerFunc, toolsets ...con
 		cfg.Toolsets = toolsets
 	}
 	return sessionWithConfig(t, handler, cfg)
+}
+
+// fullSession is session with every toolset on, admin included: what
+// the tests that drive every registered tool need, so that none of the
+// admin tools goes undriven.
+func fullSession(t *testing.T, handler http.HandlerFunc) *mcp.ClientSession {
+	t.Helper()
+	return sessionWithToolsets(t, handler, config.AllToolsets...)
 }
 
 // sessionWithConfig is the whole harness: a stub Google, the service
@@ -336,11 +344,23 @@ var toolArgs = map[string]map[string]any{
 	"add_member":                        {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "user_email": "janedoe@example.com"},
 	"add_external_member":               {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "user_email": "guest@example.org", "confirm": true},
 	"remove_member":                     {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "confirm": true},
-	"create_section":                    {"display_name": "Clients"},
-	"rename_section":                    {"section_name": "users/me/sections/AAAAsection1", "display_name": "Clients"},
-	"delete_section":                    {"section_name": "users/me/sections/AAAAsection1", "confirm": true},
-	"position_section":                  {"section_name": "users/me/sections/AAAAsection1", "relative_position": "START"},
-	"move_space_to_section":             {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "section_name": "users/me/sections/AAAAsection1", "item_name": "users/me/sections/AAAAsection1/items/AAAAitem1"},
+
+	"admin_search_spaces":            {"display_name": "Engineering", "created_after": "2026-01-01", "order_by": "most_members"},
+	"admin_get_space":                {"space_id": "spaces/AAAAspace1"},
+	"admin_list_members":             {"space_id": "spaces/AAAAspace1"},
+	"admin_get_member":               {"membership_name": "spaces/AAAAspace1/members/AAAAmember1"},
+	"admin_update_space":             {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "description": "What it is for"},
+	"admin_update_space_permissions": {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "manage_apps": "managers", "confirm": true},
+	"admin_update_member_role":       {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MEMBER", "dry_run": true},
+	"admin_promote_member":           {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "role": "MANAGER", "confirm": true},
+	"admin_remove_member":            {"membership_name": "spaces/AAAAspace1/members/AAAAmember1", "confirm": true},
+	"admin_add_member":               {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "user_email": "johndoe@example.com", "confirm": true},
+	"admin_delete_space":             {"space_id": "spaces/AAAAspace1", "display_name": "Team standup", "dry_run": true},
+	"create_section":                 {"display_name": "Clients"},
+	"rename_section":                 {"section_name": "users/me/sections/AAAAsection1", "display_name": "Clients"},
+	"delete_section":                 {"section_name": "users/me/sections/AAAAsection1", "confirm": true},
+	"position_section":               {"section_name": "users/me/sections/AAAAsection1", "relative_position": "START"},
+	"move_space_to_section":          {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "section_name": "users/me/sections/AAAAsection1", "item_name": "users/me/sections/AAAAsection1/items/AAAAitem1"},
 }
 
 // everyRegisteredTool checks the table above still covers the surface,

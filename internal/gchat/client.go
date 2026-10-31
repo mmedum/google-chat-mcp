@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -402,6 +403,34 @@ type request struct {
 	// still has to be declared. Only a call carrying a client-chosen key
 	// Google will refuse a duplicate of may set it.
 	idempotent bool
+	// adminScope is the scope Google documents for this endpoint under
+	// useAdminAccess, on the nine Chat methods that have an
+	// administrator form. Empty means the endpoint has none, and a Chat
+	// call made under WithAdminAccess without one is refused before it
+	// leaves the process.
+	adminScope string
+}
+
+// isChat reports whether this request goes to the Chat API, which is
+// the only one of the four that takes useAdminAccess.
+func (r request) isChat() bool { return r.api == chatAPI || r.api == uploadAPI }
+
+// asAdmin is this request run with the caller's administrator
+// privileges: useAdminAccess on the query, and the administrator scope
+// in place of the user's, so a refusal for want of consent names the
+// scope that would have let it through.
+func (r request) asAdmin() request {
+	// A shallow copy is enough: Set replaces a key's slice rather than
+	// writing into it, so the caller's query is left as it was.
+	q := maps.Clone(r.query)
+	if q == nil {
+		q = url.Values{}
+	}
+	q.Set("useAdminAccess", "true")
+	r.query = q
+	r.scope = r.adminScope
+	r.alsoScopes = nil
+	return r
 }
 
 // resolvePath renders the path this request addresses.
@@ -520,13 +549,48 @@ func WritesForbidden(ctx context.Context) bool {
 // something a caller can cause.
 var ErrWriteForbidden = errors.New("chat api: this call may not write")
 
+// adminKey marks a context whose Chat calls run with the caller's
+// Workspace administrator privileges.
+type adminKey struct{}
+
+// WithAdminAccess returns a context whose Chat calls run as a Workspace
+// administrator: each carries useAdminAccess=true and names the
+// administrator scope Google documents for it.
+//
+// It is a context rather than an option on each call so that every call
+// on the path takes it, the reads a guard makes included. A delete whose
+// refusal is checked by reading the target back has to read it with the
+// same privileges: read as the caller, a space the caller is not in
+// answers not found, and a refused delete would be reported as done.
+// The People, Cloud Identity and OpenID Connect calls on the same path
+// are unaffected, since none of them takes the parameter.
+func WithAdminAccess(ctx context.Context) context.Context {
+	return context.WithValue(ctx, adminKey{}, true)
+}
+
+// AdminAccess reports whether ctx runs its Chat calls as an
+// administrator.
+func AdminAccess(ctx context.Context) bool {
+	admin, _ := ctx.Value(adminKey{}).(bool)
+	return admin
+}
+
+// ErrNoAdminForm is returned when a Chat call that has no administrator
+// form is made under WithAdminAccess. Sending it as the caller instead
+// would answer a question about a space the caller is not in with the
+// caller's own view of it. Reaching it is a bug in this server.
+var ErrNoAdminForm = errors.New("chat api: this call has no administrator form")
+
 // deleteName removes one resource by its name.
 //
 // The four deletes in this package differ only in what they address and
 // what they need consent for, and this is the one place the write flag
 // decides that a transport failure is not retried.
-func (c *Client) deleteName(ctx context.Context, name, scope string) error {
-	return c.do(ctx, request{method: "DELETE", name: name, scope: scope}, nil)
+//
+// adminScope is the scope the delete names under admin access, and empty
+// for a delete that has no administrator form.
+func (c *Client) deleteName(ctx context.Context, name, scope, adminScope string) error {
+	return c.do(ctx, request{method: "DELETE", name: name, scope: scope, adminScope: adminScope}, nil)
 }
 
 // endpointFor renders the URL a request goes to and the path its errors
@@ -659,10 +723,21 @@ func (c *Client) limiter(r request) *rate.Limiter {
 // may be tried again at all — a streamed upload may not, because its
 // body is a file being read as it goes and there is no second pass
 // over it.
+//
+// Under WithAdminAccess the request attempt is given is the
+// administrator's, rewritten here in the one place every call passes, so
+// no path can send a Chat call as the caller from an admin context.
 func send[T any](c *Client, ctx context.Context, r request, retries bool,
-	attempt func(endpoint, path, token string) (T, time.Duration, error),
+	attempt func(r request, endpoint, path, token string) (T, time.Duration, error),
 ) (T, error) {
 	var zero T
+	// Before the URL is built, since the query is part of it.
+	if r.isChat() && AdminAccess(ctx) {
+		if r.adminScope == "" {
+			return zero, fmt.Errorf("%w: %s %s", ErrNoAdminForm, r.method, r.resolvePath())
+		}
+		r = r.asAdmin()
+	}
 	endpoint, path := c.endpointFor(r)
 	if r.isWrite() && WritesForbidden(ctx) {
 		return zero, fmt.Errorf("%w: %s %s", ErrWriteForbidden, r.method, path)
@@ -688,7 +763,7 @@ func send[T any](c *Client, ctx context.Context, r request, retries bool,
 			return zero, err
 		}
 
-		got, retryAfter, err := attempt(endpoint, path, token)
+		got, retryAfter, err := attempt(r, endpoint, path, token)
 		switch {
 		case err == nil:
 			return got, nil
@@ -718,7 +793,7 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 		payload = encoded
 	}
 
-	body, err := send(c, ctx, r, true, func(endpoint, path, token string) ([]byte, time.Duration, error) {
+	body, err := send(c, ctx, r, true, func(r request, endpoint, path, token string) ([]byte, time.Duration, error) {
 		return c.attempt(ctx, r, endpoint, path, payload, token)
 	})
 	if err != nil || out == nil {

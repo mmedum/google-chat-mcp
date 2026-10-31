@@ -1,6 +1,6 @@
 {
   "server": "google-chat-mcp",
-  "version": "v8.0.0",
+  "version": "v9.0.0",
   "sdk": "v1.8.0",
   "tools": [
     {
@@ -234,6 +234,1229 @@
           "reaction_name",
           "emoji",
           "user_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Add someone in your organization to any named space as an administrator. They can then read what is already in the space. People only: a Google Group is refused, and so is your own account by any of its addresses, since every tool here would then read the space. Google does not let an administrator add someone from outside the organization. Pass confirm: true. Set dry_run to check the call first.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: whoever is added can read what is already in the space, and removing them does not take that back",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the request body without adding anyone",
+            "type": "boolean"
+          },
+          "space_display_name": {
+            "description": "what the space is called, as admin_search_spaces or admin_get_space shows it, so the prompt that approves this call names it. Checked against the space before anything is written; a call naming another space is refused [stale]",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to add them to, spaces/{id}, from admin_search_spaces",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "their email address, someone in your organization; search_people turns a name into one. Your own account is refused, by any of its addresses",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "space_display_name",
+          "user_email"
+        ],
+        "type": "object"
+      },
+      "name": "admin_add_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nobody was invited",
+            "type": "boolean"
+          },
+          "group_name": {
+            "description": "the group that was added, when it was a group",
+            "type": "string"
+          },
+          "membership_name": {
+            "description": "the new membership's resource name; remove_member takes it. Null after a dry run",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real invite",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; empty when Google said nothing, which means an ordinary member",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space they were invited into",
+            "type": "string"
+          },
+          "user_email": {
+            "description": "who was invited; empty when a group was added",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "space_id",
+          "user_email",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "_meta": {
+        "anthropic/requiresUserInteraction": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Delete any named space in the Workspace as an administrator, and with it every message and membership in it, for everyone. Google always cascades and there is no undo. Pass the space's display_name, as admin_get_space reports it, and confirm: true; the space is read first and the delete refused [stale] when it is called something else. Direct messages and group chats are refused. delete_space deletes a space you manage.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: deleting a space destroys every message and membership in it for everyone, and cannot be undone",
+            "type": "boolean"
+          },
+          "display_name": {
+            "description": "what the space is called, as get_space or admin_get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "check the arguments, the name included, without deleting anything",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space to delete, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "admin_delete_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "description": "true only when this call deleted it. False can mean it was already gone",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "true when nothing was deleted",
+            "type": "boolean"
+          },
+          "space_id": {
+            "description": "the space that was named",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read one membership of any space as an administrator: who or what it is, their role, and whether they have joined. Check it before changing a role or removing someone: a membership can name a Google Group, and removing that one removes everyone in the group from the space.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "membership_name": {
+            "description": "the membership to read, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name"
+        ],
+        "type": "object"
+      },
+      "name": "admin_get_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "affiliation": {
+            "description": "INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "what to call them, or null when Google gave no name",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "description": "the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "group_members": {
+            "description": "for a GROUP row of list_members with expand_groups: who is in the group, directly, up to 200. Null otherwise, and when they could not be read",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "email": {
+                  "description": "the member's email address",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "USER, GROUP for a group inside the group, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER",
+                  "type": "string"
+                },
+                "role": {
+                  "description": "OWNER, MANAGER or MEMBER: the highest role the member holds in the group",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email",
+                "kind",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "group_members_missing": {
+            "description": "why group_members could not be read, such as a group that does not show its members to you; null when they were read or not asked for",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "group_members_more": {
+            "description": "true when the group has more direct members than group_members holds",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
+            "type": "string"
+          },
+          "member_id": {
+            "description": "who the membership is for: users/{id} for a person, groups/{id} for a group",
+            "type": "string"
+          },
+          "membership_name": {
+            "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id",
+            "type": "string"
+          },
+          "role": {
+            "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize",
+            "type": "string"
+          },
+          "state": {
+            "description": "JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "membership_name",
+          "member_id",
+          "display_name",
+          "email",
+          "role",
+          "state",
+          "group_members",
+          "group_members_more",
+          "group_members_missing"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Read any space in the Workspace as an administrator, one you are not in included: its name, description, guidelines, member counts and permission settings. Messages cannot be read with administrator access. get_space reads a space you are in.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "space_id": {
+            "description": "the space, spaces/{id}, from list_spaces, or from admin_search_spaces for admin_get_space",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_get_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "access_state": {
+            "description": "PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "audience": {
+            "description": "the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "create_time": {
+            "description": "when the space was created, RFC 3339 in UTC; null when Google did not say",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "description": "what the space is for, as its managers wrote it; null when it has none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "what to call the space; a direct message or group chat has no name of its own, so a label is supplied",
+            "type": "string"
+          },
+          "external_user_allowed": {
+            "description": "true when people outside the organization may join; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "group_member_count": {
+            "description": "Google Groups that have joined; null when Google did not say",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "guidelines": {
+            "description": "the rules its managers set for it; null when it has none",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "history_state": {
+            "description": "HISTORY_OFF when messages are kept for 24 hours, HISTORY_ON when the organization's retention rules decide; null when Google did not say",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "human_member_count": {
+            "description": "people who have joined, not counting those who are in only through a group; null when Google did not say",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "last_active_time": {
+            "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "members_can_post": {
+            "description": "false when only managers may post, as in an announcement space; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "permissions": {
+            "additionalProperties": false,
+            "description": "who besides the space's managers holds each permission admin_update_space_permissions changes; null when Google sent no permission settings",
+            "properties": {
+              "manage_apps": {
+                "description": "who may add and remove Chat apps",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "manage_members_and_groups": {
+                "description": "who may add and remove members and groups",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "manage_webhooks": {
+                "description": "who may manage incoming webhooks",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "modify_space_details": {
+                "description": "who may change the name, avatar, description and guidelines",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "reply_messages": {
+                "description": "who may reply in threads",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "toggle_history": {
+                "description": "who may turn history on and off",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "use_at_mention_all": {
+                "description": "who may mention everyone with @all",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "manage_members_and_groups",
+              "modify_space_details",
+              "toggle_history",
+              "use_at_mention_all",
+              "manage_apps",
+              "manage_webhooks",
+              "reply_messages"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "single_user_bot_dm": {
+            "description": "true when the space is a direct message with a Chat app rather than a person; null when Google did not say",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "space_id": {
+            "description": "the space's resource name, spaces/{id}",
+            "type": "string"
+          },
+          "space_uri": {
+            "description": "the link that opens the space in Chat; null when Google did not say",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "description": "SPACE, DIRECT_MESSAGE, GROUP_CHAT, or SPACE_TYPE_UNSPECIFIED for a kind this server does not recognize",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "type",
+          "display_name",
+          "single_user_bot_dm",
+          "external_user_allowed",
+          "create_time",
+          "access_state",
+          "audience",
+          "last_active_time",
+          "space_uri",
+          "description",
+          "guidelines",
+          "human_member_count",
+          "group_member_count",
+          "history_state",
+          "members_can_post",
+          "permissions"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "List the members of any space in the Workspace as an administrator, one you are not in included. The rows are list_members' rows; Google lists no Chat apps under administrator access. Default 50 entries; pass limit (1-200) to widen, and keep paging while next_page_token is non-null.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expand_groups": {
+            "description": "also list who is in each Google Group member, one level down: up to 200 people for each of the first 10 groups. Google shows a group's members only to someone the group lets see them",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space, spaces/{id}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_list_members",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass this back as page_token to read the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "result": {
+            "description": "who is in the space",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "affiliation": {
+                  "description": "INTERNAL for someone in your organization, EXTERNAL for a guest, MANAGED_EXTERNAL for a guest their own organization manages. Empty when Google said nothing. A space with external members is one to think about before posting in",
+                  "type": "string"
+                },
+                "display_name": {
+                  "description": "what to call them, or null when Google gave no name",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "email": {
+                  "description": "the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "group_members": {
+                  "description": "for a GROUP row of list_members with expand_groups: who is in the group, directly, up to 200. Null otherwise, and when they could not be read",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "description": "the member's email address",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "description": "USER, GROUP for a group inside the group, SERVICE_ACCOUNT, SHARED_DRIVE or OTHER",
+                        "type": "string"
+                      },
+                      "role": {
+                        "description": "OWNER, MANAGER or MEMBER: the highest role the member holds in the group",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "email",
+                      "kind",
+                      "role"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "group_members_missing": {
+                  "description": "why group_members could not be read, such as a group that does not show its members to you; null when they were read or not asked for",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "group_members_more": {
+                  "description": "true when the group has more direct members than group_members holds",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "HUMAN for a person, GROUP for a Google Group whose members are in the space through it",
+                  "type": "string"
+                },
+                "member_id": {
+                  "description": "who the membership is for: users/{id} for a person, groups/{id} for a group",
+                  "type": "string"
+                },
+                "membership_name": {
+                  "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id",
+                  "type": "string"
+                },
+                "role": {
+                  "description": "ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "JOINED for someone who is in the space, INVITED for someone who has been asked and has not accepted, NOT_A_MEMBER, or MEMBERSHIP_STATE_UNSPECIFIED",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "membership_name",
+                "member_id",
+                "display_name",
+                "email",
+                "role",
+                "state",
+                "group_members",
+                "group_members_more",
+                "group_members_missing"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "unparsed": {
+            "description": "memberships that were read but could not be understood, and so are missing from result. Non-zero means this listing is INCOMPLETE: a short list otherwise reads as a small space",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result",
+          "unparsed"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Make someone a manager or an assistant manager of any space, as an administrator, such as to give a space with no managers one. A manager can change the space's settings and remove people. Pass confirm: true. Set dry_run to see the request body without sending it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: a manager can act on the space before anyone takes the role back",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to promote, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
+            "type": "string"
+          },
+          "role": {
+            "description": "MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role"
+        ],
+        "type": "object"
+      },
+      "name": "admin_promote_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; after a dry run, the role that was asked for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Remove someone, or a Google Group, from any space as an administrator. Someone removed has to be invited again, and a removed group takes everyone in it out of the space; check with admin_get_member first. Pass confirm: true. A membership that is already gone is reported as removed: false, not as an error.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: someone removed has to be invited again, and a removed group takes everyone in it",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "check the arguments without removing anyone",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to remove, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name"
+        ],
+        "type": "object"
+      },
+      "name": "admin_remove_member",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nobody was removed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "removed": {
+            "description": "true when this call removed the membership; false when it was already gone, and after a dry run. Neither is an error. A membership you may not remove is reported as an error instead, so false never hides a refusal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "membership_name",
+          "removed",
+          "dry_run"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Search every named space in the Workspace as an administrator, spaces you are not in included. Match words in the name, or omit display_name to page through them all; filter by when a space was created or last active and by history, and order by member count, activity or age. Each row carries the space's description, so spaces without one stand out. Group chats and direct messages cannot be searched this way. Keep paging while next_page_token is non-null. search_spaces searches the spaces you are in.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "created_after": {
+            "description": "only spaces created at or after this time; RFC 3339, such as 2026-01-01T00:00:00Z, or a date",
+            "type": "string"
+          },
+          "created_before": {
+            "description": "only spaces created before this time; RFC 3339 or a date",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "match spaces with words in their name that begin with these words, each matched on its own and in any order: 'fun eve' finds 'Fun event' and 'The evening was fun'. Omit to page through every named space",
+            "type": "string"
+          },
+          "external_user_allowed": {
+            "description": "true for spaces that admit people outside the organization, false for those that do not; omit for both",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "history_state": {
+            "description": "HISTORY_ON or HISTORY_OFF; omit for both",
+            "type": "string"
+          },
+          "last_active_after": {
+            "description": "only spaces with a message at or after this time; RFC 3339 or a date",
+            "type": "string"
+          },
+          "last_active_before": {
+            "description": "only spaces with no message since this time; RFC 3339 or a date",
+            "type": "string"
+          },
+          "limit": {
+            "description": "how many to return, 1 to 200; default 50",
+            "type": "integer"
+          },
+          "order_by": {
+            "description": "most_members, fewest_members, recently_active, least_recently_active, newest or oldest; omit for Google's own order",
+            "type": "string"
+          },
+          "page_token": {
+            "description": "next_page_token from a previous call",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "admin_search_spaces",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "next_page_token": {
+            "description": "pass back as page_token for the next page; null when this is the last one",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "result": {
+            "description": "the named spaces that matched",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "description": {
+                  "description": "what the space is for, as its managers wrote it; null when it has none or Google did not send it",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "display_name": {
+                  "description": "what the space is called",
+                  "type": "string"
+                },
+                "last_active_time": {
+                  "description": "when the last message was posted, RFC 3339 in UTC; null when Google did not say",
+                  "format": "date-time",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "space_id": {
+                  "description": "the space's resource name, spaces/{id}; pass this to the other admin tools",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "space_id",
+                "display_name",
+                "description",
+                "last_active_time"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "total_size": {
+            "description": "how many spaces matched in total, an estimate above 10000",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result",
+          "next_page_token",
+          "total_size"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Make a manager or an assistant manager of any space an ordinary member again, as an administrator: role MEMBER. Making someone a manager is refused [blocked] here; admin_promote_member does it. Set dry_run to see the request body without sending it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the request body without changing anything",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership to change, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
+            "type": "string"
+          },
+          "role": {
+            "description": "MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's, or admin_promote_member's",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role"
+        ],
+        "type": "object"
+      },
+      "name": "admin_update_member_role",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "membership_name": {
+            "description": "the membership that was named",
+            "type": "string"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact body that would have been sent; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "role": {
+            "description": "the role Google recorded, in its own spelling; after a dry run, the role that was asked for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_name",
+          "role",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Rename any named space in the Workspace, or change its description or guidelines, as an administrator, a space you are not in included. Pass at least one. Only what you pass changes: Google takes the description and the guidelines together, so the server reads the one you leave alone and sends it back. The reply says what each changed field was before, so a change can be put back. Members see that the organization's administrator made the change. Set dry_run to see the patch body first. update_space edits a space you are in.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "a new description, up to 150 characters; omit to leave it alone. Pass an empty string to clear it",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "a new name, 1 to 128 characters; omit to leave it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "return the patch body and its mask without applying them",
+            "type": "boolean"
+          },
+          "guidelines": {
+            "description": "new guidelines, the space's rules and etiquette, up to 5000 characters; omit to leave them alone. Pass an empty string to clear them",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "space_display_name": {
+            "description": "what the space is called now, as admin_search_spaces or admin_get_space shows it, so the prompt that approves this call names it. Checked against the space before anything is written; a call naming another space is refused [stale]",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to edit, spaces/{id}, from admin_search_spaces",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "space_display_name"
+        ],
+        "type": "object"
+      },
+      "name": "admin_update_space",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "the description that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "description": "the name that was set, or null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "guidelines": {
+            "description": "the guidelines that were set, or null when the call left them alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previous_description": {
+            "description": "what the description was before this call, empty when there was none; null when the call left it alone. Pass it back as description to undo the change",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previous_display_name": {
+            "description": "what the name was before this call, read just before it; null when the call left it alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previous_guidelines": {
+            "description": "what the guidelines were before this call, empty when there were none; null when the call left them alone",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact patch body; null on a real edit",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the space that was edited",
+            "type": "string"
+          },
+          "update_mask": {
+            "description": "which top-level fields the patch targeted",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "space_id",
+          "display_name",
+          "description",
+          "guidelines",
+          "previous_display_name",
+          "previous_description",
+          "previous_guidelines",
+          "update_mask",
+          "dry_run",
+          "rendered_payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Change who may manage members and groups, edit the space's details, turn history on or off, mention everyone with @all, manage apps, manage webhooks and reply, in any named space, as an administrator. Each setting takes managers, assistant_managers or members; a space's managers always hold every permission. Pass only the settings to change, and confirm: true, since widening one hands members what a manager holds. The reply says what each setting was before. admin_get_space shows them all. Who may post and who may see the member list cannot be changed here.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "must be true: widening a permission hands members what a manager holds",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "return the patch body, its mask and the settings as they stand without changing them",
+            "type": "boolean"
+          },
+          "manage_apps": {
+            "description": "who may add and remove Chat apps: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          },
+          "manage_members_and_groups": {
+            "description": "who may add and remove members and groups: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          },
+          "manage_webhooks": {
+            "description": "who may manage incoming webhooks: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          },
+          "modify_space_details": {
+            "description": "who may change the name, avatar, description and guidelines: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          },
+          "reply_messages": {
+            "description": "who may reply in threads: managers, assistant_managers or members; omit to leave it alone. It changes only in a space where members cannot post (members_can_post false), and is refused [invalid] elsewhere",
+            "type": "string"
+          },
+          "space_display_name": {
+            "description": "what the space is called now, as admin_search_spaces or admin_get_space shows it, so the prompt that approves this call names it. Checked against the space before anything is written; a call naming another space is refused [stale]",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "the space to change, spaces/{id}, from admin_search_spaces",
+            "type": "string"
+          },
+          "toggle_history": {
+            "description": "who may turn history on and off: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          },
+          "use_at_mention_all": {
+            "description": "who may mention everyone with @all: managers, assistant_managers or members; omit to leave it alone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "space_display_name"
+        ],
+        "type": "object"
+      },
+      "name": "admin_update_space_permissions",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "description": "each setting the call changed, with what it was before as the widest role that held it. Passing from back undoes a change, except from nobody, which cannot be set",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "description": "what it was before this call: managers, assistant_managers, members or nobody; null when Google did not say",
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "setting": {
+                  "description": "the setting, as the input names it",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "what it was set to",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "setting",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "dry_run": {
+            "description": "true when nothing was changed",
+            "type": "boolean"
+          },
+          "rendered_payload": {
+            "additionalProperties": true,
+            "description": "on a dry run, the exact patch body; null on a real change",
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "space_id": {
+            "description": "the space that was changed",
+            "type": "string"
+          },
+          "update_mask": {
+            "description": "the permission settings the patch targeted",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "changes",
+          "update_mask",
+          "dry_run",
+          "rendered_payload"
         ],
         "type": "object"
       }
@@ -720,7 +1943,7 @@
             "type": "boolean"
           },
           "display_name": {
-            "description": "what the space is called, as get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]",
+            "description": "what the space is called, as get_space or admin_get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]",
             "type": "string"
           },
           "dry_run": {
@@ -1166,7 +2389,7 @@
         "additionalProperties": false,
         "properties": {
           "membership_name": {
-            "description": "the membership to read, spaces/{space}/members/{member}, from list_members",
+            "description": "the membership to read, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
             "type": "string"
           }
         },
@@ -1247,7 +2470,7 @@
             "type": "string"
           },
           "membership_name": {
-            "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id",
+            "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id",
             "type": "string"
           },
           "role": {
@@ -2208,7 +3431,7 @@
         "additionalProperties": false,
         "properties": {
           "space_id": {
-            "description": "the space, spaces/{id}, from list_spaces",
+            "description": "the space, spaces/{id}, from list_spaces, or from admin_search_spaces for admin_get_space",
             "type": "string"
           }
         },
@@ -2304,6 +3527,74 @@
               "boolean"
             ]
           },
+          "permissions": {
+            "additionalProperties": false,
+            "description": "who besides the space's managers holds each permission admin_update_space_permissions changes; null when Google sent no permission settings",
+            "properties": {
+              "manage_apps": {
+                "description": "who may add and remove Chat apps",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "manage_members_and_groups": {
+                "description": "who may add and remove members and groups",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "manage_webhooks": {
+                "description": "who may manage incoming webhooks",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "modify_space_details": {
+                "description": "who may change the name, avatar, description and guidelines",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "reply_messages": {
+                "description": "who may reply in threads",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "toggle_history": {
+                "description": "who may turn history on and off",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "use_at_mention_all": {
+                "description": "who may mention everyone with @all",
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "manage_members_and_groups",
+              "modify_space_details",
+              "toggle_history",
+              "use_at_mention_all",
+              "manage_apps",
+              "manage_webhooks",
+              "reply_messages"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "single_user_bot_dm": {
             "description": "true when the space is a direct message with a Chat app rather than a person; null when Google did not say",
             "type": [
@@ -2343,7 +3634,8 @@
           "human_member_count",
           "group_member_count",
           "history_state",
-          "members_can_post"
+          "members_can_post",
+          "permissions"
         ],
         "type": "object"
       }
@@ -3212,7 +4504,7 @@
                   "type": "string"
                 },
                 "membership_name": {
-                  "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id",
+                  "description": "the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id",
                   "type": "string"
                 },
                 "role": {
@@ -4154,7 +5446,7 @@
             "type": "boolean"
           },
           "membership_name": {
-            "description": "the membership to promote, spaces/{space}/members/{member}, from list_members",
+            "description": "the membership to promote, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
             "type": "string"
           },
           "role": {
@@ -4222,7 +5514,7 @@
             "type": "boolean"
           },
           "membership_name": {
-            "description": "the membership to remove, spaces/{space}/members/{member}, from list_members",
+            "description": "the membership to remove, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
             "type": "string"
           }
         },
@@ -5041,7 +6333,7 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Search the named Google Chat spaces you are a member of by display name, or every space in the Workspace with use_admin_access. Use find_group_chats for a group chat, which this cannot return. Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
+      "description": "Search the named Google Chat spaces you are a member of by display name. Google returns one page of up to 100 and no total. admin_search_spaces searches every space in the Workspace, with filters by date and history and an order. Use find_group_chats for a group chat, which this cannot return. Matching is by word prefix.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -5059,14 +6351,6 @@
           "limit": {
             "description": "how many to return, 1 to 100; default 50",
             "type": "integer"
-          },
-          "page_token": {
-            "description": "continue a previous search; Google returns a token only with admin access",
-            "type": "string"
-          },
-          "use_admin_access": {
-            "description": "search every space in the Workspace rather than the ones you can see. Needs Workspace admin rights and the admin toolset, which is off unless GCM_TOOLSETS names it",
-            "type": "boolean"
           }
         },
         "type": "object"
@@ -5076,7 +6360,7 @@
         "additionalProperties": false,
         "properties": {
           "next_page_token": {
-            "description": "pass back as page_token for the next page; only ever set under admin access",
+            "description": "never set: Google pages a search only under admin access, which admin_search_spaces has",
             "type": "string"
           },
           "result": {
@@ -5119,7 +6403,7 @@
             ]
           },
           "total_size": {
-            "description": "how many spaces matched in total, an estimate above 10000; only ever set under admin access",
+            "description": "never set: Google counts a search only under admin access, which admin_search_spaces has",
             "type": "integer"
           }
         },
@@ -5589,11 +6873,11 @@
             "type": "boolean"
           },
           "membership_name": {
-            "description": "the membership to change, spaces/{space}/members/{member}, from list_members",
+            "description": "the membership to change, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools",
             "type": "string"
           },
           "role": {
-            "description": "MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's",
+            "description": "MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's, or admin_promote_member's",
             "type": "string"
           }
         },

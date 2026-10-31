@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-27",
+  "fetched": "2026-10-31",
   "apis": {
     "chat": {
       "customEmojis.create": {
@@ -45,6 +45,7 @@
         "verb": "POST",
         "path": "v1/{+parent}/attachments:upload",
         "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
           "https://www.googleapis.com/auth/chat.import",
           "https://www.googleapis.com/auth/chat.messages",
           "https://www.googleapis.com/auth/chat.messages.create"
@@ -269,6 +270,7 @@
         "verb": "DELETE",
         "path": "v1/{+name}",
         "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
           "https://www.googleapis.com/auth/chat.import",
           "https://www.googleapis.com/auth/chat.messages",
           "https://www.googleapis.com/auth/chat.messages.reactions"

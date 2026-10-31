@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 // MemberOutput is one row of a space's membership.
@@ -13,7 +13,7 @@ type MemberOutput struct {
 	Kind string `json:"kind" jsonschema:"HUMAN for a person, GROUP for a Google Group whose members are in the space through it"`
 	// The membership and the member are different resources, and the
 	// three tools that change a membership need the first one.
-	MembershipName string  `json:"membership_name" jsonschema:"the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member take THIS, not member_id"`
+	MembershipName string  `json:"membership_name" jsonschema:"the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id"`
 	MemberID       string  `json:"member_id" jsonschema:"who the membership is for: users/{id} for a person, groups/{id} for a group"`
 	DisplayName    *string `json:"display_name" jsonschema:"what to call them, or null when Google gave no name"`
 	Email          *string `json:"email" jsonschema:"the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one"`
@@ -93,23 +93,7 @@ func registerMembers(s *mcp.Server, d Deps) {
 			"next_page_token means the space has more members than came back, so do not report the result as the " +
 			"whole membership.",
 		Kind: Read,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ListMembersInput) (*mcp.CallToolResult, MemberListOutput, error) {
-		got, err := d.Service.ListMembers(ctx, service.ListMembersInput{
-			Space: in.SpaceID, Limit: in.Limit, PageToken: in.PageToken, ExpandGroups: in.ExpandGroups,
-		})
-		if err != nil {
-			return nil, MemberListOutput{}, err
-		}
-		out := MemberListOutput{
-			Result:        make([]MemberOutput, 0, len(got.Members)),
-			NextPageToken: nullable(got.NextPageToken),
-			Unparsed:      got.Unparsed,
-		}
-		for _, m := range got.Members {
-			out.Result = append(out.Result, memberRow(m))
-		}
-		return nil, out, nil
-	})
+	}, listMembers(d))
 }
 
 // AddMemberInput invites one person into a space.
@@ -123,20 +107,20 @@ type AddMemberInput struct {
 
 // GetMemberInput names one membership.
 type GetMemberInput struct {
-	MembershipName string `json:"membership_name" jsonschema:"the membership to read, spaces/{space}/members/{member}, from list_members"`
+	MembershipName string `json:"membership_name" jsonschema:"the membership to read, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools"`
 }
 
 // UpdateMemberRoleInput names a membership and the role it should hold.
 type UpdateMemberRoleInput struct {
-	MembershipName string `json:"membership_name" jsonschema:"the membership to change, spaces/{space}/members/{member}, from list_members"`
-	Role           string `json:"role" jsonschema:"MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's"`
+	MembershipName string `json:"membership_name" jsonschema:"the membership to change, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools"`
+	Role           string `json:"role" jsonschema:"MEMBER, to make a manager an ordinary member again. MANAGER and ASSISTANT_MANAGER are refused here: making someone a manager is promote_member's, or admin_promote_member's"`
 	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"return the request body without changing anything"`
 }
 
 // PromoteMemberInput names a membership and the manager role it should
 // hold.
 type PromoteMemberInput struct {
-	MembershipName string `json:"membership_name" jsonschema:"the membership to promote, spaces/{space}/members/{member}, from list_members"`
+	MembershipName string `json:"membership_name" jsonschema:"the membership to promote, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools"`
 	Role           string `json:"role" jsonschema:"MANAGER or ASSISTANT_MANAGER. A manager can change the space's settings and remove people"`
 	Confirm        bool   `json:"confirm,omitempty" jsonschema:"must be true: a manager can act on the space before anyone takes the role back"`
 	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"return the request body without changing anything"`
@@ -177,7 +161,7 @@ type AddMemberOutput struct {
 
 // RemoveMemberInput names a membership to delete.
 type RemoveMemberInput struct {
-	MembershipName string `json:"membership_name" jsonschema:"the membership to remove, spaces/{space}/members/{member}, from list_members"`
+	MembershipName string `json:"membership_name" jsonschema:"the membership to remove, spaces/{space}/members/{member}, from list_members, or admin_list_members for the admin_ tools"`
 	Confirm        bool   `json:"confirm,omitempty" jsonschema:"must be true: someone removed has to be invited again, and a removed group takes everyone in it"`
 	DryRun         bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without removing anyone"`
 }
@@ -236,13 +220,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"before changing a role or removing someone — a membership can name a Google Group, and removing that " +
 			"one removes everyone in the group from the space.",
 		Kind: Read,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetMemberInput) (*mcp.CallToolResult, MemberOutput, error) {
-		got, err := d.Service.GetMember(ctx, in.MembershipName)
-		if err != nil {
-			return nil, MemberOutput{}, err
-		}
-		return nil, memberRow(*got), nil
-	})
+	}, getMember(d))
 
 	register(s, d, spec{
 		Name: "update_member_role",
@@ -251,15 +229,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"is refused [blocked] here; promote_member does it. Role is the only thing this changes. Set dry_run " +
 			"to see the request body without sending it.",
 		Kind: Write,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMemberRoleInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
-		got, err := d.Service.UpdateMemberRole(ctx, service.UpdateMemberRoleInput{
-			Membership: in.MembershipName, Role: in.Role, DryRun: in.DryRun,
-		})
-		if err != nil {
-			return nil, UpdateMemberRoleOutput{}, err
-		}
-		return nil, memberRole(got), nil
-	})
+	}, updateMemberRole(d))
 
 	register(s, d, spec{
 		Name: "promote_member",
@@ -268,15 +238,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"update_member_role makes a manager an ordinary member again. Set dry_run to see the request body " +
 			"without sending it.",
 		Kind: Destructive,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PromoteMemberInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
-		got, err := d.Service.PromoteMember(ctx, service.UpdateMemberRoleInput{
-			Membership: in.MembershipName, Role: in.Role, DryRun: in.DryRun,
-		})
-		if err != nil {
-			return nil, UpdateMemberRoleOutput{}, err
-		}
-		return nil, memberRole(got), nil
-	})
+	}, promoteMember(d))
 
 	register(s, d, spec{
 		Name: "remove_member",
@@ -288,19 +250,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"is no by-email shape: the People API stays silent about people the caller cannot see, so a miss would " +
 			"read as already gone while the person is still in the space.",
 		Kind: Destructive,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in RemoveMemberInput) (*mcp.CallToolResult, RemoveMemberOutput, error) {
-		got, err := d.Service.RemoveMember(ctx, service.RemoveMemberInput{
-			Membership: in.MembershipName, DryRun: in.DryRun,
-		})
-		if err != nil {
-			return nil, RemoveMemberOutput{}, err
-		}
-		return nil, RemoveMemberOutput{
-			MembershipName: got.Name,
-			Removed:        got.Removed,
-			DryRun:         got.DryRun,
-		}, nil
-	})
+	}, removeMember(d))
 }
 
 // addedMember is what add_member and add_external_member report.
@@ -323,5 +273,80 @@ func memberRole(got *service.UpdateMemberRoleResult) UpdateMemberRoleOutput {
 		Role:            got.Role,
 		DryRun:          got.DryRun,
 		RenderedPayload: rendered(got.Rendered),
+	}
+}
+
+// listMembers reads a page of a space's members, for list_members and admin_list_members.
+func listMembers(d Deps) mcp.ToolHandlerFor[ListMembersInput, MemberListOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in ListMembersInput) (*mcp.CallToolResult, MemberListOutput, error) {
+		got, err := d.Service.ListMembers(ctx, service.ListMembersInput{
+			Space: in.SpaceID, Limit: in.Limit, PageToken: in.PageToken, ExpandGroups: in.ExpandGroups,
+		})
+		if err != nil {
+			return nil, MemberListOutput{}, err
+		}
+		out := MemberListOutput{
+			Result:        make([]MemberOutput, 0, len(got.Members)),
+			NextPageToken: nullable(got.NextPageToken),
+			Unparsed:      got.Unparsed,
+		}
+		for _, m := range got.Members {
+			out.Result = append(out.Result, memberRow(m))
+		}
+		return nil, out, nil
+	}
+}
+
+// getMember reads one membership, for get_member and admin_get_member.
+func getMember(d Deps) mcp.ToolHandlerFor[GetMemberInput, MemberOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in GetMemberInput) (*mcp.CallToolResult, MemberOutput, error) {
+		got, err := d.Service.GetMember(ctx, in.MembershipName)
+		if err != nil {
+			return nil, MemberOutput{}, err
+		}
+		return nil, memberRow(*got), nil
+	}
+}
+
+// updateMemberRole makes someone an ordinary member, for update_member_role and admin_update_member_role.
+func updateMemberRole(d Deps) mcp.ToolHandlerFor[UpdateMemberRoleInput, UpdateMemberRoleOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMemberRoleInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
+		got, err := d.Service.UpdateMemberRole(ctx, service.UpdateMemberRoleInput{
+			Membership: in.MembershipName, Role: in.Role, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, UpdateMemberRoleOutput{}, err
+		}
+		return nil, memberRole(got), nil
+	}
+}
+
+// promoteMember makes someone a manager, for promote_member and admin_promote_member.
+func promoteMember(d Deps) mcp.ToolHandlerFor[PromoteMemberInput, UpdateMemberRoleOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in PromoteMemberInput) (*mcp.CallToolResult, UpdateMemberRoleOutput, error) {
+		got, err := d.Service.PromoteMember(ctx, service.UpdateMemberRoleInput{
+			Membership: in.MembershipName, Role: in.Role, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, UpdateMemberRoleOutput{}, err
+		}
+		return nil, memberRole(got), nil
+	}
+}
+
+// removeMember takes someone out of a space, for remove_member and admin_remove_member.
+func removeMember(d Deps) mcp.ToolHandlerFor[RemoveMemberInput, RemoveMemberOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in RemoveMemberInput) (*mcp.CallToolResult, RemoveMemberOutput, error) {
+		got, err := d.Service.RemoveMember(ctx, service.RemoveMemberInput{
+			Membership: in.MembershipName, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, RemoveMemberOutput{}, err
+		}
+		return nil, RemoveMemberOutput{
+			MembershipName: got.Name,
+			Removed:        got.Removed,
+			DryRun:         got.DryRun,
+		}, nil
 	}
 }

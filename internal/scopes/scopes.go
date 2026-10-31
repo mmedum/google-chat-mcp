@@ -72,13 +72,28 @@ const (
 	Availability         = "https://www.googleapis.com/auth/chat.users.availability"
 )
 
-// AdminSpacesReadonly searches every space in the Workspace, not only
-// the caller's. It is the one scope that is not in All: only a
-// Workspace administrator can use it, and login asks for its whole set
-// in one prompt, so including it would put an administrator's scope on
-// the consent screen of everyone who installs this binary. The admin
-// toolset is what asks for it. See Requested.
-const AdminSpacesReadonly = "https://www.googleapis.com/auth/chat.admin.spaces.readonly"
+// Administrator scopes reach every space in the Workspace, not only the
+// caller's. None is in All: only a Workspace administrator can use them,
+// and login asks for its whole set in one prompt, so including them
+// would put an administrator's scopes on the consent screen of everyone
+// who installs this binary. The admin toolset is what asks for them, and
+// read-only mode and the destructive flag narrow what it asks for. See
+// Requested.
+//
+// Google lists each umbrella beside its .readonly scope on every method
+// that reads, so the umbrella covers the read (discovery revision
+// 20261026). AdminDelete is restricted tier; the other four are
+// sensitive.
+const (
+	AdminSpacesReadonly      = "https://www.googleapis.com/auth/chat.admin.spaces.readonly"
+	AdminSpaces              = "https://www.googleapis.com/auth/chat.admin.spaces"
+	AdminMembershipsReadonly = "https://www.googleapis.com/auth/chat.admin.memberships.readonly"
+	AdminMemberships         = "https://www.googleapis.com/auth/chat.admin.memberships"
+	// AdminDelete deletes any space in the Workspace, and only
+	// admin_delete_space needs it, so only the destructive flag asks for
+	// it.
+	AdminDelete = "https://www.googleapis.com/auth/chat.admin.delete"
+)
 
 // People API scopes. DirectoryReadonly resolves same-domain colleagues;
 // ContactsReadonly is the consumer-account fallback and covers the
@@ -150,6 +165,9 @@ var implies = map[string][]string{
 	ReadState:      {ReadStateReadonly},
 	Availability:   {AvailabilityReadonly},
 	SpacesReadonly: {PinsReadonly},
+
+	AdminSpaces:      {AdminSpacesReadonly},
+	AdminMemberships: {AdminMembershipsReadonly},
 }
 
 // Satisfied reports whether granted covers required, directly or through
@@ -190,17 +208,28 @@ func Canonical(in []string) []string {
 	return out
 }
 
-// Requested is the scope set login asks for. admin adds the one scope
-// All leaves out. readOnly keeps only the scopes that cannot write, so
-// a read-only server holds a token that could not write either; turning
-// writes back on then takes a second login.
-func Requested(admin, readOnly bool) []string {
+// Requested is the scope set login asks for: the scopes the tools a
+// configuration registers can need.
+//
+// readOnly keeps only the scopes that cannot write, so a read-only
+// server holds a token that could not write either; turning writes back
+// on then takes a second login. admin adds the administrator scopes All
+// leaves out, read-only ones first, so a person who declines the rest
+// keeps the admin reads. destructive adds AdminDelete, the one scope
+// that deletes any space in the Workspace, and only with admin and
+// writes on. chat.delete stays in All whatever the flag says: it
+// reaches only the caller's own spaces, and moving it would cost every
+// installed token a second login.
+func Requested(admin, readOnly, destructive bool) []string {
 	out := slices.Clone(All)
+	if admin {
+		out = append(out, AdminSpacesReadonly, AdminMembershipsReadonly, AdminSpaces, AdminMemberships)
+		if destructive {
+			out = append(out, AdminDelete)
+		}
+	}
 	if readOnly {
 		out = slices.DeleteFunc(out, canWrite)
-	}
-	if admin {
-		out = append(out, AdminSpacesReadonly)
 	}
 	return out
 }

@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
 )
 
 // Service turns tool intent into Chat API calls and applies the rules
@@ -25,10 +25,12 @@ type Service struct {
 	cfg    config.Config
 	log    *slog.Logger
 
-	// callerSub is the signed-in account's subject, learned on first
-	// use. It cannot change: one process holds one refresh token.
-	callerMu  sync.RWMutex
-	callerSub string
+	// callerSub and callerEmail are the signed-in account's subject and
+	// address, learned on first use. They cannot change: one process
+	// holds one refresh token.
+	callerMu    sync.RWMutex
+	callerSub   string
+	callerEmail string
 }
 
 // New builds a Service. people may be nil, in which case nothing is
@@ -46,6 +48,45 @@ func New(client *gchat.Client, people *directory.Resolver, cfg config.Config, lo
 // preview changes nothing is kept by the client rather than by each
 // tool remembering to return early.
 func Preview(ctx context.Context) context.Context { return gchat.WithoutWrites(ctx) }
+
+// AsAdministrator returns a context whose Chat calls run with the
+// caller's Workspace administrator privileges.
+//
+// internal/tools puts every admin_ tool's call on one, and the client
+// adds useAdminAccess to every Chat call made under it, the reads a
+// guard makes included, and refuses one that has no administrator form.
+// So an admin tool cannot check a space as the caller and then write to
+// it as an administrator.
+func AsAdministrator(ctx context.Context) context.Context { return gchat.WithAdminAccess(ctx) }
+
+// AdminToolPrefix starts the name of every tool that runs as an
+// administrator, and of no other. internal/tools reads it to decide
+// which tools run under AsAdministrator.
+const AdminToolPrefix = "admin_"
+
+// toolName is the tool a message points to: its admin_ form when the
+// call runs as an administrator, since that is the surface the caller is
+// using.
+func toolName(ctx context.Context, name string) string {
+	if gchat.AdminAccess(ctx) {
+		return AdminToolPrefix + name
+	}
+	return name
+}
+
+// refuseUnnamedUnderAdmin refuses an administrator's write to a direct
+// message or a group chat, in the admin tools that take a space. Its
+// check names the other people in it, which only works for a
+// conversation the caller is in, and Google's administrator search finds
+// named spaces alone. It goes by the space's type, not by whether it has
+// a name: a group chat can carry one. The tools that take a membership
+// send it to Google as given, as their ordinary forms do.
+func refuseUnnamedUnderAdmin(ctx context.Context, space string, sp *gchat.Space) error {
+	if gchat.AdminAccess(ctx) && kindOf(*sp) != KindSpace {
+		return Invalidf("%s is a direct message or a group chat; the admin tools that take a space act on named spaces only", space)
+	}
+	return nil
+}
 
 // DriftCount reports how many unknown response fields have been seen.
 func (s *Service) DriftCount() int64 { return s.client.DriftCount() }
@@ -75,7 +116,7 @@ func (s *Service) Whoami(ctx context.Context) (*Identity, error) {
 	if err != nil {
 		return nil, Classify(err)
 	}
-	s.rememberCaller(info.Sub)
+	s.rememberCaller(info)
 	return &Identity{
 		UserSub:     info.Sub,
 		Email:       info.Email,
@@ -88,14 +129,36 @@ func (s *Service) Whoami(ctx context.Context) (*Identity, error) {
 // the OpenID subject.
 var numericID = regexp.MustCompile(`^[0-9]+$`)
 
-// rememberCaller records the signed-in account's subject.
-func (s *Service) rememberCaller(sub string) {
-	if !numericID.MatchString(sub) {
+// rememberCaller records the signed-in account's subject and address.
+func (s *Service) rememberCaller(info *gchat.UserInfo) {
+	if !numericID.MatchString(info.Sub) {
 		return
 	}
 	s.callerMu.Lock()
-	s.callerSub = sub
+	s.callerSub, s.callerEmail = info.Sub, info.Email
 	s.callerMu.Unlock()
+}
+
+// caller is the signed-in account's subject and address, fetched once.
+// An account Google names no address for is asked again each time; only
+// admin_add_member needs the address, and callerID does not ask here
+// once it has the subject.
+func (s *Service) caller(ctx context.Context) (sub, email string, err error) {
+	s.callerMu.RLock()
+	sub, email = s.callerSub, s.callerEmail
+	s.callerMu.RUnlock()
+	if sub != "" && email != "" {
+		return sub, email, nil
+	}
+	info, err := s.client.Userinfo(ctx)
+	if err != nil {
+		return "", "", Classify(err)
+	}
+	if !numericID.MatchString(info.Sub) {
+		return "", "", Failf(ClassUpstream, "Google reported an account id this server does not recognize.")
+	}
+	s.rememberCaller(info)
+	return info.Sub, info.Email, nil
 }
 
 // callerID is the signed-in account as a Chat user name, fetched once.
@@ -108,19 +171,13 @@ func (s *Service) callerID(ctx context.Context) (string, error) {
 	s.callerMu.RLock()
 	sub := s.callerSub
 	s.callerMu.RUnlock()
-	if sub != "" {
-		return "users/" + sub, nil
+	if sub == "" {
+		var err error
+		if sub, _, err = s.caller(ctx); err != nil {
+			return "", err
+		}
 	}
-
-	info, err := s.client.Userinfo(ctx)
-	if err != nil {
-		return "", Classify(err)
-	}
-	if !numericID.MatchString(info.Sub) {
-		return "", Failf(ClassUpstream, "Google reported an account id this server does not recognize.")
-	}
-	s.rememberCaller(info.Sub)
-	return "users/" + info.Sub, nil
+	return "users/" + sub, nil
 }
 
 // deleteIdempotent removes a resource and reports whether it was there.
@@ -454,17 +511,22 @@ func inclusive(t time.Time) time.Time {
 
 // createTimeFilter bounds a message listing below, above or both. A
 // zero time is no bound on that side.
+func createTimeFilter(after, before time.Time) string { return timeFilter("createTime", after, before) }
+
+// timeFilter bounds a timestamp field strictly below, above or both, for
+// a message listing or a space search. A zero time is no bound on that
+// side.
 //
 // The quoting matters and is not obvious: Chat's filter grammar wants
 // the timestamp quoted here, while the space filter on a section item
 // listing must not be. One place to get it right.
-func createTimeFilter(after, before time.Time) string {
+func timeFilter(field string, after, before time.Time) string {
 	var clauses []string
 	if !after.IsZero() {
-		clauses = append(clauses, `createTime > "`+googleTime(after)+`"`)
+		clauses = append(clauses, field+` > "`+googleTime(after)+`"`)
 	}
 	if !before.IsZero() {
-		clauses = append(clauses, `createTime < "`+googleTime(before)+`"`)
+		clauses = append(clauses, field+` < "`+googleTime(before)+`"`)
 	}
 	return strings.Join(clauses, " AND ")
 }

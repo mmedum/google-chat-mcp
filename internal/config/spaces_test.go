@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/credentials"
-	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/credentials"
+	"github.com/mmedum/google-chat-mcp/v9/internal/userconfig"
 )
 
 // varsFloor is how many variables the server reads today, on purpose:

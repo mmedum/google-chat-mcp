@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
 )
 
 // spaceWitnessField is the argument every write that names a space takes
@@ -27,15 +27,49 @@ const maxWitnessPages = 10
 // written, dry runs included, so the prompt cannot name one space while
 // the call writes to another (§18, 2026-10-27).
 func (s *Service) checkSpace(ctx context.Context, space, witness string) error {
+	_, err := s.checkedSpace(ctx, space, witness, "")
+	return err
+}
+
+// checkedSpace is checkSpace for a write that needs the space it read:
+// the guidelines a description edit resends, the settings a permission
+// change reports. writeScope is the scope to name when the read is
+// refused for want of consent, for a write whose own scope covers the
+// read; empty names the read's.
+//
+// Under admin access only a named space passes: the checks for a direct
+// message and a group chat name the people in it beside the caller, and
+// mean nothing for a conversation the caller is not in.
+func (s *Service) checkedSpace(ctx context.Context, space, witness, writeScope string) (*gchat.Space, error) {
+	if err := requireWitness(space, witness); err != nil {
+		return nil, err
+	}
+	sp, err := s.client.GetSpace(ctx, space)
+	switch {
+	case err != nil && writeScope != "":
+		return nil, needsScope(err, writeScope)
+	case err != nil:
+		return nil, Classify(err)
+	}
+	if err := refuseUnnamedUnderAdmin(ctx, space, sp); err != nil {
+		return nil, err
+	}
+	return sp, s.checkWitness(ctx, space, sp, witness)
+}
+
+// requireWitness refuses a write to a space that does not say which
+// space it is, before anything is read.
+func requireWitness(space, witness string) error {
 	if strings.TrimSpace(witness) == "" {
 		return Invalidf("pass %s: what %s is called, so the prompt that approves this call names it. A named space "+
 			"by its name, a direct message by the other person's email, a group chat by the other members' emails, "+
 			"comma-separated", spaceWitnessField, space)
 	}
-	sp, err := s.client.GetSpace(ctx, space)
-	if err != nil {
-		return Classify(err)
-	}
+	return nil
+}
+
+// checkWitness holds witness to the space as it was read.
+func (s *Service) checkWitness(ctx context.Context, space string, sp *gchat.Space, witness string) error {
 	switch {
 	case sp.DisplayName != "":
 		return checkName(spaceWitnessField, space, sp.DisplayName, witness)

@@ -9,8 +9,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 // Kind is what a tool does to the world. It decides the annotations a
@@ -115,6 +115,19 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	if sp.Marked && sp.Kind != Destructive {
 		panic("tools: " + sp.Name + " carries the mark and is not Destructive")
 	}
+	// A tool whose name starts admin_ runs every call as a Workspace
+	// administrator, on Google's useAdminAccess, and belongs to the admin
+	// toolset. The name is the rule because the name is what a client's
+	// prompt and its permission rules see: a remembered approval covers
+	// a whole tool, never an argument (docs/architecture.md,
+	// "Administrator access").
+	admin := strings.HasPrefix(sp.Name, service.AdminToolPrefix)
+	if admin {
+		if sp.Toolset != "" && sp.Toolset != config.ToolsetAdmin {
+			panic("tools: " + sp.Name + " runs as an administrator and is not in the admin toolset")
+		}
+		sp.Toolset = config.ToolsetAdmin
+	}
 	if !registers(sp, d.Config) {
 		return
 	}
@@ -133,7 +146,7 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 		// reach").
 		tool.Meta = mcp.Meta{interactionKey: true}
 	}
-	mcp.AddTool(s, tool, wrap(h, boolField[In]("dry_run"), confirm, sp.Name))
+	mcp.AddTool(s, tool, wrap(h, boolField[In]("dry_run"), confirm, sp.Name, admin))
 }
 
 // registers reports whether a tool is registered under cfg.
@@ -168,13 +181,14 @@ const interactionKey = "anthropic/requiresUserInteraction"
 
 // wrap is what every handler gets for free.
 //
-// Four rules that were each a line in every handler: a dry run may not
-// write, a Destructive call says confirm: true, an error reaches the
-// model with its class on the front, and a reply carries its readable
-// half as well as its structured one. All belong here for the same
+// Five rules that were each a line in every handler, or would have
+// been: a dry run may not write, a Destructive call says confirm: true,
+// an admin tool's every call runs as an administrator, an error reaches
+// the model with its class on the front, and a reply carries its
+// readable half as well as its structured one. All belong here for the same
 // reason the annotations do — a rule kept by hand at fifty call sites is
 // a rule that will be missed at one.
-func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun, confirm int, name string) mcp.ToolHandlerFor[In, Out] {
+func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun, confirm int, name string, admin bool) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		v := reflect.ValueOf(in)
 		dry := dryRun >= 0 && v.Field(dryRun).Bool()
@@ -188,6 +202,9 @@ func wrap[In any, Out renderer](h mcp.ToolHandlerFor[In, Out], dryRun, confirm i
 		}
 		if dry {
 			ctx = service.Preview(ctx)
+		}
+		if admin {
+			ctx = service.AsAdministrator(ctx)
 		}
 		res, out, err := h(ctx, req, in)
 		if err != nil {

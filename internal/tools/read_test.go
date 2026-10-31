@@ -13,7 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 // chatAndPeople splits Chat calls from People calls, which every
@@ -456,13 +456,14 @@ var readTools = []string{
 	"list_custom_emojis", "list_members", "list_pinned_messages", "list_reactions",
 	"list_section_items", "list_sections", "list_space_events", "list_spaces",
 	"search_messages", "search_people", "search_spaces", "whoami",
+	"admin_get_member", "admin_get_space", "admin_list_members", "admin_search_spaces",
 }
 
 // Every read tool has to be registered and marked read-only, and
 // nothing else may claim that hint: a client that trusts it runs the
 // tool without asking anyone.
 func TestEveryReadToolIsRegistered(t *testing.T) {
-	cs := session(t, body(`{}`))
+	cs := fullSession(t, body(`{}`))
 	list, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
@@ -630,35 +631,5 @@ func TestGetMessageOnAnEmptyAnswer(t *testing.T) {
 	res := call(t, cs, "get_message", map[string]any{"message_name": "spaces/A/messages/1"}, nil)
 	if text := errorText(t, res); !strings.HasPrefix(text, "[upstream]") {
 		t.Errorf("error = %q, want it reported as an upstream oddity", text)
-	}
-}
-
-// The administrator's scope is requested at login only when the admin
-// toolset is on, so without it the call would reach Google and be
-// refused as a permission problem. The refusal has to name the thing to
-// change instead.
-func TestAdminSearchIsRefusedWithoutItsToolset(t *testing.T) {
-	cs := session(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("an admin search must not reach Google without the toolset")
-	})
-	res := call(t, cs, "search_spaces",
-		map[string]any{"display_name": "Engineering", "use_admin_access": true}, nil)
-	text := errorText(t, res)
-	if !strings.Contains(text, "admin") || !strings.Contains(text, "TOOLSETS") {
-		t.Errorf("the refusal %q does not say what to change", text)
-	}
-
-	// And with the toolset on it is an ordinary search.
-	var reached bool
-	on := sessionWithToolsets(t, func(w http.ResponseWriter, r *http.Request) {
-		reached = r.URL.Query().Get("useAdminAccess") == "true"
-		fmt.Fprint(w, `{"results":[]}`)
-	}, config.AllToolsets...)
-	if res := call(t, on, "search_spaces",
-		map[string]any{"display_name": "Engineering", "use_admin_access": true}, nil); res.IsError {
-		t.Fatalf("admin search with the toolset on: %s", errorText(t, res))
-	}
-	if !reached {
-		t.Error("the admin flag did not reach Google")
 	}
 }

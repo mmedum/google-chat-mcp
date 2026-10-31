@@ -11,6 +11,27 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-10-31
+
+### Added
+
+- Tools for a Workspace administrator, in the `admin` toolset, that act on any space in the organization, including spaces you are not in. `admin_search_spaces`, `admin_get_space`, `admin_list_members` and `admin_get_member` read. `admin_update_space` changes a named space's name, description or guidelines, and says what each was before. `admin_update_member_role` makes a manager an ordinary member.
+- With `GCM_ENABLE_DESTRUCTIVE=true`, the `admin` toolset also registers `admin_update_space_permissions`, `admin_promote_member`, `admin_remove_member`, `admin_add_member` and `admin_delete_space`. `admin_add_member` adds people only: a Google Group and your own account, by any of its addresses, are refused. `admin_update_space_permissions` changes who may reply only in a space where members cannot post, as in an announcement space; Google refuses it anywhere else. Every admin write that takes a space works on named spaces only, reads the space first and refuses `[stale]` when the name it is given is another's; the three that take a membership send it to Google as given.
+- `get_space` and `admin_get_space` report a space's permission settings: who besides its managers may manage members, edit its details, turn history on or off, use @all, manage apps and webhooks, and reply.
+
+### Changed
+
+- **Breaking:** the module path is `github.com/mmedum/google-chat-mcp/v9`. Install with `go install github.com/mmedum/google-chat-mcp/v9/cmd/google-chat-mcp@latest`.
+- **Breaking:** if you use the `admin` toolset, add `chat.admin.spaces.readonly`, `chat.admin.memberships.readonly`, `chat.admin.spaces` and `chat.admin.memberships` to your OAuth consent screen, plus `chat.admin.delete` with `GCM_ENABLE_DESTRUCTIVE=true`, and run `google-chat-mcp login` again. `login` now asks for them; under `GCM_READ_ONLY` it asks only for the two `.readonly` scopes. Until you do, the new admin tools return `[scope]`.
+
+### Removed
+
+- **Breaking:** `search_spaces` no longer takes `use_admin_access` or `page_token`. Use `admin_search_spaces` to search every space in the Workspace; it pages, counts, and takes the administrator's filters. Google pages and counts a search only under admin access, so `search_spaces`' `next_page_token` and `total_size` are never set.
+
+### Fixed
+
+- `status` and `login` print `all, admin` when every toolset is on, and `all` for the default set. They printed `all` for the first, which read as the admin toolset being off.
+
 ## [8.0.0] - 2026-10-27
 
 ### Changed
@@ -797,7 +818,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...HEAD
+[9.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...v9.0.0
 [8.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...v8.0.0
 [7.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.2...v7.1.0
 [7.0.2]: https://github.com/mmedum/google-chat-mcp/compare/v7.0.1...v7.0.2

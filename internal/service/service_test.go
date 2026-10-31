@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/auth"
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/directory"
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/auth"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/directory"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 type staticToken string
@@ -440,11 +440,17 @@ func (c *calls) last(t *testing.T) call {
 // this server cannot rebuild, so the mask is the assertion that matters.
 func (c call) mask(t *testing.T) string {
 	t.Helper()
+	return c.param(t, "updateMask")
+}
+
+// param is one query parameter the call sent.
+func (c call) param(t *testing.T, key string) string {
+	t.Helper()
 	q, err := url.ParseQuery(c.Query)
 	if err != nil {
 		t.Fatalf("query %q does not parse: %v", c.Query, err)
 	}
-	return q.Get("updateMask")
+	return q.Get(key)
 }
 
 // recorded builds a Service whose every request is remembered.
@@ -872,7 +878,8 @@ func TestSetSpaceAudienceRefusesAnotherSpace(t *testing.T) {
 
 // Google's mask covers all of spaceDetails, so a description sent alone
 // would clear the guidelines. They are read and sent back as they were,
-// a dry run included, and a rename reads nothing.
+// a dry run included. The read that gives them is the one that holds
+// space_display_name to the space, so neither edit reads twice.
 func TestUpdateSpaceKeepsTheGuidelines(t *testing.T) {
 	description, name := "What this room is for", "Renamed"
 	for _, tc := range []struct {
@@ -882,12 +889,10 @@ func TestUpdateSpaceKeepsTheGuidelines(t *testing.T) {
 		wantGets int
 	}{
 		{"a new description", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", Description: &description},
-			`{"spaceDetails":{"description":"What this room is for","guidelines":"Be kind"}}`, 2},
+			`{"spaceDetails":{"description":"What this room is for","guidelines":"Be kind"}}`, 1},
 		{"a rename", UpdateSpaceInput{SpaceDisplayName: "Team", Space: "spaces/A", DisplayName: &name}, `{"displayName":"Renamed"}`, 1},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
-			// One read holds space_display_name to the space; a new
-			// description reads it again for the guidelines.
 			s, rec := recorded(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
 					fmt.Fprint(w, `{"name":"spaces/A","displayName":"Team","spaceDetails":{"description":"Old","guidelines":"Be kind"}}`)

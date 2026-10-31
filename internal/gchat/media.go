@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // MaxAttachmentBytes is the largest attachment Google accepts, from the
@@ -60,7 +60,7 @@ func (c *Client) DownloadMedia(ctx context.Context, resourceName string) (*Media
 // has bytes, a failure is the caller's to see — repeating the request
 // would start a second download over the top of a half-written file.
 func (c *Client) doStream(ctx context.Context, r request) (*Media, error) {
-	return send(c, ctx, r, true, func(endpoint, path, token string) (*Media, time.Duration, error) {
+	return send(c, ctx, r, true, func(r request, endpoint, path, token string) (*Media, time.Duration, error) {
 		return c.transfer(ctx, r, endpoint, path, nil, 0, token)
 	})
 }
@@ -319,7 +319,7 @@ func randomBoundary() string {
 // pass over it — so a failed upload is reported, and the caller sends
 // the file again.
 func (c *Client) doUpload(ctx context.Context, r request, body io.Reader, length int64, out any) error {
-	answer, err := send(c, ctx, r, false, func(endpoint, path, token string) (*Media, time.Duration, error) {
+	answer, err := send(c, ctx, r, false, func(r request, endpoint, path, token string) (*Media, time.Duration, error) {
 		return c.transfer(ctx, r, endpoint, path, body, length, token)
 	})
 	if err != nil {

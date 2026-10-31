@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 // AvailabilityOutput is your own presence.
@@ -108,7 +108,7 @@ type DeleteCustomEmojiOutput struct {
 // DeleteSpaceInput names a space to destroy.
 type DeleteSpaceInput struct {
 	SpaceID     string `json:"space_id" jsonschema:"the space to delete, spaces/{id}"`
-	DisplayName string `json:"display_name" jsonschema:"what the space is called, as get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]"`
+	DisplayName string `json:"display_name" jsonschema:"what the space is called, as get_space or admin_get_space reports it. The space is read first, and a delete of a space called something else is refused [stale]"`
 	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true: deleting a space destroys every message and membership in it for everyone, and cannot be undone"`
 	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"check the arguments, the name included, without deleting anything"`
 }
@@ -263,15 +263,7 @@ func registerPresence(s *mcp.Server, d Deps) {
 			"something else.",
 		Kind:   Destructive,
 		Marked: true,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteSpaceInput) (*mcp.CallToolResult, DeleteSpaceOutput, error) {
-		got, err := d.Service.DeleteSpace(ctx, service.DeleteSpaceInput{
-			Space: in.SpaceID, DisplayName: in.DisplayName, DryRun: in.DryRun,
-		})
-		if err != nil {
-			return nil, DeleteSpaceOutput{}, err
-		}
-		return nil, DeleteSpaceOutput{SpaceID: got.Space, Deleted: got.Deleted, DryRun: got.DryRun}, nil
-	})
+	}, deleteSpace(d))
 }
 
 // availability shapes a presence answer for the model.
@@ -288,4 +280,17 @@ func availability(got *service.Presence) AvailabilityOutput {
 // customEmoji shapes one emoji for the model.
 func customEmoji(e service.CustomEmoji) CustomEmojiOutput {
 	return CustomEmojiOutput{Name: e.Name, EmojiName: e.EmojiName, TemporaryURI: e.TemporaryURI}
+}
+
+// deleteSpace deletes a space, for delete_space and admin_delete_space.
+func deleteSpace(d Deps) mcp.ToolHandlerFor[DeleteSpaceInput, DeleteSpaceOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in DeleteSpaceInput) (*mcp.CallToolResult, DeleteSpaceOutput, error) {
+		got, err := d.Service.DeleteSpace(ctx, service.DeleteSpaceInput{
+			Space: in.SpaceID, DisplayName: in.DisplayName, DryRun: in.DryRun,
+		})
+		if err != nil {
+			return nil, DeleteSpaceOutput{}, err
+		}
+		return nil, DeleteSpaceOutput{SpaceID: got.Space, Deleted: got.Deleted, DryRun: got.DryRun}, nil
+	}
 }
