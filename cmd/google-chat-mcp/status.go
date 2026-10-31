@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/redact"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
-	"github.com/mmedum/google-chat-mcp/v8/internal/userconfig"
-	"github.com/mmedum/google-chat-mcp/v8/internal/version"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/redact"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/userconfig"
+	"github.com/mmedum/google-chat-mcp/v9/internal/version"
 )
 
 // statusSchemaVersion is the version of the JSON object `status --json`
@@ -228,11 +228,16 @@ func toolsetList(ts []config.Toolset) []string {
 	return names
 }
 
-// collapseToolsets reproduces the text output's "all", so the human
-// lines are unchanged by the object having been added under them.
+// collapseToolsets is the toolsets as a person would set them: "all"
+// for the default set, "all, admin" for every set, the names otherwise.
+// GCM_TOOLSETS=all leaves admin out, so printing "all" for a server
+// that has it on would say admin is off.
 func collapseToolsets(names []string) string {
-	if slices.Equal(names, toolsetNames()) {
+	switch {
+	case slices.Equal(names, toolsetList(config.DefaultToolsets())):
 		return "all"
+	case slices.Equal(names, toolsetNames()):
+		return "all, " + string(config.ToolsetAdmin)
 	}
 	return strings.Join(names, ", ")
 }

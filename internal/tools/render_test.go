@@ -373,6 +373,49 @@ func TestRenderings(t *testing.T) {
 			out:  WhoamiOutput{UserSub: "111111111111111111111", Email: "janedoe@example.com", DisplayName: "Jane Doe"},
 			want: []string{"Signed in as", "Jane Doe <janedoe@example.com>"},
 		},
+		{
+			// Finding the spaces without one is what the field is for, so
+			// its absence is said rather than left out.
+			name: "an administrator's search says which spaces have no description",
+			out: AdminSearchSpacesOutput{
+				Result: []AdminSpaceSummaryOutput{
+					{SpaceID: "spaces/AAAAspace1", DisplayName: "Team", Description: ptr("Where the team talks")},
+					{SpaceID: "spaces/AAAAspace2", DisplayName: "Ops"},
+				},
+				NextPageToken: ptr("tok"), TotalSize: 40,
+			},
+			want: []string{"2 spaces of about 40", "spaces/AAAAspace1 · Team · description: Where the team talks",
+				"spaces/AAAAspace2 · Ops · no description", "More to come"},
+		},
+		{
+			name: "an administrator's edit says what each field was and is",
+			out: AdminUpdateSpaceOutput{
+				SpaceID: "spaces/AAAAspace1", Description: ptr("New"), PreviousDescription: ptr(""),
+				Guidelines: ptr(""), PreviousGuidelines: ptr("Be kind"), UpdateMask: ptr("spaceDetails"),
+			},
+			want:  []string{"Updated spaces/AAAAspace1", "mask spaceDetails", `description: (empty) -> "New"`, `guidelines: "Be kind" -> (empty)`},
+			avoid: []string{"name:"},
+		},
+		{
+			name: "a permission change says what each setting was",
+			out: AdminUpdateSpacePermissionsOutput{
+				SpaceID: "spaces/AAAAspace1", UpdateMask: "permission_settings.manageApps,permission_settings.replyMessages",
+				Changes: []PermissionChangeOutput{
+					{Setting: "manage_apps", From: ptr("assistant_managers"), To: "managers"},
+					{Setting: "reply_messages", To: "members"},
+				},
+			},
+			want: []string{"Updated spaces/AAAAspace1", "manage_apps: assistant_managers -> managers", "reply_messages: unknown -> members"},
+		},
+		{
+			name: "a space's permissions are on its card",
+			out: SpaceDetailOutput{
+				SpaceID: "spaces/AAAAspace1", Type: "SPACE", DisplayName: "Team",
+				Permissions: &SpacePermissionsOutput{ManageMembersAndGroups: ptr("members"), ManageApps: ptr("nobody")},
+			},
+			want:  []string{"permissions: manage members members · manage apps nobody"},
+			avoid: []string{"reply"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.out.Render()
@@ -399,7 +442,7 @@ func TestRenderings(t *testing.T) {
 // against the registered tools below, so a tool added without an entry
 // fails here rather than shipping unrendered.
 func TestEveryToolReturnsBothHalves(t *testing.T) {
-	cs := session(t, everyEndpoint)
+	cs := fullSession(t, everyEndpoint)
 	for name, in := range everyRegisteredTool(t, cs) {
 		t.Run(name, func(t *testing.T) {
 			// call asserts both halves for any result that is not an
@@ -418,6 +461,13 @@ func everyEndpoint(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
 	case strings.Contains(path, "people:searchDirectoryPeople"), strings.Contains(path, "people:searchContacts"):
+		// A search for an address finds someone else at that address,
+		// which is the colleague an admin_add_member call names; a
+		// search by name finds the signed-in account.
+		if q := r.URL.Query().Get("query"); strings.Contains(q, "@") && q != "janedoe@example.com" {
+			fmt.Fprint(w, peopleSearch("people/2", q, "John Doe"))
+			return
+		}
 		fmt.Fprint(w, peopleSearch("people/1", "janedoe@example.com", "Jane Doe"))
 	case strings.HasPrefix(path, "/people"):
 		personHit(w, r)

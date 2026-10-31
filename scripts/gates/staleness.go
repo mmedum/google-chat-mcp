@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // The staleness gate fails when the documentation drifts from the code.

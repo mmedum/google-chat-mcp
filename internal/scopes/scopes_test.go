@@ -27,16 +27,19 @@ func TestAllIsWellFormed(t *testing.T) {
 	}
 }
 
-// Every scope named in the umbrella table must be one login asks for.
-// A typo here would silently stop satisfying anything.
+// Every scope named in the umbrella table must be one login can ask for.
+// A typo here would silently stop satisfying anything. The widest set
+// is admin with writes and deletes on, since the administrator scopes
+// are deliberately not in All.
 func TestImpliesOnlyNamesRequestedScopes(t *testing.T) {
+	widest := Requested(true, false, true)
 	for umbrella, narrower := range implies {
-		if !slices.Contains(All, umbrella) {
-			t.Errorf("umbrella %q is not in All", umbrella)
+		if !slices.Contains(widest, umbrella) {
+			t.Errorf("umbrella %q is not a scope login asks for", umbrella)
 		}
 		for _, n := range narrower {
-			if !slices.Contains(All, n) {
-				t.Errorf("%q implies %q, which is not in All", umbrella, n)
+			if !slices.Contains(widest, n) {
+				t.Errorf("%q implies %q, which login never asks for", umbrella, n)
 			}
 			if n == umbrella {
 				t.Errorf("%q implies itself", umbrella)
@@ -90,34 +93,57 @@ func TestCanonicalRewritesOnlyTheAliases(t *testing.T) {
 // against All without canonicalizing both sides reports them missing.
 func TestMissingIgnoresTheOIDCAliasSpelling(t *testing.T) {
 	granted := Canonical(All)
-	if missing := Missing(granted, Requested(false, false)); len(missing) != 0 {
+	if missing := Missing(granted, Requested(false, false, false)); len(missing) != 0 {
 		t.Errorf("a full grant reports %d missing scopes: %v", len(missing), missing)
 	}
-	if missing := Missing(All, Requested(false, false)); len(missing) != 0 {
+	if missing := Missing(All, Requested(false, false, false)); len(missing) != 0 {
 		t.Errorf("a full grant in alias spelling reports missing: %v", missing)
 	}
 }
 
-// The admin scope is asked for only when the admin toolset is on, so a
-// token granted without it is complete for everyone else and short for
-// the person who turned it on.
+// The administrator scopes are asked for only when the admin toolset is
+// on, so a token granted without them is complete for everyone else and
+// short for the person who turned it on.
 func TestMissingFollowsWhatLoginAskedFor(t *testing.T) {
 	granted := Canonical(All)
-	if missing := Missing(granted, Requested(false, false)); len(missing) != 0 {
+	if missing := Missing(granted, Requested(false, false, false)); len(missing) != 0 {
 		t.Errorf("a full grant reports %v", missing)
 	}
-	missing := Missing(granted, Requested(true, false))
-	if len(missing) != 1 || missing[0] != AdminSpacesReadonly {
-		t.Errorf("with admin on, missing = %v, want the admin scope alone", missing)
+	if missing := Missing(granted, Requested(false, false, true)); len(missing) != 0 {
+		t.Errorf("the destructive flag without admin asks for more: %v", missing)
 	}
-	if slices.Contains(All, AdminSpacesReadonly) {
-		t.Error("the admin scope is in All, so every consent screen carries it")
+	missing := Missing(granted, Requested(true, false, false))
+	want := []string{AdminSpacesReadonly, AdminMembershipsReadonly, AdminSpaces, AdminMemberships}
+	if !slices.Equal(missing, want) {
+		t.Errorf("with admin on, missing = %v, want %v", missing, want)
+	}
+	missing = Missing(granted, Requested(true, false, true))
+	if !slices.Equal(missing, append(slices.Clone(want), AdminDelete)) {
+		t.Errorf("with admin and deletes on, missing = %v, want %v and the delete scope", missing, want)
+	}
+	for _, s := range append(want, AdminDelete) {
+		if slices.Contains(All, s) {
+			t.Errorf("%s is in All, so every consent screen carries it", s)
+		}
+	}
+}
+
+// An umbrella covers its read: a person who granted the admin write
+// scopes is not asked for the read-only ones again.
+func TestAdminUmbrellasCoverTheirReads(t *testing.T) {
+	granted := append(Canonical(All), AdminSpaces, AdminMemberships)
+	if missing := Missing(granted, Requested(true, false, false)); len(missing) != 0 {
+		t.Errorf("the admin umbrellas leave %v missing", missing)
+	}
+	if missing := Missing(append(Canonical(All), AdminSpacesReadonly, AdminMembershipsReadonly),
+		Requested(true, false, false)); !slices.Equal(missing, []string{AdminSpaces, AdminMemberships}) {
+		t.Errorf("a grant of the admin reads alone reports %v missing, want the two admin write scopes", missing)
 	}
 }
 
 func TestMissingNamesWhatIsAbsent(t *testing.T) {
 	granted := []string{OpenID, Email, Profile, Messages, Spaces, Memberships}
-	missing := Missing(granted, Requested(false, false))
+	missing := Missing(granted, Requested(false, false, false))
 	if slices.Contains(missing, MessagesCreate) {
 		t.Error("MessagesCreate is covered by the Messages umbrella")
 	}
@@ -139,21 +165,26 @@ func TestReadOnlyAsksForNothingThatWrites(t *testing.T) {
 		PinsReadonly, CustomEmojisReadonly, ReadStateReadonly, AvailabilityReadonly,
 		DirectoryReadonly, ContactsReadonly, GroupsReadonly,
 	}
-	if got := Requested(false, true); !slices.Equal(got, want) {
+	if got := Requested(false, true, false); !slices.Equal(got, want) {
 		t.Errorf("Requested(read-only) = %v, want %v", got, want)
 	}
-	if got := Requested(true, true); !slices.Equal(got, append(slices.Clone(want), AdminSpacesReadonly)) {
-		t.Errorf("Requested(admin, read-only) = %v, want the read-only set and the admin scope", got)
+	// Read-only mode wins over the destructive flag: a read-only admin
+	// server asks for the two admin reads and nothing that writes.
+	wantAdmin := append(slices.Clone(want), AdminSpacesReadonly, AdminMembershipsReadonly)
+	for _, destructive := range []bool{false, true} {
+		if got := Requested(true, true, destructive); !slices.Equal(got, wantAdmin) {
+			t.Errorf("Requested(admin, read-only, destructive=%v) = %v, want %v", destructive, got, wantAdmin)
+		}
 	}
-	if got := Requested(false, false); !slices.Equal(got, All) {
+	if got := Requested(false, false, false); !slices.Equal(got, All) {
 		t.Errorf("Requested(writes on) = %v, want All", got)
 	}
 	// A full token is complete for a read-only server, and a read-only
 	// token is short for one that writes.
-	if missing := Missing(All, Requested(false, true)); len(missing) != 0 {
+	if missing := Missing(All, Requested(false, true, false)); len(missing) != 0 {
 		t.Errorf("a full grant is short for a read-only server: %v", missing)
 	}
-	if missing := Missing(want, Requested(false, false)); !slices.Contains(missing, Messages) {
+	if missing := Missing(want, Requested(false, false, false)); !slices.Contains(missing, Messages) {
 		t.Errorf("a read-only grant reports %v missing for a server that writes; want chat.messages among them", missing)
 	}
 }

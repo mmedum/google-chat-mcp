@@ -236,7 +236,25 @@ func (o SpaceDetailOutput) Render() string {
 		deref(o.SpaceURI),
 		labeled("description:", deref(o.Description)),
 		labeled("guidelines:", deref(o.Guidelines)),
+		o.Permissions.render(),
 	)
+}
+
+// render is a space's permission settings on one line, nothing when
+// Google sent none.
+func (p *SpacePermissionsOutput) render() string {
+	if p == nil {
+		return ""
+	}
+	return labeled("permissions:", meta(
+		labeled("manage members", deref(p.ManageMembersAndGroups)),
+		labeled("edit details", deref(p.ModifySpaceDetails)),
+		labeled("toggle history", deref(p.ToggleHistory)),
+		labeled("@all", deref(p.UseAtMentionAll)),
+		labeled("manage apps", deref(p.ManageApps)),
+		labeled("manage webhooks", deref(p.ManageWebhooks)),
+		labeled("reply", deref(p.ReplyMessages)),
+	))
 }
 
 // memberCounts is who has joined a space, or nothing when Google sent no

@@ -6,8 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 // Output types are deliberate shadows of the wire types, not embeds of
@@ -42,24 +41,38 @@ type SpaceDetailOutput struct {
 	// The two booleans are pointers because Google omits them far more
 	// often than it sends false, and reporting false would assert
 	// something it never said.
-	SingleUserBotDM     *bool      `json:"single_user_bot_dm" jsonschema:"true when the space is a direct message with a Chat app rather than a person; null when Google did not say"`
-	ExternalUserAllowed *bool      `json:"external_user_allowed" jsonschema:"true when people outside the organization may join; null when Google did not say"`
-	CreateTime          *time.Time `json:"create_time" jsonschema:"when the space was created, RFC 3339 in UTC; null when Google did not say"`
-	AccessState         *string    `json:"access_state" jsonschema:"PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message"`
-	Audience            *string    `json:"audience" jsonschema:"the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join"`
-	LastActiveTime      *time.Time `json:"last_active_time" jsonschema:"when the last message was posted, RFC 3339 in UTC; null when Google did not say"`
-	SpaceURI            *string    `json:"space_uri" jsonschema:"the link that opens the space in Chat; null when Google did not say"`
-	Description         *string    `json:"description" jsonschema:"what the space is for, as its managers wrote it; null when it has none"`
-	Guidelines          *string    `json:"guidelines" jsonschema:"the rules its managers set for it; null when it has none"`
-	HumanMemberCount    *int       `json:"human_member_count" jsonschema:"people who have joined, not counting those who are in only through a group; null when Google did not say"`
-	GroupMemberCount    *int       `json:"group_member_count" jsonschema:"Google Groups that have joined; null when Google did not say"`
-	HistoryState        *string    `json:"history_state" jsonschema:"HISTORY_OFF when messages are kept for 24 hours, HISTORY_ON when the organization's retention rules decide; null when Google did not say"`
-	MembersCanPost      *bool      `json:"members_can_post" jsonschema:"false when only managers may post, as in an announcement space; null when Google did not say"`
+	SingleUserBotDM     *bool                   `json:"single_user_bot_dm" jsonschema:"true when the space is a direct message with a Chat app rather than a person; null when Google did not say"`
+	ExternalUserAllowed *bool                   `json:"external_user_allowed" jsonschema:"true when people outside the organization may join; null when Google did not say"`
+	CreateTime          *time.Time              `json:"create_time" jsonschema:"when the space was created, RFC 3339 in UTC; null when Google did not say"`
+	AccessState         *string                 `json:"access_state" jsonschema:"PRIVATE when only people added or invited can find the space, DISCOVERABLE when a target audience can; null when Google did not say, as for a direct message"`
+	Audience            *string                 `json:"audience" jsonschema:"the target audience that can find the space, join it and read it, audiences/{id}; null for a private space, and for one an audience can find but not join"`
+	LastActiveTime      *time.Time              `json:"last_active_time" jsonschema:"when the last message was posted, RFC 3339 in UTC; null when Google did not say"`
+	SpaceURI            *string                 `json:"space_uri" jsonschema:"the link that opens the space in Chat; null when Google did not say"`
+	Description         *string                 `json:"description" jsonschema:"what the space is for, as its managers wrote it; null when it has none"`
+	Guidelines          *string                 `json:"guidelines" jsonschema:"the rules its managers set for it; null when it has none"`
+	HumanMemberCount    *int                    `json:"human_member_count" jsonschema:"people who have joined, not counting those who are in only through a group; null when Google did not say"`
+	GroupMemberCount    *int                    `json:"group_member_count" jsonschema:"Google Groups that have joined; null when Google did not say"`
+	HistoryState        *string                 `json:"history_state" jsonschema:"HISTORY_OFF when messages are kept for 24 hours, HISTORY_ON when the organization's retention rules decide; null when Google did not say"`
+	MembersCanPost      *bool                   `json:"members_can_post" jsonschema:"false when only managers may post, as in an announcement space; null when Google did not say"`
+	Permissions         *SpacePermissionsOutput `json:"permissions" jsonschema:"who besides the space's managers holds each permission admin_update_space_permissions changes; null when Google sent no permission settings"`
+}
+
+// SpacePermissionsOutput is who holds each permission a space's settings
+// can change. Each is managers, assistant_managers, members or nobody,
+// and null when Google did not say.
+type SpacePermissionsOutput struct {
+	ManageMembersAndGroups *string `json:"manage_members_and_groups" jsonschema:"who may add and remove members and groups"`
+	ModifySpaceDetails     *string `json:"modify_space_details" jsonschema:"who may change the name, avatar, description and guidelines"`
+	ToggleHistory          *string `json:"toggle_history" jsonschema:"who may turn history on and off"`
+	UseAtMentionAll        *string `json:"use_at_mention_all" jsonschema:"who may mention everyone with @all"`
+	ManageApps             *string `json:"manage_apps" jsonschema:"who may add and remove Chat apps"`
+	ManageWebhooks         *string `json:"manage_webhooks" jsonschema:"who may manage incoming webhooks"`
+	ReplyMessages          *string `json:"reply_messages" jsonschema:"who may reply in threads"`
 }
 
 // GetSpaceInput names one space.
 type GetSpaceInput struct {
-	SpaceID string `json:"space_id" jsonschema:"the space, spaces/{id}, from list_spaces"`
+	SpaceID string `json:"space_id" jsonschema:"the space, spaces/{id}, from list_spaces, or from admin_search_spaces for admin_get_space"`
 }
 
 // ListSpacesInput narrows a space listing.
@@ -83,16 +96,19 @@ type ListSpacesOutput struct {
 type SearchSpacesInput struct {
 	DisplayName         string `json:"display_name,omitempty" jsonschema:"match spaces whose name begins with these words; matching is by word prefix, not substring, so 'eng' finds 'Engineering' but 'ing' does not. Omit to list every named space the other filters allow"`
 	ExternalUserAllowed *bool  `json:"external_user_allowed,omitempty" jsonschema:"true for spaces that admit people outside the organization, false for those that do not; omit for both"`
-	UseAdminAccess      bool   `json:"use_admin_access,omitempty" jsonschema:"search every space in the Workspace rather than the ones you can see. Needs Workspace admin rights and the admin toolset, which is off unless GCM_TOOLSETS names it"`
 	Limit               int    `json:"limit,omitempty" jsonschema:"how many to return, 1 to 100; default 50"`
-	PageToken           string `json:"page_token,omitempty" jsonschema:"continue a previous search; Google returns a token only with admin access"`
 }
 
 // SearchSpacesOutput wraps the matches.
+//
+// NextPageToken and TotalSize are never set. Google pages and counts a
+// search only under admin access, which is admin_search_spaces now, and
+// the released output fields stay so a caller reading them does not
+// break.
 type SearchSpacesOutput struct {
 	Result        []SpaceSummaryOutput `json:"result" jsonschema:"the named spaces that matched"`
-	NextPageToken string               `json:"next_page_token,omitempty" jsonschema:"pass back as page_token for the next page; only ever set under admin access"`
-	TotalSize     int                  `json:"total_size,omitempty" jsonschema:"how many spaces matched in total, an estimate above 10000; only ever set under admin access"`
+	NextPageToken string               `json:"next_page_token,omitempty" jsonschema:"never set: Google pages a search only under admin access, which admin_search_spaces has"`
+	TotalSize     int                  `json:"total_size,omitempty" jsonschema:"never set: Google counts a search only under admin access, which admin_search_spaces has"`
 }
 
 // FindGroupChatsInput names the people the chat must hold.
@@ -114,13 +130,7 @@ func registerSpaces(s *mcp.Server, d Deps) {
 		Description: "Fetch one Google Chat space by its resource name. Use it to identify an unnamed direct " +
 			"message or group chat, or to confirm a space's metadata before writing to it.",
 		Kind: Read,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in GetSpaceInput) (*mcp.CallToolResult, SpaceDetailOutput, error) {
-		got, err := d.Service.GetSpace(ctx, in.SpaceID)
-		if err != nil {
-			return nil, SpaceDetailOutput{}, err
-		}
-		return nil, spaceDetail(got), nil
-	})
+	}, getSpace(d))
 
 	register(s, d, spec{
 		Name: "whoami",
@@ -166,34 +176,21 @@ func registerSpaces(s *mcp.Server, d Deps) {
 
 	register(s, d, spec{
 		Name: "search_spaces",
-		Description: "Search the named Google Chat spaces you are a member of by display name, or every space in " +
-			"the Workspace with use_admin_access. Use find_group_chats for a group chat, which this cannot return. " +
-			"Matching is by word prefix. Without admin access Google returns a single page of up to 100 and no total.",
+		Description: "Search the named Google Chat spaces you are a member of by display name. Google returns " +
+			"one page of up to 100 and no total. admin_search_spaces searches every space in the Workspace, with " +
+			"filters by date and history and an order. Use find_group_chats for a group chat, which this cannot " +
+			"return. Matching is by word prefix.",
 		Kind: Read,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchSpacesInput) (*mcp.CallToolResult, SearchSpacesOutput, error) {
-		if in.UseAdminAccess && !d.Config.Enabled(config.ToolsetAdmin) {
-			// The scope for it is requested at login only when the
-			// toolset is on, so without it Google would refuse the call
-			// and the refusal would read as a missing permission.
-			return nil, SearchSpacesOutput{}, service.Invalidf(
-				"use_admin_access needs the admin toolset. Set %sTOOLSETS=all,admin and run `google-chat-mcp login` "+
-					"again to grant the administrator scope.", config.EnvPrefix)
-		}
 		got, err := d.Service.SearchSpaces(ctx, service.SearchSpacesInput{
 			DisplayName:         in.DisplayName,
 			ExternalUserAllowed: in.ExternalUserAllowed,
-			UseAdminAccess:      in.UseAdminAccess,
 			Limit:               in.Limit,
-			PageToken:           in.PageToken,
 		})
 		if err != nil {
 			return nil, SearchSpacesOutput{}, err
 		}
-		return nil, SearchSpacesOutput{
-			Result:        spaceSummaries(got.Spaces),
-			NextPageToken: got.NextPageToken,
-			TotalSize:     got.TotalSize,
-		}, nil
+		return nil, SearchSpacesOutput{Result: spaceSummaries(got.Spaces)}, nil
 	})
 
 	register(s, d, spec{
@@ -253,6 +250,24 @@ func spaceDetail(got *service.SpaceDetails) SpaceDetailOutput {
 		GroupMemberCount:    got.GroupMembers,
 		HistoryState:        nullable(got.HistoryState),
 		MembersCanPost:      got.MembersCanPost,
+		Permissions:         spacePermissions(got.Permissions),
+	}
+}
+
+// spacePermissions shapes a space's permission settings, nil when Google
+// sent none.
+func spacePermissions(p *service.SpacePermissions) *SpacePermissionsOutput {
+	if p == nil {
+		return nil
+	}
+	return &SpacePermissionsOutput{
+		ManageMembersAndGroups: nullable(p.ManageMembersAndGroups),
+		ModifySpaceDetails:     nullable(p.ModifySpaceDetails),
+		ToggleHistory:          nullable(p.ToggleHistory),
+		UseAtMentionAll:        nullable(p.UseAtMentionAll),
+		ManageApps:             nullable(p.ManageApps),
+		ManageWebhooks:         nullable(p.ManageWebhooks),
+		ReplyMessages:          nullable(p.ReplyMessages),
 	}
 }
 
@@ -443,5 +458,16 @@ func updateSpaceOutput(got *service.UpdateSpaceResult) UpdateSpaceOutput {
 		UpdateMask:      nullable(got.UpdateMask),
 		DryRun:          got.DryRun,
 		RenderedPayload: rendered(got.Rendered),
+	}
+}
+
+// getSpace reads one space, for get_space and admin_get_space.
+func getSpace(d Deps) mcp.ToolHandlerFor[GetSpaceInput, SpaceDetailOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in GetSpaceInput) (*mcp.CallToolResult, SpaceDetailOutput, error) {
+		got, err := d.Service.GetSpace(ctx, in.SpaceID)
+		if err != nil {
+			return nil, SpaceDetailOutput{}, err
+		}
+		return nil, spaceDetail(got), nil
 	}
 }

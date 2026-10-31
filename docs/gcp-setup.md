@@ -84,19 +84,33 @@ declined returns an error naming what is missing rather than failing in
 some other way. What you cannot do is grant a scope that is not on this
 screen.
 
-One scope is deliberately not in that list:
+Five administrator scopes are deliberately not in that list:
 
 ```
 https://www.googleapis.com/auth/chat.admin.spaces.readonly
+https://www.googleapis.com/auth/chat.admin.memberships.readonly
+https://www.googleapis.com/auth/chat.admin.spaces
+https://www.googleapis.com/auth/chat.admin.memberships
+https://www.googleapis.com/auth/chat.admin.delete
 ```
 
-It searches every space in the Workspace rather than the ones you are
-in, and only an administrator can use it. `login` asks for it only when
-the admin toolset is on, so add it to this screen alongside
-`GCM_TOOLSETS=all,admin`, or leave both alone.
+They reach every space in the Workspace rather than the ones you are
+in, and only a Workspace administrator can use them. `login` asks for
+them only when the admin toolset is on, as in `GCM_TOOLSETS=all,admin`:
+
+- the two `.readonly` scopes whenever it is on;
+- `chat.admin.spaces` and `chat.admin.memberships` unless
+  `GCM_READ_ONLY=true`;
+- `chat.admin.delete` only with `GCM_ENABLE_DESTRUCTIVE=true` as well.
+  It deletes any space in the organization.
+
+Add the ones your settings ask for to this screen, or leave the admin
+toolset off. Run `login` with the same settings your MCP client uses,
+or it asks for a different set.
 
 Most sit in Google's *sensitive* tier. Three are *restricted*:
-`chat.messages`, `chat.spaces` and `chat.delete`. For an **Internal**
+`chat.messages`, `chat.spaces` and `chat.delete`, and so is
+`chat.admin.delete` when you add it. For an **Internal**
 app none of that matters — no verification, no assessment. If you ever
 publish externally it matters a great deal;
 [`runbook.md`](runbook.md#do-the-restricted-scopes-mean-a-security-assessment)

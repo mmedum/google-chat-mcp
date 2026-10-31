@@ -44,7 +44,11 @@ Those three and every delete are not registered unless you set
 `GCM_ENABLE_DESTRUCTIVE=true`, and each of their calls says
 `confirm: true`. The message, space and emoji deletes and
 `set_space_audience` also repeat what they act on, and are refused when
-that differs. Past that, Google's per-scope
+that differs. With the `admin` toolset on, the admin tools reach every
+named space in the organization. Their deletes and the ones that widen
+access are registered only with `GCM_ENABLE_DESTRUCTIVE=true`, and
+`admin_add_member` never adds a Google Group or your own account.
+Past that, Google's per-scope
 authorization is the bound, and `GCM_READ_ONLY` is yours. This is the
 trust model, not a gap in it: a client that can start the server can
 also read its token.
@@ -151,8 +155,8 @@ never recorded, and a live run reads back only what it wrote.
   Granting fewer means some tools return a `[scope]` error naming what
   is missing; that is a supported state, not a broken one.
 - **Where you point an unattended agent.** `GCM_READ_ONLY=true`, and
-  leaving `GCM_ENABLE_DESTRUCTIVE` off, are the controls a client cannot
-  override. Under `GCM_READ_ONLY` login asks for read-only scopes, so
+  leaving `GCM_ENABLE_DESTRUCTIVE` and the `admin` toolset off, are the
+  controls a client cannot override. Under `GCM_READ_ONLY` login asks for read-only scopes, so
   the token cannot write either once you log in again with it set.
 - **Keeping the client secret file out of version control.** It is
   yours, it is read from wherever you put it, and this repository never

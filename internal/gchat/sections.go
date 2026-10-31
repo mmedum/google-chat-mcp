@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // SectionsParent addresses the caller's own sidebar. Google accepts
@@ -127,7 +127,7 @@ func (c *Client) RenameSection(ctx context.Context, name string, body *SectionRe
 // DeleteSection removes a custom section. Its spaces are not deleted:
 // Google files them back under the default sections.
 func (c *Client) DeleteSection(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.UserSections)
+	return c.deleteName(ctx, name, scopes.UserSections, "")
 }
 
 // PositionSectionRequest is the body of users.sections.position.

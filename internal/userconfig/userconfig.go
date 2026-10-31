@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/config"
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 // AppDir is the directory name under the user's config directory.

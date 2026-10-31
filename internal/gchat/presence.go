@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // Availability, custom emoji and deleting a space.
@@ -147,7 +147,7 @@ func (c *Client) CreateCustomEmoji(ctx context.Context, body *CustomEmoji) (*Cus
 
 // DeleteCustomEmoji removes one. name is "customEmojis/{id}".
 func (c *Client) DeleteCustomEmoji(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.CustomEmojis)
+	return c.deleteName(ctx, name, scopes.CustomEmojis, "")
 }
 
 // DeleteSpace removes a space. name is "spaces/{id}".
@@ -156,5 +156,5 @@ func (c *Client) DeleteCustomEmoji(ctx context.Context, name string) error {
 // it. Its own words, and the reason this is the last thing in the tool
 // surface a caller should reach for.
 func (c *Client) DeleteSpace(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.Delete)
+	return c.deleteName(ctx, name, scopes.Delete, scopes.AdminDelete)
 }

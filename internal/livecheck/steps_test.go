@@ -94,7 +94,21 @@ var steps = []step{
 			SpaceURI         *string `json:"space_uri"`
 			HumanMemberCount *int    `json:"human_member_count"`
 		}
-		d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+		// Google fills in a new space's member count a moment after the
+		// create: on 2026-10-31 a read straight after create_space came
+		// back once without a count and once with 0, and the same space
+		// read minutes later counted its creator. So the read is
+		// repeated a few times, and a space that never counts its
+		// creator still fails.
+		for try := range 5 {
+			if try > 0 {
+				time.Sleep(2 * time.Second)
+			}
+			d.into(d.must("get_space", map[string]any{"space_id": d.space}), &out)
+			if out.HumanMemberCount != nil && *out.HumanMemberCount >= 1 {
+				break
+			}
+		}
 		if out.SpaceID != d.space {
 			d.t.Errorf("get_space returned %s, want the space it was asked for", d.redact(out.SpaceID))
 		}
@@ -130,6 +144,24 @@ var steps = []step{
 		for _, s := range out.Result {
 			if s.SpaceID == "" {
 				d.t.Error("a listed space has no id, so a caller cannot address it")
+			}
+		}
+	}},
+
+	// A search lags a new space as a listing does, so this holds that it
+	// runs and parses, not that it finds the scratch space.
+	{"spaces search and parse", "search_spaces", func(d *driver) {
+		var out struct {
+			Result []struct {
+				SpaceID string `json:"space_id"`
+			} `json:"result"`
+		}
+		d.into(d.must("search_spaces", map[string]any{
+			"display_name": spacePrefix, "external_user_allowed": false, "limit": 10,
+		}), &out)
+		for _, s := range out.Result {
+			if s.SpaceID == "" {
+				d.t.Error("a space search row has no id, so a caller cannot address it")
 			}
 		}
 	}},

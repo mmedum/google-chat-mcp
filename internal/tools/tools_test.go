@@ -16,7 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/service"
+	"github.com/mmedum/google-chat-mcp/v9/internal/service"
 )
 
 // The model reads the leading class, so it has to survive the trip from
@@ -118,7 +118,7 @@ func TestOutputSchemaAnnotatesTimestamps(t *testing.T) {
 
 // modulePath is this module's import path, the prefix that tells one of
 // its own packages from a dependency.
-const modulePath = "github.com/mmedum/google-chat-mcp/v8/"
+const modulePath = "github.com/mmedum/google-chat-mcp/v9/"
 
 // The model never widens its own reach (the standard's §3): no tool turns
 // a toolset on, lifts a refusal or edits what the operator set. The
@@ -197,7 +197,7 @@ func TestNoToolCanWriteTheServersSettings(t *testing.T) {
 // what is registered afterward is what was registered before. A tool
 // that turned on a toolset or registered a refused tool would show here.
 func TestNoToolChangesWhatIsRegistered(t *testing.T) {
-	cs := session(t, everyEndpoint)
+	cs := fullSession(t, everyEndpoint)
 	before := toolNames(t, cs)
 	for name, args := range everyRegisteredTool(t, cs) {
 		call(t, cs, name, args, nil)

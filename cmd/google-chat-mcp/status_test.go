@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/mmedum/google-chat-mcp/v9/internal/config"
 )
 
 // Not being signed in is a state to report, not a reason to stop. The
@@ -89,16 +91,26 @@ func TestTheObjectIsExactlyOneValue(t *testing.T) {
 	}
 }
 
-// The text collapses a complete toolset list to "all"; the object
-// carries the names, because a script wants to know which ones.
+// The text collapses the default toolsets to "all" and every set to
+// "all, admin"; the object carries the names, because a script wants to
+// know which ones.
 func TestToolsetsAreNamesInTheObjectAndAllInTheText(t *testing.T) {
-	full := toolsetNames()
-	var buf bytes.Buffer
-	r := statusReport{Settings: statusSettings{Toolsets: full}, Credentials: statusCredentials{SignedIn: true}}
-	r.writeText(&buf)
-	if !strings.Contains(buf.String(), "toolsets:       all") {
-		t.Errorf("the text stopped saying all:\n%s", buf.String())
+	for _, tc := range []struct {
+		names []string
+		want  string
+	}{
+		{toolsetList(config.DefaultToolsets()), "toolsets:       all\n"},
+		{toolsetNames(), "toolsets:       all, admin\n"},
+	} {
+		var text bytes.Buffer
+		r := statusReport{Settings: statusSettings{Toolsets: tc.names}, Credentials: statusCredentials{SignedIn: true}}
+		r.writeText(&text)
+		if !strings.Contains(text.String(), tc.want) {
+			t.Errorf("the text does not say %q:\n%s", tc.want, text.String())
+		}
 	}
+	full := toolsetNames()
+	r := statusReport{Settings: statusSettings{Toolsets: full}, Credentials: statusCredentials{SignedIn: true}}
 	var out bytes.Buffer
 	if err := r.writeJSON(&out); err != nil {
 		t.Fatal(err)

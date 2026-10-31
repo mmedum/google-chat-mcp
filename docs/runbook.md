@@ -179,11 +179,13 @@ corresponded with has to be pasted in by hand.
 
 ## Do the restricted scopes mean a security assessment?
 
-Only if you publish externally. Two of the scopes are in Google's
+Only if you publish externally. Three of the scopes are in Google's
 restricted tier: `chat.messages`, which `update_message` and
-`delete_message` need, and `chat.spaces`, which `update_space` needs.
-Google lists only the umbrella for `spaces.patch` under user
-authentication, so the granular scopes do not cover it.
+`delete_message` need, `chat.spaces`, which `update_space` needs, and
+`chat.delete`, which `delete_space` needs. Google lists only the
+umbrella for `spaces.patch` under user authentication, so the granular
+scopes do not cover it. With the admin toolset and deletes on,
+`chat.admin.delete` is a fourth.
 
 - **Internal app**, visible only inside your own Workspace: nothing.
   No verification, no assessment. Declare the scopes and run it.

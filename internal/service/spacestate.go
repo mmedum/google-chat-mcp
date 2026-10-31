@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
 )
 
 // Pins, read state and notification settings.

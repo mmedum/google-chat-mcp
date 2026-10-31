@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // The three calls here name the sensitive-tier reactions scope, not the
@@ -84,5 +84,5 @@ func (c *Client) AddReaction(ctx context.Context, message string, body *Reaction
 
 // DeleteReaction removes one reaction by its resource name.
 func (c *Client) DeleteReaction(ctx context.Context, name string) error {
-	return c.deleteName(ctx, name, scopes.MessagesReactions)
+	return c.deleteName(ctx, name, scopes.MessagesReactions, "")
 }

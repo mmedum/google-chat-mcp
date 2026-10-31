@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // Availability, custom emoji and deleting a space.
@@ -499,6 +499,9 @@ func (s *Service) DeleteSpace(ctx context.Context, in DeleteSpaceInput) (*Delete
 		return out, nil
 	case err != nil:
 		return nil, Classify(err)
+	}
+	if err := refuseUnnamedUnderAdmin(ctx, space, sp); err != nil {
+		return nil, err
 	}
 	if err := checkName("display_name", space, sp.DisplayName, in.DisplayName); err != nil {
 		return nil, err

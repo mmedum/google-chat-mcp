@@ -121,7 +121,7 @@ outage, which is exactly what happened here, twice.
 a context `internal/gchat` refuses to write under, so a tool that
 declares `dry_run` and forgets its own preview branch fails loudly
 instead of posting. A preview may read what it has to show or check:
-a delete's witness, an invite's directory lookup. 29 tools carry the
+a delete's witness, an invite's directory lookup. 36 tools carry the
 flag. The staleness gate holds
 that number to the shipped surface, because it had already drifted: the
 docs said thirteen when the server registered twenty-five.
@@ -275,16 +275,17 @@ tool of its own, registered only with the destructive ones.
 - **`update_space` keeps the guidelines.** Google's mask covers all of
   `spaceDetails`, so a description sent alone clears the guidelines. The
   server reads them first and sends them back unchanged.
-- **The mark goes on three tools.** `delete_space`,
+- **The mark goes on four tools.** `delete_space`, `admin_delete_space`,
   `set_space_audience` and `delete_custom_emoji` carry
   `anthropic/requiresUserInteraction`. Claude Code 2.1.199 or later
   prompts for them on every call in every interactive mode, with no
   "don't ask again" from 2.1.246, and denies them where no prompt can be
   drawn: dontAsk, `-p` without a permission host,
   `--permission-prompt-tool`. An Agent SDK host's `canUseTool` can
-  approve them. They are the three whose prompt is itself the point: a
-  space goes with every message in it, an emoji goes from every message
-  and reaction across the organization, and an audience reads what it
+  approve them. They are the four whose prompt is itself the point: a
+  space goes with every message in it, whether the caller manages it or
+  deletes it as an administrator, an emoji goes from every message and
+  reaction across the organization, and an audience reads what it
   reads. The mark is per tool, so on `set_space_audience` it covers an
   administrator's `audiences/{id}` as well as the organization's
   default, though such an audience may be narrower than the domain. No
@@ -304,6 +305,102 @@ The rule is the family's, decided by the maintainer on 2026-10-22 and
 ported here on 2026-10-23; the evidence log says why the question went.
 A lint rule holds it: forbidigo refuses the SDK's `Elicit` and the input
 requests a result can carry.
+
+### Administrator access
+
+A Workspace administrator can act on any space in the organization
+through Google's `useAdminAccess`. Nine Chat methods take it: spaces
+get, search, patch and delete, and members list, get, create, patch and
+delete. Nothing reaches messages that way, and nothing creates a space.
+
+**Every administrator call is its own `admin_` tool, reads included.**
+A remembered approval covers a whole tool, never an argument, so a flag
+on `get_space` or `update_space` would carry an administrator's reach
+under an approval given for the ordinary tool. Every other gate in the
+family also works by leaving a tool unregistered; a flag refused at call
+time would be the one exception. `search_spaces` shipped
+`use_admin_access` before this rule, and 9.0.0 removed it.
+`admin_search_spaces` is the same search with the administrator's reach
+and filters, and the two descriptions name each other.
+
+**`admin` is one toolset.** Toolsets group a feature area, and
+`GCM_READ_ONLY` and `GCM_ENABLE_DESTRUCTIVE` cut across all of them, the
+admin set included. The kinds follow the ordinary tools, with one
+exception:
+
+- `admin_search_spaces`, `admin_get_space`, `admin_list_members` and
+  `admin_get_member` read, and stay under `GCM_READ_ONLY`.
+- `admin_update_space` and `admin_update_member_role` are ordinary
+  writes. An edit of a name, description or guidelines says what it
+  replaced, so it can be put back.
+- `admin_promote_member` and `admin_remove_member` are destructive, as
+  their ordinary forms are. `admin_update_space_permissions` is
+  destructive because widening a permission hands members what a
+  manager holds, which is a new owner in the standard's words.
+- `admin_add_member` is destructive though `add_member` is not. Without
+  admin access a caller adds people to a space they are in, so the new
+  member reads what the caller already reads. With it, the caller adds
+  people to a space whose history the caller cannot see. That is
+  widening access, and what was read cannot be taken back.
+- `admin_delete_space` deletes a whole space and carries the mark, as
+  `delete_space` does.
+
+One combination cannot be set: an administrator's reads and the
+caller's own writes without the administrator's edits. Read-only mode
+removes both, and nothing else separates them. Nobody has asked for it,
+and it would take a toolset split by access, which no other toolset in
+the family has.
+
+**Admin access rides on the request context.** `register` puts every
+call of a tool whose name starts `admin_` on `service.AsAdministrator`,
+which is
+`gchat.WithAdminAccess`. The client adds `useAdminAccess=true` and the
+administrator's scope to every Chat call made on it, and the two
+conditions Google sets on the admin form: an administrator's search
+names `customer = "customers/my_customer"`, and a membership listing
+filters on `member.type != "BOT"`. A Chat call with no administrator
+form is refused with `ErrNoAdminForm` before it leaves the process. People, Cloud Identity and OpenID Connect calls on
+the same path go as the caller, since none of them takes the parameter.
+
+It is a context rather than an option on each call because the guards
+read too. `remove_member` checks a refused delete by reading the
+membership back. Read as the caller, a membership in a space the caller
+is not in answers not found, and the refusal would be reported as a
+member already gone. On the context, the read-back is the
+administrator's like the delete. The name is the rule, because the name
+is what a client's prompt and its permission rules see; `register` puts
+every such tool in the admin toolset, and refuses at start one that
+names another.
+
+**Named spaces only.** The check of a direct message or a group chat
+names the people in it beside the caller, which means nothing for a
+conversation the caller is not in, and Google's administrator search
+finds named spaces alone. Every admin write that names a space refuses
+anything else `[invalid]` before it writes. The three that take a
+membership rather than a space read nothing first, and rely on Google
+for that.
+
+**`admin_add_member` adds people, never a group and never the caller.**
+Adding yourself would let every tool here read the space as you, which
+is the model widening its own reach (the standard's §3). A group you
+belong to would add you with it, and no check at add time sees a later
+change to the group. The caller's own address is compared first. Then
+the directory is asked once whose the address is: an address it does
+not know is refused, since Google adds nobody from outside on an
+administrator's say, and one that is the caller's under another name
+is refused too. A directory that cannot answer vouches for nobody, and
+the add is refused.
+
+**The scopes follow the switches.** With `admin` named, login asks for
+`chat.admin.spaces.readonly` and `chat.admin.memberships.readonly`.
+Unless `GCM_READ_ONLY` is set, it also asks for `chat.admin.spaces` and
+`chat.admin.memberships`. With `GCM_ENABLE_DESTRUCTIVE=true` as well, it
+asks for `chat.admin.delete`, the one restricted administrator scope,
+which deletes any space in the organization. None of them is in
+`scopes.All`, so nobody else's consent screen carries them.
+`chat.delete` stays requested whatever the destructive flag says: it
+reaches only the caller's own spaces, and moving it would cost every
+installed token a second login.
 
 ### Idempotency is checked, not assumed
 
@@ -579,7 +676,7 @@ contradicted a document, which won.
 | A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
 | A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too. So `delete_thread` takes a first message that reads as deleted, without comparing its witness, sends `force=true` and reports Google's answer, a refusal included: the replies left under it are what the call is for, and the deleted first message says nothing of them. `delete_message` always sends `force=false`. 2026-10-23 |
 | A group in a space that admits outsiders brings them in, now and later | Google's help page "Add a Google Group to a space" (support.google.com/chat/answer/13535086, read 2026-10-23): "If Allow people outside your organization to join is enabled, the group and its members are invited to the space"; external members are "excluded in spaces with guest access turned off"; and "Any changes to the group's membership ... are also automatically reflected in the space". So a group the organization owns can bring in an outsider after it is added, and `add_member` refuses every group into such a space rather than checking the group once. Help-page prose, not settled live: the live run adds no group, since that would put real people in the scratch space |
-| A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05 |
+| A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05, and the same under admin access on 2026-10-31: a repeated `admin_delete_space` and an administrator's read of the deleted space both got the 403 |
 | `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
 | `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
 | An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
@@ -594,6 +691,18 @@ contradicted a document, which won.
 | `spaces.setup` takes `accessSettings.audience` | Its own reference never names it; only the target-audience guide says setup takes it. Live 2026-10-03: a space created with `audiences/default` read back `DISCOVERABLE`. So `create_space` keeps `audience` |
 | No API lists target audiences | Their ids come from the Admin console URL, `admin.google.com/ac/targetaudiences/{id}`, per the same guide. `audiences/default` is the organization's default. So `audience` takes an id and cannot offer choices |
 | `spaces.search` without admin access returns only joined spaces | The reference says results are "limited to spaces where the calling user is a joined member". The guide says only "spaces they have access to". Live 2026-10-08: a search with no name filter returned exactly the named spaces `list_spaces` returned. The tool had said it reached spaces the caller is not in |
+| Google pages and counts a space search only under admin access | Discovery revision 20261026, `SearchSpacesResponse`: `nextPageToken` and `totalSize` are each "Only populated when `useAdminAccess` is set to `true`". Read 2026-10-31. So `search_spaces`, which has no admin access since 9.0.0, takes no `page_token`, and its `next_page_token` and `total_size` are never set |
+| Nine Chat methods take `useAdminAccess`, and no others | Discovery revision 20261026 gives the parameter to spaces get, search, patch and delete and to members list, get, create, patch and delete; the admin-overview guide (updated 2026-10-09) names the same nine. Reads take `chat.admin.spaces.readonly` or `chat.admin.memberships.readonly`, or the umbrella beside each; writes take `chat.admin.spaces` or `chat.admin.memberships`. Read 2026-10-31. `TestAdminAccessRunsTheNineAdminMethodsAndRefusesTheRest` holds the list |
+| An administrator's space delete needs `chat.admin.delete` | Not `chat.admin.spaces`, which cannot delete. The spaces.delete reference (updated 2025-07-25) and discovery revision 20261026 agree. Read 2026-10-31. It is the one restricted administrator scope, so only the destructive flag asks for it |
+| An administrator's patch may change a name, the details and the permission settings | The spaces.patch reference (updated 2026-09-21) refuses `space_type`, `space_history_state`, `access_settings.audience` and `access_settings.access_permission_settings` under admin access. No page says the other three work, but a live run on 2026-10-31 changed a name, a description with the guidelines kept, and six permission settings in one patch, as `permission_settings.{key}` and `permissionSettings.{key}` alike. `permissionSettings.viewSpaceMembership` must go with `access_settings.access_permission_settings`, so it is left out |
+| An administrator reaches a space the caller is not in | Live, 2026-10-31. A space the run made and then left empty took an administrator's read, edit and member listing, and was gone 5 to 10 seconds after the leave: an administrator's read then got the 403, and an administrator's search no longer found it. A space with a second person in it was still there two minutes after an administrator removed the caller, and `admin_delete_space` deleted it. No page says Google deletes an empty space. So the live driver never leaves a space, and `admin_remove_member` is excused from it |
+| Who may reply changes only where members cannot post | Neither the Space reference nor the Chat Help Center says when `replyMessages` can change. Live, 2026-10-31: in a space where members post, Google refused it to the space's own manager as "the permission settings are immutable", even when the patch changed nothing, and refused it under admin access as "permission denied … or the resource doesn't exist". In a space created as `ANNOUNCEMENT_SPACE` it changed both ways, as the manager and as an administrator. A patch without `managersAllowed` is refused as "Invalid combination of permissions". So the server refuses `reply_messages` where `postMessages` gives members the right, before anything is sent |
+| An administrator's search must say whose spaces | The spaces.search reference: "`customer` is required when `useAdminAccess` is set to `true`", and `customers/my_customer` is its only value. This server sent `use_admin_access` without it until 2026-10-31, and the live driver had never run it. A live run on 2026-10-31 searched with the clause, every administrator filter and each order |
+| An administrator's member listing needs a member type filter | The members.list reference (updated 2025-07-16) requires `member.type = "HUMAN"` or `member.type != "BOT"` under admin access, and lists no apps. The server sends `member.type != "BOT"`, the one that can keep Google Group memberships, since a filter drops a group that does not match it. Whether `showInvited` works under admin access is not documented. Read 2026-10-31. A live run that day listed members with the filter; `showInvited` under admin access is still untested |
+| A space description may be 4,096 characters | The Space reference (updated 2026-09-30): "Supports up to 4,096 characters", and 5,000 for guidelines. The 150 this server enforces on descriptions matches an old Ruby client library's docs, and the Chat Help Center gives no number. Read 2026-10-31. The cap stays until a live run settles which limit Google enforces |
+| Members see an administrator's change, but not who made it | The admin-overview guide (updated 2026-10-09), "What users see in Chat": "The organization's administrator performed" the action, and it "does not identify the administrator". The Reports API's Chat events record `actor_type` ADMIN for a space's details, name, deletion and memberships; no event covers a permission change. Read 2026-10-31 |
+| One Admin console privilege covers an administrator's reads and writes | Admin Help a/answer/13369245: "Super admins have the manage chat and spaces privilege by default". The privilege list, a/answer/1219251, has no read-only form of it. So reads and writes part at the OAuth scope, not at the privilege. Read 2026-10-31 |
+| Granular consent is not on by default for a desktop client | Google's granular-permissions page (updated 2026-10-30) has it always on for web, Android and iOS clients only; a desktop client gets it with `enable_granular_consent=true`, and an app the administrator marks Trusted skips it. So a person cannot count on declining one scope at login. Read 2026-10-31 |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 | A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
 

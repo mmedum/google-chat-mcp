@@ -54,9 +54,11 @@ was checked, against which source, and which live call contradicted it.
    its `confirm`, and the rendered reply from one `Kind`. Rules kept by
    hand at fifty call sites are ways to be quietly wrong. The server asks
    the person nothing; the `requiresUserInteraction` mark is on
-   `delete_space`, `set_space_audience` and `delete_custom_emoji` only,
-   and a risky variant is a tool of its own, never an argument
-   (`docs/architecture.md`, "What a write may reach").
+   `delete_space`, `admin_delete_space`, `set_space_audience` and
+   `delete_custom_emoji` only, and a risky variant is a tool of its own,
+   never an argument (`docs/architecture.md`, "What a write may reach").
+   Administrator access is a tool of its own too, reads included
+   (`docs/architecture.md`, "Administrator access").
 7. **A reply carries both halves.** `structuredContent` under the output
    schema, and a readable rendering in `content` — never the same JSON
    twice. `internal/tools/render.go` says why, with the sources.

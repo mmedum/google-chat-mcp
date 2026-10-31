@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 // twoMessages is a page from two senders, one of whom the People API

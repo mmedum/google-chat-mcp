@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/server"
+	"github.com/mmedum/google-chat-mcp/v9/internal/server"
 )
 
 // serverJSON writes the MCP registry entry for a release.
@@ -70,7 +70,7 @@ func githubRepo(module string) (owner, name string, err error) {
 	// A module at v2 or above carries its major version as a final path
 	// element — Go requires it, and it is not part of the repository
 	// name. Stripped rather than rejected: this refused
-	// github.com/mmedum/google-chat-mcp/v8 outright, which would have
+	// github.com/mmedum/google-chat-mcp/v9 outright, which would have
 	// failed the release at the tag, in public, the first time the
 	// module went to v2.
 	parts := strings.Split(module, "/")

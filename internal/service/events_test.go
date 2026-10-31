@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmedum/google-chat-mcp/v8/internal/gchat"
-	"github.com/mmedum/google-chat-mcp/v8/internal/scopes"
+	"github.com/mmedum/google-chat-mcp/v9/internal/gchat"
+	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
 func TestListSpaceEventsSendsGooglesFilter(t *testing.T) {
@@ -273,7 +273,7 @@ func TestBatchIsReadFromThePayloadNotTheTypeString(t *testing.T) {
 // GCM_READ_ONLY.
 func TestEveryEventTypeNamesAScopeLoginAsksFor(t *testing.T) {
 	asked := map[string]bool{}
-	for _, s := range scopes.Requested(false, true) {
+	for _, s := range scopes.Requested(false, true, false) {
 		asked[s] = true
 	}
 	for _, known := range gchat.EventTypes {
