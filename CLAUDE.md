@@ -114,8 +114,9 @@ flow and the serve loop have no seam a unit test can reach — plus
 diff, the API-coverage gate, the live driver's surface gate, and the
 staleness gate over README, `docs/` and CHANGELOG. On a pull request CI
 also runs `schema-ack`: a commit footer names each changed item of the
-tool surface. Plus tests for new behavior, `/simplify` and `/code-review high` with findings resolved or
-written down, and a look at the schema diff for anything breaking.
+tool surface. Plus tests for new behavior, `/simplify` and `/code-review
+high` with findings resolved or written down, and a look at the schema
+diff for anything breaking.
 
 Before a release, `make live` as well. It drives the shipped binary
 against a real account and is the only thing here that can catch a wrong

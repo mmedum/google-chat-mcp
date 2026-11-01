@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -112,6 +114,37 @@ func TestARefusalNamesTheFooterThatFixesIt(t *testing.T) {
 	}
 }
 
+// A name a footer would split is printed in backticks, so the fix a
+// refusal names passes as printed.
+func TestARefusalQuotesANameWithAComma(t *testing.T) {
+	was := strings.Replace(plain, `"gchat://spaces/{id}"`, `"gchat://spaces/{id}{?view,page}"`, 1)
+	c := compareSurfaces(readTest(t, was), readTest(t, strings.Replace(was, `"name":"space"`, `"name":"spaces"`, 1)))
+	err := checkAck(io.Discard, c, []string{"Rename it"}, "base")
+	_, fix, _ := strings.Cut(fmt.Sprint(err), "\n\n")
+	if want := "SCHEMA-CHANGE: `gchat://spaces/{id}{?view,page}`: what changed"; fix != want {
+		t.Fatalf("the refusal's fix is %q, want %q", fix, want)
+	}
+	if err := checkAck(io.Discard, c, []string{"Rename it", "Name it\n\n" + fix}, "base"); err != nil {
+		t.Errorf("checkAck = %v after the fix it named", err)
+	}
+}
+
+// A refusal exits 1 and a gate that could not run exits 2, so a reader
+// can tell a missing footer from a broken run.
+func TestSchemaAckTellsARefusalFromAFailure(t *testing.T) {
+	var r refusal
+	if err := checkAck(io.Discard, compareSurfaces(readTest(t, plain), readTest(t, flipped)), nil, "base"); !errors.As(err, &r) {
+		t.Errorf("checkAck = %v, want a refusal", err)
+	}
+	t.Chdir(t.TempDir())
+	initRepo(t)
+	gitRun(t, "commit", "--quiet", "--allow-empty", "-m", "Start")
+	var stdout, stderr strings.Builder
+	if code := schemaAckCommand("no-such-ref", "HEAD", &stdout, &stderr); code != 2 {
+		t.Errorf("schemaAckCommand with no base = %d, want 2: %s", code, stderr.String())
+	}
+}
+
 // A name in backticks is taken whole, so a URI with a comma in it can be
 // named; split on its comma, it names nothing.
 func TestAFooterCanNameAURIWithACommaInBackticks(t *testing.T) {
@@ -138,7 +171,8 @@ func TestABreakIsABreakOfARelease(t *testing.T) {
 	if !slices.Equal(c.breaking, renameBreak) {
 		t.Errorf("breaking = %v, want %v", c.breaking, renameBreak)
 	}
-	if want := []change{{item: "draft_tool", text: "draft_tool removed"}}; !slices.Equal(c.changed, want) {
+	if want := []change{{item: "send_message", text: "send_message (outputSchema.properties)"},
+		{item: "draft_tool", text: "draft_tool removed"}}; !slices.Equal(c.changed, want) {
 		t.Errorf("changed = %v, want %v", c.changed, want)
 	}
 	var report strings.Builder
@@ -146,7 +180,8 @@ func TestABreakIsABreakOfARelease(t *testing.T) {
 	if err := checkAck(&report, c, []string{footer}, "base"); err != nil {
 		t.Errorf("checkAck = %v, want both acknowledged", err)
 	}
-	want := "against the merge-base base: 0 added, 1 changed, 1 breaking\n" +
+	want := "against the merge-base base: 0 added, 2 changed, 1 breaking\n" +
+		"  ~ send_message (outputSchema.properties)\n" +
 		"  ~ draft_tool removed\n" +
 		"  ! send_message: output field message_id removed  BREAKING\n" +
 		"the change since base is acknowledged\n"

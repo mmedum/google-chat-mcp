@@ -39,7 +39,7 @@ Usage:
   google-chat-mcp status [--json]          account, token location, settings
   google-chat-mcp doctor [--spaces N]      check live responses against our models
   google-chat-mcp --version
-  google-chat-mcp --dump-schemas           the full tool surface and resource schemas as JSON
+  google-chat-mcp --dump-schemas           the full tool surface, its resources and instructions as JSON
 
 Settings come from GCM_* environment variables; every subcommand also
 accepts the matching flags (run one with -h).

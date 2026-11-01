@@ -51,14 +51,26 @@ func schemaAck(baseRef, head string, w io.Writer) error {
 }
 
 // schemaAckCommand runs schemaAck as a command: 0 when the change is
-// acknowledged, 1 when it is not, with the reason on stderr.
+// acknowledged, 1 when it is refused, and 2 when the gate could not run,
+// as the other gates draw that line. The reason goes to stderr.
 func schemaAckCommand(baseRef, head string, stdout, stderr io.Writer) int {
-	if err := schemaAck(baseRef, head, stdout); err != nil {
-		_, _ = fmt.Fprintf(stderr, "gates: schema-ack: %v\n", err)
+	err := schemaAck(baseRef, head, stdout)
+	if err == nil {
+		return 0
+	}
+	_, _ = fmt.Fprintf(stderr, "gates: schema-ack: %v\n", err)
+	var r refusal
+	if errors.As(err, &r) {
 		return 1
 	}
-	return 0
+	return 2
 }
+
+// refusal is checkAck's verdict that a change is not acknowledged, told
+// apart from a gate that could not run.
+type refusal struct{ msg string }
+
+func (r refusal) Error() string { return r.msg }
 
 // releasedBreaks is what head breaks of the newest release's surface: the
 // baseline the base branch records, not the head's, which a branch cut
@@ -118,21 +130,35 @@ func checkAck(w io.Writer, c surfaceChanges, messages []string, base string) err
 	breakItems := unnamed(c.breaking, breaks)
 	if len(breakItems) > 0 {
 		problems = append(problems, "no BREAKING CHANGE: footer names "+strings.Join(breakItems, ", "))
-		fix = append(fix, "BREAKING CHANGE: "+strings.Join(breakItems, ", ")+": what broke")
+		fix = append(fix, "BREAKING CHANGE: "+footerList(breakItems)+": what broke")
 	}
 	if items := unnamed(slices.Concat(c.added, c.changed), named); len(items) > 0 {
 		problems = append(problems, "no footer names "+strings.Join(items, ", "))
 		// A BREAKING CHANGE: footer names an item for both checks.
 		if rest := slices.DeleteFunc(items, func(i string) bool { return slices.Contains(breakItems, i) }); len(rest) > 0 {
-			fix = append(fix, "SCHEMA-CHANGE: "+strings.Join(rest, ", ")+": what changed")
+			fix = append(fix, "SCHEMA-CHANGE: "+footerList(rest)+": what changed")
 		}
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("the tool surface changed since %s, and %s. Add an empty commit (git commit --allow-empty), "+
-			"never an amend, whose message ends with:\n\n%s", base, strings.Join(problems, ", and "), strings.Join(fix, "\n"))
+		return refusal{fmt.Sprintf("the tool surface changed since %s, and %s. Add an empty commit (git commit --allow-empty), "+
+			"never an amend, whose message ends with:\n\n%s", base, strings.Join(problems, ", and "), strings.Join(fix, "\n"))}
 	}
 	_, _ = fmt.Fprintf(w, "the change since %s is acknowledged\n", base)
 	return nil
+}
+
+// footerList is names as a footer has to write them: a name footerNames
+// would split or trim goes in backticks, so the footer printed is one
+// that passes.
+func footerList(names []string) string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = n
+		if nameSeparator.MatchString(n) || strings.TrimRight(n, ":.") != n {
+			out[i] = "`" + n + "`"
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // unnamed is each item of cs that names does not hold, sorted, once.

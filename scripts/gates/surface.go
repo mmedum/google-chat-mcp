@@ -142,16 +142,12 @@ func (c surfaceChanges) empty() bool {
 }
 
 // compareSurfaces is what changed from was to now. A tool that lost an
-// output field lists its other changes, such as a reshaped input or a
-// flipped hint, but not its output schema again, which the break names.
+// output field also lists every other change to it, its output schema's
+// included: only the lost field is a break, so anything else that moved
+// there is a change a reviewer has to see.
 func compareSurfaces(was, now toolSurface) surfaceChanges {
 	var c surfaceChanges
 	var removed []change
-	lost := lostOutputs(was.outputs, now.outputs)
-	broken := map[string]bool{}
-	for _, b := range lost {
-		broken[b.item] = true
-	}
 	for _, key := range sortedUnion(was.items, now.items) {
 		before, inWas := was.items[key]
 		after, inNow := now.items[key]
@@ -162,11 +158,7 @@ func compareSurfaces(was, now toolSurface) surfaceChanges {
 		case !inWas:
 			c.added = append(c.added, change{item: name, text: key})
 		default:
-			parts := changedParts(before, after)
-			if broken[key] {
-				parts = slices.DeleteFunc(parts, func(p string) bool { return strings.HasPrefix(p, "outputSchema") })
-			}
-			if len(parts) > 0 {
+			if parts := changedParts(before, after); len(parts) > 0 {
 				c.changed = append(c.changed, change{item: name, text: key + " (" + strings.Join(parts, ", ") + ")"})
 			}
 		}
@@ -175,7 +167,7 @@ func compareSurfaces(was, now toolSurface) surfaceChanges {
 		top, _, _ := strings.Cut(part, ".")
 		c.changed = append(c.changed, change{item: top, text: part})
 	}
-	c.breaking = slices.Concat(removed, lost)
+	c.breaking = slices.Concat(removed, lostOutputs(was.outputs, now.outputs))
 	return c
 }
 

@@ -186,7 +186,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
-      # Built as schema-ack builds both sides, so the two share the cache.
+      # Built as `make build` builds it, which is how schema-ack builds
+      # both sides too.
       - run: CGO_ENABLED=0 go build -trimpath -o google-chat-mcp ./cmd/google-chat-mcp
       - name: every third-party tool is pinned
         run: go run ./scripts/gates pins
