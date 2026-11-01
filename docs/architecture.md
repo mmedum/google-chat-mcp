@@ -128,8 +128,9 @@ docs said thirteen when the server registered twenty-five.
 
 ### One `Kind` decides three things
 
-`register` takes a tool's `Kind` — read, write, overwrite, each write
-idempotent or not, destructive — and derives from it the MCP
+`register` takes a tool's `Kind` — read (or a read that writes a local
+file), adding or write (each idempotent or not), destructive — and
+derives from it the MCP
 annotations, whether
 `GCM_READ_ONLY` leaves the tool registered, and whether it needs
 `GCM_ENABLE_DESTRUCTIVE` to be registered at all. Three rules enforced by
@@ -142,11 +143,12 @@ Annotations decide what a client prompts for, so they are exact.
 VS Code ignores `destructiveHint` and prompts on every tool without
 `readOnlyHint`. `destructiveHint` is false only on a write that adds
 and replaces nothing, since the spec reads false as "only additive
-updates". A tool that overwrites or removes something says true, a
-message edit or a removed reaction as much as a delete; what sets a
-delete apart is the flag that registers it and its `confirm`, not the
-hint. Codex prompts by it, and claude.ai and ChatGPT document that it
-decides theirs. But an annotation is a request, not a control.
+updates". `TestOnlyToolsThatAddSayTheyAreNotDestructive` names each such
+tool: the `Adding` kinds and `download_attachment`. Every other write
+says true, a message edit or a removed reaction as much as a delete, so
+a new tool errs toward a prompt. What sets a delete apart is the flag
+that registers it and its `confirm`, not the hint. Codex prompts by
+it, and claude.ai and ChatGPT document that it decides theirs. But an annotation is a request, not a control.
 The spec says clients must treat annotations as untrusted, and every
 widely used client has a mode or a setting that runs a listed tool with
 nobody approving the call: Claude Code's auto and bypassPermissions
@@ -710,7 +712,7 @@ contradicted a document, which won.
 | A desktop client's login can grant some scopes and not others | Google's native-app guide (updated 2026-10-30), step 6: "users may not grant your app access to all of them". The exceptions are "apps marked as Trusted" and Workspace Enterprise apps with domain-wide delegation, which "either receive all requested scopes or none". The granular-permissions page (updated 2026-10-30) ties `enable_granular_consent` to client ids "created before 2019", so login does not send it. Read 2026-10-31. This reverses a reading of the granular-permissions page earlier that day, which took it to say a desktop client gets the choice only with that parameter |
 | An Internal app needs no scope list on its consent screen | Google's configure-oauth-consent guide (updated 2026-09-03): "you only need to list scopes for apps used by people outside your Google Workspace organization", and for internal apps "scopes aren't listed on the consent screen". The setup guide said a scope off the screen is never granted; it now asks for the list on External apps only. Read 2026-10-31. Live the same day: an Internal app's token held 18 scopes its Data Access page does not list. Several have no broader scope listed there that could account for them, among them `chat.spaces`, `chat.delete`, `contacts.readonly` and the `chat.users` scopes |
 | Google writes a time it does not have as the Unix epoch | Live, 2026-10-31: an administrator's spaces.get answered `lastActiveTime` `1970-01-01T00:00:00Z` for a space whose search row gave a time in October 2026. The reference does not mention it. Every timestamp the server reads now takes the epoch as absent. `TestGetSpaceReadsTheEpochAsNoTime` holds it |
-| `destructiveHint` false means the tool only adds | The MCP schema (2025-11-25), `ToolAnnotations`: "If false, the tool performs only additive updates", and the default is true. So a tool that replaces or removes anything says true, a message edit and a removed reaction included, though it needs no flag here. Read 2026-10-31. The `Overwrite` kinds carry it, on fifteen tools |
+| `destructiveHint` false means the tool only adds | The MCP schema (2025-11-25), `ToolAnnotations`: "If false, the tool performs only additive updates", and the default is true. So a tool that replaces or removes anything says true, a message edit and a removed reaction included, though it needs no flag here. Read 2026-10-31. The `Overwrite` kinds carried it then, on fifteen tools. Since 2026-11-01 they are the `Write` kinds and true is the default for a write; `TestOnlyToolsThatAddSayTheyAreNotDestructive` names each tool that says false |
 | Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
 | A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
 

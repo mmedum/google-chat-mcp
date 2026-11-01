@@ -55,7 +55,7 @@ func registerAttachments(s *mcp.Server, d Deps) {
 		}, nil
 	})
 
-	// Write: this reads a file off the machine and hands it to Google. Nobody in the space sees it until
+	// Adding: this reads a file off the machine and hands it to Google. Nobody in the space sees it until
 	// send_message carries the token.
 	register(s, d, spec{
 		Name: "upload_attachment",
@@ -63,7 +63,7 @@ func registerAttachments(s *mcp.Server, d Deps) {
 			"send_message's attachment_upload_token, in the same space; nobody sees the file until then. The file " +
 			"has to be inside the server's local directory, and Google's limit is 200 MB. Set dry_run to check the " +
 			"file and see what would be sent. This needs the server to have been started with GCM_LOCAL_DIR.",
-		Kind: Write,
+		Kind: Adding,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UploadAttachmentInput) (*mcp.CallToolResult, UploadAttachmentOutput, error) {
 		got, err := d.Service.UploadAttachment(ctx, service.UploadAttachmentInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Path: in.LocalPath, FileName: in.FileName, DryRun: in.DryRun,

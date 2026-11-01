@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,6 +48,46 @@ func TestFailTagsAnUnclassifiedError(t *testing.T) {
 	}
 }
 
+// Only a write that adds says destructiveHint false (docs/architecture.md,
+// "One Kind decides three things"): the Adding kinds, and
+// download_attachment, which never overwrites a file. The list is
+// literal because that is a per-tool decision; a new write is a Write,
+// and says true, until somebody decides it only adds.
+func TestOnlyToolsThatAddSayTheyAreNotDestructive(t *testing.T) {
+	list, err := fullSession(t, func(http.ResponseWriter, *http.Request) {}).ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var got []string
+	writes := 0
+	for _, tool := range list.Tools {
+		a := tool.Annotations
+		if a == nil {
+			t.Errorf("%s carries no annotations", tool.Name)
+			continue
+		}
+		if a.ReadOnlyHint {
+			continue
+		}
+		writes++
+		if a.DestructiveHint != nil && !*a.DestructiveHint {
+			got = append(got, tool.Name)
+		}
+	}
+	if writes < 40 {
+		t.Errorf("read %d writes, want at least 40", writes)
+	}
+	slices.Sort(got)
+	want := []string{
+		"add_member", "add_reaction", "create_custom_emoji", "create_group_chat",
+		"create_section", "create_space", "download_attachment", "find_direct_message",
+		"pin_message", "send_message", "upload_attachment",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("writes that say destructiveHint false = %v, want %v", got, want)
+	}
+}
+
 // Annotations are advice a client shows a person. They have to be
 // internally consistent: nothing read-only destroys anything.
 func TestAnnotationsAreConsistent(t *testing.T) {
@@ -58,10 +99,11 @@ func TestAnnotationsAreConsistent(t *testing.T) {
 		idempotent  bool
 	}{
 		{Read, "Read", true, false, false},
-		{Write, "Write", false, false, false},
-		{WriteIdempotent, "WriteIdempotent", false, false, true},
-		{Overwrite, "Overwrite", false, true, false},
-		{OverwriteIdempotent, "OverwriteIdempotent", false, true, true},
+		{ReadWritesLocally, "ReadWritesLocally", false, false, false},
+		{Adding, "Adding", false, false, false},
+		{AddingIdempotent, "AddingIdempotent", false, false, true},
+		{Write, "Write", false, true, false},
+		{WriteIdempotent, "WriteIdempotent", false, true, true},
 		{Destructive, "Destructive", false, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

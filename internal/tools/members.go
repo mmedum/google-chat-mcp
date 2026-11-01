@@ -183,7 +183,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"the space is reported as an error rather than as a success, because the membership that exists " +
 			"belongs to whoever invited them first. Everyone joins as an ordinary member: Google ignores a role " +
 			"given here, silently. Set dry_run to see the request body without inviting anyone.",
-		Kind: Write,
+		Kind: Adding,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddMemberInput) (*mcp.CallToolResult, AddMemberOutput, error) {
 		got, err := d.Service.AddMember(ctx, service.AddMemberInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Email: in.UserEmail, Group: in.GroupName, DryRun: in.DryRun,
@@ -228,7 +228,7 @@ func registerMemberWrites(s *mcp.Server, d Deps) {
 			"Demoting the last manager may leave nobody able to administer the space. Making someone a manager " +
 			"is refused [blocked] here; promote_member does it. Role is the only thing this changes. Set dry_run " +
 			"to see the request body without sending it.",
-		Kind: Overwrite,
+		Kind: Write,
 	}, updateMemberRole(d))
 
 	register(s, d, spec{

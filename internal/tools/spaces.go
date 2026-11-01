@@ -354,7 +354,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Description: "Find the direct message with one person, and start one when there is none yet. Returns the " +
 			"space to pass to send_message. A newly started direct message is empty, so the other person sees nothing " +
 			"until a message is posted in it.",
-		Kind: WriteIdempotent,
+		Kind: AddingIdempotent,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in FindDirectMessageInput) (*mcp.CallToolResult, FindDirectMessageOutput, error) {
 		space, err := d.Service.FindDirectMessage(ctx, in.UserEmail)
 		if err != nil {
@@ -368,7 +368,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 		Description: "Start an unnamed group conversation with 2 to 20 people. Leave yourself out of member_emails: " +
 			"Google adds the signed-in account. A group chat cannot have a name; use create_space when you need one. " +
 			"Set dry_run to see the request body without creating anything.",
-		Kind: Write,
+		Kind: Adding,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in CreateGroupChatInput) (*mcp.CallToolResult, CreateGroupChatOutput, error) {
 		got, err := d.Service.CreateGroupChat(ctx, service.CreateSpaceInput{
 			MemberEmails: in.MemberEmails, DryRun: in.DryRun,
@@ -390,7 +390,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			"member_emails: Google adds the signed-in account. A space of your own is fine — invite people later " +
 			"with add_member. A space is created private; set_space_audience opens one to an audience. Set dry_run " +
 			"to see the request body without creating anything.",
-		Kind: Write,
+		Kind: Adding,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in CreateSpaceInput) (*mcp.CallToolResult, CreateSpaceOutput, error) {
 		got, err := d.Service.CreateSpace(ctx, service.CreateSpaceInput{
 			DisplayName: in.DisplayName, MemberEmails: in.MemberEmails, Audience: in.Audience, DryRun: in.DryRun,
@@ -415,7 +415,7 @@ func registerSpaceWrites(s *mcp.Server, d Deps) {
 			"makes a space private; Google takes it only on its own, from a space manager. Opening a space to " +
 			"an audience is set_space_audience's. Set dry_run to see the patch body first. Needs the " +
 			"restricted-tier chat.spaces scope.",
-		Kind: Overwrite,
+		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceInput) (*mcp.CallToolResult, UpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DisplayName: in.DisplayName, Description: in.Description, Audience: in.Audience,

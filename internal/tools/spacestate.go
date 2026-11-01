@@ -140,7 +140,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Name: "pin_message",
 		Description: "Pin a message in its space, so everyone in the space sees it in the pinned list. " +
 			"The space is taken from the message name. Pinning is visible to everyone.",
-		Kind:    Write,
+		Kind:    Adding,
 		Toolset: config.ToolsetPins,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PinMessageInput) (*mcp.CallToolResult, PinMessageOutput, error) {
 		got, err := d.Service.PinMessage(ctx, service.PinInput{Message: in.MessageName, DryRun: in.DryRun})
@@ -154,7 +154,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Name: "unpin_message",
 		Description: "Remove a message's pin. Takes the message, not the pin: Google gives a pin the message's " +
 			"own id. A message that was not pinned reports unpinned false rather than failing.",
-		Kind:    OverwriteIdempotent,
+		Kind:    WriteIdempotent,
 		Toolset: config.ToolsetPins,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PinMessageInput) (*mcp.CallToolResult, PinMessageOutput, error) {
 		got, err := d.Service.UnpinMessage(ctx, service.PinInput{Message: in.MessageName, DryRun: in.DryRun})
@@ -195,7 +195,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Name: "mark_space_read",
 		Description: "Mark a space as read up to now, clearing its unread badge for you and nobody else. " +
 			"Google pulls the mark back to the newest message's own time, so the answer reports what it recorded.",
-		Kind:    Overwrite,
+		Kind:    Write,
 		Toolset: config.ToolsetReadState,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkSpaceReadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
 		got, err := d.Service.MarkSpaceRead(ctx, service.MarkReadInput{Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DryRun: in.DryRun})
@@ -210,7 +210,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Description: "Rewind your read mark in a space, so every top-level message after from_time is unread " +
 			"again. Pass the timestamp of the message you want to come back to; get_messages reports it. " +
 			"Affects you and nobody else.",
-		Kind:    Overwrite,
+		Kind:    Write,
 		Toolset: config.ToolsetReadState,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkSpaceUnreadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
 		got, err := d.Service.MarkSpaceUnread(ctx, service.MarkReadInput{
@@ -243,7 +243,7 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Name: "update_space_notification_setting",
 		Description: "Change what Chat tells you about a space, or mute it. Pass either setting or both; " +
 			"whatever you leave out is left alone. Affects you and nobody else.",
-		Kind:    Overwrite,
+		Kind:    Write,
 		Toolset: config.ToolsetSettings,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateSpaceNotificationSettingInput) (*mcp.CallToolResult, UpdateSpaceNotificationSettingOutput, error) {
 		got, err := d.Service.UpdateSpaceNotificationSetting(ctx, service.UpdateNotificationInput{
