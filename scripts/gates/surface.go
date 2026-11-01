@@ -29,21 +29,9 @@ var stampKeys = []string{"server", "version", "sdk"}
 // readToolSurface reads one dump. source names where it came from, so a
 // malformed one says which file or which build produced it.
 func readToolSurface(data []byte, source string) (toolSurface, error) {
-	var d struct {
-		Version string `json:"version"`
-		SDK     string `json:"sdk"`
-		Tools   []struct {
-			Name         string `json:"name"`
-			OutputSchema struct {
-				Properties map[string]json.RawMessage `json:"properties"`
-			} `json:"outputSchema"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(data, &d); err != nil {
-		return toolSurface{}, fmt.Errorf("%s: %w", source, err)
-	}
-	if len(d.Tools) == 0 {
-		return toolSurface{}, fmt.Errorf("%s registers no tools: a gate reading this would be looking at nothing", source)
+	d, err := parseDump(data, source)
+	if err != nil {
+		return toolSurface{}, err
 	}
 	items, rest, err := dumpItems(data)
 	if err != nil {

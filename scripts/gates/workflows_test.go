@@ -682,16 +682,18 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 	}
 
 	// A pull request's own gates measure from its merge-base, which a
-	// local `make check` does not have. Each has to run in ci.yml, and
-	// its Makefile target, which a maintainer runs by hand, must stay
-	// out of check, where it would measure the wrong range.
+	// local `make check` does not have. Each has to run in ci.yml, and no
+	// target `make check` runs may run it, under whatever name, since
+	// there it would measure the wrong range.
 	for _, name := range commandsRunningIn(inPR) {
 		if !strings.Contains(workflow, "gates "+name) {
 			t.Errorf("the registry marks %q a pull-request gate and ci.yml never runs it", name)
 		}
-		if checkRuns[name] {
-			t.Errorf("`make check` runs %q, which the registry marks a pull-request gate: "+
-				"it measures from the merge-base, so take it out of check", name)
+		for _, target := range targets {
+			if strings.Contains(ciRunsForTarget[target], "gates "+name) {
+				t.Errorf("`make check` runs %q, which runs %q, a pull-request gate: "+
+					"it measures from the merge-base, so take it out of check", target, name)
+			}
 		}
 	}
 

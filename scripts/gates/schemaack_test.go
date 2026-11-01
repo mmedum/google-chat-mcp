@@ -4,7 +4,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -186,11 +185,11 @@ func TestReleasedBreaksReadTheBaseBranchBaseline(t *testing.T) {
 		t.Fatalf("releasedBreaks with no baseline = %v, %v; want none", breaks, err)
 	}
 
-	putFile(t, baselinePath, plain)
+	put(t, ".", baselinePath, plain)
 	gitRun(t, "add", baselinePath)
 	gitRun(t, "commit", "--quiet", "-m", "Release")
 	// The working tree's baseline is a branch's, not the release's.
-	putFile(t, baselinePath, `{"tools":[]}`)
+	put(t, ".", baselinePath, `{"tools":[]}`)
 	breaks, err = releasedBreaks("HEAD", head)
 	if err != nil || !slices.Equal(breaks, renameBreak) {
 		t.Errorf("releasedBreaks = %v, %v; want %v", breaks, err, renameBreak)
@@ -225,16 +224,5 @@ func gitRun(t *testing.T, args ...string) {
 	t.Helper()
 	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-}
-
-// putFile writes body to path, making its directory.
-func putFile(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
 	}
 }

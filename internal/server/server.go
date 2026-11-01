@@ -89,14 +89,49 @@ const tailInstructions = "Every space, message and thread is addressed by its re
 	"in it as empty. Resources gchat://spaces/{id} and its messages and threads carry the same content as the " +
 	"matching get_ tools."
 
+// mode is what decides the instructions a client is told: the only part
+// of a configuration they read, so a dump that holds every mode holds
+// every instruction string.
+type mode string
+
+const (
+	// modeDefault is writes without the destructive tools.
+	modeDefault mode = "default"
+	// modeDestructive is writes with them, under GCM_ENABLE_DESTRUCTIVE.
+	modeDestructive mode = "destructive"
+	// modeReadOnly is GCM_READ_ONLY.
+	modeReadOnly mode = "readOnly"
+)
+
+// allModes is every mode, as the dump carries them.
+var allModes = []mode{modeDefault, modeDestructive, modeReadOnly}
+
+// modeOf is the mode a configuration runs in.
+func modeOf(cfg config.Config) mode {
+	switch {
+	case cfg.ReadOnly:
+		return modeReadOnly
+	case cfg.DestructiveRegisters():
+		return modeDestructive
+	}
+	return modeDefault
+}
+
+// inMode is cfg set to run in m, its toolsets kept.
+func inMode(cfg config.Config, m mode) config.Config {
+	cfg.ReadOnly, cfg.EnableDestructive = m == modeReadOnly, m == modeDestructive
+	return cfg
+}
+
 // instructionsFor is the instruction string for one configuration.
 func instructionsFor(cfg config.Config) string {
 	middle := writeInstructions
-	switch {
-	case cfg.ReadOnly:
+	switch modeOf(cfg) {
+	case modeReadOnly:
 		middle = readOnlyInstructions
-	case cfg.DestructiveRegisters():
+	case modeDestructive:
 		middle += " " + destructiveInstructions
+	case modeDefault:
 	}
 	return readInstructions + " " + middle + " " + tailInstructions
 }
@@ -128,25 +163,13 @@ type Dump struct {
 	Version string `json:"version"`
 	SDK     string `json:"sdk"`
 	// Instructions are what a client is told before any tool, by the mode
-	// that decides them (instructionModes), so a change to any of them is
-	// a change to the surface.
+	// that decides them, so a change to any of them is a change to the
+	// surface.
 	Instructions      map[string]string       `json:"instructions,omitempty"`
 	Tools             []*mcp.Tool             `json:"tools"`
 	ResourceTemplates []*mcp.ResourceTemplate `json:"resourceTemplates"`
 	Resources         []*mcp.Resource         `json:"resources,omitempty"`
 	Prompts           []*mcp.Prompt           `json:"prompts,omitempty"`
-}
-
-// instructionModes are the configurations a client is told different
-// instructions under, with cfg's toolsets: writes without the
-// destructive tools, which is the default; writes with them; and
-// read-only.
-func instructionModes(cfg config.Config) map[string]config.Config {
-	def, destructive, readOnly := cfg, cfg, cfg
-	def.ReadOnly, def.EnableDestructive = false, false
-	destructive.ReadOnly, destructive.EnableDestructive = false, true
-	readOnly.ReadOnly = true
-	return map[string]config.Config{"default": def, "destructive": destructive, "readOnly": readOnly}
 }
 
 // DumpSchemas writes what a client of the server d builds is told, as
@@ -155,18 +178,18 @@ func instructionModes(cfg config.Config) map[string]config.Config {
 // public enumerator, so an in-memory client asks the server, which is
 // also what the client sees.
 func DumpSchemas(ctx context.Context, d Deps, w io.Writer) error {
-	modes := map[string]*mcp.Server{}
-	for name, cfg := range instructionModes(d.Config) {
-		m := d
-		m.Config = cfg
-		modes[name] = New(m)
+	modes := map[mode]*mcp.Server{}
+	for _, m := range allModes {
+		in := d
+		in.Config = inMode(d.Config, m)
+		modes[m] = New(in)
 	}
 	return dumpServer(ctx, New(d), modes, w, d.Version)
 }
 
 // dumpServer is DumpSchemas over servers already built, so a test can
 // dump one with a prompt, which this server does not register.
-func dumpServer(ctx context.Context, s *mcp.Server, modes map[string]*mcp.Server, w io.Writer, version string) error {
+func dumpServer(ctx context.Context, s *mcp.Server, modes map[mode]*mcp.Server, w io.Writer, version string) error {
 	d := Dump{Server: Name, Version: version, SDK: sdkVersion()}
 	err := withSession(ctx, s, version, func(cs *mcp.ClientSession) error {
 		tools, err := cs.ListTools(ctx, nil)
@@ -198,16 +221,16 @@ func dumpServer(ctx context.Context, s *mcp.Server, modes map[string]*mcp.Server
 	})
 	sort.Slice(d.Resources, func(i, j int) bool { return d.Resources[i].URI < d.Resources[j].URI })
 	sort.Slice(d.Prompts, func(i, j int) bool { return d.Prompts[i].Name < d.Prompts[j].Name })
-	for name, m := range modes {
-		err := withSession(ctx, m, version, func(cs *mcp.ClientSession) error {
-			if d.Instructions == nil {
-				d.Instructions = map[string]string{}
-			}
-			d.Instructions[name] = cs.InitializeResult().Instructions
+	if len(modes) > 0 {
+		d.Instructions = map[string]string{}
+	}
+	for m, ms := range modes {
+		err := withSession(ctx, ms, version, func(cs *mcp.ClientSession) error {
+			d.Instructions[string(m)] = cs.InitializeResult().Instructions
 			return nil
 		})
 		if err != nil {
-			return fmt.Errorf("%s instructions: %w", name, err)
+			return fmt.Errorf("%s instructions: %w", m, err)
 		}
 	}
 

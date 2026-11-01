@@ -270,26 +270,23 @@ func usage(w io.Writer) {
 	}
 }
 
-// dump is the shape of a --dump-schemas file, from either server. Only
-// the fields the gate compares or reports are declared.
+// dump is the typed part of a --dump-schemas file: the stamp, and each
+// tool's name and top-level input and output fields. The schema gates
+// compare the whole file through readToolSurface.
 type dump struct {
 	Version string `json:"version"`
 	SDK     string `json:"sdk"`
 	Tools   []struct {
-		Name string `json:"name"`
-		// Decoded rather than kept raw: the comparison is by value, so
-		// decoding once here beats decoding twice per comparison and
-		// removes the branch that read a parse failure as "different".
-		InputSchema  any `json:"inputSchema"`
-		OutputSchema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		} `json:"outputSchema"`
-		Description string `json:"description"`
-		// Annotations and Meta are what a client decides its prompt on:
-		// destructiveHint and the requiresUserInteraction mark.
-		Annotations any `json:"annotations"`
-		Meta        any `json:"_meta"`
+		Name        string       `json:"name"`
+		InputSchema schemaFields `json:"inputSchema"`
+		// OutputSchema's fields are what the README promises are stable.
+		OutputSchema schemaFields `json:"outputSchema"`
 	} `json:"tools"`
+}
+
+// schemaFields is the top level of a JSON Schema: the fields it names.
+type schemaFields struct {
+	Properties map[string]json.RawMessage `json:"properties"`
 }
 
 func read(path string) (*dump, error) {
@@ -341,9 +338,9 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // schemaDiff compares the built binary's tool surface with a baseline.
 //
 // The baseline is the surface of the last release, and the promise is
-// that a caller written against it keeps working: every tool and
-// resource template comes back under the same name, and every tool with
-// the same output fields. Anything else that moved is reported rather
+// that a caller written against it keeps working: every item, a tool or
+// a resource template, comes back under the same name, and every tool
+// with the same output fields. Anything else that moved is reported rather
 // than failed: a reshaped input, a description, an annotation, a _meta
 // mark, the instructions. No caller breaks, but a client decides from
 // the annotations and the mark whether to ask the person, so a reviewer
@@ -354,18 +351,11 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // because it protects an older surface: whatever shipped since could be
 // dropped and nothing would say.
 func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer) int {
-	var sides [2]toolSurface
-	for i, path := range []string{baselinePath, currentPath} {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			sides[i], err = readToolSurface(data, path)
-		}
-		if err != nil {
-			_, _ = fmt.Fprintln(stderr, err)
-			return 2
-		}
+	baseline, current, err := loadSurfaces(baselinePath, currentPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
 	}
-	baseline, current := sides[0], sides[1]
 
 	_, _ = fmt.Fprintf(stdout, "baseline %s: %d tools; built: %d tools\n", baseline.version, len(baseline.outputs), len(current.outputs))
 	if baseline.sdk != current.sdk {
@@ -488,6 +478,15 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 // sameSurface reports whether two schema dumps tell a client the same
 // thing. The build stamp is not part of it.
 func sameSurface(aPath, bPath string) (bool, error) {
+	a, b, err := loadSurfaces(aPath, bPath)
+	if err != nil {
+		return false, err
+	}
+	return compareSurfaces(a, b).empty(), nil
+}
+
+// loadSurfaces reads the two dumps at aPath and bPath.
+func loadSurfaces(aPath, bPath string) (a, b toolSurface, err error) {
 	var sides [2]toolSurface
 	for i, path := range []string{aPath, bPath} {
 		data, err := os.ReadFile(path)
@@ -495,10 +494,10 @@ func sameSurface(aPath, bPath string) (bool, error) {
 			sides[i], err = readToolSurface(data, path)
 		}
 		if err != nil {
-			return false, err
+			return toolSurface{}, toolSurface{}, err
 		}
 	}
-	return compareSurfaces(sides[0], sides[1]).empty(), nil
+	return sides[0], sides[1], nil
 }
 
 // schemaBaseline records the surface of the release being cut as the

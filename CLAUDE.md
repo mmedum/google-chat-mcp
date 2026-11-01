@@ -66,8 +66,9 @@ was checked, against which source, and which live call contradicted it.
    it drags in gRPC and telemetry for a subset we hand-write. Extend
    `internal/gchat`.
 9. **The released tool surface is a contract.** Tools keep their names
-   and output fields; `scripts/gates schema-diff` fails on a rename or a
-   lost field. Adding is fine.
+   and output fields, and resource templates their URIs;
+   `scripts/gates schema-diff` fails on a rename or a lost field. Adding
+   is fine.
 10. **No auto-commit, no auto-push.** Work on a branch; the owner pushes.
 11. **Verify a convention against a primary source** before adopting it,
     and record the verdict in the evidence log.

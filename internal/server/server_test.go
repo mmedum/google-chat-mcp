@@ -414,6 +414,17 @@ func compact(t *testing.T, raw json.RawMessage) string {
 	return buf.String()
 }
 
+// Every mode is one a configuration runs in, and the configuration the
+// dump builds for a mode runs in that mode, so the dump's instructions
+// are the instructions of every configuration.
+func TestEveryModeRoundTrips(t *testing.T) {
+	for _, m := range allModes {
+		if got := modeOf(inMode(config.Config{Toolsets: config.AllToolsets}, m)); got != m {
+			t.Errorf("modeOf(inMode(%s)) = %s", m, got)
+		}
+	}
+}
+
 // Sections are per-user sidebar state, and a person who does not want
 // those tools should be able to leave them out.
 func TestToolsetsNarrowTheSurface(t *testing.T) {

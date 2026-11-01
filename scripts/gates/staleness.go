@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -301,17 +300,7 @@ func dryRunCount(bin string) (int, error) {
 	}
 	n := 0
 	for _, t := range d.Tools {
-		var schema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		}
-		encoded, err := json.Marshal(t.InputSchema)
-		if err != nil {
-			return 0, fmt.Errorf("%s: re-encode input schema: %w", t.Name, err)
-		}
-		if err := json.Unmarshal(encoded, &schema); err != nil {
-			return 0, fmt.Errorf("%s: input schema: %w", t.Name, err)
-		}
-		if _, ok := schema.Properties["dry_run"]; ok {
+		if _, ok := t.InputSchema.Properties["dry_run"]; ok {
 			n++
 		}
 	}

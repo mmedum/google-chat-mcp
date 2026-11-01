@@ -375,9 +375,10 @@ Security problems go through [`SECURITY.md`](SECURITY.md), privately.
 
 ## Versioning
 
-Tool names and their output fields are stable within a major version. A
-change needing you to act — a new scope, another login, a different
-command in your client config — is marked **Breaking:** in
+Tool names and their output fields, and the resource templates, are
+stable within a major version. A change needing you to act — a new
+scope, another login, a different command in your client config — is
+marked **Breaking:** in
 [`CHANGELOG.md`](CHANGELOG.md), which is also what each release's notes
 are made from.
 
