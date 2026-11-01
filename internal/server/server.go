@@ -124,52 +124,112 @@ func New(d Deps) *mcp.Server {
 // it, and testdata/schemas-baseline.json is the same shape from the
 // last release.
 type Dump struct {
-	Server            string                  `json:"server"`
-	Version           string                  `json:"version"`
-	SDK               string                  `json:"sdk"`
+	Server  string `json:"server"`
+	Version string `json:"version"`
+	SDK     string `json:"sdk"`
+	// Instructions are what a client is told before any tool, by the mode
+	// that decides them (instructionModes), so a change to any of them is
+	// a change to the surface.
+	Instructions      map[string]string       `json:"instructions,omitempty"`
 	Tools             []*mcp.Tool             `json:"tools"`
 	ResourceTemplates []*mcp.ResourceTemplate `json:"resourceTemplates"`
+	Resources         []*mcp.Resource         `json:"resources,omitempty"`
+	Prompts           []*mcp.Prompt           `json:"prompts,omitempty"`
 }
 
-// DumpSchemas writes the tool list and the resource templates as the
-// wire carries them. The SDK has no public enumerator, so an in-memory
-// client asks the server, which is also what the client sees.
-func DumpSchemas(ctx context.Context, s *mcp.Server, w io.Writer, version string) error {
+// instructionModes are the configurations a client is told different
+// instructions under, with cfg's toolsets: writes without the
+// destructive tools, which is the default; writes with them; and
+// read-only.
+func instructionModes(cfg config.Config) map[string]config.Config {
+	def, destructive, readOnly := cfg, cfg, cfg
+	def.ReadOnly, def.EnableDestructive = false, false
+	destructive.ReadOnly, destructive.EnableDestructive = false, true
+	readOnly.ReadOnly = true
+	return map[string]config.Config{"default": def, "destructive": destructive, "readOnly": readOnly}
+}
+
+// DumpSchemas writes what a client of the server d builds is told, as
+// the wire carries it: the tools, the resources, the resource templates
+// and the prompts, and the instructions in every mode. The SDK has no
+// public enumerator, so an in-memory client asks the server, which is
+// also what the client sees.
+func DumpSchemas(ctx context.Context, d Deps, w io.Writer) error {
+	modes := map[string]*mcp.Server{}
+	for name, cfg := range instructionModes(d.Config) {
+		m := d
+		m.Config = cfg
+		modes[name] = New(m)
+	}
+	return dumpServer(ctx, New(d), modes, w, d.Version)
+}
+
+// dumpServer is DumpSchemas over servers already built, so a test can
+// dump one with a prompt, which this server does not register.
+func dumpServer(ctx context.Context, s *mcp.Server, modes map[string]*mcp.Server, w io.Writer, version string) error {
+	d := Dump{Server: Name, Version: version, SDK: sdkVersion()}
+	err := withSession(ctx, s, version, func(cs *mcp.ClientSession) error {
+		tools, err := cs.ListTools(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("list tools: %w", err)
+		}
+		templates, err := cs.ListResourceTemplates(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("list resource templates: %w", err)
+		}
+		resources, err := cs.ListResources(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("list resources: %w", err)
+		}
+		prompts, err := cs.ListPrompts(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("list prompts: %w", err)
+		}
+		d.Tools, d.ResourceTemplates = tools.Tools, templates.ResourceTemplates
+		d.Resources, d.Prompts = resources.Resources, prompts.Prompts
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	sort.Slice(d.Tools, func(i, j int) bool { return d.Tools[i].Name < d.Tools[j].Name })
+	sort.Slice(d.ResourceTemplates, func(i, j int) bool {
+		return d.ResourceTemplates[i].URITemplate < d.ResourceTemplates[j].URITemplate
+	})
+	sort.Slice(d.Resources, func(i, j int) bool { return d.Resources[i].URI < d.Resources[j].URI })
+	sort.Slice(d.Prompts, func(i, j int) bool { return d.Prompts[i].Name < d.Prompts[j].Name })
+	for name, m := range modes {
+		err := withSession(ctx, m, version, func(cs *mcp.ClientSession) error {
+			if d.Instructions == nil {
+				d.Instructions = map[string]string{}
+			}
+			d.Instructions[name] = cs.InitializeResult().Instructions
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("%s instructions: %w", name, err)
+		}
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(d)
+}
+
+// withSession runs f with a client session on s, over an in-memory
+// transport, and closes both ends after.
+func withSession(ctx context.Context, s *mcp.Server, version string, f func(*mcp.ClientSession) error) error {
 	ct, st := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(ctx, st, nil)
 	if err != nil {
 		return fmt.Errorf("connect server: %w", err)
 	}
 	defer func() { _ = ss.Close() }()
-
 	client := mcp.NewClient(&mcp.Implementation{Name: "schema-dump", Version: version}, nil)
 	cs, err := client.Connect(ctx, ct, nil)
 	if err != nil {
 		return fmt.Errorf("connect client: %w", err)
 	}
 	defer func() { _ = cs.Close() }()
-
-	toolList, err := cs.ListTools(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("list tools: %w", err)
-	}
-	sort.Slice(toolList.Tools, func(i, j int) bool { return toolList.Tools[i].Name < toolList.Tools[j].Name })
-
-	templates, err := cs.ListResourceTemplates(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("list resource templates: %w", err)
-	}
-	sort.Slice(templates.ResourceTemplates, func(i, j int) bool {
-		return templates.ResourceTemplates[i].URITemplate < templates.ResourceTemplates[j].URITemplate
-	})
-
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(Dump{
-		Server:            Name,
-		Version:           version,
-		SDK:               sdkVersion(),
-		Tools:             toolList.Tools,
-		ResourceTemplates: templates.ResourceTemplates,
-	})
+	return f(cs)
 }

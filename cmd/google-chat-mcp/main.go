@@ -177,9 +177,10 @@ const (
 	codeClientClosing = -32003
 )
 
-// cmdDumpSchemas prints the full tool surface and the resource schemas
-// as JSON, whatever the settings that leave tools out say. It needs no
-// credentials: registration does not call Google.
+// cmdDumpSchemas prints the full tool surface, the resource schemas and
+// the instructions in every mode as JSON, whatever the settings that
+// leave tools out say. It needs no credentials: registration does not
+// call Google.
 func cmdDumpSchemas(args []string, stdout, stderr io.Writer) int {
 	cfg, err := loadConfig("--dump-schemas", args, stderr, nil)
 	if err != nil {
@@ -191,10 +192,8 @@ func cmdDumpSchemas(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
-	s := server.New(server.Deps{
-		Service: deps.Service, Config: cfg, Logger: log, Version: version.String(),
-	})
-	if err := server.DumpSchemas(context.Background(), s, stdout, version.String()); err != nil {
+	d := server.Deps{Service: deps.Service, Config: cfg, Logger: log, Version: version.String()}
+	if err := server.DumpSchemas(context.Background(), d, stdout); err != nil {
 		return fail(stderr, "%v", err)
 	}
 	return 0

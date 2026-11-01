@@ -149,6 +149,28 @@ jobs:
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
+  # A pull request that changes the tool surface names each changed item
+  # in a commit footer. It measures from the merge-base, which only a
+  # pull request has, so it is not in `make check`.
+  pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_BASE_REF: origin/${{ github.base_ref }}
+      # The head commit, not the merge commit the checkout sits on.
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: schema change acknowledged
+        run: go run ./scripts/gates schema-ack "$PR_BASE_REF" "$PR_HEAD"
+
   # The gates that need a built binary: it has to speak MCP over stdio
   # without credentials, keep its tool surface, and match the docs.
   binary:
@@ -164,7 +186,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
-      - run: go build -o google-chat-mcp ./cmd/google-chat-mcp
+      # Built as schema-ack builds both sides, so the two share the cache.
+      - run: CGO_ENABLED=0 go build -trimpath -o google-chat-mcp ./cmd/google-chat-mcp
       - name: every third-party tool is pinned
         run: go run ./scripts/gates pins
       - name: the error vocabulary is closed

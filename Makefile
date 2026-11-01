@@ -6,6 +6,9 @@ VERSION  ?= dev
 PKG       = github.com/mmedum/google-chat-mcp/v9
 LDFLAGS   = -s -w -X $(PKG)/internal/version.Version=$(VERSION)
 COVER_MIN ?= 80
+# The range schema-ack measures on a local run; CI passes its own.
+PR_BASE_REF ?= origin/main
+PR_HEAD     ?= HEAD
 GOBIN    := $(shell $(GO) env GOPATH)/bin
 # Prefer tools installed with the current Go (go install ...@latest) over distro packages.
 export PATH := $(GOBIN):$(PATH)
@@ -114,6 +117,10 @@ schemas: build ## Dump tool schemas
 .PHONY: schema-diff
 schema-diff: build ## Diff tool schemas against the released baseline
 	@$(GO) run ./scripts/gates schema-diff $(BIN)
+
+.PHONY: schema-ack
+schema-ack: ## Check every tool-surface change since the merge-base is named in a commit footer (a pull request's gate)
+	@$(GO) run ./scripts/gates schema-ack $(PR_BASE_REF) $(PR_HEAD)
 
 .PHONY: schema-baseline
 schema-baseline: build ## Record the release being cut as the baseline (VERSION=vX.Y.Z, in the release commit)

@@ -11,6 +11,13 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- For contributors:
+  - CI fails a pull request that changes the tool surface, an annotation or a `_meta` mark included, unless a commit footer names each changed item. A break of something a release shipped needs `BREAKING CHANGE:`.
+  - The schema diff compares the whole dump. It now fails on a removed resource template as it does on a removed tool, and reports a changed title, prompt or instruction.
+  - `--dump-schemas` carries the server's instructions in each mode: the default, with the destructive tools, and read-only. It lists fixed resources and prompts once the server has any.
+
 ## [9.1.1] - 2026-11-01
 
 ### Changed

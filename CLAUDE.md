@@ -111,8 +111,9 @@ tagged suite, golangci-lint, race tests with an 80% floor per package —
 flow and the serve loop have no seam a unit test can reach — plus
 `govulncheck`, the license allow-list, a stdio smoke test, the schema
 diff, the API-coverage gate, the live driver's surface gate, and the
-staleness gate over README, `docs/` and CHANGELOG. Plus tests for new
-behavior, `/simplify` and `/code-review high` with findings resolved or
+staleness gate over README, `docs/` and CHANGELOG. On a pull request CI
+also runs `schema-ack`: a commit footer names each changed item of the
+tool surface. Plus tests for new behavior, `/simplify` and `/code-review high` with findings resolved or
 written down, and a look at the schema diff for anything breaking.
 
 Before a release, `make live` as well. It drives the shipped binary
