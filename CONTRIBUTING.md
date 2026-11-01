@@ -41,21 +41,34 @@ tests with a coverage floor per package — 80% for everything except
 against the released tool surface, an API-coverage gate, the live
 driver's surface gate, and a staleness gate that fails when the README,
 `docs/` or the CHANGELOG drift from the code. CI runs the same set on
-Linux, macOS and Windows.
+Linux, macOS and Windows, and on a pull request `schema-ack` as well,
+below.
 
 Four of those are worth knowing about before they fail on you:
 
-- **The schema diff** compares the built binary with
-  `testdata/schemas-baseline.json`. A renamed tool or a dropped output
-  field breaks every caller and fails the build. A reshaped input is
-  reported and allowed, and so is a changed description, annotation or
-  `_meta` key, since a client decides from those whether to ask. The
-  baseline holds the surface of the CHANGELOG's newest release, and the
-  diff fails when it holds any other. With nothing under `[Unreleased]`, the build is that release,
-  so its tools must match the baseline exactly. The release commit
+- **The schema diff** compares the built binary's whole dump with
+  `testdata/schemas-baseline.json`: the tools, the resource templates,
+  the prompts and the instructions in each mode. A renamed tool or
+  resource template, or a dropped output field, breaks every caller and
+  fails the build. Anything else that moved is reported and allowed: a
+  reshaped input, a description, an annotation, a `_meta` key, the
+  instructions. A client decides from those whether to ask, so a
+  reviewer has to see them. The baseline holds the surface of the
+  CHANGELOG's newest release, and the diff fails when it holds any
+  other. With nothing under `[Unreleased]`, the build is that release,
+  so its surface must match the baseline exactly. The release commit
   records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
   refuses a build that drops a tool or an output field. It also refuses
   a build stamped with another version.
+
+  On a pull request, CI also runs `schema-ack`. A commit footer has to
+  name each item that changed since the merge-base:
+  `SCHEMA-CHANGE: send_message, update_message: destructiveHint true`.
+  Name a tool by its name, a resource template by its URI, and the
+  instructions as `instructions`. Put a name with a comma in it in
+  backticks. If the change breaks something a release shipped, name
+  that item in a `BREAKING CHANGE:` footer instead. When it fails, it
+  prints the footer to add, in an empty commit, never an amend.
 - **`internal/leakcheck`** fails on anything that could identify a real
   person, account or space — an email under a domain someone could own,
   a 21-digit account id, a space id that does not look invented, and the

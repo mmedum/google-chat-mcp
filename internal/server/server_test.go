@@ -20,8 +20,12 @@ import (
 
 func newServer(t *testing.T, cfg config.Config) *mcp.Server {
 	t.Helper()
+	return New(testDeps(cfg))
+}
+
+func testDeps(cfg config.Config) Deps {
 	svc := service.New(gchat.New(gchat.Options{Tokens: noTokens{}}), nil, cfg, slog.New(slog.DiscardHandler))
-	return New(Deps{Service: svc, Config: cfg, Version: "test"})
+	return Deps{Service: svc, Config: cfg, Version: "test"}
 }
 
 type noTokens struct{}
@@ -32,7 +36,7 @@ func (noTokens) Token(context.Context) (string, error) { return "", nil }
 func dump(t *testing.T, cfg config.Config) Dump {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := DumpSchemas(context.Background(), newServer(t, cfg), &buf, "test"); err != nil {
+	if err := DumpSchemas(context.Background(), testDeps(cfg), &buf); err != nil {
 		t.Fatalf("DumpSchemas: %v", err)
 	}
 	var d Dump
@@ -326,6 +330,97 @@ func TestDumpCarriesTheReadSurface(t *testing.T) {
 	for _, tmpl := range d.ResourceTemplates {
 		if !strings.HasPrefix(tmpl.URITemplate, "gchat://") {
 			t.Errorf("template %q is not on this server's scheme", tmpl.URITemplate)
+		}
+	}
+}
+
+// The dump carries the instructions of every mode, each what a client of
+// a server in that mode is told: the default, the destructive tools
+// registered, and read-only. A change to any of them is then one the
+// schema gates see.
+func TestTheDumpCarriesTheInstructionsOfEveryMode(t *testing.T) {
+	told := func(cfg config.Config) string {
+		t.Helper()
+		var got string
+		if err := withSession(context.Background(), newServer(t, cfg), "test", func(cs *mcp.ClientSession) error {
+			got = cs.InitializeResult().Instructions
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	all := config.Config{Toolsets: config.AllToolsets}
+	want := map[string]string{
+		"default":     told(all),
+		"destructive": told(config.Config{Toolsets: config.AllToolsets, EnableDestructive: true}),
+		"readOnly":    told(config.Config{Toolsets: config.AllToolsets, ReadOnly: true}),
+	}
+	if want["default"] == want["destructive"] || want["default"] == want["readOnly"] {
+		t.Fatal("two modes are told the same instructions: this test cannot tell them apart")
+	}
+	// Dumped from the full surface, as --dump-schemas does, the modes are
+	// still each its own.
+	all.EnableDestructive = true
+	if got := dump(t, all).Instructions; !maps.Equal(got, want) {
+		t.Errorf("the dump's instructions are\n%q\nwant\n%q", got, want)
+	}
+}
+
+// This server registers no prompt and no fixed resource, so the dump is
+// held to carry them from a server that does: one added later is part of
+// the surface the day it lands.
+func TestTheDumpCarriesPromptsAndResources(t *testing.T) {
+	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0"}, nil)
+	s.AddTool(&mcp.Tool{Name: "noop", InputSchema: map[string]any{"type": "object"}},
+		func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{}, nil
+		})
+	s.AddPrompt(&mcp.Prompt{Name: "summarize_space", Description: "Sums up a space."},
+		func(context.Context, *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+			return &mcp.GetPromptResult{}, nil
+		})
+	s.AddResource(&mcp.Resource{URI: "gchat://about", Name: "about"},
+		func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			return &mcp.ReadResourceResult{}, nil
+		})
+	var buf bytes.Buffer
+	if err := dumpServer(context.Background(), s, nil, &buf, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Prompts   json.RawMessage `json:"prompts"`
+		Resources json.RawMessage `json:"resources"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, got, want string }{
+		{"prompts", compact(t, got.Prompts), `[{"description":"Sums up a space.","name":"summarize_space"}]`},
+		{"resources", compact(t, got.Resources), `[{"name":"about","uri":"gchat://about"}]`},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("the dump's %s are %s, want %s", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+func compact(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		t.Fatalf("compact %q: %v", raw, err)
+	}
+	return buf.String()
+}
+
+// Every mode is one a configuration runs in, and the configuration the
+// dump builds for a mode runs in that mode, so the dump's instructions
+// are the instructions of every configuration.
+func TestEveryModeRoundTrips(t *testing.T) {
+	for _, m := range allModes {
+		if got := modeOf(inMode(config.Config{Toolsets: config.AllToolsets}, m)); got != m {
+			t.Errorf("modeOf(inMode(%s)) = %s", m, got)
 		}
 	}
 }

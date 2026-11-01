@@ -681,6 +681,22 @@ func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 		}
 	}
 
+	// A pull request's own gates measure from its merge-base, which a
+	// local `make check` does not have. Each has to run in ci.yml, and no
+	// target `make check` runs may run it, under whatever name, since
+	// there it would measure the wrong range.
+	for _, name := range commandsRunningIn(inPR) {
+		if !strings.Contains(workflow, "gates "+name) {
+			t.Errorf("the registry marks %q a pull-request gate and ci.yml never runs it", name)
+		}
+		for _, target := range targets {
+			if strings.Contains(ciRunsForTarget[target], "gates "+name) {
+				t.Errorf("`make check` runs %q, which runs %q, a pull-request gate: "+
+					"it measures from the merge-base, so take it out of check", target, name)
+			}
+		}
+	}
+
 	// The release's own steps, which a bool could not describe. Each has
 	// to appear in the goreleaser config or the release workflow: those
 	// two files are the release, and a step dropped from them fails at a

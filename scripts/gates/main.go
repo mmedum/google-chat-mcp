@@ -34,7 +34,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -86,6 +85,9 @@ const (
 	// inRelease has to run in the release pipeline: the goreleaser
 	// config, or the release workflow.
 	inRelease
+	// inPR has to run in CI on a pull request and NOT in `make check`:
+	// it measures from the merge-base, which only a pull request has.
+	inPR
 )
 
 // commands is the one list of what this program does.
@@ -116,6 +118,11 @@ func init() {
 			},
 			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
 			doc: "the released tool surface, which a change may add to and never drop from",
+		},
+		"schema-ack": {
+			run:   func(a []string, o, e io.Writer) int { return schemaAckCommand(a[1], a[2], o, e) },
+			arity: 3, args: "BASE HEAD", runsIn: inPR,
+			doc: "every change to the tool surface since the merge-base is named in a commit footer",
 		},
 		"schema-baseline": {
 			run: func(a []string, o, e io.Writer) int {
@@ -263,26 +270,23 @@ func usage(w io.Writer) {
 	}
 }
 
-// dump is the shape of a --dump-schemas file, from either server. Only
-// the fields the gate compares or reports are declared.
+// dump is the typed part of a --dump-schemas file: the stamp, and each
+// tool's name and top-level input and output fields. The schema gates
+// compare the whole file through readToolSurface.
 type dump struct {
 	Version string `json:"version"`
 	SDK     string `json:"sdk"`
 	Tools   []struct {
-		Name string `json:"name"`
-		// Decoded rather than kept raw: the comparison is by value, so
-		// decoding once here beats decoding twice per comparison and
-		// removes the branch that read a parse failure as "different".
-		InputSchema  any `json:"inputSchema"`
-		OutputSchema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		} `json:"outputSchema"`
-		Description string `json:"description"`
-		// Annotations and Meta are what a client decides its prompt on:
-		// destructiveHint and the requiresUserInteraction mark.
-		Annotations any `json:"annotations"`
-		Meta        any `json:"_meta"`
+		Name        string       `json:"name"`
+		InputSchema schemaFields `json:"inputSchema"`
+		// OutputSchema's fields are what the README promises are stable.
+		OutputSchema schemaFields `json:"outputSchema"`
 	} `json:"tools"`
+}
+
+// schemaFields is the top level of a JSON Schema: the fields it names.
+type schemaFields struct {
+	Properties map[string]json.RawMessage `json:"properties"`
 }
 
 func read(path string) (*dump, error) {
@@ -334,11 +338,11 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // schemaDiff compares the built binary's tool surface with a baseline.
 //
 // The baseline is the surface of the last release, and the promise is
-// that a caller written against it keeps working: every tool comes back
-// under the same name, with the same output fields. A reshaped input is
-// reported rather than failed, because a schema can gain an optional
-// argument without breaking anyone. So is a changed description,
-// annotation or _meta key: no caller breaks, but a client decides from
+// that a caller written against it keeps working: every item, a tool or
+// a resource template, comes back under the same name, and every tool
+// with the same output fields. Anything else that moved is reported rather
+// than failed: a reshaped input, a description, an annotation, a _meta
+// mark, the instructions. No caller breaks, but a client decides from
 // the annotations and the mark whether to ask the person, so a reviewer
 // has to see the change.
 //
@@ -347,138 +351,40 @@ func runDumpSchemas(bin string) ([]byte, error) {
 // because it protects an older surface: whatever shipped since could be
 // dropped and nothing would say.
 func schemaDiff(baselinePath, currentPath, want string, stdout, stderr io.Writer) int {
-	baseline, err := read(baselinePath)
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
-		return 2
-	}
-	current, err := read(currentPath)
+	baseline, current, err := loadSurfaces(baselinePath, currentPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 2
 	}
 
-	index := func(d *dump) map[string]toolEntry {
-		m := make(map[string]toolEntry, len(d.Tools))
-		for _, t := range d.Tools {
-			m[t.Name] = toolEntry{
-				input: t.InputSchema, output: t.OutputSchema.Properties,
-				description: t.Description, annotations: t.Annotations, meta: t.Meta,
-			}
-		}
-		return m
-	}
-	old, built := index(baseline), index(current)
-
-	_, _ = fmt.Fprintf(stdout, "baseline %s: %d tools; built: %d tools\n", baseline.Version, len(old), len(built))
-	if baseline.SDK != current.SDK {
+	_, _ = fmt.Fprintf(stdout, "baseline %s: %d tools; built: %d tools\n", baseline.version, len(baseline.outputs), len(current.outputs))
+	if baseline.sdk != current.sdk {
 		_, _ = fmt.Fprintf(stdout, "SDK %s, built with %s: a reshaped input may be the SDK's change, not a tool's\n",
-			baseline.SDK, current.SDK)
+			baseline.sdk, current.sdk)
 	}
-
-	var missing, extra, reshaped []string
-	lost, changed := map[string][]string{}, map[string][]string{}
-	for name := range old {
-		if _, ok := built[name]; !ok {
-			missing = append(missing, name)
-			continue
-		}
-		var dropped []string
-		for field := range old[name].output {
-			if _, ok := built[name].output[field]; !ok {
-				dropped = append(dropped, field)
-			}
-		}
-		if len(dropped) > 0 {
-			slices.Sort(dropped)
-			lost[name] = dropped
-		}
-		// By value, not by bytes: a reordered key is the same schema,
-		// and reporting every tool as reshaped would make the signal
-		// worthless.
-		if !reflect.DeepEqual(old[name].input, built[name].input) {
-			reshaped = append(reshaped, name)
-		}
-		if parts := changedParts(old[name], built[name]); len(parts) > 0 {
-			changed[name] = parts
-		}
-	}
-	for name := range built {
-		if _, ok := old[name]; !ok {
-			extra = append(extra, name)
-		}
-	}
-	slices.Sort(missing)
-	slices.Sort(extra)
-	slices.Sort(reshaped)
-
-	if len(reshaped) > 0 {
-		_, _ = fmt.Fprintf(stdout, "\ninputs reshaped, look at these (%d): %s\n", len(reshaped), strings.Join(reshaped, ", "))
-	}
-	if len(changed) > 0 {
-		_, _ = fmt.Fprintf(stdout, "\ndescription, annotations or _meta changed, look at these (%d):\n", len(changed))
-		for _, name := range slices.Sorted(maps.Keys(changed)) {
-			_, _ = fmt.Fprintf(stdout, "  %s: %s\n", name, strings.Join(changed[name], ", "))
-		}
-	}
+	c := compareSurfaces(baseline, current)
+	c.write(stdout, "the "+baseline.version+" baseline")
 
 	failed := false
-	if want != "" && baseline.Version != want {
+	if want != "" && baseline.version != want {
 		failed = true
 		_, _ = fmt.Fprintf(stdout, "\nFAIL: the baseline is the %s surface, but it must be %s's. "+
-			"Refresh %s as CONTRIBUTING.md says.\n", baseline.Version, want, baselinePath)
+			"Refresh %s as CONTRIBUTING.md says.\n", baseline.version, want, baselinePath)
 	}
-	// A tool in the baseline that is not in the build is one a caller
-	// already depends on and can no longer call.
-	if len(missing) > 0 {
+	// A tool or a field in the baseline that is not in the build is one a
+	// caller already depends on and can no longer reach. A rename is not
+	// hidden by the new name reading as an addition: the old one is gone.
+	if len(c.breaking) > 0 {
 		failed = true
-		_, _ = fmt.Fprintf(stdout, "\nFAIL: %d tool(s) in the baseline are missing from the build:\n", len(missing))
-		for _, name := range missing {
-			_, _ = fmt.Fprintf(stdout, "  %s\n", name)
-		}
-	}
-	// A new tool breaks nobody, so it is reported rather than failed. A
-	// rename is not hidden by this: it takes a tool out of the baseline
-	// too, and that half fails above.
-	if len(extra) > 0 {
-		_, _ = fmt.Fprintf(stdout, "\ntools added (%d): %s\n", len(extra), strings.Join(extra, ", "))
-	}
-	if len(lost) > 0 {
-		failed = true
-		_, _ = fmt.Fprintf(stdout, "\nFAIL: %d tool(s) lost an output field:\n", len(lost))
-		for _, name := range slices.Sorted(maps.Keys(lost)) {
-			_, _ = fmt.Fprintf(stdout, "  %s: %s\n", name, strings.Join(lost[name], ", "))
+		_, _ = fmt.Fprintf(stdout, "\nFAIL: the build breaks %d thing(s) a caller of the baseline depends on:\n", len(c.breaking))
+		for _, b := range c.breaking {
+			_, _ = fmt.Fprintf(stdout, "  %s\n", b.text)
 		}
 	}
 	if failed {
 		return 1
 	}
 	return 0
-}
-
-// toolEntry is one tool of a dump, as schemaDiff compares it.
-type toolEntry struct {
-	input       any
-	output      map[string]json.RawMessage
-	description string
-	annotations any
-	meta        any
-}
-
-// changedParts names what changed of a tool beyond its input and output
-// fields: its description, its annotations and its _meta.
-func changedParts(was, now toolEntry) []string {
-	var parts []string
-	if was.description != now.description {
-		parts = append(parts, "description")
-	}
-	if !reflect.DeepEqual(was.annotations, now.annotations) {
-		parts = append(parts, "annotations")
-	}
-	if !reflect.DeepEqual(was.meta, now.meta) {
-		parts = append(parts, "_meta")
-	}
-	return parts
 }
 
 // toolNames prints the tools in a dump, one per line, sorted. The
@@ -555,13 +461,13 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 	if want == "" || sectionFor(changelog, "Unreleased") != "" {
 		return 0
 	}
-	same, err := sameTools(baselinePath, dumpPath)
+	same, err := sameSurface(baselinePath, dumpPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 2
 	}
 	if !same {
-		_, _ = fmt.Fprintf(stdout, "\nFAIL: nothing is under [Unreleased], so this build is %s, and its tools differ from the baseline. "+
+		_, _ = fmt.Fprintf(stdout, "\nFAIL: nothing is under [Unreleased], so this build is %s, and its surface differs from the baseline. "+
 			"In %s's release commit, run `make schema-baseline VERSION=%s`. Otherwise, say what changed under [Unreleased].\n",
 			want, want, want)
 		return 1
@@ -569,22 +475,29 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// sameTools reports whether two schema dumps register the same tools,
-// field for field. The version and SDK stamps are not part of it.
-func sameTools(aPath, bPath string) (bool, error) {
-	var tools [2]struct {
-		Tools any `json:"tools"`
+// sameSurface reports whether two schema dumps tell a client the same
+// thing. The build stamp is not part of it.
+func sameSurface(aPath, bPath string) (bool, error) {
+	a, b, err := loadSurfaces(aPath, bPath)
+	if err != nil {
+		return false, err
 	}
+	return compareSurfaces(a, b).empty(), nil
+}
+
+// loadSurfaces reads the two dumps at aPath and bPath.
+func loadSurfaces(aPath, bPath string) (a, b toolSurface, err error) {
+	var sides [2]toolSurface
 	for i, path := range []string{aPath, bPath} {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return false, err
+		data, err := os.ReadFile(path)
+		if err == nil {
+			sides[i], err = readToolSurface(data, path)
 		}
-		if err := json.Unmarshal(b, &tools[i]); err != nil {
-			return false, fmt.Errorf("%s: %w", path, err)
+		if err != nil {
+			return toolSurface{}, toolSurface{}, err
 		}
 	}
-	return reflect.DeepEqual(tools[0].Tools, tools[1].Tools), nil
+	return sides[0], sides[1], nil
 }
 
 // schemaBaseline records the surface of the release being cut as the

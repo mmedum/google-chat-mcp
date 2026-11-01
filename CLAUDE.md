@@ -66,8 +66,9 @@ was checked, against which source, and which live call contradicted it.
    it drags in gRPC and telemetry for a subset we hand-write. Extend
    `internal/gchat`.
 9. **The released tool surface is a contract.** Tools keep their names
-   and output fields; `scripts/gates schema-diff` fails on a rename or a
-   lost field. Adding is fine.
+   and output fields, and resource templates their URIs;
+   `scripts/gates schema-diff` fails on a rename or a lost field. Adding
+   is fine.
 10. **No auto-commit, no auto-push.** Work on a branch; the owner pushes.
 11. **Verify a convention against a primary source** before adopting it,
     and record the verdict in the evidence log.
@@ -111,9 +112,11 @@ tagged suite, golangci-lint, race tests with an 80% floor per package —
 flow and the serve loop have no seam a unit test can reach — plus
 `govulncheck`, the license allow-list, a stdio smoke test, the schema
 diff, the API-coverage gate, the live driver's surface gate, and the
-staleness gate over README, `docs/` and CHANGELOG. Plus tests for new
-behavior, `/simplify` and `/code-review high` with findings resolved or
-written down, and a look at the schema diff for anything breaking.
+staleness gate over README, `docs/` and CHANGELOG. On a pull request CI
+also runs `schema-ack`: a commit footer names each changed item of the
+tool surface. Plus tests for new behavior, `/simplify` and `/code-review
+high` with findings resolved or written down, and a look at the schema
+diff for anything breaking.
 
 Before a release, `make live` as well. It drives the shipped binary
 against a real account and is the only thing here that can catch a wrong

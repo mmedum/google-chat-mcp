@@ -44,7 +44,7 @@ func TestSchemaDiffClean(t *testing.T) {
 	if !strings.Contains(out.String(), "baseline 0.9.0: 2 tools; built: 2 tools") {
 		t.Errorf("missing header: %s", out.String())
 	}
-	if !strings.Contains(out.String(), "inputs reshaped, look at these (1): get_space") {
+	if !strings.Contains(out.String(), "  ~ get_space (inputSchema.properties)\n") {
 		t.Errorf("reshaped input not reported: %s", out.String())
 	}
 }
@@ -76,9 +76,9 @@ func TestSchemaDiffReportsAnnotationsAndMeta(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d, want 0: %s", code, out.String())
 	}
-	want := "description, annotations or _meta changed, look at these (2):\n" +
-		"  send_message: description\n" +
-		"  unpin_message: annotations, _meta\n"
+	want := "against the 0.9.0 baseline: 0 added, 2 changed, 0 breaking\n" +
+		"  ~ send_message (description)\n" +
+		"  ~ unpin_message (_meta, annotations.destructiveHint)\n"
 	if !strings.Contains(out.String(), want) {
 		t.Errorf("want %q in output, got: %s", want, out.String())
 	}
@@ -117,7 +117,7 @@ func TestSchemaDiffFailures(t *testing.T) {
 			current: `{"version":"2.0.0","tools":[
               {"name":"get_space","inputSchema":{"type":"object","properties":{"payload":{"type":"object"}}},
                "outputSchema":{"properties":{"space_id":{},"display_name":{}}}}]}`,
-			want: "missing from the build:\n  send_message",
+			want: "  send_message removed\n",
 		},
 		{
 			// A rename is caught by the half that goes missing. The new
@@ -129,7 +129,7 @@ func TestSchemaDiffFailures(t *testing.T) {
                "outputSchema":{"properties":{"space_id":{},"display_name":{}}}},
               {"name":"post_message","inputSchema":{"type":"object","properties":{"payload":{"type":"object"}}},
                "outputSchema":{"properties":{"message_id":{}}}}]}`,
-			want: "missing from the build:\n  send_message",
+			want: "  + post_message\n  ! send_message removed  BREAKING\n",
 		},
 		{
 			name: "lost an output field",
@@ -138,7 +138,7 @@ func TestSchemaDiffFailures(t *testing.T) {
                "outputSchema":{"properties":{"space_id":{}}}},
               {"name":"send_message","inputSchema":{"type":"object","properties":{"payload":{"type":"object"}}},
                "outputSchema":{"properties":{"message_id":{}}}}]}`,
-			want: "get_space: display_name",
+			want: "  get_space: output field display_name removed\n",
 		},
 	}
 	for _, tc := range tests {
@@ -147,6 +147,35 @@ func TestSchemaDiffFailures(t *testing.T) {
 			code := schemaDiff(write(t, "old.json", baseline), write(t, "new.json", tc.current), "", &out, &errOut)
 			if code != 1 {
 				t.Fatalf("exit %d, want 1: %s", code, out.String())
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Errorf("want %q in output, got: %s", tc.want, out.String())
+			}
+		})
+	}
+}
+
+// A resource template is part of the surface a caller depends on, so one
+// gone fails as a tool gone does. The instructions are reported, since a
+// client puts them before the model, and break no caller.
+func TestSchemaDiffSeesResourceTemplatesAndInstructions(t *testing.T) {
+	withTemplate := strings.Replace(baseline, `{"version":"0.9.0",`,
+		`{"version":"0.9.0","instructions":{"default":"Start with list_spaces."},"resourceTemplates":[{"uriTemplate":"gchat://spaces/{id}","name":"space"}],`, 1)
+	for _, tc := range []struct {
+		name, current string
+		code          int
+		want          string
+	}{
+		{"a template gone", strings.Replace(withTemplate, `{"uriTemplate":"gchat://spaces/{id}","name":"space"}`, ``, 1),
+			1, "  resource gchat://spaces/{id} removed\n"},
+		{"the instructions reworded", strings.Replace(withTemplate, `"Start with list_spaces."`, `"Start with whoami."`, 1),
+			0, "  ~ instructions.default\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			code := schemaDiff(write(t, "old.json", withTemplate), write(t, "new.json", tc.current), "", &out, &errOut)
+			if code != tc.code {
+				t.Fatalf("exit %d, want %d: %s%s", code, tc.code, out.String(), errOut.String())
 			}
 			if !strings.Contains(out.String(), tc.want) {
 				t.Errorf("want %q in output, got: %s", tc.want, out.String())
@@ -226,8 +255,8 @@ func TestSchemaDiffIgnoresKeyOrder(t *testing.T) {
 	if code := schemaDiff(write(t, "old.json", baseline), write(t, "new.json", current), "", &out, &errOut); code != 0 {
 		t.Fatalf("exit %d, want 0: %s", code, out.String())
 	}
-	if strings.Contains(out.String(), "reshaped") {
-		t.Errorf("key order reported as a reshape: %s", out.String())
+	if !strings.Contains(out.String(), ": 0 added, 0 changed, 0 breaking\n") {
+		t.Errorf("key order reported as a change: %s", out.String())
 	}
 }
 
@@ -303,11 +332,11 @@ func TestUnreadableFiles(t *testing.T) {
 func TestEveryCommandDeclaresWhereItRuns(t *testing.T) {
 	for _, name := range slices.Sorted(maps.Keys(commands)) {
 		switch commands[name].runsIn {
-		case manual, inCheck, inRelease:
+		case manual, inCheck, inRelease, inPR:
 		default:
 			t.Errorf("%q declares no runsIn. Say which pipeline has to run it: inCheck for "+
-				"`make check` and CI, inRelease for the release, manual for a query typed "+
-				"by hand.", name)
+				"`make check` and CI, inRelease for the release, inPR for a pull request only, "+
+				"manual for a query typed by hand.", name)
 		}
 	}
 	// Both pipelines have to hold something, or the parity gate that
@@ -315,7 +344,7 @@ func TestEveryCommandDeclaresWhereItRuns(t *testing.T) {
 	for _, w := range []struct {
 		name string
 		in   where
-	}{{"inCheck", inCheck}, {"inRelease", inRelease}} {
+	}{{"inCheck", inCheck}, {"inRelease", inRelease}, {"inPR", inPR}} {
 		if len(commandsRunningIn(w.in)) == 0 {
 			t.Errorf("no command runs in %s: the parity gate for it is looking at nothing", w.name)
 		}
@@ -411,7 +440,7 @@ func TestSchemaDiffBinary(t *testing.T) {
 		},
 		{
 			name: "nothing unreleased, and the build adds a tool", baseline: surface("v1.0.0"), dump: withFindSpace("dev"), code: 1,
-			out: "FAIL: nothing is under [Unreleased], so this build is v1.0.0, and its tools differ from the baseline",
+			out: "FAIL: nothing is under [Unreleased], so this build is v1.0.0, and its surface differs from the baseline",
 		},
 		{
 			name: "unreleased work adds a tool", unreleased: added,
@@ -462,7 +491,7 @@ func TestSchemaBaseline(t *testing.T) {
 		},
 		{
 			name: "refuses a build that drops a tool", baseline: surface("v0.9.0"), dump: dropped,
-			code: 1, out: "missing from the build:\n  send_message",
+			code: 1, out: "  send_message removed\n",
 		},
 		{
 			// A second run in the same release compares with the first
