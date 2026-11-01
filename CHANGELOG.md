@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.1.1] - 2026-11-01
+
 ### Changed
 
 - No tool's annotations change. A write tool added later says `destructiveHint: true` unless it is declared as one that only adds, so it errs toward a prompt.
@@ -834,7 +836,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...HEAD
+[9.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...v9.1.1
 [9.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...v9.1.0
 [9.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...v9.0.0
 [8.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v7.1.0...v8.0.0
