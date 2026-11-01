@@ -189,7 +189,7 @@ func registerAdmin(s *mcp.Server, d Deps) {
 			"alone and sends it back. The reply says what each changed field was before, so a change can be put " +
 			"back. Members see that the organization's administrator made the change. Set dry_run to see the " +
 			"patch body first. update_space edits a space you are in.",
-		Kind: Overwrite,
+		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AdminUpdateSpaceInput) (*mcp.CallToolResult, AdminUpdateSpaceOutput, error) {
 		got, err := d.Service.UpdateSpace(ctx, service.UpdateSpaceInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName,
@@ -256,7 +256,7 @@ func registerAdmin(s *mcp.Server, d Deps) {
 		Description: "Make a manager or an assistant manager of any space an ordinary member again, as an " +
 			"administrator: role MEMBER. Making someone a manager is refused [blocked] here; " +
 			"admin_promote_member does it. Set dry_run to see the request body without sending it.",
-		Kind: Overwrite,
+		Kind: Write,
 	}, updateMemberRole(d))
 
 	register(s, d, spec{

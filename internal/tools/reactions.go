@@ -92,7 +92,7 @@ func registerReactionWrites(s *mcp.Server, d Deps) {
 		Name: "add_reaction",
 		Description: "React to a message with a single unicode emoji. Reacting the same way twice is not an error: " +
 			"the reaction that is already there is returned instead.",
-		Kind: WriteIdempotent,
+		Kind: AddingIdempotent,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in AddReactionInput) (*mcp.CallToolResult, AddReactionOutput, error) {
 		got, err := d.Service.AddReaction(ctx, service.AddReactionInput{Message: in.MessageName, Emoji: in.Emoji})
 		if err != nil {
@@ -107,7 +107,7 @@ func registerReactionWrites(s *mcp.Server, d Deps) {
 			"look it up first. The lookup matches on the reactor's email address, so it fails rather than reporting " +
 			"nothing to delete when someone who reacted cannot be resolved: a silent no was the one answer it must " +
 			"not give. Removed false means there was no such reaction.",
-		Kind: OverwriteIdempotent,
+		Kind: WriteIdempotent,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in RemoveReactionInput) (*mcp.CallToolResult, RemoveReactionOutput, error) {
 		got, err := d.Service.RemoveReaction(ctx, service.RemoveReactionInput{
 			Reaction: in.ReactionName, Message: in.MessageName, Emoji: in.Emoji, Email: in.UserEmail,

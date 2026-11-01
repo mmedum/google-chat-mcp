@@ -496,7 +496,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 			"carries a client-assigned id, so this server's own retries cannot leave two copies — but calling the " +
 			"tool again after an error can, because that is a new post. Read the space first if you are unsure. " +
 			"To send a file, upload it with upload_attachment first and pass the token it returns.",
-		Kind: Write,
+		Kind: Adding,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SendMessageInput) (*mcp.CallToolResult, SendMessageOutput, error) {
 		got, err := d.Service.SendMessage(ctx, service.SendMessageInput{
 			Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, Text: in.Text, Thread: in.ThreadName,
@@ -522,7 +522,7 @@ func registerMessageWrites(s *mcp.Server, d Deps) {
 			"and editing them needs an identity this server does not have. An edit that newly mentions everyone in " +
 			"the space, <users/all>, is refused [blocked], since it notifies every member. Set dry_run to see the " +
 			"patch body without applying it. Needs the restricted-tier chat.messages scope.",
-		Kind: Overwrite,
+		Kind: Write,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in UpdateMessageInput) (*mcp.CallToolResult, UpdateMessageOutput, error) {
 		got, err := d.Service.UpdateMessage(ctx, service.UpdateMessageInput{
 			Message: in.MessageName, Text: in.Text, DryRun: in.DryRun,

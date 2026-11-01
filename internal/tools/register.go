@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,20 +40,23 @@ const (
 	// facts apart in prose at the call site is exactly what register
 	// exists to stop.
 	ReadWritesLocally
-	// Write adds something and replaces nothing.
+	// Write is every write that does not only add. It replaces or
+	// removes something a later call can set again: a message's text, a
+	// space's details or settings, a role, a removed reaction or pin, a
+	// section's name or place, a status, a read marker. It says
+	// destructiveHint true, since the spec reads false as "only additive
+	// updates". It is not Destructive: nothing is lost for good, so it
+	// needs neither GCM_ENABLE_DESTRUCTIVE nor confirm.
 	Write
 	// WriteIdempotent additionally lands the same way twice.
 	WriteIdempotent
-	// Overwrite replaces or removes something a later call can set
-	// again: a message's text, a space's details or settings, a role, a
-	// reaction, a pin, a section's name or place, a status, a read
-	// marker. The spec reads destructiveHint false as "only additive
-	// updates", so these say true, and a client that prompts by it
-	// prompts for them. They are not Destructive here: nothing is lost
-	// for good, so they need neither GCM_ENABLE_DESTRUCTIVE nor confirm.
-	Overwrite
-	// OverwriteIdempotent additionally lands the same way twice.
-	OverwriteIdempotent
+	// Adding creates something new and changes nothing already there: a
+	// message, a space, a member, a reaction, a pin, an upload. It says
+	// destructiveHint false, as ReadWritesLocally does, and
+	// TestOnlyToolsThatAddSayTheyAreNotDestructive names each tool on it.
+	Adding
+	// AddingIdempotent additionally lands the same way twice.
+	AddingIdempotent
 	// Destructive cannot be taken back: it removes something, opens a
 	// space to an audience, makes someone a manager or adds someone from
 	// outside the organization. It is registered only under
@@ -91,24 +95,26 @@ type spec struct {
 // annotations returns what a client shows for this kind.
 func (k Kind) annotations() *mcp.ToolAnnotations {
 	switch k {
-	case ReadWritesLocally:
-		// Not read-only: it writes a file. Not destructive either — the
-		// directory is the operator's own and a download never
-		// overwrites what is in it.
+	case Read:
+		return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)}
+	case ReadWritesLocally, Adding:
+		// ReadWritesLocally is not read-only, since it writes a file, and
+		// only adds: the directory is the operator's own and a download
+		// never overwrites what is in it.
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)}
-	case Write:
-		return &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)}
-	case WriteIdempotent:
+	case AddingIdempotent:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: true, OpenWorldHint: ptr(true)}
-	case Overwrite:
+	case Write:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)}
-	case OverwriteIdempotent:
+	case WriteIdempotent:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), IdempotentHint: true, OpenWorldHint: ptr(true)}
 	case Destructive:
 		return &mcp.ToolAnnotations{DestructiveHint: ptr(true), IdempotentHint: true, OpenWorldHint: ptr(true)}
-	default:
-		return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)}
 	}
+	// A kind with no case would otherwise say whatever the fallback
+	// says. register calls this before it decides whether the tool is
+	// registered, so the panic fires at start in every configuration.
+	panic("tools: kind " + strconv.Itoa(int(k)) + " has no annotations")
 }
 
 // register adds one tool, or leaves it out when the configuration says
@@ -142,13 +148,14 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 		}
 		sp.Toolset = config.ToolsetAdmin
 	}
+	annotations := sp.Kind.annotations()
 	if !registers(sp, d.Config) {
 		return
 	}
 	tool := &mcp.Tool{
 		Name:         sp.Name,
 		Description:  sp.Description,
-		Annotations:  sp.Kind.annotations(),
+		Annotations:  annotations,
 		OutputSchema: outputSchema[Out](),
 	}
 	if sp.Marked {

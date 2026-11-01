@@ -193,7 +193,7 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 			"calls leave two sections with the same label: list_sections first if you mean to reuse one. Sections are " +
 			"per-user and change nobody else's view. Set dry_run to see the request body first. Needs the " +
 			"chat.users.sections scope.",
-		Kind:    Write,
+		Kind:    Adding,
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in CreateSectionInput) (*mcp.CallToolResult, SectionWriteOutput, error) {
 		got, err := d.Service.CreateSection(ctx, service.CreateSectionInput{
@@ -209,7 +209,7 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 		Name: "rename_section",
 		Description: "Change a custom section's label. Only custom sections can be renamed; Google refuses a patch " +
 			"against a system one. Set dry_run to see the patch body first. Needs the chat.users.sections scope.",
-		Kind:    OverwriteIdempotent,
+		Kind:    WriteIdempotent,
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in RenameSectionInput) (*mcp.CallToolResult, SectionWriteOutput, error) {
 		got, err := d.Service.RenameSection(ctx, service.RenameSectionInput{
@@ -246,7 +246,7 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 			"sort_order as inserting at that rank and shifting the rest down, but a run of absolute inserts does not " +
 			"settle where that implies, so build an order by moving each to START in reverse. Set dry_run to see the " +
 			"request body first. Needs the chat.users.sections scope.",
-		Kind:    OverwriteIdempotent,
+		Kind:    WriteIdempotent,
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in PositionSectionInput) (*mcp.CallToolResult, PositionSectionOutput, error) {
 		got, err := d.Service.PositionSection(ctx, service.PositionSectionInput{
@@ -270,7 +270,7 @@ func registerSectionWrites(s *mcp.Server, d Deps) {
 			"is already where you want it. For a bulk sort, read each section once with list_section_items and pass " +
 			"the item_name it gives you: that skips the per-space lookup. Set dry_run to see which section the space " +
 			"would leave without writing. Needs the chat.users.sections scope.",
-		Kind:    OverwriteIdempotent,
+		Kind:    WriteIdempotent,
 		Toolset: config.ToolsetSections,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MoveSpaceToSectionInput) (*mcp.CallToolResult, MoveSpaceToSectionOutput, error) {
 		got, err := d.Service.MoveSpaceToSection(ctx, service.MoveSpaceToSectionInput{

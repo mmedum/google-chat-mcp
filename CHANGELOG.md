@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- No tool's annotations change. A write tool added later says `destructiveHint: true` unless it is declared as one that only adds, so it errs toward a prompt.
+
 ## [9.1.0] - 2026-10-31
 
 ### Changed
