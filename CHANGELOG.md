@@ -11,6 +11,11 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- The Windows programs carry a version resource: the product name, `google-chat-mcp`, and the release's version. Windows shows them under the file's properties, and code signing checks them.
+- The README has a code signing policy, and every release page links to it. The Windows programs are not signed yet.
+
 ### Changed
 
 - For contributors:

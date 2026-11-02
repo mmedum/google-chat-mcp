@@ -203,7 +203,8 @@ Release cutting is maintainer-only:
 3. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z: …" && git push origin vX.Y.Z`.
    Push tags one at a time — GitHub drops tag events past the third in a
    single push, and the release silently never runs.
-4. `release.yml` builds six platform archives with goreleaser, packs the
+4. `release.yml` builds six platform archives with goreleaser, stamping
+   the Windows programs with their product name and version, packs the
    Claude Desktop `.mcpb` bundle, signs the checksums — which cover the
    bundle too — with a keyless Sigstore certificate, attaches an SBOM per
    archive and build provenance, and creates the GitHub release from the

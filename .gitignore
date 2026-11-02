@@ -5,6 +5,9 @@
 /gates
 /dist/
 /schemas.json
+# The Windows version resource, written per release by `scripts/gates
+# winres` (docs/architecture.md, Distribution).
+/cmd/*/rsrc_windows_*.syso
 cov.out
 coverage.out
 

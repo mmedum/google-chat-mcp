@@ -310,14 +310,18 @@ func TestTheReleaseStageIsEnabled(t *testing.T) {
 	}
 }
 
-// goreleaser's `before` hooks run before the dirty-tree check, so a hook
-// that writes into the checkout fails the release — and `--snapshot`
-// runs the hooks while skipping that check, so no rehearsal can show it.
+// goreleaser checks for a dirty tree once, before the `before` hooks run
+// (v2.18.1: internal/pipeline/pipeline.go runs git.Pipe, then
+// before.Pipe), so a hook that rewrites a tracked file is not refused.
+// The release builds from files the tag does not hold, Go stamps the
+// binary vcs.modified=true, and no rehearsal can show it.
 // `go mod tidy` is the one that bites: it is a no-op right up until a
 // dependency or a Go version resolves differently on the runner, and
 // then it rewrites go.mod at tag time. Tidiness is CI's job anyway — it
 // runs `go mod tidy` and fails on any diff, on the same commit the
-// release is cut from, which `verify-ci` requires to be green.
+// release is cut from, which `verify-ci` requires to be green. A hook
+// may write a file git ignores, as `winres` does;
+// TestWinresWritesWhereGoreleaserBuilds holds that it is ignored.
 //
 // google-sheets-mcp flagged this one; it was latent here rather than
 // broken, which is the only reason it is a test and not a bug report.
