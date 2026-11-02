@@ -12,6 +12,12 @@ before:
     # job: it runs `go mod tidy` and fails on any diff, on the same
     # commit the release is cut from.
     - go mod download
+    # The Windows programs' version resource: the product name and the
+    # version, which code signing checks and Windows shows under the
+    # file's properties. It writes one .syso per Windows architecture into
+    # the package below, which .gitignore covers, so the tree stays clean
+    # and the binary is not stamped modified.
+    - go run ./scripts/gates winres {{ .Version }}
 
 builds:
   - id: binaries
@@ -135,3 +141,5 @@ release:
     config file to edit. It does **not** log you in — install the binary
     as well and run `google-chat-mcp login` once. Its SHA-256 is in the
     same signed `checksums.txt`.
+
+    [Code signing policy](https://github.com/mmedum/google-chat-mcp#code-signing-policy)

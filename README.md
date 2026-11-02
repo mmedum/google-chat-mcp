@@ -422,6 +422,34 @@ review flow, and `make check` is what has to pass.
 
 [`SECURITY.md`](SECURITY.md) says how to report a vulnerability.
 
+## Code signing policy
+
+The Windows programs are not signed yet, so Windows Smart App Control
+may block them. This project is applying to SignPath Foundation, which
+signs open-source software for free, and signed releases will follow
+this policy.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
+- **What is signed:** `google-chat-mcp.exe` for amd64 and arm64, in the
+  Windows release zips and in the Claude Desktop bundle. Nothing else
+  in a release is a Windows program.
+- **How it is built:** the release workflow in this repository builds
+  both programs from the release tag, on GitHub-hosted runners.
+  SignPath signs only what that workflow built.
+- **Approval:** an approver approves every signing request by hand.
+- **Committers and reviewers:** [mmedum](https://github.com/mmedum)
+- **Approvers:** [mmedum](https://github.com/mmedum)
+
+**Privacy:** this program will not transfer any information to other
+networked systems unless specifically requested by the user or the
+person installing or operating it. It talks to Google alone: to sign
+you in, and to Google's APIs for the account you logged in with, when
+you run one of its commands or your MCP client calls one of its tools.
+[Google's privacy policy](https://policies.google.com/privacy) covers
+what Google does with that.
+
 ## Code of conduct
 
 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant 3.0.

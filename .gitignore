@@ -5,6 +5,11 @@
 /gates
 /dist/
 /schemas.json
+# The Windows version resource, written by goreleaser's before hook for
+# the release being cut (scripts/gates winres). Committed, it would carry
+# one release's version into every build after it; untracked and not
+# ignored, it would stamp vcs.modified=true into the binary.
+/cmd/google-chat-mcp/rsrc_windows_*.syso
 cov.out
 coverage.out
 

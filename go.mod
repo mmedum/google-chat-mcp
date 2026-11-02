@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/google/jsonschema-go v0.4.3
+	github.com/josephspurrier/goversioninfo v1.7.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/oauth2 v0.37.0
@@ -11,6 +12,7 @@ require (
 )
 
 require (
+	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect

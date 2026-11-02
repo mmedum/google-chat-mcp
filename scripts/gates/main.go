@@ -24,6 +24,7 @@
 //	go run ./scripts/gates server-json VERSION CHECKSUMS
 //	go run ./scripts/gates mcpb-manifest VERSION [ROOT]
 //	go run ./scripts/gates mcpb-pack VERSION [DIST]
+//	go run ./scripts/gates winres VERSION [DIR]
 package main
 
 import (
@@ -215,6 +216,11 @@ func init() {
 			run:   mcpbPack,
 			arity: 2, maxArity: 3, args: "VERSION [DIST]", runsIn: inRelease,
 			doc: "the Claude Desktop bundle, from the binaries goreleaser built",
+		},
+		"winres": {
+			run:   winres,
+			arity: 2, maxArity: 3, args: "VERSION [DIR]", runsIn: inRelease,
+			doc: "the Windows version resource code signing checks, for each Windows architecture",
 		},
 	}
 }
