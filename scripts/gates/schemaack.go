@@ -20,49 +20,62 @@ import (
 // the merge-base and the head, never from the checkout, which in CI is
 // the merge commit.
 func schemaAck(baseRef, head string, w io.Writer) error {
-	base, err := git("merge-base", baseRef, head)
+	c, messages, base, err := ackInputs(baseRef, head)
 	if err != nil {
 		return err
+	}
+	return checkAck(w, c, messages, base)
+}
+
+// ackInputs is what checkAck judges: the changes from the merge-base of
+// baseRef and head to head, each break kept as one only if it also
+// breaks the release the base branch records; the messages of the
+// commits in between; and the merge-base.
+func ackInputs(baseRef, head string) (c surfaceChanges, messages []string, base string, err error) {
+	if base, err = git("merge-base", baseRef, head); err != nil {
+		return surfaceChanges{}, nil, "", err
 	}
 	var sides [2]toolSurface
 	for i, rev := range []string{base, head} {
 		raw, err := dumpAt(rev)
 		if err != nil {
-			return err
+			return surfaceChanges{}, nil, "", err
 		}
 		if sides[i], err = readToolSurface(raw, "the build at "+rev); err != nil {
-			return err
+			return surfaceChanges{}, nil, "", err
 		}
 	}
-	short := base[:min(12, len(base))]
-	c := compareSurfaces(sides[0], sides[1])
+	c = compareSurfaces(sides[0], sides[1])
 	if len(c.breaking) > 0 {
 		released, err := releasedBreaks(baseRef, sides[1])
 		if err != nil {
-			return err
+			return surfaceChanges{}, nil, "", err
 		}
 		c = releaseBreaksOnly(c, released)
 	}
 	log, err := git("log", "--format=%B%x00", base+".."+head)
 	if err != nil {
-		return err
+		return surfaceChanges{}, nil, "", err
 	}
-	return checkAck(w, c, strings.Split(log, "\x00"), short)
+	return c, strings.Split(log, "\x00"), base, nil
 }
 
 // schemaAckCommand runs schemaAck as a command: 0 when the change is
 // acknowledged, 1 when it is refused, and 2 when the gate could not run,
-// as the other gates draw that line. The reason goes to stderr.
+// as the other gates draw that line. The reason goes to stderr, and any
+// error that is not a refusal says the gate could not run: under `go
+// run`, which exits 1 for both, the message is what tells them apart.
 func schemaAckCommand(baseRef, head string, stdout, stderr io.Writer) int {
 	err := schemaAck(baseRef, head, stdout)
 	if err == nil {
 		return 0
 	}
-	_, _ = fmt.Fprintf(stderr, "gates: schema-ack: %v\n", err)
 	var r refusal
 	if errors.As(err, &r) {
+		_, _ = fmt.Fprintf(stderr, "gates: schema-ack: %v\n", err)
 		return 1
 	}
+	_, _ = fmt.Fprintf(stderr, "gates: schema-ack: could not run: %v\n", err)
 	return 2
 }
 
@@ -120,6 +133,7 @@ func releaseBreaksOnly(c surfaceChanges, released []change) surfaceChanges {
 // acknowledging footer, and every break in a BREAKING CHANGE: one. It
 // reports the changes on w.
 func checkAck(w io.Writer, c surfaceChanges, messages []string, base string) error {
+	base = base[:min(12, len(base))]
 	if c.empty() {
 		_, _ = fmt.Fprintf(w, "the tool surface is unchanged since %s\n", base)
 		return nil
@@ -132,12 +146,12 @@ func checkAck(w io.Writer, c surfaceChanges, messages []string, base string) err
 		problems = append(problems, "no BREAKING CHANGE: footer names "+strings.Join(breakItems, ", "))
 		fix = append(fix, "BREAKING CHANGE: "+footerList(breakItems)+": what broke")
 	}
-	if items := unnamed(slices.Concat(c.added, c.changed), named); len(items) > 0 {
-		problems = append(problems, "no footer names "+strings.Join(items, ", "))
-		// A BREAKING CHANGE: footer names an item for both checks.
-		if rest := slices.DeleteFunc(items, func(i string) bool { return slices.Contains(breakItems, i) }); len(rest) > 0 {
-			fix = append(fix, "SCHEMA-CHANGE: "+footerList(rest)+": what changed")
-		}
+	// A BREAKING CHANGE: footer names an item for both checks, so an
+	// unnamed break is not asked for twice.
+	items := unnamed(slices.Concat(c.added, c.changed), named)
+	if rest := slices.DeleteFunc(items, func(i string) bool { return slices.Contains(breakItems, i) }); len(rest) > 0 {
+		problems = append(problems, "no footer names "+strings.Join(rest, ", "))
+		fix = append(fix, "SCHEMA-CHANGE: "+footerList(rest)+": what changed")
 	}
 	if len(problems) > 0 {
 		return refusal{fmt.Sprintf("the tool surface changed since %s, and %s. Add an empty commit (git commit --allow-empty), "+
@@ -173,34 +187,34 @@ func unnamed(cs []change, names map[string]bool) []string {
 	return slices.Compact(out)
 }
 
-// footerToken is a footer line: a token, a colon, a space and a value,
-// as Co-Authored-By: is. continuation is a line that starts with white
-// space and continues the footer above it.
-var (
-	footerToken  = regexp.MustCompile(`^(BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*):[ \t]+(\S.*)$`)
-	continuation = regexp.MustCompile(`^[ \t]+\S`)
-)
+// footerStart is a line that starts a footer: a token, then ": " or
+// " #", then its value, as Co-Authored-By: and Closes #12 are
+// (Conventional Commits 1.0.0, items 8 and 9).
+var footerStart = regexp.MustCompile(`^(BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*)(?::[ \t]+| #)(\S.*)$`)
 
-// paragraphBreak is a blank line, which ends a paragraph.
-var paragraphBreak = regexp.MustCompile(`\n[ \t]*\n`)
+// paragraphBreak is one or more blank lines, which end a paragraph.
+var paragraphBreak = regexp.MustCompile(`\n([ \t]*\n)+`)
 
-// A footer is one Token: value of a commit message, its continuation
-// lines joined onto its value.
+// A footer is one token and its value, the lines that continue it joined
+// on with a space.
 type footer struct{ token, text string }
 
 // footers is a commit message's footer block: the paragraphs at its end
-// in which every line is a footer or continues one, never the subject. A
-// line of prose that happens to start "BREAKING CHANGE:" is not a footer.
+// whose first line starts a footer, never the subject. Inside one, a line
+// that starts a footer ends the value before it, and any other line
+// continues that value, wrapped at the margin or indented (item 10). A
+// paragraph whose first line is prose ends the block, so a line of prose
+// that happens to start "BREAKING CHANGE:" is not a footer.
 func footers(message string) []footer {
 	paras := paragraphBreak.Split(strings.TrimSpace(strings.ReplaceAll(message, "\r\n", "\n")), -1)
 	var out []footer
 	for i := len(paras) - 1; i > 0; i-- {
 		var block []footer
 		for _, l := range strings.Split(strings.Trim(paras[i], "\n"), "\n") {
-			switch m := footerToken.FindStringSubmatch(l); {
+			switch m := footerStart.FindStringSubmatch(l); {
 			case m != nil:
 				block = append(block, footer{m[1], m[2]})
-			case len(block) > 0 && continuation.MatchString(l):
+			case len(block) > 0:
 				block[len(block)-1].text += " " + strings.TrimSpace(l)
 			default:
 				return out
@@ -238,16 +252,27 @@ func codeSpans(s string) []string {
 	return out
 }
 
-// nameSeparator is what separates the names in a footer's text.
-var nameSeparator = regexp.MustCompile("[\\s,;()'\"]+")
+// nameSeparator is what separates the names in a footer's list, and
+// descriptionStart is the colon and white space that end the list.
+var (
+	nameSeparator    = regexp.MustCompile("[\\s,;()'\"]+")
+	descriptionStart = regexp.MustCompile(`:\s`)
+)
 
-// footerNames is every name a footer's text may carry, each a whole
-// token. A colon and a full stop are trimmed from a name rather than
-// split on, since a URI holds both; a name in backticks is taken whole,
-// so a URI with a comma in it can be named.
+// footerNames is every name a footer's value lists: the part before its
+// first colon and white space, each a whole token. What follows is the
+// description, free text that names nothing, so a tool whose name is an
+// ordinary word is not acknowledged by a sentence that uses it. A colon
+// and a full stop are trimmed from a name rather than split on, since a
+// URI holds both; a name in backticks is taken whole, trimmed of
+// nothing, so a URI with a comma in it can be named.
 func footerNames(text string) []string {
-	var out []string
-	for _, n := range append(codeSpans(text), nameSeparator.Split(codeSpanRe.ReplaceAllString(text, " "), -1)...) {
+	list := text
+	if at := descriptionStart.FindStringIndex(text); at != nil {
+		list = text[:at[0]]
+	}
+	out := codeSpans(list)
+	for _, n := range nameSeparator.Split(codeSpanRe.ReplaceAllString(list, " "), -1) {
 		if n = strings.TrimRight(n, ":."); n != "" {
 			out = append(out, n)
 		}
@@ -289,10 +314,9 @@ func dumpAt(rev string) (raw []byte, err error) {
 		return nil, err
 	}
 	src := filepath.Join(tmp, "src")
-	if _, err := git("worktree", "add", "--quiet", "--detach", src, rev); err != nil {
-		_ = os.RemoveAll(tmp)
-		return nil, err
-	}
+	// The cleanup runs on every path out, a failed checkout included,
+	// which can leave its registration behind: prune drops it once the
+	// directory is gone.
 	defer func() {
 		_, rmErr := git("worktree", "remove", "--force", src)
 		_ = os.RemoveAll(tmp)
@@ -301,6 +325,9 @@ func dumpAt(rev string) (raw []byte, err error) {
 			err = rmErr
 		}
 	}()
+	if _, err := git("worktree", "add", "--quiet", "--detach", src, rev); err != nil {
+		return nil, err
+	}
 	bin := filepath.Join(tmp, "google-chat-mcp")
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
