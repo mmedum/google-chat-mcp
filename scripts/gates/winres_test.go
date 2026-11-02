@@ -159,7 +159,9 @@ func TestWinresIsByteIdenticalAcrossRuns(t *testing.T) {
 // builds, for the architectures it builds, and only if git ignores it:
 // an untracked file that is not ignored stamps the binary modified.
 func TestWinresWritesWhereGoreleaserBuilds(t *testing.T) {
-	config := uncommented(readRepoFile(t, ".goreleaser.yaml"))
+	// A Windows checkout has CRLF line ends, and each want below ends at
+	// its line's end.
+	config := strings.ReplaceAll(uncommented(readRepoFile(t, ".goreleaser.yaml")), "\r\n", "\n")
 	for _, want := range []string{
 		"main: ./" + winresDir + "\n",
 		"binary: " + server.Name + "\n",

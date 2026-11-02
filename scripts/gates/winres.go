@@ -49,7 +49,9 @@ func winres(args []string, stdout, stderr io.Writer) int {
 // attribute holds the same version, as SignPath Foundation's terms
 // require: the file and product versions, in the fixed part and in the
 // strings. The strings keep the version whole, a pre-release or build
-// included; the fixed part keeps its three numbers and a 0.
+// included; the fixed part keeps its three numbers and a 0. Neither
+// keeps the tag's v, which `--version` prints: a Windows version has
+// none, and the signing request names the version without it.
 func winresInfo(version string) (*goversioninfo.VersionInfo, error) {
 	if problem := versionProblem(version); problem != "" {
 		return nil, fmt.Errorf("version %q: %s", version, problem)

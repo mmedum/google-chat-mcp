@@ -531,6 +531,18 @@ not ignored, they would stamp `vcs.modified=true` into the binary, and
 `make release-rehearse` removes them after a local run. The programs are
 not signed yet; the README's code signing policy says what will be.
 
+`/simplify` and `/code-review high` ran over this on 2026-11-02. Fixed
+from them: the name was a third copy of `server.Name`; the version had a
+grammar of its own beside `versionProblem` and refused the tag's v; a
+config check failed on a CRLF checkout; and the comments on the before
+hooks gave the wrong reason a tidy hook is harmful. Kept: a pre-release
+and its release share a fixed version, which nothing but an installer
+compares; the attribution is in the README before anything is signed,
+since SignPath's terms put the policy on the home page, and the section
+says plainly that nothing is signed yet; and a `.syso` left by an
+interrupted or direct goreleaser run stays until `make clean`, reaching
+only a Windows build from that checkout.
+
 The bundle carries all three platforms Claude Desktop runs on. A
 manifest picks a binary by platform and has no key for the architecture,
 so every platform it claims has to work on both. macOS does through a
@@ -789,7 +801,7 @@ contradicted a document, which won.
 |---|---|
 | Smart App Control lets an unknown program run only when it is signed | Microsoft Learn, "Smart App Control", dated 2026-09-30, read 2026-11-02: when Microsoft's app intelligence cannot make a prediction, it "will still allow an app to run if it is signed with a certificate issued by a certificate authority (CA) within the Trusted Root Program", and "unknown, unsigned code are blocked by default". Every release is a new file with no reputation, so signing is what lets it run |
 | SignPath Foundation takes one project per application | Read 2026-11-02: SignPath/docs-product `8737c6af`, `docs/_data/editions.yml`, Open Source Code Signing: "OSS teams must apply for each project individually." So each sibling server applies on its own |
-| A signed program names the project and one version in its version resource | Read 2026-11-02: signpath.org/terms, marked draft, requires metadata restrictions on every signed binary, every product name attribute set to the project's name, and every product version attribute set to the same value. SignPath's reference (docs-product `8737c6af`, `artifact-configuration/reference.md`) lists `product-name`, `product-version`, `file-version`, `company-name`, `copyright` and `original-filename` for a `<pe-file>`, and does not say how a version is compared. So the strings hold the version exactly as the release names it, and the fixed part its three numbers and a 0 |
+| A signed program names the project and one version in its version resource | Read 2026-11-02: signpath.org/terms, marked draft, requires metadata restrictions on every signed binary, every product name attribute set to the project's name, and every product version attribute set to the same value. SignPath's reference (docs-product `8737c6af`, `artifact-configuration/reference.md`) lists `product-name`, `product-version`, `file-version`, `company-name`, `copyright` and `original-filename` for a `<pe-file>`, and does not say how a version is compared. So the strings hold the version exactly as the release names it, less the tag's v, and the fixed part its three numbers and a 0. telepresenceio/telepresence, a Go project SignPath Foundation signs, has the same shape: `build-aux/signpath/core.xml` restricts `product-version` to the tag without its v, and go-winres stamps that string. The first test-signing request settles it for this project |
 | The policy is on the home page and on every release page | Read 2026-11-02: signpath.org/terms, marked draft: a section or a link titled "Code signing policy", with the attribution, the team's roles and a privacy statement. The README is the home page, and the release footer links to its section |
 | goversioninfo writes a resource the Go linker takes on both Windows architectures | v1.7.0, tagged 2026-05-11 and the latest, MIT, with one dependency, akavel/rsrc v0.10.2, MIT. The `winres` tests link it into a windows/amd64 and a windows/arm64 program with Go 1.27.3 and read it back as Microsoft's VS_VERSIONINFO layout describes. Two runs at one version write identical bytes. A release rehearsal on 2026-11-02 showed the strings in both shipped programs, and the bundle's copy was the amd64 program byte for byte |
 | An ignored `.syso` leaves the build unmodified | Go stamps `vcs.modified` from `git status`, which leaves ignored files out. A release rehearsal from a clean commit on 2026-11-02 stamped `vcs.modified=false` with both files in place, and a second rehearsal built byte-identical Windows programs |
