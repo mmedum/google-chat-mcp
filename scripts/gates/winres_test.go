@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
+
+	"github.com/mmedum/google-chat-mcp/v9/internal/server"
 )
 
 // versionResource is what a reader of a Windows program's version
@@ -30,17 +32,13 @@ type versionResource struct {
 // here rather than at a signing request.
 func TestWinresLinksIntoAWindowsProgram(t *testing.T) {
 	dir := t.TempDir()
-	for name, body := range map[string]string{
-		"go.mod":  "module example.com/winrestest\n\ngo 1.24\n",
-		"main.go": "package main\n\nfunc main() {}\n",
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	put(t, dir, "go.mod", "module example.com/winrestest\n\ngo 1.24\n")
+	put(t, dir, "main.go", "package main\n\nfunc main() {}\n")
+	// The tag, as a hook passing {{ .Tag }} would: the v is dropped, as
+	// every other release gate drops it.
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"winres", "9.1.2", dir}, &stdout, &stderr); code != 0 {
-		t.Fatalf("winres 9.1.2 exited %d: %s", code, stderr.String())
+	if code := run([]string{"winres", "v9.1.2", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("winres v9.1.2 exited %d: %s", code, stderr.String())
 	}
 
 	want := versionResource{
@@ -85,6 +83,7 @@ func TestWinresVersionAttributesAgree(t *testing.T) {
 		{"0.0.1", [4]uint16{0, 0, 1, 0}},
 		{"10.0.0-rc1", [4]uint16{10, 0, 0, 0}},
 		{"9.1.2-SNAPSHOT-90570dc", [4]uint16{9, 1, 2, 0}},
+		{"1.2.3+build.5", [4]uint16{1, 2, 3, 0}},
 		{"65535.65535.65535", [4]uint16{65535, 65535, 65535, 0}},
 	} {
 		vi, err := winresInfo(tc.version)
@@ -109,12 +108,12 @@ func TestWinresVersionAttributesAgree(t *testing.T) {
 func TestWinresRefusesAVersionItCannotHold(t *testing.T) {
 	for _, version := range []string{
 		"",
-		"v9.1.2",    // the tag, where the hook wants the version
 		"9.1",       // no patch number
 		"9.1.2.3",   // four numbers: goreleaser never gives one
+		"09.1.2",    // a leading zero, which Semantic Versioning refuses
+		"9.1.2 ",    // a stray space from a hook
 		"65536.0.0", // one past what Windows keeps for a number
 		"9.1.65536",
-		"9.1.2 ",
 	} {
 		dir := t.TempDir()
 		var stdout, stderr bytes.Buffer
@@ -130,9 +129,9 @@ func TestWinresRefusesAVersionItCannotHold(t *testing.T) {
 	}
 }
 
-// The release builds the Windows programs twice, once to sign and once
-// to ship, and the signed file replaces the shipped one only when they
-// match. That needs the resource to come out the same both times.
+// Rebuilding a tag gives byte-identical binaries, which mod_timestamp
+// and -trimpath are there for. The resource has to come out the same
+// on every run too, or it would be the one input that differs.
 func TestWinresIsByteIdenticalAcrossRuns(t *testing.T) {
 	first, second := t.TempDir(), t.TempDir()
 	for _, dir := range []string{first, second} {
@@ -157,14 +156,14 @@ func TestWinresIsByteIdenticalAcrossRuns(t *testing.T) {
 }
 
 // The resource reaches a program only from the package goreleaser
-// builds, under the name the project signs as, and only if the before
-// hook writes it.
+// builds, for the architectures it builds, and only if git ignores it:
+// an untracked file that is not ignored stamps the binary modified.
 func TestWinresWritesWhereGoreleaserBuilds(t *testing.T) {
 	config := uncommented(readRepoFile(t, ".goreleaser.yaml"))
 	for _, want := range []string{
 		"main: ./" + winresDir + "\n",
-		"binary: " + winresProduct + "\n",
-		"- go run ./scripts/gates winres {{ .Version }}\n",
+		"binary: " + server.Name + "\n",
+		"goarch: [" + strings.Join(winresArches, ", ") + "]\n",
 	} {
 		if !strings.Contains(config, want) {
 			t.Errorf(".goreleaser.yaml has no %q", strings.TrimSpace(want))
@@ -248,7 +247,7 @@ func readVersionResource(t *testing.T, b []byte) versionResource {
 		table := child.children[0]
 		got.table = table.key
 		for _, s := range table.children {
-			got.strings[s.key] = s.text()
+			got.strings[s.key] = utf16String(s.value)
 		}
 	}
 	return got
@@ -258,16 +257,20 @@ func readVersionResource(t *testing.T, b []byte) versionResource {
 type versionNode struct {
 	key      string
 	value    []byte
-	isText   bool
 	children []versionNode
 }
 
-func (n versionNode) text() string {
-	u := make([]uint16, 0, len(n.value)/2)
-	for i := 0; i+1 < len(n.value); i += 2 {
-		u = append(u, binary.LittleEndian.Uint16(n.value[i:]))
+// utf16String decodes UTF-16LE up to its first NUL.
+func utf16String(b []byte) string {
+	u := make([]uint16, 0, len(b)/2)
+	for i := 0; i+1 < len(b); i += 2 {
+		c := binary.LittleEndian.Uint16(b[i:])
+		if c == 0 {
+			break
+		}
+		u = append(u, c)
 	}
-	return strings.TrimRight(string(utf16.Decode(u)), "\x00")
+	return string(utf16.Decode(u))
 }
 
 // parseVersionNode reads the node at start: its length, value length
@@ -283,25 +286,15 @@ func parseVersionNode(t *testing.T, b []byte, start int) (versionNode, int) {
 	}
 	end := start + int(le.Uint16(b[start:]))
 	valueLen := int(le.Uint16(b[start+2:]))
-	n := versionNode{isText: le.Uint16(b[start+4:]) == 1}
+	if le.Uint16(b[start+4:]) == 1 {
+		valueLen *= 2
+	}
 	if end > len(b) || end < start+6 {
 		t.Fatalf("version node at %d claims to end at %d, outside the %d-byte block", start, end, len(b))
 	}
-	p := start + 6
-	var key []uint16
-	for ; p+1 < end; p += 2 {
-		c := le.Uint16(b[p:])
-		if c == 0 {
-			p += 2
-			break
-		}
-		key = append(key, c)
-	}
-	n.key = string(utf16.Decode(key))
-	p = align(p)
-	if n.isText {
-		valueLen *= 2
-	}
+	var n versionNode
+	n.key = utf16String(b[start+6 : end])
+	p := align(start + 6 + 2*(len(utf16.Encode([]rune(n.key)))+1))
 	if p+valueLen > end {
 		t.Fatalf("version node %q has a %d-byte value that runs past its end", n.key, valueLen)
 	}

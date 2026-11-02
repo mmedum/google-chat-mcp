@@ -30,10 +30,13 @@ install: ## go install the binary
 # version at all, so a rehearsal ran whatever goreleaser was on the
 # maintainer's PATH, which on the machine this was found on was four
 # minor releases behind the one the tag uses. The pins gate holds this
-# and release.yml to the same version.
+# and release.yml to the same version. The Windows version resource the
+# before hook writes is removed after, pass or fail, so a later Windows
+# build here does not carry the rehearsal's version.
 .PHONY: release-rehearse
 release-rehearse: ## Build the release archives locally, publishing nothing
-	go run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish
+	go run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish; \
+	status=$$?; $(RM) cmd/*/rsrc_windows_*.syso; exit $$status
 
 .PHONY: fmt
 fmt: ## Fail if gofmt would change anything
@@ -162,4 +165,4 @@ check: fmt vet lint cover vuln licenses pins classes transcript api-coverage api
 
 .PHONY: clean
 clean:
-	$(RM) $(BIN) cov.out schemas.json
+	$(RM) $(BIN) cov.out schemas.json cmd/*/rsrc_windows_*.syso

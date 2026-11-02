@@ -5,50 +5,32 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/josephspurrier/goversioninfo"
+
+	"github.com/mmedum/google-chat-mcp/v9/internal/server"
 )
 
-// The Windows version resource.
-//
-// Windows reads a program's name and version from a resource inside the
-// .exe, and Go writes none. Code signing needs one: SignPath Foundation
-// signs a Windows program only when its resource names the project and
-// carries the version the release asked to sign. The linker takes a
-// resource from a .syso file in the package it builds, one per
-// architecture, so goreleaser's before hook runs this to write them.
-//
-// They are gitignored rather than committed. A committed one would carry
-// one release's version into every build after it. An untracked one that
-// is not ignored marks the tree modified, which Go stamps into the binary
-// as vcs.modified=true.
-
-// winresProduct names the program in the resource. SignPath
-// Foundation's terms require every product name attribute to be the
-// project's name.
-const winresProduct = "google-chat-mcp"
+// The Windows version resource, which code signing needs and Go does not
+// write. goreleaser's before hook runs this to write one .syso per
+// Windows architecture, where the linker takes it; docs/architecture.md,
+// Distribution, says why it is built this way and kept out of git.
 
 // winresDir is the package goreleaser builds, which is where the linker
 // looks for the .syso files.
-const winresDir = "cmd/google-chat-mcp"
+const winresDir = "cmd/" + server.Name
 
 // winresArches are the Windows architectures the release builds.
 var winresArches = []string{"amd64", "arm64"}
-
-// winresVersion is a version the resource can hold. The fixed part keeps
-// four 16-bit numbers. The strings keep the version as given, so a
-// suffix such as -rc1, or a rehearsal's -SNAPSHOT-<commit>, survives
-// there and nowhere else.
-var winresVersion = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$`)
 
 func winres(args []string, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "gates: winres: %v\n", err)
 		return 1
 	}
-	vi, err := winresInfo(args[1])
+	vi, err := winresInfo(strings.TrimPrefix(args[1], "v"))
 	if err != nil {
 		return fail(err)
 	}
@@ -64,15 +46,15 @@ func winres(args []string, stdout, stderr io.Writer) int {
 }
 
 // winresInfo is the version resource for one release. Every version
-// attribute holds the same version, which SignPath Foundation's terms
+// attribute holds the same version, as SignPath Foundation's terms
 // require: the file and product versions, in the fixed part and in the
-// strings.
+// strings. The strings keep the version whole, a pre-release or build
+// included; the fixed part keeps its three numbers and a 0.
 func winresInfo(version string) (*goversioninfo.VersionInfo, error) {
-	m := winresVersion.FindStringSubmatch(version)
-	if m == nil {
-		return nil, fmt.Errorf("version %q is not MAJOR.MINOR.PATCH with an optional -suffix: "+
-			"pass goreleaser's {{ .Version }}, not {{ .Tag }}", version)
+	if problem := versionProblem(version); problem != "" {
+		return nil, fmt.Errorf("version %q: %s", version, problem)
 	}
+	m := releaseVersion.FindStringSubmatch(version)
 	var n [3]int
 	for i := range n {
 		v, err := strconv.ParseUint(m[i+1], 10, 16)
@@ -96,11 +78,13 @@ func winresInfo(version string) (*goversioninfo.VersionInfo, error) {
 		FileType:      "01",
 	}
 	vi.StringFileInfo = goversioninfo.StringFileInfo{
+		// Short, not server.Description: Windows shows it as the
+		// program's name, in Task Manager among other places.
 		FileDescription:  "MCP server for Google Chat",
 		FileVersion:      version,
-		InternalName:     winresProduct,
-		OriginalFilename: winresProduct + ".exe",
-		ProductName:      winresProduct,
+		InternalName:     server.Name,
+		OriginalFilename: server.Name + ".exe",
+		ProductName:      server.Name,
 		ProductVersion:   version,
 	}
 	// The strings are U.S. English in Unicode, and the translation table
