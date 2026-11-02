@@ -14,7 +14,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Changed
 
 - For contributors:
-  - CI fails a pull request that changes the tool surface, an annotation or a `_meta` mark included, unless a commit footer names each changed item. A break of something a release shipped needs `BREAKING CHANGE:`. Only the names before the first colon followed by white space in a footer's value count. A footer's value may run on over several lines, and a footer beside it, such as `Closes #12`, does not drop it. A gate that could not run says so.
+  - CI fails a pull request that changes the tool surface, an annotation or a `_meta` mark included, unless a commit footer names each changed item. A break of something a release shipped needs `BREAKING CHANGE:`. Only the names before the first colon followed by white space in a footer's value count, separated by commas. A footer's value may run on over several lines, and a footer beside it, such as `Closes #12`, does not drop it; a `Token #value` footer acknowledges nothing. A gate that could not run says so.
   - The schema diff compares the whole dump. It now fails on a removed resource template as it does on a removed tool, and reports a changed title, prompt or instruction.
   - `--dump-schemas` carries the server's instructions in each mode: the default, with the destructive tools, and read-only. It lists fixed resources and prompts once the server has any.
 

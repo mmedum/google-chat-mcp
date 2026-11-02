@@ -190,14 +190,18 @@ func unnamed(cs []change, names map[string]bool) []string {
 // footerStart is a line that starts a footer: a token, then ": " or
 // " #", then its value, as Co-Authored-By: and Closes #12 are
 // (Conventional Commits 1.0.0, items 8 and 9).
-var footerStart = regexp.MustCompile(`^(BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*)(?::[ \t]+| #)(\S.*)$`)
+var footerStart = regexp.MustCompile(`^(BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*)(:[ \t]+| #)(\S.*)$`)
 
 // paragraphBreak is one or more blank lines, which end a paragraph.
 var paragraphBreak = regexp.MustCompile(`\n([ \t]*\n)+`)
 
 // A footer is one token and its value, the lines that continue it joined
-// on with a space.
-type footer struct{ token, text string }
+// on, each on its own line. ref marks a "Token #value" footer, which
+// refers to something, such as an issue, rather than describing.
+type footer struct {
+	token, text string
+	ref         bool
+}
 
 // footers is a commit message's footer block: the paragraphs at its end
 // whose first line starts a footer, never the subject. Inside one, a line
@@ -213,9 +217,9 @@ func footers(message string) []footer {
 		for _, l := range strings.Split(strings.Trim(paras[i], "\n"), "\n") {
 			switch m := footerStart.FindStringSubmatch(l); {
 			case m != nil:
-				block = append(block, footer{m[1], m[2]})
+				block = append(block, footer{m[1], m[3], m[2] == " #"})
 			case len(block) > 0:
-				block[len(block)-1].text += " " + strings.TrimSpace(l)
+				block[len(block)-1].text += "\n" + strings.TrimSpace(l)
 			default:
 				return out
 			}
@@ -260,7 +264,8 @@ var (
 )
 
 // footerNames is every name a footer's value lists: the part before its
-// first colon and white space, each a whole token. What follows is the
+// first colon and white space, ending sooner at a line that does not end
+// with a comma, each an item between commas. What follows is the
 // description, free text that names nothing, so a tool whose name is an
 // ordinary word is not acknowledged by a sentence that uses it. A colon
 // and a full stop are trimmed from a name rather than split on, since a
@@ -271,9 +276,22 @@ func footerNames(text string) []string {
 	if at := descriptionStart.FindStringIndex(text); at != nil {
 		list = text[:at[0]]
 	}
+	// A list wraps only after a comma: a line that does not end with one
+	// ends it, and what follows describes, so prose on the next line of a
+	// bare list names nothing.
+	lines := strings.Split(list, "\n")
+	for i, l := range lines {
+		if !strings.HasSuffix(strings.TrimSpace(l), ",") {
+			list = strings.Join(lines[:i+1], "\n")
+			break
+		}
+	}
 	out := codeSpans(list)
-	for _, n := range nameSeparator.Split(codeSpanRe.ReplaceAllString(list, " "), -1) {
-		if n = strings.TrimRight(n, ":."); n != "" {
+	// The rest is split on commas alone, so prose is one item that names
+	// nothing rather than words that each might.
+	for _, n := range strings.Split(codeSpanRe.ReplaceAllString(list, ""), ",") {
+		n = strings.TrimRight(strings.Trim(n, " \t\n;()'\""), ":.")
+		if n != "" {
 			out = append(out, n)
 		}
 	}
@@ -288,6 +306,12 @@ func acknowledged(messages []string) (named, breaks map[string]bool) {
 	named, breaks = map[string]bool{}, map[string]bool{}
 	for _, message := range messages {
 		for _, f := range footers(message) {
+			// A "Token #value" footer acknowledges nothing: Conventional
+			// Commits writes BREAKING CHANGE with a colon and a space (item
+			// 12), and its value has no description to tell from names.
+			if f.ref {
+				continue
+			}
 			isBreak, ok := ackToken(f.token)
 			if !ok {
 				continue

@@ -64,15 +64,16 @@ Four of those are worth knowing about before they fail on you:
   On a pull request, CI also runs `schema-ack`. A commit footer has to
   name each item that changed since the merge-base:
   `SCHEMA-CHANGE: send_message, update_message: destructiveHint true`.
-  The names are the list before the first colon followed by white
-  space; the text after it describes the change and names nothing. Name a tool by its name, a
-  resource template by its URI, and the instructions as `instructions`.
-  Put a name with a comma in it in backticks, and keep the list on one
-  line: a wrapped line that starts `word: ` begins a new footer, as
-  Conventional Commits reads it. If the change breaks something a
-  release shipped, name that item in a `BREAKING CHANGE:` footer
-  instead. When it fails, it prints the footer to add, in an empty
-  commit, never an amend.
+  The names are the list before the first colon followed by white space;
+  the text after it describes the change and names nothing. Name a tool
+  by its name, a resource template by its URI, and the instructions as
+  `instructions`. Put a name with a comma in it in backticks, and keep
+  the list on one line: a wrapped line that starts `word: ` begins a new
+  footer, as Conventional Commits reads it. Names are separated by
+  commas, and a `Token #value` footer such as `Closes #12` acknowledges
+  nothing. If the change breaks something a release shipped, name that
+  item in a `BREAKING CHANGE:` footer instead. When it fails, it prints
+  the footer to add, in an empty commit, never an amend.
 - **`internal/leakcheck`** fails on anything that could identify a real
   person, account or space — an email under a domain someone could own,
   a 21-digit account id, a space id that does not look invented, and the
