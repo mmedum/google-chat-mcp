@@ -116,7 +116,7 @@ Most sit in Google's *sensitive* tier. The *restricted* ones are
 when you add it. For an **Internal** app none of that matters: no
 verification, no assessment. If you ever publish externally it matters a
 great deal, and
-[`troubleshooting.md`](troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment)
+[`docs/troubleshooting.md`](troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment)
 has the detail.
 
 ## 5. Create the OAuth client
@@ -141,7 +141,7 @@ users** → add your own address. Up to 100 people.
 
 Google expires a refresh token from an External app in testing after
 seven days, so `login` has to run again each week.
-[`troubleshooting.md`](troubleshooting.md) covers it under `[auth]`.
+[`docs/troubleshooting.md`](troubleshooting.md) covers it under `[auth]`.
 
 An Internal app skips this: the consent screen is already limited to
 your domain.

@@ -24,7 +24,7 @@ working. The sidebar section tools need `chat.users.sections`, which
 works.
 
 **Fix (resolves it):** on an External app, put the scope on the consent
-screen's list first, as [`gcp-setup.md`](gcp-setup.md#4-add-the-scopes)
+screen's list first, as [`docs/gcp-setup.md`](gcp-setup.md#4-add-the-scopes)
 shows. An Internal app needs no list. Then log in again and grant it:
 
 ```bash
@@ -50,7 +50,7 @@ says under "Refresh token expiration".
 **Fix (resolves it):** check that `status` shows the profile you expect,
 then run `login` again. For the seven-day expiry, logging in again is a
 workaround. Moving the app out of testing resolves it, and
-[`gcp-setup.md`](gcp-setup.md#verification-later-and-probably-never)
+[`docs/gcp-setup.md`](gcp-setup.md#verification-later-and-probably-never)
 says when that needs Google's verification.
 
 Every tool fails until you log in, and nothing else is affected.
@@ -81,7 +81,7 @@ the API, and links to the page that enables it. The People API serves
 `find_group` and the group names in `list_members`.
 
 **Fix (resolves it):** enable the API, as
-[`gcp-setup.md`](gcp-setup.md#2-enable-the-apis) lists, wait a minute, and
+[`docs/gcp-setup.md`](gcp-setup.md#2-enable-the-apis) lists, wait a minute, and
 call the tool again.
 
 Only the tools that call that API fail; the rest keep working.
@@ -283,7 +283,7 @@ google-chat-mcp --profile personal login --client-secret ./personal_client_secre
 ```
 
 Then give each client entry its own `GCM_PROFILE`, as
-[`configuration.md`](configuration.md) shows.
+[`docs/configuration.md`](configuration.md) shows.
 
 ### Reporting a problem
 
