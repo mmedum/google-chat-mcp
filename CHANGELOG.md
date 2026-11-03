@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.1.2] - 2026-11-03
+
 ### Added
 
 - Windows programs carry a version resource naming the product and the release's version, which Windows shows and code signing checks.
@@ -848,7 +850,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.2...HEAD
+[9.1.2]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...v9.1.2
 [9.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...v9.1.1
 [9.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...v9.1.0
 [9.0.0]: https://github.com/mmedum/google-chat-mcp/compare/v8.0.0...v9.0.0
