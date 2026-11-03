@@ -224,9 +224,10 @@ func deleteIdempotent(
 //
 // A not-found answer proves it. So does a tombstone, which is the
 // answer Google normally gives: a deleted message reads back as a 200
-// carrying its own deleteTime, with the text and the sender stripped —
-// found live on 2026-09-05, and the reason the first version of this
-// check reported an ordinary repeat delete as a refusal.
+// carrying its own deleteTime, with the text and the sender stripped,
+// not as a 404. The reference does not describe it. Checked by the live
+// step "a repeat delete reports that it deleted nothing".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/delete
 //
 // Anything else leaves the question open, and an open question means
 // the caller hears the refusal rather than a report that the thing was
@@ -245,8 +246,8 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 // message's text, a space's or an emoji's name. The client's prompt
 // shows only the arguments, and an opaque resource name tells the
 // person approving it nothing, so the call carries what the target says
-// and the server reads the target and compares (docs/architecture.md,
-// "What a write may reach"). A mismatch is [stale] and changes nothing.
+// and the server reads the target and compares. A mismatch is [stale]
+// and changes nothing.
 
 // minTextWitness is how much of a message's text a delete repeats:
 // enough for the prompt to say which message goes. A shorter message is
@@ -425,10 +426,10 @@ func (s *Service) warnUnparsed(event string, dropped, total int) {
 // not; every caller here has an id and a body to show regardless.
 //
 // The Unix epoch becomes the zero time too: it is a protobuf Timestamp
-// of zero, which is how Google writes a time it does not have. An
-// administrator's read of a space sent it as the last active time,
-// while the search gave that space's real one (live, 2026-10-31).
-// Nothing in Chat happened in 1970.
+// of zero, which is how Google writes a time it does not have, and no
+// reference says so. An administrator's read of a space can send it as
+// the last active time where a search gives the real one. Nothing in Chat
+// happened in 1970.
 func parseTime(v string) time.Time {
 	if v == "" {
 		return time.Time{}

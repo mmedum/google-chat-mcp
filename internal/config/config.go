@@ -121,8 +121,7 @@ type Config struct {
 	// EnableDestructive registers the Destructive tools: the deletes,
 	// opening a space to an audience, making someone a manager and adding
 	// someone from outside the organization. Off, they are not registered
-	// at all, so no client mode and no model can call them
-	// (docs/architecture.md, "What a write may reach").
+	// at all, so no client mode and no model can call them.
 	EnableDestructive bool
 	Toolsets          []Toolset
 	HTTPTimeout       time.Duration

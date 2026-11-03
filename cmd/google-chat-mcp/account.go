@@ -251,8 +251,11 @@ func requestedScopes(cfg config.Config) []string {
 }
 
 // grantedScopes reads the scopes Google actually granted, which can be
-// fewer than were asked for. A response that names none is taken at its
-// word: everything asked for was granted.
+// fewer than were asked for: a desktop client's consent lets the person
+// untick some, unless an administrator marks the app Trusted. That holds
+// without enable_granular_consent, which login does not send. A response
+// that names none is taken at its word: everything asked for was granted.
+// https://developers.google.com/identity/protocols/oauth2/native-app
 func grantedScopes(token *oauth2.Token, requested []string) []string {
 	raw, _ := token.Extra("scope").(string)
 	if raw == "" {

@@ -146,11 +146,11 @@ func (c *Client) GetSpaceEvent(ctx context.Context, name string) (*SpaceEvent, e
 
 // spaceEventFilter renders Google's filter expression.
 //
-// The spelling is event_types, plural, which is what the reference's
-// own examples use; the same page's prose calls the field event_type.
-// Chat's search filter had a discrepancy of exactly this shape and only
-// running it settled which spelling worked, so this one is written down
-// as unsettled until the live run.
+// The spelling is event_types, plural, as the reference's own examples
+// have it; the same page's prose calls the field event_type, which
+// Google does not read. Checked by the live step "space events are
+// listed".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/list
 //
 // Only OR joins event types, and only AND joins a time bound to them,
 // which is why the types are parenthesized.

@@ -199,6 +199,8 @@ jobs:
         run: go run ./scripts/gates api-coverage
       - name: every published field is modeled or left out on purpose
         run: go run ./scripts/gates api-fields
+      - name: every decision, citation and named path resolves
+        run: go run ./scripts/gates docs
       - name: stdio smoke
         run: go run ./scripts/gates smoke ./google-chat-mcp
       - name: schema diff against the released baseline

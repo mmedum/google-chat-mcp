@@ -15,8 +15,10 @@ import (
 
 // The Windows version resource, which code signing needs and Go does not
 // write. goreleaser's before hook runs this to write one .syso per
-// Windows architecture, where the linker takes it; docs/architecture.md,
-// Distribution, says why it is built this way and kept out of git.
+// Windows architecture, where the linker takes it. The files are
+// gitignored: committed, they would carry one release's version into
+// every later build, and untracked they would stamp vcs.modified=true,
+// since Go reads that from git status, which leaves ignored files out.
 
 // winresDir is the package goreleaser builds, which is where the linker
 // looks for the .syso files.
@@ -45,13 +47,15 @@ func winres(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// winresInfo is the version resource for one release. Every version
-// attribute holds the same version, as SignPath Foundation's terms
-// require: the file and product versions, in the fixed part and in the
-// strings. The strings keep the version whole, a pre-release or build
-// included; the fixed part keeps its three numbers and a 0. Neither
-// keeps the tag's v, which `--version` prints: a Windows version has
-// none, and the signing request names the version without it.
+// winresInfo is the version resource for one release. SignPath
+// Foundation's terms set the product name to the project's and every
+// version attribute to one version: the file and product versions, in
+// the fixed part and in the strings. The strings keep the version whole,
+// a pre-release or build included; the fixed part keeps its three
+// numbers and a 0. Neither keeps the tag's v, which `--version` prints:
+// a Windows version has none, and the signing request names the version
+// without it.
+// https://signpath.org/terms
 func winresInfo(version string) (*goversioninfo.VersionInfo, error) {
 	if problem := versionProblem(version); problem != "" {
 		return nil, fmt.Errorf("version %q: %s", version, problem)

@@ -94,7 +94,8 @@ type SearchSpacesOptions struct {
 
 // SearchSpaces finds named spaces by display name and metadata.
 //
-// Without admin access it reaches only spaces the caller has joined.
+// Without admin access it reaches only spaces the caller has joined, as
+// the reference says; the guide's "spaces they have access to" is vague.
 // Under WithAdminAccess it reaches every space in the Workspace, and
 // the query has to say whose: Google requires
 // customer = "customers/my_customer" there. Either way it finds only
@@ -105,8 +106,10 @@ func (c *Client) SearchSpaces(ctx context.Context, o SearchSpacesOptions) (*Sear
 	query := o.Query
 	if AdminAccess(ctx) {
 		// "customer is required when useAdminAccess is set to true", and
-		// customers/my_customer is the only value it takes (spaces.search
-		// reference). Without it every administrator's search is refused.
+		// customers/my_customer is the only value it takes. Without it
+		// every administrator's search is refused. Checked by the live
+		// step "an administrator's search takes every filter".
+		// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/search
 		query = adminSearchCustomer + " AND " + query
 	}
 	q.Set("query", query)
@@ -207,7 +210,8 @@ type SetupSpace struct {
 //
 // Audience carries omitempty on purpose. A patch that masks
 // accessSettings.audience and sends no value removes the audience,
-// which is how Google spells making a space private again.
+// which is how Google spells making a space private again. Checked by
+// the live step "the space opens to the organization and closes again".
 type AudienceRequest struct {
 	Audience string `json:"audience,omitempty"`
 }
@@ -306,7 +310,9 @@ type PermissionRequest struct {
 // join a space. An empty audience makes the space private again.
 //
 // It is a patch of its own because Google refuses
-// accessSettings.audience beside any other mask.
+// accessSettings.audience beside any other mask, and takes it only for
+// a named space, from a space manager, under user authentication.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch
 func BuildUpdateSpaceAudience(audience string) (*UpdateSpaceRequest, string) {
 	return &UpdateSpaceRequest{Access: &AudienceRequest{Audience: audience}}, "accessSettings.audience"
 }

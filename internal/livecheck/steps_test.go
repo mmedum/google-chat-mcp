@@ -1100,12 +1100,12 @@ func (d *driver) runStep(t testing.TB, s step) {
 // messageURL is the link Copy link puts on the clipboard in Chat: the
 // bare space, thread and message ids, and the query Chat appends.
 //
-// Read off a real one on 2026-09-17 rather than guessed. A message
-// created through the API is named {id}.{id} and the URL carries the
-// half before the dot, which is also the thread's id. The shape matters
-// because this step is asking whether Chat chips what it is given: a
-// URL of this server's own invention would answer a question nobody
-// has.
+// The shape is read off a real Copy link; no Google page documents it. A
+// message created through the API is named {id}.{id} and the URL carries
+// the half before the dot, which is also the thread's id. The shape
+// matters because this step is asking whether Chat chips what it is
+// given: a URL of this server's own invention would answer a question
+// nobody has.
 func messageURL(space, thread, message string) string {
 	id, _, _ := strings.Cut(path.Base(message), ".")
 	return "https://chat.google.com/room/" + path.Base(space) + "/" +

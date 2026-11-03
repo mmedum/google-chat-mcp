@@ -17,9 +17,14 @@ import (
 // The registry demands a SHA-256 for an MCPB package and clients check
 // the download against it, which is why this is not goreleaser's `mcp`
 // block: that block takes a registry type, an identifier and a
-// transport, and has nowhere to put a hash. The hash comes from the
-// release's own checksums.txt, so the entry describes the bytes that
-// were published rather than a rebuild of them.
+// transport, and has nowhere to put a hash (goreleaser v2.18.1). The hash
+// comes from the release's own checksums.txt, so the entry describes the
+// bytes that were published rather than a rebuild of them.
+//
+// The registry checks an MCPB entry in code, not in its published
+// schema: a hash, a github.com or gitlab.com release-asset URL carrying
+// "mcp", no registryBaseUrl, and a HEAD on the URL before it accepts the
+// entry. So the entry is published only once the release exists.
 //
 // Everything else is derived: the repository and the registry namespace
 // from the module path, the description from the server, the file name

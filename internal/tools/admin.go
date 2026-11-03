@@ -13,10 +13,9 @@ import (
 // The admin tools act on any space in the Workspace with the caller's
 // administrator privileges, on Google's useAdminAccess. Each is its own
 // tool rather than a flag on the ordinary one, because a client
-// remembers an approval per tool, never per argument
-// (docs/architecture.md, "Administrator access"). register reads the
-// admin_ prefix: it puts every call on the administrator's context and
-// the tool in the admin toolset.
+// remembers an approval per tool, never per argument. register
+// reads the admin_ prefix: it puts every call on the administrator's
+// context and the tool in the admin toolset.
 
 // AdminSearchSpacesInput narrows a search of every space in the
 // Workspace.

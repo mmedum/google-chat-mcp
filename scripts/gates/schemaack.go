@@ -190,6 +190,7 @@ func unnamed(cs []change, names map[string]bool) []string {
 // footerStart is a line that starts a footer: a token, then ": " or
 // " #", then its value, as Co-Authored-By: and Closes #12 are
 // (Conventional Commits 1.0.0, items 8 and 9).
+// https://www.conventionalcommits.org/en/v1.0.0/
 var footerStart = regexp.MustCompile(`^(BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*)(:[ \t]+| #)(\S.*)$`)
 
 // paragraphBreak is one or more blank lines, which end a paragraph.
@@ -232,7 +233,7 @@ func footers(message string) []footer {
 // ackToken says whether a footer's token acknowledges a change to the
 // tool surface, and whether a break of a release. Conventional Commits
 // reads a token in any case but BREAKING CHANGE, which must be
-// uppercase, and BREAKING-CHANGE is its synonym.
+// uppercase, and BREAKING-CHANGE is its synonym (items 15 and 16).
 func ackToken(token string) (isBreak, ok bool) {
 	switch {
 	case token == "BREAKING CHANGE" || token == "BREAKING-CHANGE":

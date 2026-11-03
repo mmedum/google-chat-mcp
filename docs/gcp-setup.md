@@ -6,7 +6,7 @@ the client id, and what you see when you grant access.
 
 You need a Google account. On a Workspace account your administrator has
 to allow user-managed OAuth clients. A consumer account works too, with
-one extra step in section 6.
+one extra step: [test users](#6-test-users).
 
 ## 1. Create a project
 
@@ -15,7 +15,7 @@ project picker → **New project**. Call it whatever you like.
 
 ## 2. Enable the APIs
 
-APIs & Services → Library. Enable both:
+APIs & Services → Library. Enable each of these:
 
 - **Google Chat API**
 - **People API** — this is what `search_people` searches, and what fills
@@ -34,7 +34,7 @@ APIs & Services → OAuth consent screen.
 **User type.** On a Workspace account choose **Internal**: access is
 limited to your own domain and Google requires no verification at all,
 whatever tier the scopes are in. On a consumer account choose
-**External** and add yourself as a test user in section 6; no
+**External** and add yourself as a [test user](#6-test-users); no
 verification is needed while the app stays in testing.
 
 **App information.** An app name — this is what you see on the consent
@@ -48,8 +48,8 @@ For an **External** app, open **Data Access**, click *Add or remove
 scopes* and paste all of these. Google asks for the list only from apps
 used by people outside your Workspace organization: for an **Internal**
 app, "scopes aren't listed on the consent screen" (Google's
-configure-oauth-consent guide, updated 2026-09-03), so an Internal app
-can skip this step. Listing them there anyway does no harm.
+configure-oauth-consent guide), so an Internal app can skip this step.
+Listing them there anyway does no harm.
 
 ```
 openid
@@ -87,7 +87,7 @@ naming what is missing rather than failing in some other way. The
 exception is an app your Workspace administrator marks Trusted: Google
 then skips that choice, and the login grants every scope or none.
 
-Five administrator scopes are deliberately not in that list:
+The administrator scopes are deliberately not in that list:
 
 ```
 https://www.googleapis.com/auth/chat.admin.spaces.readonly
@@ -101,7 +101,7 @@ They reach every space in the Workspace rather than the ones you are
 in, and only a Workspace administrator can use them. `login` asks for
 them only when the admin toolset is on, as in `GCM_TOOLSETS=all,admin`:
 
-- the two `.readonly` scopes whenever it is on;
+- the `.readonly` scopes whenever it is on;
 - `chat.admin.spaces` and `chat.admin.memberships` unless
   `GCM_READ_ONLY=true`;
 - `chat.admin.delete` only with `GCM_ENABLE_DESTRUCTIVE=true` as well.
@@ -111,12 +111,12 @@ On an External app, add the ones your settings ask for to this screen.
 Run `login` with the same settings your MCP client uses, or it asks for
 a different set.
 
-Most sit in Google's *sensitive* tier. Three are *restricted*:
-`chat.messages`, `chat.spaces` and `chat.delete`, and so is
-`chat.admin.delete` when you add it. For an **Internal**
-app none of that matters — no verification, no assessment. If you ever
-publish externally it matters a great deal;
-[`runbook.md`](runbook.md#do-the-restricted-scopes-mean-a-security-assessment)
+Most sit in Google's *sensitive* tier. The *restricted* ones are
+`chat.messages`, `chat.spaces` and `chat.delete`, and `chat.admin.delete`
+when you add it. For an **Internal** app none of that matters: no
+verification, no assessment. If you ever publish externally it matters a
+great deal, and
+[`troubleshooting.md`](troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment)
 has the detail.
 
 ## 5. Create the OAuth client
@@ -139,6 +139,10 @@ out of version control.
 Only for an **External** app in testing. OAuth consent screen → **Test
 users** → add your own address. Up to 100 people.
 
+Google expires a refresh token from an External app in testing after
+seven days, so `login` has to run again each week.
+[`troubleshooting.md`](troubleshooting.md) covers it under `[auth]`.
+
 An Internal app skips this: the consent screen is already limited to
 your domain.
 
@@ -159,7 +163,7 @@ google-chat-mcp doctor
 ```
 
 Then wire the binary into your client, per the
-[README](../README.md#connect-your-client).
+[README](../README.md#connect-a-client).
 
 ## Verification, later and probably never
 

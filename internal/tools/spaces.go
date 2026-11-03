@@ -329,6 +329,13 @@ type UpdateSpaceInput struct {
 }
 
 // SetSpaceAudienceInput opens a space to a target audience.
+//
+// No method lists target audiences, so Audience takes an id: the
+// target-audience guide gives it from the Admin console's URL,
+// admin.google.com/ac/targetaudiences/{id}. That guide asks for a super
+// administrator to set one, and discovery for a space manager; the
+// description names the space manager, as the reference does.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 type SetSpaceAudienceInput struct {
 	SpaceID     string `json:"space_id" jsonschema:"the space to open, spaces/{id}"`
 	Audience    string `json:"audience" jsonschema:"who can then find the space, read it and join without an invitation: default for the organization's default target audience, or audiences/{id} for one an administrator set up"`

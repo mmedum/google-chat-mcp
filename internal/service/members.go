@@ -539,10 +539,11 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 		return nil, directoryHint(subject+" is someone", Classify(err))
 	}
 	out.Name = membership.Name
-	// What Google recorded. It ignores a role given on create — asked
-	// for MANAGER against a live account on 2026-09-05, it recorded
-	// ROLE_MEMBER and said nothing — so the argument is gone and this
-	// reports the truth rather than the request.
+	// What Google recorded. It ignores a role given on create and
+	// records ROLE_MEMBER without a word, which the reference does not
+	// say, so the argument is gone and this reports the truth rather
+	// than the request.
+	// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/create
 	out.Role = membership.Role
 	return out, nil
 }
@@ -552,13 +553,12 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 //
 // Someone added to a space can read what is already in it. Widening
 // that past the organization is its own tool, registered only with the
-// destructive ones (docs/architecture.md, "What a write may reach").
-// Only a space that says it admits people from outside is checked
-// (admitsOutsiders). The address is looked up in the organization's
-// directory, its members only, since a contact an administrator shared
-// is someone outside. A directory that cannot be read cannot vouch for
-// anyone, which fails closed: a personal account has none, so everyone
-// counts as outside.
+// destructive ones. Only a space that says it admits people from
+// outside is checked (admitsOutsiders). The address is looked up in the
+// organization's directory, its members only, since a contact an
+// administrator shared is someone outside. A directory that cannot be
+// read cannot vouch for anyone, which fails closed: a personal account
+// has none, so everyone counts as outside.
 func (s *Service) refuseOutsider(ctx context.Context, space, email string) error {
 	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
 		return err
@@ -604,10 +604,12 @@ func hasEmail(p gchat.Person, email string) bool {
 // the group.
 //
 // Google invites a group's outside members into such a space, and
-// carries every later change to the group's membership into it
-// (docs/architecture.md, evidence log). So a group the organization owns
-// can bring in outsiders after the add, and no check at add time holds.
-// In a space that admits nobody from outside, Google leaves them out.
+// carries every later change to the group's membership into it. So a
+// group the organization owns can bring in outsiders after the add, and
+// no check at add time holds. In a space that admits nobody from
+// outside, Google leaves them out. Not probed live, since that would put
+// real people in a scratch space.
+// https://support.google.com/chat/answer/13535086
 func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
 	if open, err := s.admitsOutsiders(ctx, space); err != nil || !open {
 		return err
@@ -692,11 +694,10 @@ func outsiderRefused(email, space, why string) error {
 // It adds people and never a Google Group, and never the caller: either
 // would put the signed-in account into a space it could not read
 // before, and from then on every tool here reads that space's messages
-// as the caller. This server never widens its own reach (the standard's
-// §3, "The model never widens its own reach"). A group the caller
-// belongs to would add the caller with it, and no check at add time can
-// see a later change to the group, which is why groups are refused
-// rather than checked.
+// as the caller, and this server never widens its own reach (D-32). A
+// group the caller belongs to would add the caller with it, and no
+// check at add time can see a later change to the group, which is why
+// groups are refused rather than checked.
 //
 // The address is looked up once, and the one answer settles both
 // questions: whether it is someone in the organization, since Google

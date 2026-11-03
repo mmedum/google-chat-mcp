@@ -95,10 +95,12 @@ type ListSpacesResponse struct {
 // favor of it and still sends, so it is modeled to keep it out of the
 // drift log and read only when Results is empty.
 //
-// NextPageToken and TotalSize come back only under admin access. A
+// NextPageToken and TotalSize come back only under admin access: each is
+// "Only populated when useAdminAccess is set to true". A
 // user-authenticated search returns one page and no count, which is why
 // search_spaces says so rather than offering a page token that is
 // always empty.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 type SearchSpacesResponse struct {
 	Results       []SearchSpaceResult `json:"results,omitempty"`
 	Spaces        []Space             `json:"spaces,omitempty"`
@@ -139,9 +141,11 @@ type User struct {
 	DomainID    string `json:"domainId,omitempty"`
 	Type        string `json:"type,omitempty"`
 	IsAnonymous bool   `json:"isAnonymous,omitempty"`
-	// Email is filled under user auth for a message's sender and a
-	// membership's member, external people included. It is empty for
-	// apps and for some people, such as an account that is gone.
+	// Email is filled under user auth for a message's sender, a mention
+	// and a membership's member, external people included, "provided the
+	// user is a member of the space or has prior affinity". It is empty
+	// for apps and for some people, such as an account that is gone.
+	// https://chat.googleapis.com/$discovery/rest?version=v1
 	Email string `json:"email,omitempty"`
 }
 
@@ -229,10 +233,11 @@ type QuotedMessageMeta struct {
 // QuotedMessageSnapshot is the quoted message's content, frozen at the
 // moment it was quoted.
 //
-// Sender is a display name, not a resource name and not the User object
-// the parent message carries: Google's "author name" is what it says,
-// read off a real reply-quote and a real forward on 2026-09-17. Nothing
-// downstream may treat it as an id.
+// Sender is a person's display name, not a users/{id} name and not the
+// User object the parent message carries. The reference calls it
+// "the quoted message's author name", and a real reply-quote and forward
+// each carry a person's name. Nothing downstream may treat it as an id.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages
 type QuotedMessageSnapshot struct {
 	Sender        string       `json:"sender,omitempty"`
 	Text          string       `json:"text,omitempty"`
@@ -244,7 +249,11 @@ type QuotedMessageSnapshot struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
-// ForwardedMeta is where a forwarded message came from.
+// ForwardedMeta is where a forwarded message came from: the space, and
+// its display name, which for a direct message is the other person's
+// name. Whether a forward also carries the links and files the reference
+// promises is unverified.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages
 type ForwardedMeta struct {
 	// Chat publishes these as `space` and `spaceDisplayName` on
 	// ForwardedMetadata. This type carried a single `spaceName`, which the
@@ -301,10 +310,14 @@ type Annotation struct {
 // carries the anchor text in Text and the target only in this
 // annotation, so dropping it leaves a message that reads as a bare word.
 //
-// Type is Google's own word, from the discovery document read on
-// 2026-09-17: DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE, MEET_SPACE or
-// CALENDAR_EVENT. A link to a single message is CHAT_SPACE with the
-// message named in ChatSpaceLink; there is no CHAT_MESSAGE.
+// Type is Google's own word: DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE,
+// MEET_SPACE or CALENDAR_EVENT. A link to a single message is CHAT_SPACE
+// with the message named in ChatSpaceLink; there is no CHAT_MESSAGE.
+// Only a link pasted in the Chat client gets one: a message posted
+// through the API carries no annotation for its links, which the
+// reference does not say. The live step "a posted link reads back as a
+// link" reports which it got.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 type RichLinkMetadata struct {
 	Type              string                 `json:"richLinkType,omitempty"`
 	URI               string                 `json:"uri,omitempty"`

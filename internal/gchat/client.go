@@ -33,10 +33,12 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Google's published per-user limits for the Chat API, checked
-// 2026-09-05: 15 reads and 1 write per second. The defaults below sit
-// under those, and a burst absorbs the fan-out a single tool call makes
-// when it enriches a page of messages with sender names.
+// Google's published per-user limits for the Chat API are 15 reads and 1
+// write per second. The defaults below sit under those, and a burst
+// absorbs the fan-out a single tool call makes when it enriches a page
+// of messages with sender names.
+// https://developers.google.com/workspace/chat/limits
+//
 // These are per process, and Google's quota is per user. Two clients
 // against one account — Claude Desktop and Claude Code at once, which is
 // ordinary — each grant themselves the whole allowance. The write
@@ -229,11 +231,14 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 }
 
 // uploadBaseOf is where a media upload goes: the Chat base with /upload
-// in front of its path, which is how Google spells the upload endpoint
-// — https://chat.googleapis.com/upload/v1/{parent}/attachments:upload
-// against a v1 base of https://chat.googleapis.com/v1. Derived rather
-// than configured, so there is no second setting to keep in step with
-// the first, and resolved once in New rather than per upload.
+// in front of its path, as in
+// https://chat.googleapis.com/upload/v1/{parent}/attachments:upload
+// against a v1 base of https://chat.googleapis.com/v1. The upload guide
+// does not say this; only the discovery document spells the endpoint.
+// Checked by the live step "a file uploads". Derived rather than
+// configured, so there is no second setting to keep in step with the
+// first, and resolved once in New rather than per upload.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 func uploadBaseOf(chatBase string) string {
 	u, err := url.Parse(chatBase)
 	if err != nil {
@@ -533,7 +538,7 @@ type noWritesKey struct{}
 // tool still shapes its own preview, but the guarantee that a preview
 // changes nothing is enforced here, at the one place a request can
 // reach Google — so a tool that declares dry_run and forgets to act on
-// it fails loudly instead of writing.
+// it fails loudly instead of writing (D-09).
 func WithoutWrites(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noWritesKey{}, true)
 }
@@ -579,6 +584,12 @@ func AdminAccess(ctx context.Context) bool {
 // form is made under WithAdminAccess. Sending it as the caller instead
 // would answer a question about a space the caller is not in with the
 // caller's own view of it. Reaching it is a bug in this server.
+//
+// Only the spaces and members methods take useAdminAccess: spaces get,
+// search, patch and delete, and members list, get, create, patch and
+// delete. Nothing reaches messages as an administrator, and nothing
+// creates a space.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 var ErrNoAdminForm = errors.New("chat api: this call has no administrator form")
 
 // deleteName removes one resource by its name.

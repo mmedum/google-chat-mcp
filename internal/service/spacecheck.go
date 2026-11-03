@@ -25,7 +25,7 @@ const maxWitnessPages = 10
 // and a space's id tells the person reading it nothing. So the space's
 // name rides in the arguments, and it is checked here before anything is
 // written, dry runs included, so the prompt cannot name one space while
-// the call writes to another (§18, 2026-10-27).
+// the call writes to another (D-17).
 func (s *Service) checkSpace(ctx context.Context, space, witness string) error {
 	_, err := s.checkedSpace(ctx, space, witness, "")
 	return err
@@ -82,7 +82,10 @@ func (s *Service) checkWitness(ctx context.Context, space string, sp *gchat.Spac
 
 // checkDirectMessage holds witness to the one other person in the direct
 // message space: Google's own lookup of the direct message with that
-// address has to answer with this space.
+// address, which answers with the one direct message between the caller
+// and that person (spaces.findDirectMessage), has to answer with this
+// space.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 func (s *Service) checkDirectMessage(ctx context.Context, space, witness string) error {
 	addr, err := requireEmail(spaceWitnessField, witness)
 	if err != nil {

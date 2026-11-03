@@ -230,9 +230,10 @@ func IsAlreadyGone(err error) bool {
 	return IsNotFound(err)
 }
 
-// serviceDisabledReasons are how Google says the API a call uses is not
-// enabled on the OAuth client's project: the AIP-193 reason, and the
-// older frontend's.
+// serviceDisabledReasons are how Google says, with a 403, that the API a
+// call uses is not enabled on the OAuth client's project: the AIP-193
+// reason, and the older frontend's.
+// https://google.aip.dev/193
 var serviceDisabledReasons = []string{"SERVICE_DISABLED", "accessNotConfigured"}
 
 // IsServiceDisabled reports whether Google refused because the API is
@@ -325,7 +326,8 @@ func retryable(statusCode int) bool {
 // ambiguous. A 500 can follow a commit, a 502 or 504 comes from a
 // gateway that never learned what the backend did, and Google's own
 // definition of UNAVAILABLE, the 503, says "it is not always safe to
-// retry non-idempotent operations" (google/rpc/code.proto).
+// retry non-idempotent operations".
+// https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto
 func turnedAway(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests
 }

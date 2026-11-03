@@ -118,10 +118,9 @@ func connectTo(t *testing.T, s *mcp.Server) *mcp.ClientSession {
 	}
 	t.Cleanup(func() { _ = ss.Close() })
 
-	// The client can ask the person, and the server asks nobody
-	// (docs/architecture.md, "What a write may reach"): every tool is
-	// called through such a client, so a question from any of them fails
-	// the test that made the call.
+	// The client can ask the person, and the server asks nobody:
+	// every tool is called through such a client, so a question from any
+	// of them fails the test that made the call.
 	co := &mcp.ClientOptions{
 		ElicitationHandler: func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 			t.Errorf("the server asked the person: %q", req.Params.Message)

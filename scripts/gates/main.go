@@ -13,6 +13,7 @@
 //	go run ./scripts/gates classes
 //	go run ./scripts/gates pins
 //	go run ./scripts/gates api-coverage
+//	go run ./scripts/gates docs
 //	go run ./scripts/gates api-diff
 //	go run ./scripts/gates schema-diff [BINARY]
 //	go run ./scripts/gates schema-baseline [BINARY]
@@ -183,6 +184,11 @@ func init() {
 			run:   apiFields,
 			arity: 1, runsIn: inCheck,
 			doc: "every published field modeled on purpose or left out on purpose",
+		},
+		"docs": {
+			run:   docs,
+			arity: 1, runsIn: inCheck,
+			doc: "every decision, citation and named path resolves",
 		},
 		"api-diff": {
 			run:   apiDiff,

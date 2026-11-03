@@ -5,8 +5,8 @@
 // needs nothing. Sensitive needs a few days of self-service verification
 // for a published app. Restricted needs an annual CASA review. An
 // Internal Workspace app skips all of it, which is why this server asks
-// for the umbrella scopes without apology; docs/security.md records the
-// trade-off for anyone publishing externally.
+// for the umbrella scopes without apology. The trade-off for anyone
+// publishing externally is in docs/troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment.
 package scopes
 
 import (
@@ -105,7 +105,10 @@ const (
 
 // GroupsReadonly is the Cloud Identity scope that turns a group's email
 // address into the groups/{id} name Chat takes, and names a group in a
-// listing. The narrowest scope groups.lookup and groups.get accept.
+// listing. The narrowest scope groups.lookup and groups.get accept: the
+// other two they take, cloud-identity.groups and cloud-platform, are
+// wider.
+// https://cloudidentity.googleapis.com/$discovery/rest?version=v1
 const GroupsReadonly = "https://www.googleapis.com/auth/cloud-identity.groups.readonly"
 
 // All is what login requests, in a stable order. Adding a scope here
@@ -151,10 +154,12 @@ var All = []string{
 // implies maps an umbrella scope to the narrower scopes it satisfies.
 //
 // Google accepts an umbrella wherever it accepts one of the scopes split
-// out of it, verified against the Chat API discovery document. Without
-// this table the server refuses calls Google would have allowed, and it
-// refuses them for the people who paid the most for consent, since the
-// umbrellas are the restricted-tier scopes.
+// out of it: discovery lists each method's scopes with the umbrella
+// beside the narrower one. Without this table the server refuses calls
+// Google would have allowed, and it refuses them for the people who paid
+// the most for consent, since the umbrellas are the restricted-tier
+// scopes.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 var implies = map[string][]string{
 	Messages:       {MessagesReadonly, MessagesCreate, MessagesReactions},
 	Spaces:         {SpacesReadonly, SpacesCreate, PinsReadonly, Pins},

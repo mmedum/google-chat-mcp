@@ -38,6 +38,12 @@ type Media struct {
 // attachmentDataRef, not the attachment's own resource name. An
 // attachment stored in Drive has no media resource name at all: its
 // bytes are Drive's, and the Chat media endpoint cannot serve them.
+//
+// This is the only way to an attachment's bytes as a person:
+// spaces.messages.attachments.get accepts chat.bot alone, which Google
+// grants only to a service account. media.download accepts
+// chat.messages.readonly.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 func (c *Client) DownloadMedia(ctx context.Context, resourceName string) (*Media, error) {
 	return c.doStream(ctx, request{
 		method: http.MethodGet,

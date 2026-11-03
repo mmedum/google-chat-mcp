@@ -48,10 +48,10 @@ var excused = map[string]string{
 		"and the scratch space is deleted before the move could be undone",
 	"position_section": "reorders the account's sidebar",
 
-	// A space nobody is in is gone within seconds (live, 2026-10-31), so
-	// the one membership a single account can remove takes the scratch
-	// space with it. Checked by hand that day, in a space with a second
-	// person in it.
+	// Google deletes a space nobody is in within seconds, which no Google
+	// page says, so the one membership a single account can remove takes
+	// the scratch space with it. A space with a second person in it stays
+	// when an administrator removes the caller.
 	"admin_remove_member": "removing this account empties the space, and Google deletes an empty space",
 }
 

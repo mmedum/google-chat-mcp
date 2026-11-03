@@ -10,6 +10,7 @@ before:
     # Go stamps the binary vcs.modified=true, and `--snapshot` cannot
     # show the difference. Tidiness is CI's job: it runs `go mod tidy` and
     # fails on any diff, on the same commit the release is cut from.
+    # https://github.com/goreleaser/goreleaser/blob/v2.18.1/internal/pipeline/pipeline.go
     - go mod download
     # The Windows programs' version resource, which code signing checks:
     # one .syso per Windows architecture, in a path .gitignore covers.
@@ -76,9 +77,8 @@ sboms:
 # --bundle required, and with it the old --output-signature and
 # --output-certificate are ignored. Getting this wrong fails the release
 # with "create bundle file: open : no such file or directory" — cosign
-# writing a bundle to the empty path it was never given. Reported by the
-# google-drive-mcp session, which hit it on its first tag, and confirmed
-# against the cosign v3.0.1 release notes.
+# writing a bundle to the empty path it was never given.
+# https://github.com/sigstore/cosign/releases/tag/v3.0.1
 signs:
   - cmd: cosign
     signature: "${artifact}.bundle"

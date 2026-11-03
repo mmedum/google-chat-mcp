@@ -250,8 +250,8 @@ func resultText(raw json.RawMessage) string {
 // spaceRef matches a Chat space resource name anywhere in a string.
 var spaceRef = regexp.MustCompile(`spaces/[A-Za-z0-9_-]+`)
 
-// redact keeps the rule the standard asks of a live run: what is written
-// down is only what the run itself created.
+// redact keeps the rule of a live run (D-49): what is written down is
+// only what the run itself created.
 //
 // A model that calls list_spaces or search_people gets rows about real
 // conversations and real colleagues, and those rows would otherwise land

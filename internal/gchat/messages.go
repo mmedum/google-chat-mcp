@@ -74,10 +74,10 @@ type SearchMessagesOptions struct {
 	// create_time, sender.name, space.name, attachment, mentions,
 	// has_link() and is_unread(). Required.
 	//
-	// create_time, not createTime. The REST reference's own examples
-	// say createTime and Google answers "Invalid filter query" to it;
-	// the guide's snake_case spelling is the one that works. Found by
-	// running it, on 2026-09-05.
+	// create_time, not createTime. The reference's own examples write
+	// createTime, and Google answers "Invalid filter query" to it; the
+	// guide's create_time is the spelling that works.
+	// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/search
 	Filter string
 	// OrderBy is "createTime desc" or "relevance desc". Empty takes
 	// Google's default, which is newest first.
@@ -143,7 +143,11 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 type SendMessageRequest struct {
 	Text string `json:"text"`
 	// MarkupSyntax says how Google reads Text. Empty is Chat's own
-	// syntax; MarkupMarkdown is standard Markdown.
+	// syntax; MarkupMarkdown is standard Markdown. The REST reference
+	// calls the field output only, but discovery calls it optional and a
+	// person's token can set it. Checked by the live step "a markdown
+	// message reads back formatted".
+	// https://chat.googleapis.com/$discovery/rest?version=v1
 	MarkupSyntax string `json:"markupSyntax,omitempty"`
 	// Thread is set when the message replies to an existing thread.
 	Thread *Thread `json:"thread,omitempty"`
@@ -298,7 +302,10 @@ func (c *Client) UpdateMessage(ctx context.Context, name string, body *UpdateMes
 //
 // force also deletes the message's threaded replies. Without it Google
 // refuses to delete a message that has any, which is the safe default:
-// the replies are other people's.
+// the replies are other people's. Discovery says nothing of a first
+// message already deleted, and the API cannot make one to probe.
+// Checked by the live step "a thread deletes with its replies".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/delete
 func (c *Client) DeleteMessage(ctx context.Context, name string, force bool) error {
 	// Sent either way, rather than omitted when false. The default is
 	// Google's to change, and this call is the difference between

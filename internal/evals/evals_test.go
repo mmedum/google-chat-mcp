@@ -175,8 +175,8 @@ func TestWhichHalfTheClientForwards(t *testing.T) {
 		t.Error(err)
 	}
 	if isJSON {
-		t.Log("the rendering is not reaching the model in this client; see docs/architecture.md " +
-			"on both halves before changing anything")
+		t.Log("the rendering is not reaching the model in this client; see D-13 in docs/architecture.md " +
+			"before changing anything")
 	}
 }
 

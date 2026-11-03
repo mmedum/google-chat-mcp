@@ -82,6 +82,11 @@ const destructiveInstructions = "The writes that cannot be taken back take confi
 // failed call at a time.
 const readOnlyInstructions = "This server is read-only: no tool here can post, edit or delete anything in Chat."
 
+// tailInstructions close every configuration. Google applies the page
+// size before it filters, so a page can be empty and still carry a token;
+// the list references do not say so. Exercised by the live step "an
+// empty page is not the end of the messages".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/list
 const tailInstructions = "Every space, message and thread is addressed by its resource name, never by position. A " +
 	"listing that reports unparsed rows is incomplete rather than short. Keep paging while next_page_token is " +
 	"non-null, and note that AN EMPTY PAGE IS NOT THE END: Google applies the page size before it filters, so a " +

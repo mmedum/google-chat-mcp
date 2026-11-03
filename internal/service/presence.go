@@ -509,6 +509,11 @@ func (s *Service) DeleteSpace(ctx context.Context, in DeleteSpaceInput) (*Delete
 	if in.DryRun {
 		return out, nil
 	}
+	// No read-back: a deleted space answers 403, as the caller and under
+	// admin access, the same as a space the caller may not touch, and the
+	// reference does not say so. The refusal stands, claiming neither.
+	// Checked by the live step "an administrator deletes a space".
+	// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/delete
 	if out.Deleted, err = deleteIdempotent(ctx, space, s.client.DeleteSpace, nil); err != nil {
 		return nil, err
 	}

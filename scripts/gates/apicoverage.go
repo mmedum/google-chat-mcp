@@ -130,7 +130,9 @@ const (
 	verdictOut         = "out"
 	verdictUnreachable = "unreachable"
 	// noScopePublished is the reason on an unreachable row whose method
-	// publishes no scope to name.
+	// publishes no scope to name, as Cloud Identity's
+	// customers.userinvitations methods do.
+	// https://cloudidentity.googleapis.com/$discovery/rest?version=v1
 	noScopePublished = "none published"
 )
 
@@ -568,7 +570,7 @@ func readSnapshot(path string) (snapshot, error) {
 // It reaches the network, so it is a target somebody runs rather than a
 // gate CI depends on: a gate that fails when Google is slow is one
 // people learn to rerun until it passes. What CI gets instead is the
-// file this writes. CONTRIBUTING's release checklist says to run it,
+// file this writes. docs/release.md says to run it before a release,
 // because a manual target nobody runs is a gate that never fires.
 func apiDiff(_ []string, stdout, stderr io.Writer) int {
 	if code := apiDiffWith(apis, snapshotFile, stdout, stderr); code != 0 {

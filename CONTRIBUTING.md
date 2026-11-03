@@ -2,17 +2,18 @@
 
 Thanks for considering a contribution. This is a small Go MCP server for
 Google Chat with a strict test and security posture. Read this once
-before your first pull request; the rest is enforced by CI.
+before your first pull request; CI enforces the rest.
 
 ## Reporting bugs and requesting features
 
 Open a [GitHub issue](https://github.com/mmedum/google-chat-mcp/issues/new/choose)
-using the relevant template. Include `google-chat-mcp doctor`'s output
-and the version — and note that the logs carry no message content,
-addresses or search terms by design, so a debug log is safe to paste.
+using the relevant template. Include what
+[`docs/troubleshooting.md`](docs/troubleshooting.md#reporting-a-problem)
+asks for. The logs carry no message content, addresses or search terms,
+so a debug log is safe to paste.
 
-For anything security-sensitive — a vulnerability, a suspected token
-leak — do not open a public issue. Follow `SECURITY.md`.
+For anything security-sensitive, such as a vulnerability or a suspected
+token leak, do not open a public issue. Follow [`SECURITY.md`](SECURITY.md).
 
 ## Development setup
 
@@ -24,9 +25,8 @@ make build
 
 Go is the only prerequisite, at the version in `go.mod`; the toolchain
 line makes the `go` command fetch it if yours is older. Nothing else in
-the repository needs an interpreter, which is deliberate: a gate that
-shells out to a language you have not declared is a gate contributors
-cannot run.
+the repository needs an interpreter, on purpose: a gate that shells out
+to a language you have not declared is a gate contributors cannot run.
 
 ## Gates that must pass
 
@@ -34,17 +34,19 @@ cannot run.
 make check
 ```
 
-That is gofmt, `go vet` including every tagged suite, golangci-lint, race
-tests with a coverage floor per package — 80% for everything except
-`cmd/`, which has a lower one of its own printed on every run —
-`govulncheck`, a license allow-list, a stdio smoke test, a schema diff
-against the released tool surface, an API-coverage gate, the live
-driver's surface gate, and a staleness gate that fails when the README,
-`docs/` or the CHANGELOG drift from the code. CI runs the same set on
-Linux, macOS and Windows, and on a pull request `schema-ack` as well,
-below.
+`make check` runs the gates CI runs, and the `check` target in the
+`Makefile` is the list. Among them: gofmt, `go vet` including every
+tagged suite, golangci-lint, and race tests with a coverage floor per
+package. The floor is 80%, except for `cmd/`, which has a lower one of its
+own printed on every run. The others include `govulncheck`, a license
+allow-list, a stdio smoke test, the schema diff, the API-coverage gate
+and the live driver's surface gate. A staleness gate fails when the
+README, `docs/` or the CHANGELOG drift from the code, and the docs gate
+when a citation does not resolve. CI runs the unit
+tests on Linux, macOS and Windows. It adds gitleaks and actionlint, and
+on a pull request `schema-ack`.
 
-Four of those are worth knowing about before they fail on you:
+These are worth knowing before they fail on you:
 
 - **The schema diff** compares the built binary's whole dump with
   `testdata/schemas-baseline.json`: the tools, the resource templates,
@@ -58,56 +60,67 @@ Four of those are worth knowing about before they fail on you:
   other. With nothing under `[Unreleased]`, the build is that release,
   so its surface must match the baseline exactly. The release commit
   records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
-  refuses a build that drops a tool or an output field. It also refuses
-  a build stamped with another version.
+  refuses a build that drops a tool or an output field, and a build
+  stamped with another version.
 
   On a pull request, CI also runs `schema-ack`. A commit footer has to
-  name each item that changed since the merge-base:
+  name each item that changed since the merge base:
   `SCHEMA-CHANGE: send_message, update_message: destructiveHint true`.
   The names are the list before the first colon followed by white space;
   the text after it describes the change and names nothing. Name a tool
   by its name, a resource template by its URI, and the instructions as
   `instructions`. Put a name with a comma in it in backticks, and keep
-  the list on one line: a wrapped line that starts `word: ` begins a new
-  footer, as Conventional Commits reads it. Names are separated by
-  commas, and a `Token #value` footer such as `Closes #12` acknowledges
-  nothing. If the change breaks something a release shipped, name that
-  item in a `BREAKING CHANGE:` footer instead. When it fails, it prints
-  the footer to add, in an empty commit, never an amend.
+  the list on one line: a wrapped line that starts `word: ` begins another
+  footer, as Conventional Commits reads it. A `Token #value` footer such
+  as `Closes #12` acknowledges nothing. If the change breaks something a
+  release shipped, name that item in a `BREAKING CHANGE:` footer
+  instead. When the gate fails, it prints the footer to add, in an empty
+  commit, never an amend.
 - **`internal/leakcheck`** fails on anything that could identify a real
-  person, account or space — an email under a domain someone could own,
+  person, account or space: an email under a domain someone could own,
   a 21-digit account id, a space id that does not look invented, and the
   same ids base64-encoded. Write fixtures as `janedoe@example.com` and
   `spaces/AAAAspace1`: a made-up id has to say so. It also fails when it
   reads nothing, because a scan with no input and a clean repository
   report the same thing.
 
-  **What it cannot catch is the payload.** An identifier has a shape;
-  a message, a space's display name or a colleague's sentence does not,
-  and no pattern separates one from invented prose. On a chat server
-  that is most of what there is to leak. Two habits cover the gap, and
-  only habits can: fixtures are **generated, never recorded** — a
-  fixture pasted out of a live response is itself the leak — and a live
-  run reads back only what it wrote. When a smoke record is written up,
-  every id, address and name in it is a placeholder.
-- **The API-coverage gate** works over two files. `testdata/api-methods.json`
-  is every method of the Chat, People and Cloud Identity APIs as Google published them,
-  written by `make api-diff` and never edited by hand.
-  `testdata/api-coverage.tsv` is one verdict per method, written by hand:
-  a `used` row names the `gchat.Client` method that implements it, an
-  `out` row gives the reason it is deliberately not used. The gate holds
-  the two and the client to each other, offline, so a method with no
-  verdict and a call with no row both fail the build. It cannot see a
-  method Google added yesterday — only `make api-diff` refetches, which
-  is why the release checklist runs it.
+  **What it cannot catch is the payload.** An identifier has a shape; a
+  message, a space's display name or a colleague's sentence does not,
+  and no pattern separates one from invented prose. Two habits cover the
+  gap, and only habits can. Fixtures are **generated, never recorded**,
+  because a fixture pasted out of a live response is itself the leak.
+  And a live run reads back only what it wrote. When a smoke record is
+  written up, every id, address and name in it is a placeholder.
+- **The API-coverage gate** works over two files.
+  `testdata/api-methods.json` is every method of the Chat, People and
+  Cloud Identity APIs as Google published them, written by
+  `make api-diff` and never edited by hand. `testdata/api-coverage.tsv`
+  is one verdict per method, written by hand: a `used` row names the
+  `gchat.Client` method that implements it, and an `out` row gives the
+  reason it is deliberately not used. The gate holds the two and the
+  client to each other, offline, so a method with no verdict and a call
+  with no row both fail the build. It cannot see a method Google added
+  after the snapshot. Only `make api-diff` refetches, and
+  [`docs/release.md`](docs/release.md) runs it before every release.
 - **The live driver's surface gate** fails when a tool is neither
-  exercised by `internal/livecheck` nor excused there with a reason. Add
-  a tool and this is what stops it going quietly unexercised. It needs no
-  credentials — it reads what the built binary registers — which is why
-  it runs in `make check` while the driver itself only runs under
-  `make live`. If a tool genuinely must not be called against a real
-  account, say so in `excused` and say why; an exemption with no reason
-  is a gap nobody has decided about.
+  exercised by `internal/livecheck` nor excused there with a reason. It
+  is what stops an added tool going quietly unexercised. It needs no
+  credentials, since it reads what the built binary registers, so it
+  runs in `make check` while the driver itself runs only under
+  `make live`. If a tool must not be called against a real account, say
+  so in `excused` and say why; an exemption with no reason is a gap
+  nobody has decided about.
+
+- **The docs gate** holds the design docs to their IDs. A decision in
+  `docs/architecture.md` is `D-NN`; an ID is never reused, and the file
+  ends with its `Next ID:` line. Cite a decision by ID, or a doc by
+  `docs/<file>.md#<heading-slug>`, never by section number. What you
+  verified about Google goes in the comment at the line that depends on
+  it, with the source link and the `make live` step that checks it,
+  never in a file of its own. The gate fails on a citation that does
+  not resolve, a decision whose "Held by" names a test or gate that does
+  not exist, a package missing from the codemap, and a path, `make`
+  target or gate a doc names that does not exist.
 
 For workflow edits, run
 `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.
@@ -117,15 +130,15 @@ For workflow edits, run
 - Branch names follow `type/short-description`: `feat/`, `fix/`,
   `refactor/`, `chore/`, `docs/`, `test/`. Release branches are
   `release/vX.Y.Z`.
-- Commit messages use conventional-commit style with a scope —
+- Commit messages use conventional-commit style with a scope:
   `fix(gchat): …`, `feat(tools): …`, `docs(readme): …`. Look at a recent
   `git log` for the tone.
 - Keep the subject under 72 characters; use the body for why.
 - Never commit directly to `main`. All work lands through a pull
   request.
 - Force-push freely before your first review. After a maintainer has
-  commented, add commits instead — we squash-merge, so intermediate
-  history is discarded anyway, and force-pushing orphans review comments
+  commented, add commits instead. We squash-merge, so intermediate
+  history is discarded anyway, and a force-push orphans review comments
   and re-arms the CI approval gate on fork pull requests. If you do
   force-push, use `--force-with-lease`.
 
@@ -136,119 +149,39 @@ For workflow edits, run
 2. CI must be fully green.
 3. A maintainer reviews and merges, squashed by default.
 4. The branch is deleted after merge.
+
 ## Changelog
 
 Every user-visible change gets an entry under `## [Unreleased]` in
-`CHANGELOG.md`, in the same PR that makes the change. Internal refactors
-with no user-visible effect do not.
+`CHANGELOG.md`, in the same pull request that makes the change. Leave out
+changes only contributors see, unless they must act on them.
 
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-  set and nothing else — Added, Changed, Deprecated, Removed, Fixed,
-  Security — in that order. Not `Internal`, not `Documented`, not a
+  set and nothing else: Added, Changed, Deprecated, Removed, Fixed and
+  Security, in that order. Not `Internal`, not `Documented`, not a
   severity split like `Security — High`.
-- **Length: 3-6 lines per entry.** What changed, who it affects, what it
-  does now. Do not narrate the investigation, quote logs, or defend the
-  fix against alternatives you rejected — that is what the PR is for, and
-  the reader can click through.
-- **Breaking changes** are marked `**Breaking:**` and say what the deployer
-  has to do, in the imperative. Anything needing an OAuth re-consent, a
-  re-login, or a config change is breaking.
-- **Write for someone deciding whether to upgrade.** Lead with the impact,
-  not the mechanism.
+- **One line per change, 25 words or fewer, impact first.** Write for
+  someone deciding whether to upgrade: what changes for them, not the
+  mechanism. The investigation, logs and rejected alternatives belong in
+  the pull request.
+- **Breaking changes** are marked `**Breaking:**`. Such an entry may add
+  one sentence saying what to do, in the imperative. Anything needing an
+  OAuth re-consent, a re-login or a config change is breaking.
+- **Security fixes** name the CVE or GHSA.
 
 `release.yml` lifts the matching section verbatim into the GitHub release
 notes, so the entry is the release note. Versioning follows
-[SemVer](https://semver.org/spec/v2.0.0.html) — see "Versioning" in the
-README for what counts as breaking.
+[SemVer](https://semver.org/spec/v2.0.0.html); the README's
+[Versioning](README.md#versioning) section says what counts as breaking.
 
-## Release process
+## Releasing
 
-Release cutting is maintainer-only:
-
-0. Run `make live` and read the result. It drives the shipped binary
-   against a real account inside one scratch space it creates and
-   deletes, and it is the only thing here that can catch a wrong belief
-   about the API — every fake in the unit suite is written from what we
-   think Google does, and seven rows of the evidence log were settled by
-   a live call contradicting the reference. `make check` cannot replace
-   it and a green `make check` does not imply it. `make check` does run
-   `live-surface`, which fails if a tool is neither exercised by the
-   driver nor excused with a reason, so the gap is visible on every
-   build rather than at a release.
-
-   Set `LIVE_GROUP_EMAIL` to a Google Group the account can see first.
-   `find_group` needs a real one, and none may be named in this
-   repository; the run only looks it up and adds it nowhere. Without it
-   the run stops before it makes the scratch space. `LIVE_KEEP=1` keeps
-   the scratch space after a run. Once the run has opened the space to
-   the organization, it makes it private and reads it back before it
-   keeps or deletes it, and fails loudly if it cannot.
-
-   Run `make api-diff` at the same time. It is the only thing here that
-   reaches Google's own documentation, and a manual target nobody runs is
-   a gate that never fires. It refetches the method list into
-   `testdata/api-methods.json` and reports what changed; every method it
-   adds then fails `api-coverage` until a row in
-   `testdata/api-coverage.tsv` says whether this server should use it.
-
-1. Land a `release: cut vX.Y.Z …` commit on `main` that moves the
-   `[Unreleased]` section under a `## [X.Y.Z] - YYYY-MM-DD` heading.
-   `release.yml` lifts that section verbatim into the GitHub release
-   notes, so read it once as the release note it becomes. The same
-   commit runs `make schema-baseline VERSION=vX.Y.Z`. The schema diff
-   fails the commit until it does.
-2. Wait for `ci.yml` to pass on that exact commit. `release.yml`'s
-   `verify-ci` gate requires a green run for the tagged commit, so
-   tagging first fails the release.
-3. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z: …" && git push origin vX.Y.Z`.
-   Push tags one at a time — GitHub drops tag events past the third in a
-   single push, and the release silently never runs.
-4. `release.yml` builds six platform archives with goreleaser, stamping
-   the Windows programs with their product name and version, packs the
-   Claude Desktop `.mcpb` bundle, signs the checksums — which cover the
-   bundle too — with a keyless Sigstore certificate, attaches an SBOM per
-   archive and build provenance, and creates the GitHub release from the
-   CHANGELOG section.
-5. It then writes `server.json` from that release's own `checksums.txt`
-   and publishes it to the MCP registry with `mcp-publisher`. That step
-   runs last because the registry fetches the bundle's URL before it
-   accepts the entry, so it needs the release to exist.
-
-To rehearse the build without publishing anything: `make
-release-rehearse`. It needs nothing but the Go toolchain: the target
-pins goreleaser, and `scripts/gates` packs the bundle.
-
-### Checking that the release verified
-
-Signing, attestation and the registry entry are the three steps no
-rehearsal reaches: each needs an OIDC token only a workflow run has. So
-they are checked after the tag, from outside, against the published
-artifacts rather than the build's own copies.
-
-Check the attestation against a deliberately corrupted copy as well as
-the genuine bundle. A check that passes on anything is not a check, and
-this is the one place that distinction is cheap to buy.
-
-Three ways the checking misreads itself, each of which cost a sibling
-server real time on its first tag:
-
-- `gh attestation verify` prints nothing at all when it succeeds. An
-  empty log is a pass, not a silent failure.
-- `$?` after a pipe is the pipe's last command, not `gh`. Capture the
-  exit code without piping, or a broken measurement reads as a broken
-  attestation.
-- Do not truncate `checksums.txt` while looking for the bundle. It sorts
-  first among the rows, so `tail` hides exactly what you came to find.
-
-The staleness gate accepts a release commit: it wants the changes since
-the last tag written down either under `[Unreleased]` or under the
-heading for the version being cut. Requiring `[Unreleased]` would fail
-every release pull request, since CI runs before the tag exists.
+Maintainers release as [`docs/release.md`](docs/release.md) says.
 
 ## Code style
 
 - Match the surrounding code. Do not reformat what you did not touch.
-- Comments explain why — a constraint, an invariant, something Google
+- Comments explain why: a constraint, an invariant, something Google
   does that the code has to work around. Do not narrate what the code
   does.
 - Write plainly, in code comments as much as in the CHANGELOG. Lead with
@@ -257,16 +190,16 @@ every release pull request, since CI runs before the tag exists.
   ones. The duplication is the point: a field Google adds upstream cannot
   reach the model without someone deciding it should.
 - Unknown fields in a Google response are counted and logged by name,
-  never rejected. Drift must be observable, not fatal — rejecting it cost
-  the previous implementation two total outages.
+  never rejected. Drift must be observable, not fatal, because rejecting
+  an unknown field turns every upstream addition into an outage.
 - Every tool is registered through `internal/tools.register`, which
   derives the annotations, the read-only and destructive gating,
   `confirm` and the rendered reply from one `Kind`.
 - Logs record the call, never the payload. `docs/architecture.md` says
-  what that means and where the non-obvious leak was.
+  what that covers.
 
 `CLAUDE.md` has the short version of all of this, and
-`docs/architecture.md` the reasoning — start there if you are wondering
+`docs/architecture.md` the reasoning. Start there if you are wondering
 why the code is the way it is.
 
 ## License
