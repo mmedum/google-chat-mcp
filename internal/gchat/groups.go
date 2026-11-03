@@ -53,7 +53,7 @@ func (c *Client) LookupGroup(ctx context.Context, email string) (string, error) 
 // groupFields is what this server reads off a group. Google's fields
 // system parameter trims the answer to it: a group also carries its
 // parent, labels and timestamps, which nothing reads, and every field
-// decoded but not modeled is reported as schema drift.
+// decoded but not modeled is reported as schema drift (E-049).
 const groupFields = "name,groupKey,displayName"
 
 // GetGroup reads one group by its groups/{id} name.
@@ -98,7 +98,7 @@ const groupMembershipFields = "memberships(name,preferredMemberKey,roles(name),t
 
 // ListGroupMembers reads one page of a group's direct members. Google
 // shows them only to someone the group's own settings let see them, and
-// refuses the call otherwise.
+// refuses the call otherwise (E-047).
 func (c *Client) ListGroupMembers(ctx context.Context, group string, pageSize int) (*GroupMembershipsPage, error) {
 	q := pageQuery(pageSize, "")
 	q.Set("fields", groupMembershipFields)

@@ -1,144 +1,91 @@
-# CLAUDE.md — google-chat-mcp project instructions
+# CLAUDE.md — google-chat-mcp
 
-Project-specific rules for Claude Code in this repository. The user's
-global instructions still apply; this file adds to them.
+A Go MCP server that exposes Google Chat over stdio: one binary per
+person, per-user OAuth, nothing hosted. Why the code is the way it is
+lives in `docs/architecture.md`, one decision per `D-NN`. What we
+verified about Google lives in `docs/evidence.md`, one entry per
+`E-NNN`. Read the decision before changing the tool surface, the write
+path or the auth wiring.
 
-## Mission
+## Commands
 
-A Go MCP server that exposes Google Chat over stdio, distributed to
-other people. One binary, per-user OAuth, no hosted deployment. The
-design, the evidence log and the constraints that must not be undone
-live in `docs/architecture.md`. Read it before changing the tool
-surface, the write path or the auth wiring. Its evidence log says what
-was checked, against which source, and which live call contradicted it.
+- `make check` runs every gate CI runs; its `check` target is the list.
+- `make live` drives the shipped binary against a real account. It
+  needs `LIVE_GROUP_EMAIL`.
+- `make api-diff` refetches Google's discovery documents.
+- `make release-rehearse` builds the release archives and publishes
+  nothing.
+- `go run ./scripts/gates` lists the gates; add a gate's name to run
+  that one.
 
 ## Hard rules
 
-1. **Nothing internal, ever.** No organization names, space or message
-   ids, account emails, Cloud project ids, OAuth client ids or secrets,
-   and no content from real conversations — not in fixtures, not in
-   commit messages, not in logs. Fixtures are synthetic, and a made-up
-   id says so: `spaces/AAAAspace1`, never `spaces/AAAQ`.
-   `internal/leakcheck` fails the build on one, base64-encoded ids
-   included.
-2. **Stdout carries only MCP JSON-RPC frames.** This is the protocol, not
-   a house preference. MCP's stdio transport says the server "MUST NOT
-   write anything to its `stdout` that is not a valid MCP message", and
-   "MAY write UTF-8 strings to its standard error (`stderr`) for logging
-   purposes" —
-   <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports>.
-   Logs use `slog` to stderr. A stray print corrupts the JSON-RPC stream
-   and the client silently stops working, which is why this is a hard
-   rule rather than a style note.
-
-   `forbidigo` enforces it: `fmt.Print*` and `os.Stdout` are forbidden
-   outside `main`, which names the process's streams once and passes them
-   down as `io.Writer`. `scripts/` is excluded, being maintainer tooling
-   rather than the server. Check the message text when verifying it — a
-   settings block that fails to load leaves forbidigo on its defaults,
-   firing, looking like it works.
-3. **Logs never carry the payload.** Method, tool, resource id, outcome
-   and duration are fine. Message text, addresses, display names, tokens
-   and search terms are not — a search term reaches a log through the
-   request URL, which is why transport errors are stripped of it.
-   `TestLogsNeverCarryThePayload` holds this.
-4. **`send_message` posts the body verbatim.** No prefix, no suffix,
-   nothing appended server-side, ever.
-5. **A dry run may not write.** The flag puts the call on a context
-   `internal/gchat` refuses to write under. A preview may read what it
-   has to show: a section move's reads where the space sits, a quote's
-   reads the quoted message's timestamp. Do not add a preview that works
-   by convention instead.
-6. **Every tool goes through `register`.** It decides the annotations,
-   the read-only gating, whether a destructive tool is registered at all,
-   its `confirm`, and the rendered reply from one `Kind`. Rules kept by
-   hand at fifty call sites are ways to be quietly wrong. The server asks
-   the person nothing; the `requiresUserInteraction` mark is on
-   `delete_space`, `admin_delete_space`, `set_space_audience` and
-   `delete_custom_emoji` only, and a risky variant is a tool of its own,
-   never an argument (`docs/architecture.md`, "What a write may reach").
-   Administrator access is a tool of its own too, reads included
-   (`docs/architecture.md`, "Administrator access").
-7. **A reply carries both halves.** `structuredContent` under the output
-   schema, and a readable rendering in `content` — never the same JSON
-   twice. `internal/tools/render.go` says why, with the sources.
-8. **Own wire types, raw REST.** Do not import `google.golang.org/api`;
-   it drags in gRPC and telemetry for a subset we hand-write. Extend
-   `internal/gchat`.
-9. **The released tool surface is a contract.** Tools keep their names
-   and output fields, and resource templates their URIs;
-   `scripts/gates schema-diff` fails on a rename or a lost field. Adding
-   is fine.
-10. **No auto-commit, no auto-push.** Work on a branch; the owner pushes.
-11. **Verify a convention against a primary source** before adopting it,
-    and record the verdict in the evidence log.
-
-## Where things go
-
-- `cmd/google-chat-mcp/` — subcommands and server wiring.
-- `internal/config/` env plus bound flags; `internal/credentials/`
-  env → keyring → file; `internal/userconfig/` non-secret profile state;
-  `internal/auth/` loopback OAuth and the token source;
-  `internal/scopes/` the scope set and what each tool needs.
-- `internal/gchat/` REST client and wire types, with retry, limiters and
-  drift reporting; `internal/directory/` the email cache and resolver.
-- `internal/service/` the rules worth testing — idempotency, degrading,
-  search, section moves; `internal/tools/` the MCP tools, their schemas
-  and their renderings; `internal/server/` SDK wiring and the schema dump.
-- `internal/doctor/` the live check; `internal/leakcheck/` and
-  `internal/version/` the build stamp.
-- `scripts/gates/` is every check this repository runs on itself, as Go:
-  the schema diff, the coverage floor, the stdio smoke test, the
-  staleness gate, the API-coverage gate and the Claude Desktop bundle
-  packer. It is under `scripts/` and not `internal/` because it never
-  ships, and it is Go and not shell so that the code holding the gates
-  shut is held to them too.
-  There is no shell, no npx and no Python in it, on purpose.
-- `internal/livecheck/` drives the shipped binary against a real account,
-  behind a `live` build tag; `internal/evals/` scores a model driving the
-  tools, behind an `evals` one. Neither runs in CI. `livecheck`'s surface
-  gate does, because it needs no credentials.
-- `testdata/schemas-baseline.json` — the released tool surface, which a
-  change may add to but never drop from.
-- `testdata/api-coverage.tsv` — every Chat and People API method, plus
-  the one OpenID Connect endpoint, and the verdict on it: the client
-  method that uses it, or the reason it is deliberately left out.
+1. **Never commit anything internal.** No organization names, space or
+   message ids, account emails, Cloud project ids, OAuth client ids or
+   secrets, and no content from real conversations: not in fixtures,
+   commit messages or logs. A made-up id says so: `spaces/AAAAspace1`,
+   never `spaces/AAAQ`. `internal/leakcheck` fails the build (D-04).
+2. **Never write to stdout outside `main`.** Stdout carries only MCP
+   JSON-RPC frames, and logs go to stderr through `slog` (D-02).
+   forbidigo holds it, with `scripts/` excluded.
+3. **Never log the payload**: message text, addresses, display names,
+   tokens or search terms. Method, tool, resource id, outcome and
+   duration are fine (D-03).
+4. **Never alter what `send_message` posts.** No prefix, no suffix
+   (D-14).
+5. **Never add a dry run that works by convention.** The flag puts the
+   call on a context `internal/gchat` refuses to write under (D-09).
+6. **Never register a tool outside `register`** (D-10). Never make a
+   risky variant an argument: it is a tool of its own (D-16), and so is
+   every administrator call (D-28). The server asks the person nothing
+   (D-15), and the `requiresUserInteraction` mark stays on the tools
+   D-25 names.
+7. **Never send the same JSON twice in a reply.** `structuredContent`
+   follows the output schema, and `content` is a readable rendering
+   (D-13).
+8. **Never import `google.golang.org/api`.** Extend the wire types in
+   `internal/gchat` (D-05).
+9. **Never rename a released tool or drop an output field**, nor change
+   a resource template's URI. `scripts/gates schema-diff` fails on one;
+   adding is fine (D-07).
+10. **Never commit to `main` or push.** Work on a branch; the owner
+    pushes.
+11. **Never adopt a belief about Google without a primary source.**
+    Record what you verified, or found wrong, as an `E-NNN` entry.
 
 ## Definition of done
 
-`make check`, which is what CI runs: gofmt, `go vet` including every
-tagged suite, golangci-lint, race tests with an 80% floor per package —
-`cmd/` has its own lower floor, printed on every run, because the OAuth
-flow and the serve loop have no seam a unit test can reach — plus
-`govulncheck`, the license allow-list, a stdio smoke test, the schema
-diff, the API-coverage gate, the live driver's surface gate, and the
-staleness gate over README, `docs/` and CHANGELOG. On a pull request CI
-also runs `schema-ack`: a commit footer names each changed item of the
-tool surface. Plus tests for new behavior, `/simplify` and `/code-review
-high` with findings resolved or written down, and a look at the schema
-diff for anything breaking.
+- `make check` passes. On a pull request CI also runs `schema-ack`,
+  which needs a commit footer naming each changed item of the tool
+  surface (`CONTRIBUTING.md`).
+- New behavior has tests.
+- `/simplify` and `/code-review high` have run. A fixed finding is one
+  line in the commit body. A declined one goes in the PR body, or
+  becomes a present-tense constraint comment at the line it protects.
+  Never write findings into `docs/`.
+- The schema diff has been read for anything breaking.
+- Anything touching the write path or an API response shape has had a
+  `make live` run. A release also needs `make api-diff`
+  (`docs/release.md`).
 
-Before a release, `make live` as well. It drives the shipped binary
-against a real account and is the only thing here that can catch a wrong
-belief about the API, because every fake in the unit suite is written
-from that belief. `make check` cannot replace it and green does not imply
-it. `make api-diff` too: it refetches Google's discovery documents into
-`testdata/api-methods.json`, and every method it adds fails
-`api-coverage` until somebody judges it.
+## Traps
 
-Green gates are not done. A repeat-delete bug once went through every
-one of them, because a unit test asserts the behavior the code was
-written to have — Google answers a deleted message with a tombstone, and
-nothing local knew that. Anything touching the write path or an API
-response shape gets a live run before it counts.
+- **Green gates are not done.** Every fake in the unit suite is written
+  from what we believe Google does, and only `make live` tests that
+  belief. A repeat delete answering with a tombstone is the example
+  (E-017).
+- **An empty page is not the end of a listing.** Google applies the
+  page size before it filters (E-005).
+- **A forbidigo settings block that fails to load leaves forbidigo on
+  its defaults**, still firing and looking right. Check the message
+  text when you verify it.
+- **Do not write a count into a doc** unless a gate checks it.
+- **Never delete a decision or reuse an ID.** Supersede or deprecate
+  it, and take the next ID from the file's `Next ID:` line.
 
 ## Writing
 
-Plain and short, everywhere it lands — code comments, commit messages,
-CHANGELOG, docs, tool descriptions. Lead with the outcome. One idea per
-sentence. No narration of the investigation.
-
-CHANGELOG rules are in `CONTRIBUTING.md` and are not optional: Keep a
-Changelog sections only, `**Breaking:**` on anything needing the reader
-to act. `release.yml` lifts the section verbatim into the release notes,
-so the entry is the release note.
+Plain and short, everywhere: lead with the outcome, one idea per
+sentence, no narration of the investigation. History goes in commit
+messages. The CHANGELOG rules in `CONTRIBUTING.md` are not optional,
+because `release.yml` lifts the section verbatim into the release notes.

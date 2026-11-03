@@ -222,8 +222,8 @@ func TestUnpinnedTools(t *testing.T) {
 
 // The sixth rule: two exact pins that name different versions. Every
 // other rule passes on both lines, because each one is pinned — the
-// defect is that they disagree, and it shipped as a runbook naming a
-// goreleaser four minor releases behind the one the tag used.
+// defect is that they disagree, so a rehearsal builds with another
+// goreleaser than the tag does.
 func TestGoreleaserPinsAgree(t *testing.T) {
 	const makefile = "release-rehearse:\n\tgo run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot\n"
 	const workflow = "      - uses: goreleaser/goreleaser-action@" +

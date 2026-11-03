@@ -229,8 +229,9 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 }
 
 // uploadBaseOf is where a media upload goes: the Chat base with /upload
-// in front of its path, which is how Google spells the upload endpoint
-// — https://chat.googleapis.com/upload/v1/{parent}/attachments:upload
+// in front of its path, which is how the discovery document alone
+// spells the upload endpoint (E-016) —
+// https://chat.googleapis.com/upload/v1/{parent}/attachments:upload
 // against a v1 base of https://chat.googleapis.com/v1. Derived rather
 // than configured, so there is no second setting to keep in step with
 // the first, and resolved once in New rather than per upload.

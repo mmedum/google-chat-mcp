@@ -5,8 +5,8 @@
 // needs nothing. Sensitive needs a few days of self-service verification
 // for a published app. Restricted needs an annual CASA review. An
 // Internal Workspace app skips all of it, which is why this server asks
-// for the umbrella scopes without apology; docs/security.md records the
-// trade-off for anyone publishing externally.
+// for the umbrella scopes without apology. The trade-off for anyone
+// publishing externally is in docs/troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment.
 package scopes
 
 import (

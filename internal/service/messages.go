@@ -117,8 +117,8 @@ type MessageLink struct {
 // forwarded, as it read when it was quoted.
 //
 // What Google fills in depends on Type, and that is its rule rather than
-// this server's: the fields below say which is which, and the evidence
-// log in docs/architecture.md records where that was read.
+// this server's: the fields below say which is which, and E-012 records
+// where that was read.
 //
 // For a forward this snapshot is the only copy there is: the source
 // space is often one the caller is not in, so reading Name there fails.
@@ -131,9 +131,8 @@ type MessageQuote struct {
 	// which is what Google defaults to when a message does not say.
 	Type string
 	// Sender is the quoted message's author as Google names it, and it
-	// is a DISPLAY NAME rather than a resource name: read off a real
-	// reply-quote and a real forward on 2026-09-17, both of which
-	// carried a person's name where the reference says "author name".
+	// is a DISPLAY NAME rather than a resource name, where the
+	// reference says "author name" (E-010).
 	// So it names somebody and identifies nobody — it cannot be passed
 	// to another tool, and it is not worth a directory lookup.
 	Sender string
@@ -650,7 +649,7 @@ func (s *Service) SendMessage(ctx context.Context, in SendMessageInput) (*SendMe
 // everyoneRefused is the refusal of a post or an edit that would notify
 // every member of a space. A broadcast is refused rather than left to
 // the client, which approves a tool and never one of its arguments
-// (docs/architecture.md, "What a write may reach").
+// (D-19).
 func everyoneRefused(what string) error {
 	return Failf(ClassBlocked, "the text mentions everyone in the space, which notifies every member, and this server "+
 		"does not %s that; nothing was sent. Mention the people you mean with <users/their@address>", what)
@@ -663,7 +662,7 @@ func everyoneRefused(what string) error {
 // one, so the message is read for it. A quote is a reply to a message in
 // the same space: Google refuses a forward under a person's sign-in,
 // whichever way it was tried, so a message from another space is refused
-// here with that said.
+// here with that said (E-013).
 func (s *Service) quote(ctx context.Context, space, name string) (*gchat.QuotedMessageMeta, error) {
 	if name == "" {
 		return nil, nil

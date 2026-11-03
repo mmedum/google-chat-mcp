@@ -245,8 +245,8 @@ func confirmGone[T any](read func(context.Context, string) (T, error), deleted f
 // message's text, a space's or an emoji's name. The client's prompt
 // shows only the arguments, and an opaque resource name tells the
 // person approving it nothing, so the call carries what the target says
-// and the server reads the target and compares (docs/architecture.md,
-// "What a write may reach"). A mismatch is [stale] and changes nothing.
+// and the server reads the target and compares (D-18). A mismatch is
+// [stale] and changes nothing.
 
 // minTextWitness is how much of a message's text a delete repeats:
 // enough for the prompt to say which message goes. A shorter message is
@@ -427,7 +427,7 @@ func (s *Service) warnUnparsed(event string, dropped, total int) {
 // The Unix epoch becomes the zero time too: it is a protobuf Timestamp
 // of zero, which is how Google writes a time it does not have. An
 // administrator's read of a space sent it as the last active time,
-// while the search gave that space's real one (live, 2026-10-31).
+// while the search gave that space's real one (E-030).
 // Nothing in Chat happened in 1970.
 func parseTime(v string) time.Time {
 	if v == "" {

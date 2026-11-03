@@ -45,7 +45,7 @@ linters:
         - pattern: ^os\.Stdout$
           msg: stdout carries only MCP JSON-RPC frames; take an io.Writer instead
         # The server asks the person nothing; the client approves each
-        # call (docs/architecture.md, "What a write may reach"). These are
+        # call (D-15 in docs/architecture.md). These are
         # the two ways to ask: a form elicitation, and the input requests
         # a result carries from protocol 2026-07-28.
         - pattern: \.Elicit$

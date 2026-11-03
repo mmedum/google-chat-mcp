@@ -8,9 +8,9 @@
 // the server's own tools against the live API and asserts the server's
 // behavior — the only thing in this repository that can catch the class
 // of bug the unit suite structurally cannot, because every fake here is
-// written from what we believe the API does. Seven rows of the evidence
-// log in docs/architecture.md were settled by a live call contradicting
-// Google's own reference; none of them could have been found by a test.
+// written from what we believe the API does. docs/evidence.md records
+// where a live call contradicted Google's own reference, and no unit
+// test could have found one of those.
 //
 // Two rules make it safe to run against a real Workspace. Everything
 // happens inside scratch spaces the run creates and deletes, so nothing

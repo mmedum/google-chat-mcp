@@ -1,44 +1,118 @@
 # Architecture
 
 How `google-chat-mcp` is put together, and the decisions a contributor
-should not undo without a reason better than the one that put them here.
+should not undo without a better reason than the one that put them
+here. Part 1 is the overview. Part 2, from [Decisions](#decisions), is
+one entry per decision, cited elsewhere by its D-ID. What was verified
+about Google's APIs and the clients lives in
+[evidence.md](evidence.md), cited by E-ID.
 
-## Shape
+## Context
 
-One Go binary. It speaks MCP over stdio as a subprocess of the client,
-holds one person's credentials, and calls Google's REST APIs directly.
-There is no server to host, no shared deployment, no service account and
-no domain-wide delegation.
+`google-chat-mcp` is a Model Context Protocol server for Google Chat.
+One Go binary runs as a subprocess of an MCP client and speaks MCP over
+stdio. It holds one person's OAuth credentials and calls Google's REST
+APIs directly. Nothing is hosted: there is no shared deployment, no
+service account and no domain-wide delegation (D-01).
 
-That is a deliberate narrowing. An HTTPS transport would need an
-authorization server of its own, because Google supports neither dynamic
-client registration nor client ID metadata documents, and the Go SDK's
-`auth` package is a resource server only: it verifies bearer tokens and
-serves protected-resource metadata, and issues nothing. Bridging that gap
-means running and securing an OAuth server, which is a different project.
-Claude on the web and on mobile cannot reach a stdio server, and that is
-the cost.
+The parties around the server:
 
-## Packages
+- **The person** signs in once with `google-chat-mcp login`. Every call
+  acts as them, with their permissions in Chat.
+- **The operator** decides what the server may do, through `GCM_*`
+  environment variables the client passes at start: the toolsets,
+  read-only mode, the destructive switch and the local directory. The
+  operator is usually the person, setting up their own client.
+- **The client** draws the approval prompt from the tool annotations and
+  its own rules. The server asks the person nothing itself (D-15).
+- **The model** chooses the calls and their arguments. It can be wrong
+  or steered by what it reads, so nothing it sends widens what the
+  operator allowed (D-26).
 
-```
-cmd/google-chat-mcp/     subcommands, flag parsing, server wiring
-internal/config/         GCM_* environment plus bound flags, validated once at start
-internal/userconfig/     non-secret per-profile state: client secret path, account, scopes
-internal/credentials/    refresh token: environment, then OS keyring, then a 0600 file
-internal/auth/           loopback OAuth login, and the token source that refreshes
-internal/scopes/         the scope set, the umbrella table, and what each tool needs
-internal/gchat/          REST client and wire types for Chat, People and OIDC
-internal/directory/      email cache and the resolver that fills it
-internal/service/        the rules: idempotency, degrading, search, section moves
-internal/tools/          MCP tools, their schemas, and their renderings
-internal/server/         SDK wiring and the schema dump
-internal/doctor/         the live check behind `google-chat-mcp doctor`
-internal/leakcheck/      fails the build on anything identifying a real account
-scripts/gates/           every check the repository runs on itself
-```
+The server talks to Google through:
+
+- the Chat API, for spaces, messages, members, reactions, sections,
+  events, read state, custom emoji and availability;
+- the People API, for the names and addresses Chat did not send (D-35);
+- the Cloud Identity Groups API, for Google Groups in a space (D-21);
+- Google's OAuth and OpenID Connect endpoints, for login, refresh and
+  `whoami`.
+
+It is not a Chat app. It acts as a person and never as a bot, so a
+method only an app can call is out of reach (E-041). It is not a hosted
+connector either, so Claude on the web and on mobile cannot reach it
+(D-01).
+
+## Quality goals
+
+In priority order:
+
+1. **Reach stays where the operator set it.** A tool the settings leave
+   out is not registered, so no client mode and no model can call it.
+   A risky variant is a tool of its own, and no tool edits the settings
+   (D-12, D-16, D-26).
+2. **The stream and the logs stay clean.** Stdout carries only protocol
+   frames, the logs carry no conversation, and the repository carries no
+   real account (D-02, D-03, D-04).
+3. **An upstream change degrades rather than breaks.** An unknown field
+   is logged, a failed name lookup costs one field, and a repeat delete
+   reads what is there (D-08, D-35, D-34).
+4. **The tool surface is a contract.** Names, output fields and resource
+   URIs a release shipped keep working for the people who built on them
+   (D-07, D-13).
+5. **Beliefs about the API are checked against the API.** Every fake in
+   the unit suite is written from what we believe Google does. The live
+   run and the evidence entries are where the belief meets Google
+   (D-39, D-49).
+
+## Codemap
+
+- `cmd/google-chat-mcp` is the program. With no subcommand it serves;
+  `login`, `logout`, `status`, `doctor` and `--dump-schemas` are the
+  rest. It names stdout and stderr once and passes them down (D-02).
+- `internal/auth` runs Google's desktop OAuth flow, a loopback redirect
+  with PKCE, and the token source that refreshes access tokens.
+- `internal/config` reads the `GCM_*` environment and the bound flags,
+  validates them once at start, and keeps `config.Vars`, the registry
+  of every variable the server reads (D-44).
+- `internal/credentials` stores and finds the refresh token: the
+  environment first, then the OS keyring, then a `0600` file.
+- `internal/directory` holds the email cache and the People resolver
+  that fills it (D-35).
+- `internal/doctor` is the live check behind `google-chat-mcp doctor`,
+  which reports the drift it finds in the caller's own spaces (D-08).
+- `internal/evals` scores a model driving the tools, behind the `evals`
+  build tag, with a permission-prompt helper for the headless client
+  (D-48).
+- `internal/gchat` is the REST client and wire types for Chat, People,
+  Cloud Identity and OpenID Connect, with the rate limiters, the retry
+  rules and the drift-reporting decoder (D-05, D-38).
+- `internal/leakcheck` fails the build on anything that identifies a
+  real person, account or space (D-04).
+- `internal/livecheck` is the live driver behind the `live` build tag,
+  whose surface gate runs in `make check` (D-49).
+- `internal/redact` masks addresses in text this server did not write,
+  before it leaves the process.
+- `internal/scopes` holds the scope set, the umbrella table and the
+  scope each call needs (D-37).
+- `internal/server` wires the MCP SDK, holds the server instructions and
+  dumps the schemas.
+- `internal/service` holds the rules worth testing, and is the only
+  place a Google failure becomes a `[class]` tool error.
+- `internal/tools` defines the MCP tools, their schemas and their
+  renderings, each added through `register` (D-10).
+- `internal/userconfig` stores non-secret per-profile state: the client
+  secret's path, the account and the granted scopes.
+- `internal/version` holds the version the build stamps in.
+
+Beside the packages, `scripts/gates` is every check the repository runs
+on itself, written in Go. `testdata` holds the released surface and the
+API snapshots, and `packaging/mcpb` the Claude Desktop bundle's manifest
+and Linux launcher.
 
 ## Request flow
+
+A tool call crosses the layers in one direction:
 
 ```
 MCP client
@@ -48,775 +122,1347 @@ internal/server        SDK session, tool and resource registration
    │
    ▼
 internal/tools         decode the input, call the service, shape both halves of the reply
-   │                   register() applies the annotations, the read-only and
-   │                   destructive gating, confirm and the dry-run context
+   │                   register() applies the annotations, the gating, confirm,
+   │                   the dry-run context and the administrator context
    ▼
 internal/service       the rules worth testing, and the only place that
    │                   turns a Google failure into a [class] tool error
    ├──► internal/directory   resolve the user ids Chat sent no address for, cached
    ▼
-internal/gchat         one request: rate limiter, retry with backoff, drift-reporting decode
+internal/gchat         one request: rate limiter, retry, drift-reporting decode
    │
    ▼
 internal/auth          refresh token → access token, cached until it expires
    │
    ▼
-Google Chat, People and OIDC
+Google Chat, People, Cloud Identity and OIDC
 ```
+
+### Start
+
+`main` loads the configuration and refuses to start on a bad setting.
+`internal/server` then registers every tool through `register`, which
+leaves out what the settings exclude: the write tools under
+`GCM_READ_ONLY`, the destructive ones without `GCM_ENABLE_DESTRUCTIVE`,
+and any toolset not named (D-10, D-27). A tool spec that breaks a rule,
+such as a destructive tool without `confirm`, panics here, so a mistake
+fails at start in every configuration. The registered surface does not
+change for the life of the process (D-26).
+
+### A read
+
+A client calls `get_messages`. `internal/tools` decodes the input
+against a schema that refuses unknown properties, and calls the
+service. The service asks `internal/gchat` for a page, which waits on
+the read limiter, sends one request, and decodes the answer without
+rejecting unknown fields (D-08). Senders Chat named arrive with their
+addresses; the rest are resolved through the cache, then People, and a
+failed lookup leaves the address null (D-35). The tool answers with the
+structured result and a readable rendering (D-13).
+
+### A write
+
+A client calls `delete_message` with `space_display_name`, `text_start`
+and `confirm: true`. `register` refuses the call without `confirm`. The
+service reads the space and checks its name (D-17), then reads the
+message and compares its text (D-18). A mismatch is `[stale]`, and
+nothing is sent. With `dry_run`, the call runs on a context that
+`internal/gchat` refuses to write under, so the reads happen and the
+delete does not (D-09). Otherwise the delete goes out on the write
+limiter. A refused delete is read back before it is reported, since
+Google answers "gone" and "not yours" alike (D-34). A write that may
+have landed before a server failure says so rather than inviting a
+retry (D-38).
+
+### Login and refresh
+
+`google-chat-mcp login` sends the person to Google's consent page and
+listens on a loopback port for the redirect. It stores the refresh token in the OS
+keyring, or in a `0600` file when no keyring answers. The profile in
+`internal/userconfig` records the scopes Google granted, which can be
+fewer than were asked for (D-37). At serve time the token source trades
+the refresh token for an access token and caches it until it expires.
+When Google refuses the refresh token it answers `invalid_grant`, and
+only signing in again fixes that (E-081).
+
+## Invariants
+
+- Stdout carries only MCP JSON-RPC frames (D-02).
+- No log line carries message text, an address, a display name, a token
+  or a search term (D-03).
+- Nothing in the repository identifies a real person, account or space
+  (D-04).
+- A released tool name, output field or resource URI changes only in an
+  acknowledged break (D-07).
+- An unknown field in a Google response is logged, never refused (D-08).
+- A dry run sends nothing that changes Chat (D-09).
+- Every tool is added through `register`, and its kind decides its
+  annotations and whether it is registered (D-10).
+- A destructive tool is registered only under
+  `GCM_ENABLE_DESTRUCTIVE=true` (D-12).
+- Every reply carries `structuredContent` and a text rendering (D-13).
+- `send_message` adds nothing to the text it posts (D-14).
+- The server never asks the person a question (D-15).
+- A write to a space is refused unless `space_display_name` names that
+  space (D-17).
+- A destructive call is refused unless it says `confirm: true` (D-18).
+- No tool changes the server's settings or what it registers (D-26).
+- Every administrator call goes through an `admin_` tool, and only those
+  tools act as an administrator (D-28).
+- A People failure never empties a listing or drops a row (D-35).
+- A write with no idempotency key is retried only after a 429 (D-38).
+- Every API method has a verdict in `testdata/api-coverage.tsv` (D-39).
+
+## Cross-cutting concerns
+
+**Configuration.** Every setting is a `GCM_*` variable with a flag bound
+to the same name. A flag overrides the environment, and the environment
+overrides the default. Validation runs once at start, so a bad setting
+fails before any tool is offered. A removed setting is refused with the
+name of its replacement. Every reader goes through `config.Lookup`,
+which drops the spaces around a value (D-44). The full list is in
+[configuration.md](configuration.md).
+
+**Errors.** Every tool error starts with a class in brackets:
+`[auth]`, `[scope]`, `[invalid]`, `[quota]`, `[forbidden]`, `[server]`,
+`[upstream]`, `[unsupported]`, `[blocked]`, `[stale]` or `[unexpected]`.
+The class tells the model what to do next, which Google's own message
+often does not. `[scope]` names the missing scope and the command that
+grants it (D-37). `[blocked]` is a refusal by rule, and `[stale]` a
+witness that did not match (D-18). `make classes` holds the vocabulary
+closed from both sides.
+
+**Logging.** `slog` to stderr, text or JSON. A line names the method,
+the tool, the resource id, the outcome and the duration, and nothing a
+person wrote (D-03). Addresses in text the server did not write, such as
+Google's error messages, are masked by `internal/redact` before they
+reach a log or a reply.
+
+**Limits and retries.** Reads and writes have their own limiters, set
+inside Google's per-user quota. A read retries any transient failure
+with backoff. A write retries only where repeating it is safe (D-38).
+The caller's context bounds the whole call, and a long transfer that
+stalls is cut.
+
+**Schema drift.** Google adds fields without notice. The decoder counts
+and logs them, `doctor` reports them on demand, and `make api-fields`
+holds every published field to a verdict (D-08, D-39).
+
+**Scopes.** Login asks for the scopes the settings need and no more:
+read-only scopes under read-only mode, and the administrator scopes only
+with the admin toolset (D-36, D-33). Each call names its scope, so a
+missing one becomes a `[scope]` error with the fix (D-37).
+
+**Testing.** The unit suite runs against fakes, which encode what we
+believe Google does. `make live` drives the shipped binary against a
+real account, and is the only check that can show a belief wrong
+(D-49). `make live-surface` runs in `make check` and fails on a tool no
+live step exercises. A change to the write path or a response shape
+gets a live run before it counts.
+
+**Documentation.** A decision lives once, in part 2 here, and evidence
+once, in [evidence.md](evidence.md). The docs gate holds every D-ID and
+E-ID citation to an entry that exists, and every "Held by" to a gate or
+test that exists. The staleness gate holds the README,
+[configuration.md](configuration.md) and the setup guide to the code.
 
 ## Decisions
 
-### Stdout is the protocol
+| ID | Decision | Status | Held by |
+| --- | --- | --- | --- |
+| D-01 | One stdio binary per person, with nothing to host | accepted | smoke, review |
+| D-02 | Stdout carries only MCP JSON-RPC frames | accepted | forbidigo, smoke |
+| D-03 | Logs record the call, never the payload | accepted | TestLogsNeverCarryThePayload |
+| D-04 | Nothing in the repository identifies a real account | accepted | leaks, TestTheRepositoryIsClean |
+| D-05 | Own wire types over raw REST | accepted | api-fields, review |
+| D-06 | Output types shadow the wire and never embed it | accepted | schema-diff, TestEveryToolGetsAnAnnotatedOutputSchema |
+| D-07 | The released tool surface is a contract | accepted | schema-diff, schema-ack, TestTheDumpIgnoresServerSettings |
+| D-08 | Drift is observable, never fatal | accepted | TestDriftDoesNotFailTheCall, TestDriftIsCountedEveryTimeAndLoggedOnce, TestDecodeReportsUnknownFields |
+| D-09 | A dry run cannot write | accepted | TestADryRunCannotWriteWhateverTheMethod, TestEveryDryRunWritesNothing |
+| D-10 | Every tool goes through `register`, which reads one `Kind` | accepted | TestAnnotationsAreConsistent, TestRegistrationRefusesAnUnguardedDestructiveTool, TestReadOnlyLeavesOutEveryWrite |
+| D-11 | Annotations say exactly what a tool changes | accepted | TestOnlyToolsThatAddSayTheyAreNotDestructive, TestReadOnlyToolsAreAnnotated |
+| D-12 | Destructive tools exist only when the operator turns them on | accepted | TestADestructiveToolIsRegisteredOnlyWhenAllowed, TestTheDestructiveSwitch |
+| D-13 | A reply carries both halves, in different forms | accepted | TestEveryToolReturnsBothHalves, TestRenderings |
+| D-14 | `send_message` posts the body verbatim, once | accepted | TestSendMessagePostsTheTextVerbatim, TestAMentionIsPostedVerbatim, TestSendMessageUsesTheCallersIDWhenGiven |
+| D-15 | The server asks the person nothing | accepted | forbidigo |
+| D-16 | A risky variant is a tool of its own | accepted | TestOnlyPromoteMemberMakesAManager, TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal, TestCreateSpaceRefusesAnAudience |
+| D-17 | A write to a space names the space it writes to | accepted | TestCheckSpaceHoldsTheNameToTheSpace, TestCheckSpaceRefusesWhatItCannotRead, TestEveryToolThatNamesASpaceIsFilledIn |
+| D-18 | A destructive call takes `confirm` and repeats what it acts on | accepted | TestADeleteRunsOnlyWithConfirm, TestDeleteMessageHoldsItsTextToTheWitness, TestDeleteSpaceHoldsItsNameToTheWitness, TestDeleteCustomEmojiHoldsItsShortcodeToTheWitness, TestAddExternalMemberHoldsAGroupToItsAddress |
+| D-19 | Mentioning everyone is refused | accepted | TestAMentionOfEveryoneIsRefused, TestMentionsEveryone |
+| D-20 | A space is created private and opened only by `set_space_audience` | accepted | TestCreateSpaceRefusesAnAudience, TestUpdateSpaceMakesASpacePrivateAndNeverOpensOne, TestUpdateSpaceRefusesAnAudienceBesideOtherFields, TestSetSpaceAudienceOpensASpace |
+| D-21 | `add_member` invites only the organization into a space that admits outsiders | accepted | TestAddMemberRefusesSomeoneFromOutside, TestAddMemberRefusesAGroupWhereOutsidersAreAdmitted, TestAGroupWhereOutsidersAreAdmittedIsAddedOnlyAsExternal, TestAddMemberDryRunInvitesNobody |
+| D-22 | Only `promote_member` makes a manager | accepted | TestOnlyPromoteMemberMakesAManager, TestUpdateMemberRoleChecksTheRole |
+| D-23 | `delete_message` deletes one message, and `delete_thread` its replies | accepted | TestDeleteThreadTakesTheReplies, TestDeleteThreadReportsARefusal |
+| D-24 | `update_space` keeps the guidelines | accepted | TestUpdateSpaceKeepsTheGuidelines |
+| D-25 | The `requiresUserInteraction` mark goes only where the prompt is the point | accepted | TestOnlyTheMarkedSetAsksForAPerson, TestRegistrationRefusesAnUnguardedDestructiveTool |
+| D-26 | No tool widens the server's own reach | accepted | TestNoToolCanWriteTheServersSettings, TestNoToolChangesWhatIsRegistered |
+| D-27 | Toolsets are feature areas, never access levels | accepted | TestToolsetsNarrowTheSurface, TestAdminToolsNeedTheAdminToolset |
+| D-28 | Every administrator call is its own `admin_` tool | accepted | TestAdminToolsNeedTheAdminToolset, TestOrdinaryCallsNeverAskForAdminAccess, TestAdminRefusalsNameTheAdminTool |
+| D-29 | Administrator tools take their ordinary forms' kinds, except an add | accepted | schema-diff, TestADestructiveToolIsRegisteredOnlyWhenAllowed |
+| D-30 | Administrator access rides on the request context | accepted | TestAsAdministratorMarksTheContext, TestAnAdminToolsCallsRunAsTheAdministrator, TestAdminRemoveReadsBackAsTheAdministrator, TestAdminAccessRunsTheNineAdminMethodsAndRefusesTheRest |
+| D-31 | Administrator writes act on named spaces only | accepted | TestAdminWritesActOnNamedSpacesOnly, TestAdminWritesRefuseANamedGroupChat |
+| D-32 | `admin_add_member` adds people, never a group and never the caller | accepted | TestAdminAddMemberNeverAddsTheCaller |
+| D-33 | The administrator scopes follow the switches | accepted | TestLoginAsksForTheAdminDeleteOnlyWithDeletesOn, TestLoginAsksForWhatTheSettingsAllow, TestAdminUmbrellasCoverTheirReads |
+| D-34 | Idempotency is checked, not assumed | accepted | TestDeleteMessageIsIdempotent, TestRemoveMemberIsIdempotent, TestIsAlreadyGoneNeverSwallowsAMissingScope, live |
+| D-35 | A People failure costs one field, never a row | accepted | TestPeopleFailuresNeverEmptyAListing, TestAPeopleFailureShowsAsANullEmail, TestAnAddressChatNamedIsRememberedForAReaction, TestASearchNamesASenderTheServerHasSeen |
+| D-36 | Read-only mode holds a token that cannot write | accepted | TestReadOnlyAsksForNothingThatWrites, TestReadOnlyLeavesOutAReadThroughAWriteScope, TestReadOnlyRegistersExactlyTheReadTools |
+| D-37 | Every call names its scope, and an umbrella satisfies its parts | accepted | TestEveryCallNamesItsScope, TestAMissingScopeErrorNamesTheScope, TestImpliesOnlyNamesRequestedScopes, TestGrantedScopesReadsWhatGoogleReturned |
+| D-38 | A write is retried only where repeating it is safe | accepted | TestANonIdempotentWriteIsNotRetriedOnAnAmbiguous5xx, TestAnIdempotentWriteStillRetriesOnA500, TestRetriesOn429, TestTheReadLimiterIsApplied |
+| D-39 | Every API method and field has a written verdict | accepted | api-coverage, api-fields, TestCheckCallsHoldsTheRecordAndTheClientToEachOther |
+| D-40 | Releases are `go install` and signed archives | accepted | pins, release-rehearse |
+| D-41 | The Claude Desktop bundle ships inside the signature | accepted | mcpb-pack, TestPackWritesWhatTheManifestNames, TestABundleThatDoesNotCloseIsNotWritten |
+| D-42 | The registry entry is published after the release exists | accepted | server-json, TestServerJSONNamesTheModuleGoModDeclares |
+| D-43 | The bundle runs on every platform Claude Desktop does | accepted | mcpb-manifest, TestTheLauncherRunsWhatThePackerStages, TestThePlatformsAreTheStagedOnes |
+| D-44 | The bundle asks for every setting the server reads | accepted | mcpb-manifest, TestBundleVarsAreDerivedFromTheSettings, TestEveryVariableTheCodeNamesIsInEnvVars, TestASettingOfSpacesIsUnset |
+| D-45 | The bundle's defaults configure nothing | accepted | mcpb-manifest, TestTheRefusalsTurnASwitchOnWhateverItsDefault, TestADefaultHoldingAReferenceIsRefused |
+| D-46 | The bundle passes settings by `env` alone | accepted | mcpb-manifest, TestManifestProblemsRunsEveryCheck, TestAManifestKeyGivenTwiceIsRefused |
+| D-47 | Windows programs carry a version resource that git ignores | accepted | winres, TestWinresWritesWhereGoreleaserBuilds, TestReleaseHooksDoNotWriteIntoTheCheckout |
+| D-48 | Agent evals judge the space, never the model's account of it | accepted | evals |
+| D-49 | A live run writes down only what it created | accepted | transcript, live |
 
-Newline-delimited JSON-RPC frames and nothing else. Logs go to stderr
-through `slog`. One stray `fmt.Println` corrupts the session before the
-client's first request completes, which is why the smoke test asserts on
-every line the server writes.
+### D-01 One stdio binary per person, with nothing to host
 
-### Logs record the call, never the payload
+The server is one Go binary that runs as a subprocess of the MCP
+client. It holds one person's credentials and calls Google's REST APIs
+directly. There is no shared deployment, no service account and no
+domain-wide delegation.
+
+The reason is the authorization server an HTTPS transport would need.
+Google supports neither dynamic client registration nor client ID
+metadata documents, so a remote MCP server cannot hand a client
+Google's own login. The Go SDK's `auth` package is a resource server
+only: it verifies bearer tokens and serves protected-resource metadata,
+and issues nothing. Bridging that gap means running and securing an
+OAuth server of our own, which is a different project.
+
+Per-user OAuth keeps every call inside the signed-in person's own
+permissions in Chat. Nothing here can act for anyone else.
+
+Rejected: an HTTPS transport with a hosted authorization server, for
+the reason above.
+Cost: Claude on the web and on mobile cannot reach a stdio server.
+
+### D-02 Stdout carries only MCP JSON-RPC frames
+
+MCP's stdio transport says the server "MUST NOT write anything to its
+`stdout` that is not a valid MCP message", and "MAY write UTF-8 strings
+to its standard error (`stderr`) for logging purposes"
+([transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)).
+A stray print corrupts the JSON-RPC stream before the client's first
+request completes, and the client silently stops working.
+
+So logs go to stderr through `slog`. `main` names the process's streams
+once and passes them down as `io.Writer`. forbidigo refuses
+`fmt.Print*` and `os.Stdout` everywhere else, and `scripts/` is
+excluded as maintainer tooling. Its settings carry their own messages,
+so a settings block that fails to load shows up as forbidigo's default
+message. The smoke test drives the binary over stdio and fails on any
+line the server writes that is not a frame.
+
+Rejected: a log level that quiets output in production, since one stray
+print at any level still breaks the stream; a logging library with a
+sink of its own, which writes where it likes.
+Cost: a dependency that prints is unusable, and a debugging print goes
+to stderr.
+
+### D-03 Logs record the call, never the payload
 
 A log line may say which method ran, against which resource, how it
-ended and how long it took. It may not carry message text, an email
+ended and how long it took. It never carries message text, an email
 address, a display name, a token or a search term.
 
-Resource ids are the deliberate exception: a space id is how an operator
-follows something up, the logs go to their own stderr, and an id on its
-own says nothing about what was said.
+Resource ids are the deliberate exception. A space id is how an
+operator follows something up, the logs go to their own stderr, and an
+id on its own says nothing about what was said.
 
 The subtle leak is the request URL. `net/http` wraps every transport
 failure in a `*url.Error` whose message renders the whole URL, and a
-People search puts the caller's search term in the query string — so an
-ordinary timeout would write "who did this person look up" into the
-logs. `withoutURL` strips it. `TestLogsNeverCarryThePayload` drives the
-tools with a payload full of canaries and fails if one appears at any
-level; reverting `withoutURL` makes it fail, which is the check that the
-test is worth having.
+People search puts the search term in the query string. An ordinary
+timeout would then log whom the person looked up. `withoutURL` strips
+the URL from transport errors.
 
-### Own wire types, raw REST
+`TestLogsNeverCarryThePayload` drives the tools with a payload full of
+canaries and fails if one appears at any level. Reverting `withoutURL`
+makes it fail, which shows the test can.
 
-No `google.golang.org/api`. It drags in gRPC and telemetry for a subset
-we hand-write, and the generated types would decide our output shapes.
-`internal/gchat` declares only the fields this server reads.
+Rejected: payloads at debug level, since a debug log is still a file
+someone shares when asking for help.
+Cost: a failure is diagnosed from the method, the resource and the
+outcome alone.
 
-### Output types shadow the wire, they do not embed it
+### D-04 Nothing in the repository identifies a real account
 
-Every `*Output` struct in `internal/tools` is written out by hand rather
-than embedding a wire type. The duplication buys an allow-list: a field
-Google adds upstream cannot reach the model without someone deciding it
-should. Their field names come from `testdata/schemas-baseline.json` and
-are a contract — a rename breaks every caller, and the schema diff fails
-on one.
+The repository is public, and the server is built by running it
+against a live Workspace account. Every id it handles reaches a
+terminal during ordinary work: a doctor run, a smoke test, a pasted
+error. From there it is one careless copy away from a fixture or a
+commit message.
 
-### Drift is observable, never fatal
+So nothing internal lands here: no organization names, email
+addresses, space or message ids, account ids, Cloud project ids or
+OAuth client ids. Fixtures are synthetic, and a made-up id says so, as
+`spaces/AAAAspace1` does. `internal/leakcheck` scans the tree, uncommitted
+files included, and finds an id hidden in base64 too.
+
+Every rule in it is an allow-list. A deny-list naming the organization
+or account to watch for would itself be the leak it means to prevent.
+gitleaks covers credentials; this covers identifiers, which are not
+secrets and pass gitleaks untouched.
+
+Rejected: a deny-list of the maintainer's domains and spaces, for the
+reason above.
+Cost: a pattern cannot tell a sentence out of a real conversation from
+invented prose, so keeping conversations out is a habit, not a check.
+
+### D-05 Own wire types over raw REST
+
+`internal/gchat` is a raw REST client with wire types of its own, and
+declares only the fields this server reads. It does not import
+`google.golang.org/api`.
+
+That package drags in gRPC and telemetry for a handful of JSON calls.
+Its generated types would also decide our output shapes, and they
+accept or reject fields on their own terms, which is the opposite of
+what D-08 needs.
+
+The client stays small enough to read in full. Each request names its
+verb, path, scope and limiter in one place, which is what the coverage
+gate binds to Google's published methods (D-39).
+
+Rejected: the generated client, for the reasons above.
+Cost: every method and field is written by hand, and a field Google
+adds stays invisible until someone models it; `make api-fields` makes
+that a decision rather than an accident.
+
+### D-06 Output types shadow the wire and never embed it
+
+Every `*Output` struct in `internal/tools` is written out by hand
+rather than embedding a wire type. The duplication buys an allow-list:
+a field Google adds cannot reach the model until someone decides it
+should.
+
+The output schemas are generated from those Go types by
+`github.com/google/jsonschema-go`. It inlines a nested type wherever it
+appears, so a type used twice on one tool is serialized twice (E-061).
+Those bytes are protocol traffic and client-side validation, not the
+model's context (E-060), so the duplication is accepted.
+
+Every output field carries a schema description, so a client and a
+model reading the schema learn what the field means and when it is
+null.
+
+Rejected: embedding the wire types, which passes every upstream
+addition straight to the model; hand-written JSON schemas, which would
+save bytes at the price of drifting from the Go types they describe.
+Cost: each field is written twice, once on the wire and once on the
+output, with a mapping between them.
+
+### D-07 The released tool surface is a contract
+
+Tools keep their names and output fields, and resource templates keep
+their URIs. A client, a saved permission rule and a model all address a
+tool by name and read its fields by name, so a rename breaks them all.
+
+`testdata/schemas-baseline.json` is the surface of the last release.
+`scripts/gates schema-diff` compares the built server's
+`--dump-schemas` with it and fails on a lost tool, field or template.
+Adding is fine. `--dump-schemas` writes the whole surface whatever the
+switches say, destructive tools included, so a tool the configuration
+leaves out is still held.
+
+On a pull request, `schema-ack` wants a commit footer naming each item
+of the surface that changed, annotations included, since a flipped hint
+changes whether a client asks. A break against the released surface
+needs a `BREAKING CHANGE:` footer, and ships as a major release with a
+new baseline. Footers are read as Conventional Commits defines them
+(E-067, E-068).
+
+Rejected: letting a rename through as an ordinary change, since a
+caller finds out only when its call fails.
+Cost: a bad name, once released, costs a major release to change.
+
+### D-08 Drift is observable, never fatal
 
 Google adds fields to the Chat API without notice. Decoding rejects
 nothing: an unknown field increments a counter and logs its path once,
-by name only. `doctor` walks live responses and reports what it saw. The
-alternative — strict decoding — turns an upstream addition into a total
-outage, which is exactly what happened here, twice.
+by name only. `google-chat-mcp doctor` walks live responses from the
+caller's own spaces and reports what it saw.
 
-### A dry run cannot write
+Strict decoding turns an upstream addition into a total outage. Worse,
+a write that lands and then fails to decode reports an error for
+something that happened, which invites a duplicate.
 
-`dry_run` is not a promise each handler keeps. The flag puts the call on
-a context `internal/gchat` refuses to write under, so a tool that
-declares `dry_run` and forgets its own preview branch fails loudly
-instead of posting. A preview may read what it has to show or check:
-a delete's witness, an invite's directory lookup. 36 tools carry the
-flag. The staleness gate holds
-that number to the shipped surface, because it had already drifted: the
-docs said thirteen when the server registered twenty-five.
+A read that models only part of a resource asks for that part through
+Google's `fields` parameter (E-049). A field it never reads then raises
+no false alarm, and the drift log stays worth reading.
 
-### One `Kind` decides three things
+Rejected: strict decoding, for the reasons above.
+Cost: a renamed field reads as an absent value until the drift log or
+`doctor` shows the new name.
 
-`register` takes a tool's `Kind` — read (or a read that writes a local
-file), adding or write (each idempotent or not), destructive — and
-derives from it the MCP
-annotations, whether
-`GCM_READ_ONLY` leaves the tool registered, and whether it needs
-`GCM_ENABLE_DESTRUCTIVE` to be registered at all. Three rules enforced by
-author discipline is three ways to be quietly wrong. Two more are held
-at start, by a panic: a destructive tool takes `confirm`, and only a
-destructive tool carries the mark.
+### D-09 A dry run cannot write
+
+`dry_run` is not a promise each handler keeps. The flag puts the call
+on a context that `internal/gchat` refuses to write under. A tool that
+declares `dry_run` and forgets its own preview branch then fails loudly
+instead of posting.
+
+A preview may read what it has to show or check: a delete's witness,
+an invite's directory lookup, where a space sits before a section move,
+or the quoted message's timestamp. It never sends a request that
+changes Chat, whatever the method.
+
+The guard sits under the handlers, the way the leak check sits under
+the fixtures: a rule kept by remembering to look is not a rule.
+
+Rejected: a preview branch in each handler alone, since a forgotten
+branch posts for real and nothing notices.
+Cost: a preview costs the reads the real call would make.
+
+### D-10 Every tool goes through `register`, which reads one `Kind`
+
+`register` takes a tool's `Kind` and derives from it what a client and
+the operator see. A kind is a read, a read that writes a local file, a
+write that only adds, a write that replaces or removes, either write
+idempotent or not, or a destructive write.
+
+From the kind come the MCP annotations (D-11), whether `GCM_READ_ONLY`
+leaves the tool registered (D-36), and whether it needs
+`GCM_ENABLE_DESTRUCTIVE` (D-12). A panic at start holds that a
+destructive tool takes `confirm` and no other tool does
+(D-18), and that only a destructive tool carries the mark (D-25). A tool
+named `admin_` goes in the admin toolset and on the administrator's
+context (D-30). Every output type must render the readable half of its
+reply (D-13), and every call runs through the dry-run context (D-09).
+
+Rules kept by hand at every call site are ways to be quietly wrong.
+One place that decides them is one place to review.
+
+Rejected: annotations and gating written per tool, for the reason
+above.
+Cost: a tool that fits no kind needs a new kind, and a new kind needs a
+case in each derivation; until it has one, the server panics at start.
+
+### D-11 Annotations say exactly what a tool changes
 
 Annotations decide what a client prompts for, so they are exact.
-`readOnlyHint` goes only on a tool that changes nothing in Chat, since
-VS Code ignores `destructiveHint` and prompts on every tool without
-`readOnlyHint`. `destructiveHint` is false only on a write that adds
-and replaces nothing, since the spec reads false as "only additive
-updates". `TestOnlyToolsThatAddSayTheyAreNotDestructive` names each such
-tool: the `Adding` kinds and `download_attachment`. Every other write
-says true, a message edit or a removed reaction as much as a delete, so
-a new tool errs toward a prompt. What sets a delete apart is the flag
-that registers it and its `confirm`, not the hint. Codex prompts by
-it, and claude.ai and ChatGPT document that it decides theirs. But an annotation is a request, not a control.
-The spec says clients must treat annotations as untrusted, and every
-widely used client has a mode or a setting that runs a listed tool with
-nobody approving the call: Claude Code's auto and bypassPermissions
-modes and its allow rules among them. What holds is server-side: a tool
-that is not registered cannot be called, a dry run cannot write, and a
-witness that does not match changes nothing.
 
-So the destructive tools are not registered unless
-`GCM_ENABLE_DESTRUCTIVE=true`. Until 6.0.0 they were registered and
-refused at call time, a recorded deviation from the standard: a tool
-that vanished was held to be a broken client rather than a safer one.
-That left Claude Code prompting for a marked tool the server then
-refused, and the standard now says to assume every registered tool can
-run unattended, so the deviation is gone. `--dump-schemas` still writes
-them: the schema diff holds every released tool to the build, and a
-delete the flag leaves out is no less part of the contract.
+`readOnlyHint` goes only on a tool that changes nothing in Chat. VS
+Code ignores `destructiveHint` and prompts on every tool without
+`readOnlyHint` (E-054). So `download_attachment`, which writes a local
+file, does not carry it.
 
-The flag is off by default. It was on until the first outside person
-installed all three of these servers in one sitting and asked why Chat
-was the loose one — Drive and Docs gate deletes behind a variable that
-starts off, and Chat is the one of the three where the delete cannot be
-undone. A Drive file goes to a trash you can restore from; a deleted
-Chat message is gone.
+`destructiveHint` is false only on a write that adds and replaces
+nothing, since the specification reads false as "only additive
+updates" (E-053). That is the adding kinds, and `download_attachment`,
+which never overwrites a file. Every other write says true, a message
+edit or a removed reaction as much as a delete, so a new tool errs
+toward a prompt. Codex prompts by `destructiveHint`, and claude.ai and
+ChatGPT document that it decides theirs.
 
-### A reply carries both halves, and they are not the same bytes
+An annotation is a request, not a control. What holds is server-side:
+a tool that is not registered cannot be called (D-12), a dry run cannot
+write (D-09), and a witness that does not match changes nothing (D-18).
 
-`structuredContent` under the output schema, and a readable rendering in
-`content`. The MCP specification asks for both — "for backwards
-compatibility, a tool that returns structured content SHOULD also return
-the serialized JSON in a TextContent block", unchanged from 2025-06-18
-through 2025-11-25 — and SEP-1624 asks that the two be semantically
-equivalent rather than one being a stringified copy of the other.
+Rejected: false as a write's default, which lets a new tool that
+replaces something skip the prompt until someone notices.
+Cost: a client that prompts by `destructiveHint` asks for an edit or a
+removed reaction too.
 
-Neither half can be dropped, because clients disagree about which they
-show the model: Claude Code forwards only `structuredContent`
-(anthropics/claude-code#55677), while claude.ai and ChatGPT show the
-text. `internal/tools/render.go` holds the renderings, and the rule that
-they must carry every fact the JSON carries is held by tests, because no
-gate can check it.
+### D-12 Destructive tools exist only when the operator turns them on
 
-### `send_message` posts the body verbatim
+The destructive tools are registered only under
+`GCM_ENABLE_DESTRUCTIVE=true`, and the flag is off by default. A tool
+that is not registered cannot be called, by any client mode or any
+model.
 
-No prefix, no suffix, no "sent by an assistant" footer. If a caller wants
-attribution, the caller writes it.
+Every widely used client has a mode or a setting that runs a listed
+tool with nobody approving the call, and the MCP specification has
+clients treat annotations as untrusted (E-056). So a destructive tool's
+prompt cannot be the control; registration is.
 
-Each message carries a client-chosen id, so a retry after a timeout
-cannot post twice: Google answers `ALREADY_EXISTS`, and the server
-fetches what landed and returns that.
+The default is off because a Chat delete cannot be undone. A Drive file
+goes to a trash it can be restored from, and a deleted Chat message is
+gone. google-drive-mcp and google-docs-mcp gate their deletes behind a
+variable that starts off too.
 
-### What a write may reach
+Destructive covers the deletes, opening a space to an audience, making
+someone a manager, inviting someone from outside the organization, and
+the administrator writes D-29 names.
 
-The server asks the person nothing. Approving a call is the client's:
-Claude Code's permission rules, and the prompt other clients draw from
-the annotations — Codex by `destructiveHint`, claude.ai and ChatGPT by
-what they document of it, VS Code on every tool without `readOnlyHint`.
-A remembered approval covers a whole tool, never an argument value;
-argument-level control exists only where an operator writes it, in a
-hook or a Gemini CLI policy rule. So a risky variant carried as an
-argument rides along unseen once its tool is always allowed. Each one
-is refused in the ordinary tool, and where it is wanted at all it is a
-tool of its own, registered only with the destructive ones.
+Rejected: registering the destructive tools and refusing them at call
+time, which left Claude Code prompting for a tool the server then
+refused; on by default, for the reason above.
+Cost: an operator who wants a delete edits the configuration and
+restarts the server.
 
-- **Mentioning everyone is refused.** A `send_message` whose text
-  mentions everyone in the space, `<users/all>`, is `[blocked]` before
-  anything is sent, a dry run included: it notifies every member. An
-  `update_message` that edits such a mention in is refused too, since an
-  edit notifies whoever it newly mentions; an edit of a message that
-  already mentioned everyone may keep it. The mention is matched
-  regardless of case. Google's own Chat MCP server tells the model, in
-  `send_message`'s description, that mentioning all users "is strictly
-  prohibited".
-- **A space is created private and stays private.** `create_space` and
-  `update_space` refuse a target audience, `[blocked]`, and
-  `update_space` still makes a space private. Opening a space is
-  `set_space_audience`, a destructive tool. Whoever is in the audience
-  can find the space, read it and join, and making it private again does
-  not take back what they read.
-- **`add_member` invites only people inside the organization into a
-  space that admits outsiders.** Someone added can read what is already
-  in the space. Whether a space admits people from outside the
-  organization is Google's `externalUserAllowed`, set when the space is
-  created and output only afterward (discovery revision 20261016:
-  "Immutable"). Where a space says it admits them, an address the
-  organization's directory does not list among its members is refused
-  `[blocked]`, before anything is sent, a dry run included. A directory
-  that declines to answer vouches for nobody: a personal account has
-  none, so everyone counts as outside there. `add_external_member`
-  invites someone from outside, and is destructive. A space that says
-  nothing admits nobody from outside, since Google leaves a false
-  boolean out of its JSON, and needs no lookup: Google refuses the
-  invite there itself. Every Google Group is refused into a space that
-  admits outsiders, whatever the directory says of it: Google invites
-  the group's outside members and carries every later change to the
-  group into the space (evidence log), so no check at add time holds.
-  `add_external_member` adds it. In a space that admits nobody from
-  outside, Google leaves the group's outsiders out, and a group add is
-  ordinary.
-  `create_space`, `create_group_chat` and `find_direct_message` stay
-  ordinary writes: a new conversation shows nobody what was already
-  there.
-- **Only `promote_member` makes a manager.** A manager can change the
-  space's settings and remove people, which is a new owner in the
-  standard's words. `update_member_role` takes `MEMBER` alone and refuses
-  the other roles `[blocked]`.
-- **Deletes are registered only under `GCM_ENABLE_DESTRUCTIVE=true`, and
-  each call says `confirm: true`.** That argument is a witness that the
-  caller meant the call, never an approval: the model sets it. The same
-  holds for every destructive tool. `delete_message` deletes one message.
-  Its replies are other people's, and go only through `delete_thread`,
-  which was `delete_message`'s `force` until 6.0.0. `unpin_message` and
-  `remove_reaction` are ordinary writes, since one call puts a pin or a
-  reaction back.
-- **A destructive call repeats what it acts on.** The client's prompt
-  shows the arguments, and a resource name tells the person approving
-  nothing. So `delete_message` and `delete_thread` take how the message's
-  text begins, at least its first 20 characters; `delete_space` and
-  `set_space_audience` take the space's display name; and
-  `delete_custom_emoji` takes the emoji's shortcode. The server reads the
-  target first, a dry run included, and refuses `[stale]` when it
-  differs. A message this account cannot read cannot be deleted here,
-  because what cannot be read cannot be compared. A thread whose first
-  message is already deleted is the exception: there is no text left to
-  compare, and the replies under it still go. `remove_member`,
-  `delete_section`, `promote_member` and `add_external_member` take
-  `confirm` alone: what they act on is a membership or a section named as
-  `list_members` and `list_sections` show it, or an address the call
-  already carries. A group is the exception: `add_external_member` takes
-  its `groups/{id}` and its address, `group_email`, reads the group from
-  Cloud Identity and refuses `[stale]` when the address differs. A group
-  this account cannot read cannot be added there.
-- **`update_space` keeps the guidelines.** Google's mask covers all of
-  `spaceDetails`, so a description sent alone clears the guidelines. The
-  server reads them first and sends them back unchanged.
-- **The mark goes on four tools.** `delete_space`, `admin_delete_space`,
-  `set_space_audience` and `delete_custom_emoji` carry
-  `anthropic/requiresUserInteraction`. Claude Code 2.1.199 or later
-  prompts for them on every call in every interactive mode, with no
-  "don't ask again" from 2.1.246, and denies them where no prompt can be
-  drawn: dontAsk, `-p` without a permission host,
-  `--permission-prompt-tool`. An Agent SDK host's `canUseTool` can
-  approve them. They are the four whose prompt is itself the point: a
-  space goes with every message in it, whether the caller manages it or
-  deletes it as an administrator, an emoji goes from every message and
-  reaction across the organization, and an audience reads what it
-  reads. The mark is per tool, so on `set_space_audience` it covers an
-  administrator's `audiences/{id}` as well as the organization's
-  default, though such an audience may be narrower than the domain. No
-  other tool carries it: a mark on `delete_message` would ask once per
-  message of a bulk delete, and a question answered dozens of times in a
-  row is answered without reading. No client but Claude Code reads it, so
-  the flag that registers these tools is the control.
-- **No tool widens the server's own reach.** No tool turns a toolset on,
-  lifts a refusal or edits a setting; only the operator does, outside
-  the conversation. `TestNoToolCanWriteTheServersSettings` holds that no
-  package a tool reaches imports `internal/userconfig` or
-  `internal/credentials` or sets an environment variable, and
-  `TestNoToolChangesWhatIsRegistered` that calling every tool leaves the
-  registered surface as it was.
+### D-13 A reply carries both halves, in different forms
 
-The rule is the family's, decided by the maintainer on 2026-10-22 and
-ported here on 2026-10-23; the evidence log says why the question went.
-A lint rule holds it: forbidigo refuses the SDK's `Elicit` and the input
-requests a result can carry.
+Every reply carries `structuredContent` under the output schema and a
+readable rendering in `content`. The MCP specification asks for both:
+"for backwards compatibility, a tool that returns structured content
+SHOULD also return the serialized JSON in a TextContent block".
+SEP-1624 asks that the two be "semantically equivalent (same
+information, different presentation)", and names stringified JSON in
+`content` as redundant context.
 
-### Administrator access
+Neither half can be dropped, because clients disagree about which one
+they show the model. Claude Code forwards only `structuredContent`
+(E-058), while claude.ai and ChatGPT show the text.
+
+`internal/tools/render.go` holds the renderings: one record per line,
+facts separated by " · ", and anything Google did not send left out.
+`register` constrains a tool's output type to one that renders, so a
+tool cannot be added without its text half.
+
+Rejected: the serialized JSON in both halves, which spends the model's
+context twice; one half alone, which goes blank on the clients that
+read the other.
+Cost: every output type carries a hand-written rendering, and no gate
+can check that it says every fact the JSON says; the rendering tests
+hold it.
+
+### D-14 `send_message` posts the body verbatim, once
+
+`send_message` posts the text exactly as given. The server adds no
+prefix, no suffix and no "sent by an assistant" footer. The message goes
+out under the person's name, so its words are theirs to choose, and a
+caller that wants attribution writes it.
+
+Each message carries a client-chosen message id, generated when the
+caller gives none. A retry after a timeout therefore cannot post twice:
+Google answers `ALREADY_EXISTS`, and the server fetches what landed and
+returns that. The id is what earns the send a retry after a transport
+failure (D-38).
+
+Rejected: an attribution footer added by the server, for the reason
+above.
+Cost: a reader cannot tell from the message alone that a model wrote
+it.
+
+### D-15 The server asks the person nothing
+
+Approving a call is the client's job. Claude Code has its permission
+rules, and other clients draw a prompt from the annotations (D-11). The
+server never asks a question of its own. It refuses the call, or makes
+the risky variant a tool of its own (D-16).
+
+A question through form elicitation is no consent control (E-059). The
+specification lets the client answer it "from the user or other
+sources". A Claude Code hook can answer it with no dialog, and Codex in
+full access accepts an empty form by itself. Several clients decline it
+undrawn or let it time out, and a question asked on every call expired
+partway through a bulk delete.
+
+forbidigo refuses the SDK's `Elicit` and the input requests a result
+can carry, so the rule cannot be broken by accident.
+
+Rejected: confirming writes through form elicitation, for the reasons
+above; the mark and an elicitation on one tool, which asked the person
+twice for one delete.
+Cost: a client that prompts for nothing runs every registered write
+unasked, which registration answers (D-12).
+
+### D-16 A risky variant is a tool of its own
+
+A remembered approval covers a whole tool, never an argument value
+(E-055). Argument-level control exists only where an operator writes
+it, in a hook or a Gemini CLI policy rule. So a risky variant carried
+as an argument rides along unseen once its tool is always allowed.
+
+Each such variant is refused in the ordinary tool. Where it is wanted at
+all, it is a tool of its own, registered only with the destructive ones
+or in the admin toolset:
+
+- a thread's replies go through `delete_thread`, never a `force` on
+  `delete_message` (D-23);
+- someone from outside the organization comes in through
+  `add_external_member` (D-21);
+- a manager is made by `promote_member` (D-22);
+- a space opens to an audience through `set_space_audience` (D-20);
+- an administrator acts through an `admin_` tool, reads included
+  (D-28).
+
+A broadcast to everyone in a space has no tool at all (D-19).
+
+Rejected: a flag on the ordinary tool, refused unless set, since the
+approval given for the tool covers the flag too.
+Cost: the surface grows by a tool for each variant, and a model has to
+pick the right one, which the descriptions name.
+
+### D-17 A write to a space names the space it writes to
+
+Every write that names a space takes `space_display_name` beside
+`space_id`. A client's approval prompt shows the call's arguments, and a
+space id tells the person reading it nothing.
+
+The server reads the space and checks the name before anything is
+written, dry runs included:
+
+- a named space by its display name;
+- a direct message by the other person's email, since Google's own
+  lookup of the direct message with that address has to answer with
+  this space (E-031);
+- a group chat by the other members' emails, comma-separated in any
+  order.
+
+A mismatch is `[stale]` and changes nothing. The prompt therefore cannot
+name one space while the call writes to another. A space this account
+cannot read cannot be checked, so it cannot be written to here.
+
+Rejected: the space id alone, which an approver cannot read; a name
+taken on trust, which a model can get wrong unnoticed.
+Cost: each write reads the space first, and a group chat's check lists
+its members.
+
+### D-18 A destructive call takes `confirm` and repeats what it acts on
+
+Every destructive tool takes `confirm: true`. The argument is a witness
+that the caller meant the call, never an approval: the model sets it.
+
+A client's prompt shows the arguments, and a resource name tells the
+person approving nothing. So a call that removes something repeats what
+it acts on:
+
+- `delete_message` and `delete_thread` take how the message's text
+  begins, at least its first 20 characters;
+- `delete_space` and `set_space_audience` take the space's display name;
+- `delete_custom_emoji` takes the emoji's shortcode;
+- `add_external_member`, for a group, takes its `groups/{id}` and its
+  address, `group_email`.
+
+The server reads the target first, a dry run included, and refuses
+`[stale]` when it differs. What cannot be read cannot be compared, so a
+target this account cannot read cannot be acted on here. A thread whose
+first message is already deleted is the exception: no text is left to
+compare, and the replies under it still go (D-23).
+
+`remove_member`, `delete_section`, `promote_member`, and
+`add_external_member` for a person take `confirm` alone. What they act
+on is a membership or a section named as the listings show it, or an
+address the call already carries.
+
+Rejected: `confirm` alone everywhere, since a person approving
+`spaces/AAAAspace1/messages/AAAAmsg1` cannot tell which message goes.
+Cost: each such call reads its target before it writes.
+
+### D-19 Mentioning everyone is refused
+
+A `send_message` whose text mentions everyone in the space,
+`<users/all>`, is refused `[blocked]` before anything is sent, a dry
+run included. It notifies every member.
+
+An `update_message` that edits such a mention in is refused too, since
+an edit notifies whoever it newly mentions. An edit of a message that
+already mentioned everyone may keep the mention. The mention is matched
+regardless of case.
+
+The refusal is the server's because a client approves a tool, never one
+of its arguments (D-16). Google's own Chat MCP server tells the model,
+in its `send_message` description, that mentioning all users "is
+strictly prohibited".
+
+Rejected: leaving it to the client, which approves `send_message` once
+and every broadcast with it.
+Cost: a person who means to notify everyone posts that message
+themselves.
+
+### D-20 A space is created private and opened only by `set_space_audience`
+
+`create_space` and `update_space` refuse a target audience, `[blocked]`.
+`update_space` can still make a space private. Opening a space is
+`set_space_audience`, a destructive tool that carries the mark (D-25).
+Whoever is in the audience can find the space, read it and join, and
+making it private again does not take back what they read.
+
+An audience goes in a patch of its own. Google refuses
+`accessSettings.audience` beside any other field, and masking it with
+no value makes the space private (E-023). So `update_space` refuses an
+audience beside a name or description, rather than sending two patches
+that could half land.
+
+No API lists target audiences, so `audience` takes an id from the Admin
+console, or `audiences/default` for the organization's default (E-025).
+The guide and discovery disagree about who may set one; the tool
+description names the space-manager rule the reference states (E-024).
+
+Rejected: an `audience` argument on `create_space` and `update_space`,
+which a remembered approval would carry unseen (D-16).
+Cost: a discoverable space takes two calls, the second behind the
+destructive flag.
+
+### D-21 `add_member` invites only the organization into a space that admits outsiders
+
+Someone added to a space can read what is already in it. Whether a
+space admits people from outside the organization is Google's
+`externalUserAllowed`, set when the space is created and immutable
+afterward.
+
+Where a space admits outsiders, `add_member` refuses `[blocked]` an
+address the organization's directory does not list among its members,
+before anything is sent, a dry run included. A directory that declines
+to answer vouches for nobody: a personal account has none, so everyone
+counts as outside there. A space that says nothing admits nobody from
+outside, since Google leaves a false boolean out of its JSON, and needs
+no lookup, since Google refuses the invite there itself.
+
+Every Google Group is refused into a space that admits outsiders,
+whatever the directory says of it. Google invites the group's outside
+members and carries every later change to the group into the space
+(E-020), so no check at add time holds. In a space that admits nobody
+from outside, Google leaves the group's outsiders out, and a group add
+is ordinary. A group is named by its Cloud Identity name, which
+`find_group` looks up from an address (E-044).
+
+`add_external_member` invites someone from outside, or a group, and is
+destructive. `create_space`, `create_group_chat` and
+`find_direct_message` stay ordinary writes: a new conversation shows
+nobody what was already there.
+
+Rejected: checking a group's members once at add time, which misses
+everyone added to the group later.
+Cost: a colleague the directory cannot see is refused as an outsider.
+
+### D-22 Only `promote_member` makes a manager
+
+A manager can change a space's settings and remove people, which makes
+a new manager a new owner of the space. `promote_member` makes one, and
+is destructive (D-12).
+
+`update_member_role` takes `MEMBER` alone, to make a manager an ordinary
+member again, and refuses the other roles `[blocked]`.
+
+`add_member` takes no role. Google ignores a role given on create and
+records `ROLE_MEMBER` (E-021), so the result reports the role Google
+recorded rather than the one requested.
+
+Rejected: a `role` on `update_member_role` that reaches `MANAGER`, which
+a remembered approval would carry unseen (D-16).
+Cost: changing a role takes the tool that matches its direction.
+
+### D-23 `delete_message` deletes one message, and `delete_thread` its replies
+
+`delete_message` deletes one message and always sends `force=false`. A
+thread's replies are other people's messages, and they go only through
+`delete_thread`, a destructive tool of its own that sends `force=true`.
+
+Discovery says `force` deletes a message's threaded replies, and that
+without it a delete of a message with replies fails (E-019). It says
+nothing of a root already deleted, and that state cannot be made through
+the API to probe it. So `delete_thread` takes a first message that reads
+as deleted without comparing its witness, sends `force=true`, and
+reports Google's answer, a refusal included. The replies left under it
+are what the call is for.
+
+`unpin_message` and `remove_reaction` are ordinary writes, since one
+call puts a pin or a reaction back.
+
+Rejected: `force` as an argument on `delete_message` (D-16).
+Cost: a model that means to clear a thread has to find the second tool,
+which `delete_message`'s description names.
+
+### D-24 `update_space` keeps the guidelines
+
+Google's update mask covers all of `spaceDetails`. A description sent
+alone therefore clears the space's guidelines.
+
+`update_space` reads the guidelines first and sends them back unchanged
+beside the new description. `admin_update_space` does the same, and an
+administrator's patch keeps them as the caller's does (E-036). The
+read is the one the space check makes anyway (D-17).
+
+The guidelines are often other people's text, and a person changing a
+description does not expect the rules of the space to vanish with it.
+
+Rejected: sending the description alone, which clears the guidelines
+as a side effect nobody asked for.
+Cost: an edit can race another person's edit of the guidelines between
+the read and the patch.
+
+### D-25 The `requiresUserInteraction` mark goes only where the prompt is the point
+
+`delete_space`, `admin_delete_space`, `set_space_audience` and
+`delete_custom_emoji` carry `anthropic/requiresUserInteraction`, and no
+other tool does. Claude Code prompts for a marked tool on every call in
+every interactive mode, and denies it where no prompt can be drawn
+(E-057).
+
+These are the tools whose prompt is itself the point. A space goes with
+every message in it, whether its manager deletes it or an administrator
+does. An emoji goes from every message and reaction across the
+organization. An audience reads what it reads. The mark is per tool, so
+on `set_space_audience` it covers an administrator's `audiences/{id}`
+as well as the organization's default.
+
+A mark on `delete_message` would ask once per message of a bulk delete,
+and a question answered dozens of times in a row is answered without
+reading. No client but Claude Code reads the mark, so the flag that
+registers these tools is the control (D-12).
+
+Rejected: the mark on every destructive tool, for the reason above.
+Cost: a headless Claude Code run cannot call these tools; an Agent SDK
+host can approve them in its own `canUseTool`.
+
+### D-26 No tool widens the server's own reach
+
+No tool turns a toolset on, lifts a refusal or edits a setting. The
+server's settings are the environment, the profile `internal/userconfig`
+writes and the token `internal/credentials` stores, all set by the
+operator outside the conversation.
+
+A model that could widen its own reach would make every other gate here
+advisory. The registration switch (D-12), read-only mode (D-36) and the
+refusals all assume the operator's settings hold for the whole session.
+
+No package a tool reaches imports `internal/userconfig` or
+`internal/credentials`, or sets an environment variable. Calling every
+tool leaves the registered surface as it was. `admin_add_member` never
+adds the caller, for the same reason (D-32).
+
+Rejected: a tool that turns a toolset on when asked, which a remembered
+approval would leave on for good.
+Cost: changing what is registered takes the operator and a restart.
+
+### D-27 Toolsets are feature areas, never access levels
+
+`GCM_TOOLSETS` names the feature areas to register beside `core`, which
+is always on: `sections`, `pins`, `emoji`, `events`, `readstate`,
+`settings`, `availability` and `admin`. A smaller surface costs a model
+less to read and gives it fewer wrong tools to pick.
+
+`GCM_READ_ONLY` and `GCM_ENABLE_DESTRUCTIVE` cut across every toolset,
+the admin set included. A toolset is never split by access. Read-only
+mode already strips the write tools and the write scopes (D-36), and a
+split would make the same switch twice.
+
+One combination cannot be set: an administrator's reads with the
+caller's own writes but without the administrator's edits. Read-only
+mode removes both, and nothing else separates them. It would take a
+toolset split by access.
+
+Rejected: a read-only admin toolset beside a writing one, for the
+reasons above.
+Cost: the combination above is not available.
+
+### D-28 Every administrator call is its own `admin_` tool
 
 A Workspace administrator can act on any space in the organization
-through Google's `useAdminAccess`. Nine Chat methods take it: spaces
-get, search, patch and delete, and members list, get, create, patch and
-delete. Nothing reaches messages that way, and nothing creates a space.
+through Google's `useAdminAccess`, which the spaces and members methods
+take (E-032). Nothing reaches messages that way, and nothing creates a
+space. Every administrator call is its own `admin_` tool, reads
+included.
 
-**Every administrator call is its own `admin_` tool, reads included.**
-A remembered approval covers a whole tool, never an argument, so a flag
-on `get_space` or `update_space` would carry an administrator's reach
-under an approval given for the ordinary tool. Every other gate in the
-family also works by leaving a tool unregistered; a flag refused at call
-time would be the one exception. `search_spaces` shipped
-`use_admin_access` before this rule, and 9.0.0 removed it.
-`admin_search_spaces` is the same search with the administrator's reach
-and filters, and the two descriptions name each other.
+A remembered approval covers a whole tool, never an argument (E-055). A
+flag on `get_space` or `update_space` would carry an administrator's
+reach under an approval given for the ordinary tool. Every other gate
+here works by leaving a tool unregistered, and a flag refused at call
+time would be the one exception.
 
-**`admin` is one toolset.** Toolsets group a feature area, and
-`GCM_READ_ONLY` and `GCM_ENABLE_DESTRUCTIVE` cut across all of them, the
-admin set included. The kinds follow the ordinary tools, with one
-exception:
+`admin_search_spaces` is `search_spaces` with the administrator's reach
+and filters, and the two descriptions name each other. Without admin
+access a search finds only joined spaces, and Google pages and counts
+it only under admin access (E-026, E-027). Members see an
+administrator's change but not who made it (E-038). An administrator
+reaches a space the caller is not in, and Google deletes a space its
+last member leaves (E-037).
+
+Rejected: a `use_admin_access` flag on the ordinary tools, for the
+reason above.
+Cost: the admin set repeats part of the ordinary surface.
+
+### D-29 Administrator tools take their ordinary forms' kinds, except an add
+
+The `admin_` tools follow the kinds of their ordinary forms (D-10):
 
 - `admin_search_spaces`, `admin_get_space`, `admin_list_members` and
   `admin_get_member` read, and stay under `GCM_READ_ONLY`.
 - `admin_update_space` and `admin_update_member_role` are ordinary
   writes. An edit of a name, description or guidelines says what it
-  replaced, so it can be put back.
+  replaced, so it can be put back. What an administrator's patch may
+  change is narrower than the caller's (E-036).
 - `admin_promote_member` and `admin_remove_member` are destructive, as
-  their ordinary forms are. `admin_update_space_permissions` is
-  destructive because widening a permission hands members what a
-  manager holds, which is a new owner in the standard's words.
-- `admin_add_member` is destructive though `add_member` is not. Without
-  admin access a caller adds people to a space they are in, so the new
-  member reads what the caller already reads. With it, the caller adds
-  people to a space whose history the caller cannot see. That is
-  widening access, and what was read cannot be taken back.
+  their ordinary forms are.
+- `admin_update_space_permissions` is destructive, because widening a
+  permission hands members what a manager holds.
 - `admin_delete_space` deletes a whole space and carries the mark, as
-  `delete_space` does.
+  `delete_space` does (D-25).
 
-One combination cannot be set: an administrator's reads and the
-caller's own writes without the administrator's edits. Read-only mode
-removes both, and nothing else separates them. Nobody has asked for it,
-and it would take a toolset split by access, which no other toolset in
-the family has.
+`admin_add_member` is the exception: it is destructive though
+`add_member` is not. Without admin access a caller adds people to a
+space they are in, so the new member reads what the caller already
+reads. With it, the caller adds people to a space whose history the
+caller cannot see. That widens access, and what was read cannot be
+taken back.
 
-**Admin access rides on the request context.** `register` puts every
-call of a tool whose name starts `admin_` on `service.AsAdministrator`,
-which is
-`gchat.WithAdminAccess`. The client adds `useAdminAccess=true` and the
-administrator's scope to every Chat call made on it, and the two
-conditions Google sets on the admin form: an administrator's search
-names `customer = "customers/my_customer"`, and a membership listing
-filters on `member.type != "BOT"`. A Chat call with no administrator
-form is refused with `ErrNoAdminForm` before it leaves the process. People, Cloud Identity and OpenID Connect calls on
-the same path go as the caller, since none of them takes the parameter.
+Rejected: `admin_add_member` as an ordinary write like `add_member`,
+for the reason above.
+Cost: an administrator adding a colleague to a space needs the
+destructive flag.
+
+### D-30 Administrator access rides on the request context
+
+`register` puts every call of a tool whose name starts `admin_` on
+`service.AsAdministrator`, which is `gchat.WithAdminAccess`. The client
+adds `useAdminAccess=true` and the administrator's scope to every Chat
+call made on that context. It adds the conditions Google sets on the
+admin form too: a search names `customer = "customers/my_customer"`
+(E-034), and a member listing filters on `member.type != "BOT"`
+(E-035). A Chat call with no administrator form is refused with
+`ErrNoAdminForm` before it leaves the process (E-032). People, Cloud
+Identity and OpenID Connect calls on the same path go as the caller,
+since none of them takes the parameter.
 
 It is a context rather than an option on each call because the guards
 read too. `remove_member` checks a refused delete by reading the
 membership back. Read as the caller, a membership in a space the caller
 is not in answers not found, and the refusal would be reported as a
 member already gone. On the context, the read-back is the
-administrator's like the delete. The name is the rule, because the name
-is what a client's prompt and its permission rules see; `register` puts
-every such tool in the admin toolset, and refuses at start one that
-names another.
+administrator's, like the delete.
 
-**Named spaces only.** The check of a direct message or a group chat
-names the people in it beside the caller, which means nothing for a
-conversation the caller is not in, and Google's administrator search
-finds named spaces alone. Every admin write that names a space refuses
-anything else `[invalid]` before it writes. The three that take a
-membership rather than a space read nothing first, and rely on Google
-for that.
+The name is the rule, because the name is what a client's prompt and
+its permission rules see. `register` puts every `admin_` tool in the
+admin toolset, and refuses at start one that names another.
 
-**`admin_add_member` adds people, never a group and never the caller.**
+Rejected: an administrator option on each client call, which a guard's
+own read could miss.
+Cost: every `internal/gchat` method has to say whether it has an
+administrator form.
+
+### D-31 Administrator writes act on named spaces only
+
+Every administrator write that names a space refuses anything but a
+named space, `[invalid]`, before it writes.
+
+The space check (D-17) of a direct message or a group chat names the
+people in it beside the caller. That means nothing for a conversation
+the caller is not in. Google's administrator search finds named spaces
+alone too, so an administrator has no way to find another kind.
+
+The administrator writes that take a membership rather than a space
+read nothing first, and rely on Google for that.
+
+Rejected: checking an unnamed space by its members under admin access,
+which asks the caller for addresses they have no way to know.
+Cost: an administrator cannot act on a direct message or a group chat
+through this server.
+
+### D-32 `admin_add_member` adds people, never a group and never the caller
+
 Adding yourself would let every tool here read the space as you, which
-is the model widening its own reach (the standard's §3). A group you
-belong to would add you with it, and no check at add time sees a later
-change to the group. The caller's own address is compared first. Then
-the directory is asked once whose the address is: an address it does
-not know is refused, since Google adds nobody from outside on an
-administrator's say, and one that is the caller's under another name
-is refused too. A directory that cannot answer vouches for nobody, and
-the add is refused.
+is the model widening its own reach (D-26). A group you belong to would
+add you with it, and no check at add time sees a later change to the
+group (E-020). So `admin_add_member` adds people only.
 
-**The scopes follow the switches.** With `admin` named, login asks for
-`chat.admin.spaces.readonly` and `chat.admin.memberships.readonly`.
-Unless `GCM_READ_ONLY` is set, it also asks for `chat.admin.spaces` and
-`chat.admin.memberships`. With `GCM_ENABLE_DESTRUCTIVE=true` as well, it
-asks for `chat.admin.delete`, the one restricted administrator scope,
-which deletes any space in the organization. None of them is in
-`scopes.All`, so nobody else's consent screen carries them.
-`chat.delete` stays requested whatever the destructive flag says: it
-reaches only the caller's own spaces, and moving it would cost every
-installed token a second login.
+The caller's own address is compared first. Then the directory is asked
+once whose the address is. An address it does not know is refused,
+since Google adds nobody from outside on an administrator's say. One
+that is the caller's under another name is refused too. A directory
+that cannot answer vouches for nobody, and the add is refused.
 
-### Idempotency is checked, not assumed
+Rejected: adding a group after checking its members once, which misses
+everyone the group gains later.
+Cost: an administrator adds a group's people one at a time.
+
+### D-33 The administrator scopes follow the switches
+
+With `admin` named, login asks for `chat.admin.spaces.readonly` and
+`chat.admin.memberships.readonly`. Unless `GCM_READ_ONLY` is set, it
+also asks for `chat.admin.spaces` and `chat.admin.memberships`. With
+`GCM_ENABLE_DESTRUCTIVE=true` as well, it asks for `chat.admin.delete`,
+the one restricted administrator scope, which deletes any space in the
+organization (E-033).
+
+One Admin console privilege covers an administrator's reads and writes,
+with no read-only form (E-039). So reads and writes part at the OAuth
+scope, and the token holds no more than the switches allow.
+
+None of the administrator scopes is in `scopes.All`, so nobody else's
+consent screen carries them. `chat.delete` stays requested whatever the
+destructive flag says: it reaches only the caller's own spaces, and
+moving it would cost every installed token a second login.
+
+Rejected: requesting the administrator scopes from everyone, which puts
+them on every consent screen.
+Cost: turning on the admin writes or deletes costs a second login.
+
+### D-34 Idempotency is checked, not assumed
 
 `delete_message` and `remove_member` treat a 404 as success. A 403 is
-different: Google spells "already deleted, and this space keeps no
-history" and "you may not delete this" the same way, so the refusal path
-reads the target back and only a not-found answer counts as gone. An
-earlier version assumed otherwise, and so reported a refused delete as
-one that had already happened. `delete_message` also reads the message
-before it deletes, to compare its witness, so a repeat that finds a
-tombstone sends nothing at all.
+different. Google spells "already deleted, and this space keeps no
+history" and "you may not delete this" the same way. So the refusal
+path reads the target back, and only a not-found answer counts as gone.
+A missing-scope 403 is never taken for gone.
+
+A deleted message reads back as a 200 tombstone, not a 404 (E-017).
+`delete_message` reads the message before it deletes, to compare its
+witness (D-18), so a repeat that finds a tombstone sends nothing at
+all. A deleted space answers 403, so "deleted" cannot be told from "not
+yours", and the refusal does not claim to know which (E-018).
 
 `delete_section` succeeds on 404 only. Its 403 is a system section
 refusing deletion, and that is worth reporting.
 
-The trap underneath: a deleted message reads back as a 200 tombstone, not
-a 404. Found by a live smoke test after every unit test passed.
+Rejected: treating every 403 on a delete as already gone, which reports
+a refused delete as one that happened.
+Cost: a refused delete costs a second read.
 
-### A People failure costs one field, never a row
+### D-35 A People failure costs one field, never a row
 
 Chat sends a sender's or a member's address itself, and that answer
-wins. Its display name wins too: when Chat names an address, the name
-beside it is used over the People profile name. Only a user Chat sent
-no address for is looked up in People, and there the People name wins
-over Chat's. A user Chat sent an address but no name for is looked up
-for the name alone. What Chat names is written to the directory cache,
-so a later payload with no address, such as a reaction's user, still
-resolves someone this server has seen. That covers a message's
-mentions and a search's results as well as listings. A search reads the
-cache but never asks People: it can match hundreds of messages.
+wins (E-022). Its display name wins too: when Chat names an address,
+the name beside it is used over the People profile name. Only a user
+Chat sent no address for is looked up in People, and there the People
+name wins over Chat's. A user Chat sent an address but no name for is
+looked up for the name alone.
 
-Enrichment is best effort. When a directory lookup fails, the rows come
-back without email addresses; a list is never emptied and a row is never
-dropped because a name could not be resolved.
+What Chat names is written to the directory cache. A later payload with
+no address, such as a reaction's user, still resolves someone this
+server has seen. That covers a message's mentions and a search's
+results as well as listings. A search reads the cache but never asks
+People, since it can match many messages.
 
-### Scopes are named exactly
+Enrichment is best effort. When a lookup fails, the rows come back
+without addresses. A list is never emptied and a row is never dropped
+because a name could not be resolved: an empty member list reads as an
+empty space.
 
-Under `GCM_READ_ONLY`, login asks for the read-only scopes alone: the
-OpenID Connect ones and every `.readonly` scope in the set, derived from
-the names. A read-only server logged in that way holds a token that
-cannot write either, whatever tools it registers. A token from an
-earlier login keeps its write scopes until the next login: nothing
-narrows a token already granted, so the docs say to log in again.
-Turning writes back on costs a second login, which the `[scope]` error
-names. Google reads a space's
-notification setting only through `chat.users.spacesettings`, which
-writes it too, so read-only mode leaves `get_space_notification_setting`
-out. Every other read names a scope that login asks for: reactions and
-reaction events name `chat.messages.readonly`, which discovery lists for
-both, and `TestEveryCallNamesItsScope` holds it.
+Rejected: failing the call when People fails, which turns one missing
+scope into an empty listing.
+Cost: an address can be null, and a reader has to treat null as
+unknown.
+
+### D-36 Read-only mode holds a token that cannot write
+
+Under `GCM_READ_ONLY`, the write tools are not registered, and login
+asks for the read-only scopes alone: the OpenID Connect ones and every
+`.readonly` scope in the set, derived from the names. A read-only server
+logged in that way holds a token that cannot write, whatever tools it
+registers.
+
+Google reads a space's notification setting only through
+`chat.users.spacesettings`, which writes it too. So read-only mode
+leaves `get_space_notification_setting` out, and its spec says so with
+`WriteScope`.
+
+A token from an earlier login keeps its write scopes until the next
+login, since nothing narrows a token already granted, and the docs say
+to log in again. Turning writes back on costs a second login, which the
+`[scope]` error names.
+
+Rejected: read-only as registration alone, which leaves a token that
+can write in the keyring.
+Cost: switching modes means logging in again.
+
+### D-37 Every call names its scope, and an umbrella satisfies its parts
+
+Every Chat, People and Cloud Identity call names the scope it needs, and
+that scope is one login asks for. Reactions and reaction events name
+`chat.messages.readonly`, which discovery lists for both. A group read
+names `cloud-identity.groups.readonly`, the narrowest that works
+(E-045).
 
 A missing-scope 403 becomes a `[scope]` error naming the scope URL and
 the command that fixes it, because Google's own message does not.
-`internal/scopes` also records which umbrella satisfies which narrower
-scope, verified against the discovery document — without that table the
-server refuses calls Google would have allowed, and refuses them for the
+
+`internal/scopes` records which umbrella scope satisfies which narrower
+one, checked against the discovery document (E-040). Without that table
+the server refuses calls Google would allow, and refuses them for the
 people who paid the most for consent.
 
-### The gap to the API is written down
+A desktop client's login can grant some scopes and not others (E-042).
+So the profile records the scopes Google returned, not those requested,
+and `status` says which tools will fail.
 
-Two files, and the split is which of them a person writes.
+Rejected: passing Google's 403 through as it comes, which names no scope
+and no fix.
+Cost: every new call needs its scope written down, and a call without
+one fails a test.
+
+### D-38 A write is retried only where repeating it is safe
+
+A read retries on any transient failure. A write retries only when
+Google answered, and only with an answer that means the request was
+turned away before it was applied. That is a 429 alone. The whole 5xx
+range is ambiguous: a 500 can follow a commit, a 502 or 504 comes from a
+gateway that never learned what the backend did, and a 503 is "not
+always safe to retry" (E-052).
+
+A write with an idempotency key is the exception, and it is declared
+rather than assumed. `send_message` carries a client-chosen message id,
+so Google refuses a second copy (D-14). That earns it a retry after a
+transport failure or a 5xx. A server failure of a write that is not safe
+to repeat is marked as possibly applied, so the reply does not invite a
+blind retry.
+
+The limiters stay inside Google's per-user quota (E-051). They are per
+process and the quota is per user, so two clients on one account each
+take the whole allowance, and a 429 is still handled with backoff.
+
+Rejected: retrying a write on 503, which can make two of whatever it
+created.
+Cost: an ambiguous write failure goes back to the caller to check.
+
+### D-39 Every API method and field has a written verdict
+
 `testdata/api-methods.json` is every method of the Chat, People and
-Cloud Identity APIs with its verb and path, as Google published them; `make api-diff` writes
-it and nobody edits it. `testdata/api-coverage.tsv` is one verdict per
-method, by hand: `used` names the `gchat.Client` method that implements
-it, `out` gives the reason it is deliberately not called.
+Cloud Identity APIs and the OpenID Connect endpoint, with its verb and
+path as Google publishes them. `make api-diff` writes it, and nobody
+edits it. `testdata/api-coverage.tsv` holds one verdict per method, by
+hand: `used` names the `gchat.Client` method that calls it, and `out`
+gives the reason it is left out. `testdata/api-fields.tsv` does the same
+for published fields.
 
-`gates api-coverage` holds the two and the client to each other, offline,
-in `make check`. A method with no verdict fails the build, so a
-capability Google adds cannot arrive unnoticed; a call with no row fails
-it too, so a new one cannot be added without saying which API method it
-is; and a verdict on a method that no longer exists fails, so the record
-cannot outlive what it was about.
+`scripts/gates api-coverage` holds the record and the client to each
+other, offline. A method with no verdict fails, so a capability Google
+adds cannot arrive unnoticed. A call with no row fails, and so does a
+verdict on a method Google does not publish.
 
-Two of the rules exist because writing a limit down is not keeping it.
-A `used` row is **bound** to the method it names: the HTTP verb and the
-custom-method suffix in the client's request literal have to be the ones
-Google publishes, so swapping the reasons on `markAsActive` and
-`markAsAway` fails instead of passing. And a method no scope this server
-asks for authorizes is **`unreachable`**, derived from the scopes in the
-snapshot rather than argued in prose — seventeen rows used to make that
-argument by hand, and adding `contacts` to `scopes.All` would have
-falsified thirteen of them with nothing objecting. It now fails those
-thirteen, which is the moment to decide what to do with the methods that
-just came into reach.
+A `used` row is bound to its method: the verb and custom-method suffix
+in the client's request have to be the ones Google publishes. A method
+no requested scope authorizes is `unreachable`, derived from the scopes
+in the snapshot rather than argued in prose. `chat.bot` is a scope a
+person cannot hold (E-041), and some Cloud Identity methods publish none
+(E-048).
 
-It exists because nothing else here looks outward. The schema diff
-compares this server with its own last release, and the live driver's
-surface gate compares the driver with this server. `make api-diff`
-refetches the discovery documents into the snapshot and reports what
-changed, verb and path included — a method that keeps its name and moves
-is a break the name alone would not show. It reaches the network, which
-is why it is a target somebody runs rather than a gate CI depends on: a
-gate that fails when Google is slow is one people learn to rerun until it
-passes. What CI gets instead is the file it wrote, and the snapshot's
-fetch date is printed on every run.
+`make api-diff` refetches the discovery documents and reports what
+changed, verb and path included. It reaches the network, so it is a
+target somebody runs: a gate that fails when Google is slow is one
+people learn to rerun until it passes.
 
-## Distribution
+Rejected: a hand-written list of what is left out, which nothing holds
+to the API.
+Cost: every method Google adds fails the build until someone judges it.
 
-`go install`, or a signed archive from a release: six platforms, a
-`checksums.txt` signed with a keyless Sigstore bundle, an SBOM per
-archive, and build provenance. The README says how to verify each.
+### D-40 Releases are `go install` and signed archives
 
-Two more artifacts come out of the same run. A `.mcpb` bundle for Claude
-Desktop, packed from goreleaser's universal-binary post hook — the one
-point in the pipeline where every binary exists and the checksum file
-has not been written, so the bundle ships inside the signature rather
-than beside it. And an entry in the MCP registry, written by
-`scripts/gates server-json` from that same checksum file and
-published with `mcp-publisher`.
+A person installs with `go install`, or downloads a release archive
+for Linux, macOS or Windows, on amd64 or arm64. The release signs
+`checksums.txt` with a keyless Sigstore bundle tied to the release
+workflow's identity, and carries an SBOM per archive and build
+provenance. The README says how to verify each.
 
-The Windows programs carry a version resource, which Go does not write:
-the product name and the release's version, in the fixed part and in the
-strings. Code signing needs it, because SignPath Foundation signs only a
-program whose resource names the project and carries the version it was
-asked to sign. goreleaser's before hook runs `scripts/gates winres` to
-write one `.syso` per Windows architecture into `cmd/google-chat-mcp`,
-where the linker takes it. The files are gitignored. Committed, they
-would carry one release's version into every later build. Untracked and
-not ignored, they would stamp `vcs.modified=true` into the binary, and
-`make release-rehearse` removes them after a local run. The programs are
-not signed yet; the README's code signing policy says what will be.
+Keyless signing leaves no private key to hold or leak. cosign 3 needs
+`--bundle`, and its older signature flags produce nothing (E-062).
+Pinning an action by SHA does not pin the tool it installs, so
+`cosign-release` and `syft-version` are pinned beside the SHAs (E-063).
+`make pins` holds every third-party tool to an exact version.
 
-`/simplify` and `/code-review high` ran over this on 2026-11-02. Fixed
-from them: the name was a third copy of `server.Name`; the version had a
-grammar of its own beside `versionProblem` and refused the tag's v; a
-config check failed on a CRLF checkout; and the comments on the before
-hooks gave the wrong reason a tidy hook is harmful. Kept: a pre-release
-and its release share a fixed version, which nothing but an installer
-compares; the attribution is in the README before anything is signed,
-since SignPath's terms put the policy on the home page, and the section
-says plainly that nothing is signed yet; and a `.syso` left by an
-interrupted or direct goreleaser run stays until `make clean`, reaching
-only a Windows build from that checkout.
+There is nothing to host, so nothing else is published but the bundle
+(D-41) and the registry entry (D-42).
 
-The bundle carries all three platforms Claude Desktop runs on. A
-manifest picks a binary by platform and has no key for the architecture,
-so every platform it claims has to work on both. macOS does through a
-universal binary and Windows through amd64 under emulation. Linux has
-neither, so the bundle carries both Linux binaries and a launcher that
-reads `uname -m` and execs the right one.
+Rejected: a long-lived signing key, which is one more secret to hold,
+rotate and lose.
+Cost: verifying a download takes cosign and the identity the README
+names.
 
-Linux was left out at first, on the belief that it would mean two
-bundles or a broken one. That was wrong in one direction and right in
-another: Claude Desktop for Linux exists and ships x64 and arm64 both —
-so excluding Linux served nobody, and a single Linux binary really would
-have been wrong for real people rather than hypothetical ones. The
-launcher is the third option neither of those considered. Checked
-against the client's own manifest schema, whose platform enum is
-`darwin`, `win32`, `linux`.
+### D-41 The Claude Desktop bundle ships inside the signature
 
-The bundle has the sibling servers' shape. It stages
-`server/google-chat-mcp-darwin`, `server/google-chat-mcp.exe`,
-`server/google-chat-mcp-linux-amd64`, `server/google-chat-mcp-linux-arm64`
-and `server/launch-linux.sh`, with the LICENSE and the README at the
-root, and claims Claude Desktop 0.10.0 or later. It asks for what a
-person sets in another client's configuration, each under the
-variable's name without `GCM_`, lowercased: `client_secret`, `profile`,
-`read_only`, `enable_destructive`, `toolsets` and `local_dir`. The
-bundle gate derives that list from `config.Vars`, which records every
-variable Define reads and names those read outside it: the config
-directory, its opt-in and the refresh token. It asks for every one, less
-the removed ones and less each one it gives a reason to leave out, so a
-setting added later is asked for until the manifest asks or a reason is
-written. A config test holds that every `GCM_` name the code spells is
-in that registry, every test file included, since tests set the
-variables of the server they start. A test may also spell one of the
-names the test lists for a variable the server does not read, each held
-to being spelled by a test and read by nothing. A `+` chain that another
-operand continues builds a name rather than spelling one, so its last
-word there is a prefix. Every reader of a variable goes through
-`config.Lookup`, which drops the spaces around a value, so spaces alone
-are unset; a config test walks every variable in the registry, those
-read outside Define through their own readers, states what each reads
-from a value with spaces around it and from spaces alone, and fails on
-one it has no row for. The gate
-refuses a reason for a variable the server no longer reads, a variable
-in `env` that the bundle leaves out or a release removed, a switch asked
-as anything but a boolean, defaults that configure the server at all, naming the fields they change, a required
-field's default included since Claude Desktop may fill it in, a default
-that is a list or an object, any `env` on a platform override, which a
-host uses in place of `mcp_config.env`, a missing `mcp_config.args` or
-an argument in it, since the bundle passes settings by `env` and an
-argument would configure the server past these checks, any `args` on a
-platform override, an empty list included, an `entry_point` or a command
-that names no staged program (`LICENSE` and `README.md` are packed to be
-read, not run), an `entry_point` that is not the file the default
-command runs, a command that does not start with `${__dirname}/`, a
-claimed platform that spawns any file but the one staged for it, a
-platform the staged table gives two entry points,
-`compatibility.platforms` other than the platforms the packer stages an
-entry point for, an override for a platform the bundle does not claim,
-a key given twice in one object of the committed manifest, which the
-gate's decode would merge while the schema and the host keep the last,
-two keys in one object that differ only in case, which the decode would
-match to one field, a manifest whose keys the walk cannot read, a
-`user_config` default holding a `${...}` reference, which a host may
-expand and the defaults check does not, a profile field that does not state `config.ProfileRule`, which the
-configuration page must state too (the staleness gate holds it), a
-toolsets field that does not list every toolset in order, a bundle that stops asking
-for either of those two, and an empty `privacy_policies`. Written down from a
-`/code-review high` rather than changed: the defaults check reads
-`mcp_config.env` alone. The refusals of an argument and of an override's
-`env` are what keep it sound, so relaxing either needs the defaults
-check to read the same. Kept from the 7.0.1 `/simplify` and
-`/code-review medium`: `configDiff`, a one-line wrapper over
-`fieldDiff` that keeps the gate's call typed; and the optional OAuth
-client field, which the reference host fills with its `""` default as
-it does every optional field, Claude Desktop not probed.
+The release also packs a `.mcpb` bundle for Claude Desktop, from
+goreleaser's universal-binary post hook. That is the one point in the
+pipeline where every binary exists and the checksum file is still
+unwritten, so the bundle ships inside the signature rather than beside
+it.
 
-The gate also starts every set of the switches over the defaults, each
-switch in a set on whatever its default, and holds the sets the server
-refuses to a declared list, both ways. Each key in a declared set is a
-switch with a title, and every other field in its set names that title.
-The list is empty: Read-only wins over `enable_destructive` rather than
-refusing the pair, and both fields say so. The gate is the
-`scripts/gates` tests, and they, the packer and `mcpb-manifest` run one
+The packer, the bundle gate and `scripts/gates mcpb-manifest` run one
 function, `manifestProblems`, so the release packs nothing the tests
-refuse: the placeholder version, the schema reference, the vendored
-schema, the name and platforms, and the launcher and go.mod beside the
-manifest are in it. The gate, the packer and `mcpb-manifest VERSION
-[ROOT]` read the committed manifest through `committedManifest`, once,
-with the schema, the launcher and go.mod from the same root, and the
-packer ships the bytes it checked with the version stamped in. go.mod's
-module is read by one `modulePath`, which the registry entry reads too.
-The version is held to Semantic Versioning, and a refusal says what is
-wrong with it, since the schema takes any string. The stamped document
-is not validated again: the edit puts that version where the
-placeholder was, and the schema would take it. `mcpb-manifest` writes
-its problems to stderr alone. A bundle whose zip or file fails to close
-is not written. The manifest lists no tools, since the settings change
-what registers, and carries no icon.
+refuse. They read the committed manifest once, with its schema, the
+launcher and go.mod from the same root. The packer ships the bytes it
+checked with only the version stamped in. The version is held to
+Semantic Versioning, and a refusal says what is wrong with it, since the
+schema takes any string. A bundle whose zip or file fails to close is
+not written.
 
-The family sweep of 2026-10-24 changed what this gate and the
-configuration hold: every reader of a variable trims through
-`config.Lookup`, the configuration directory's opt-in included; the
-platforms and their entry points come from one staged table, and
-`entry_point` is the default command's file; the manifest's keys are
-checked before anything reads its decode; the version is held to
-Semantic Versioning; a bundle that fails to close is not written; and
-the name scan reads every test file. `/simplify` (one agent, four
-angles), `/code-review medium` and `/security-review` ran over
-`main...family-rules` the same day. Fixed from them: the name scan
-skipped the tests under `scripts/`, and read a prefix a `+` chain was
-building as a name; the spaces walk compared each value with the code's
-own reading of another, and now states what each variable reads; the
-stamped manifest's schema check could not fail, and is gone; the version
-refusal said "with no spaces" whatever was wrong; the staged platforms
-could list one twice; the schema check named its file in some messages
-only; a key holding a dot was ambiguous in a refusal, keys differing only
-in case passed, and so did a walk that failed; `mcpb-manifest` read a
-path of its own, past `committedManifest`, and now takes a root;
-`fieldDiff` reported a differing unnamed field only when no named one
-differed, and compared a pointer by its address; a default holding
-`${...}` passed; go.mod's module was read by a pattern that failed on a
-trailing comment, and the registry entry read it from the build instead;
-config typed the default profile userconfig named; and
-`config.Lookup`'s comment said it returns the name. `/security-review`
-found nothing at confidence 8 or above. Kept: the names a test spells
-for a variable the server does not read are a typed list, since a
-negative test's name cannot be derived, and the list is held both ways.
-The registry entry reads no manifest, so the family's rule that it read
-one through `committedManifest` has nothing to hold here. The
-local-files refusals in `internal/service`, two tool descriptions and an
-input's schema tag still spell `GCM_LOCAL_DIR` and `GCM_TOOLSETS` by
-hand, which the family's spelled-once rule would replace:
-`internal/service` imports no config, a struct tag cannot take a
-constant, and the name scan holds every spelling to the registry, so a
-misspelling fails.
+Rejected: packing the bundle after the release, which would leave it
+outside `checksums.txt` and unsigned.
+Cost: the bundle depends on goreleaser's hook order.
 
-## Evidence log
+### D-42 The registry entry is published after the release exists
 
-Every convention here was checked against a primary source or a live
-probe before it was adopted. The rows below are the ones that still
-explain the code; each says what was checked, and when a live call
-contradicted a document, which won.
+The MCP registry entry is written by `scripts/gates server-json` from
+the release's checksum file, and published with `mcp-publisher`.
 
-### Google's Chat API
+goreleaser's `mcp` block cannot publish an MCPB package, since it has
+no field for the hash the registry requires (E-064). The registry checks
+an MCPB entry in code: a hash, a release-asset URL on github.com or
+gitlab.com carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL
+before it accepts the entry (E-065). So the entry can be published only
+once the release exists, and from the same checksums the release signed.
 
-| What | Verdict |
-|---|---|
-| The message-search filter field is `create_time`, not `createTime` | The REST reference's own examples say `createTime` and Google rejects it. Settled live 2026-09-05 by sending the clause alone |
-| The space-event filter field is `event_types`, plural | The mirror image: the reference's prose says `event_type` and its examples say `event_types`, and the examples are right. Settled live 2026-09-06. The same page has now been wrong in both directions, so it cannot be read once |
-| A space-scoped message search must still pass `spaces/-` as the parent | Google refuses a real parent outright and names the fix: put the space in the filter. Live 2026-09-05 |
-| Every media download is served as `application/octet-stream` | Whatever the attachment resource says its type is. So the attachment's own declared type is the one to report. Live 2026-09-06 |
-| A page can come back EMPTY with a next page token still on it | Google applies `pageSize` before it filters, so a space holding two messages answers `pageSize=1` with no messages and a token. An empty page therefore does not mean the end, and a caller that stops on one reports a space with messages in it as quiet. The tool descriptions and the server instructions say so. Live 2026-09-07, found by a step written to assert the opposite |
-| A link in a message is an annotation, not text | `text` carries the words that were linked; the target is in `annotations[].richLinkMetadata`. `richLinkType` is DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT — there is no CHAT_MESSAGE, and a link to one message is CHAT_SPACE with `chatSpaceLinkData.message` set. Discovery document, 2026-09-17. Dropping the annotation left a message whose whole body was a link reading as a bare word |
-| `spaces.findDirectMessage` with a person's address answers with the one direct message between the caller and them | The check a write to a direct message makes: the space Google finds for the address given as `space_display_name` has to be the space written to. Settled by the live run of 2026-10-27, where a write naming the wrong space was refused `[stale]` |
-| A quote can be created through the API, unlike a link chip | `quotedMessageMetadata` takes the quoted message's name and its `lastUpdateTime` on create, and Google rejects a stale timestamp. No tool here sets it, so `send_message` cannot make one and the live driver cannot manufacture the case: the quotes behind this were made in the Chat client and read back by hand on 2026-09-17 |
-| Chat makes no rich link for a link posted through the API | A message whose body is a message URL comes back with no annotations at all — the chip is made by the Chat client, not by the API. Live 2026-09-17, twice: once with a URL of the driver's own shape and once with the permalink byte for byte. So the live suite cannot manufacture the case it checks, and a link pasted by a person is the only thing that produces one |
-| A pasted link decodes as CHAT_SPACE naming the message | Read back through the shipped binary on 2026-09-17 from a link pasted in the Chat client: `richLinkType` CHAT_SPACE, with the space, the thread and the message all named, and the annotation spanning the whole body. The message's own `text` was the anchor words and nothing else, which is the bug in one line |
-| A message permalink has three path segments and a query | `room/{space}/{thread}/{message}?cls=10`, read off a real one on 2026-09-17. A message created through the API is named `{id}.{id}` and the URL carries the half before the dot, which is also its thread's id |
-| A message search returns the matched message, annotations included | `view` gates the metadata around a hit — `read` and `spaceMuteSetting` — not the fields of the message itself, which is why the basic view is described as "only the matched messages … but no additional metadata". Discovery document, 2026-09-17. Not settled live, and the live run of 2026-09-17 could not settle it: the hit it searched for carried no annotations for either route to drop, because the API had made none |
-| A quoted message's `sender` is a DISPLAY NAME, not a resource name | The reference calls it "the quoted message's author name", which this repository read as `users/{id}` and wrote into a comment. A real reply-quote and a real forward, both read through the shipped binary on 2026-09-17, carried a person's name. It is passed through verbatim and never looked up: `people/Jane Doe` is a malformed id, and sending one costs a junk entry in the batch that resolves the real senders. Google answers that batch per person, so the other addresses still resolved — which is how the mistake survived its first live read |
-| A forward names the space it came from, and a DM by the other person | `forwardedMetadata` carried the source space and its display name on a real forward, 2026-09-17; for a direct message that name is the other participant, as the reference says. Whether a forward also carries the links and files the reference promises is still unverified: the one forwarded here had neither |
-| A quote's snapshot is filled differently for a reply and a forward | A REPLY carries `sender` and `text` only; `formattedText`, `annotations` and `attachments` are documented as populated for FORWARD alone, and `forwardedMetadata` only for a forward. Reference, 2026-09-17. So an empty link list on a reply-quote is Google saying nothing, not the quoted message having no links, and the tool schemas say which is which. For a forward the snapshot is the only copy a caller can reach: the source space is usually one they are not in |
-| A deleted message answers 200 with a tombstone, not 404 | Which is why a repeat delete must read the answer rather than the status. Live 2026-09-05 |
-| A forced delete of a deleted thread root may still take its replies | **Not established.** Discovery (revision 20261008), `messages.delete`: "When `true`, deleting a message also deletes its threaded replies. When `false`, if a message has threaded replies, deletion fails." It says nothing of a root already deleted. Through the API that state cannot be made to probe it, since a root with replies goes only with `force`, which takes them too. So `delete_thread` takes a first message that reads as deleted, without comparing its witness, sends `force=true` and reports Google's answer, a refusal included: the replies left under it are what the call is for, and the deleted first message says nothing of them. `delete_message` always sends `force=false`. 2026-10-23 |
-| A group in a space that admits outsiders brings them in, now and later | Google's help page "Add a Google Group to a space" (support.google.com/chat/answer/13535086, read 2026-10-23): "If Allow people outside your organization to join is enabled, the group and its members are invited to the space"; external members are "excluded in spaces with guest access turned off"; and "Any changes to the group's membership ... are also automatically reflected in the space". So a group the organization owns can bring in an outsider after it is added, and `add_member` refuses every group into such a space rather than checking the group once. Help-page prose, not settled live: the live run adds no group, since that would put real people in the scratch space |
-| A deleted space answers 403, not 404 | So "deleted" cannot be told from "not yours", and the refusal message does not claim to know which. Live 2026-09-05, and the same under admin access on 2026-10-31: a repeated `admin_delete_space` and an administrator's read of the deleted space both got the 403 |
-| `User.email` is filled for senders and members, external people included | Discovery (revision 20260922): filled under user auth for a message's `sender`, a mention and a `Membership`, "provided the user is a member of the space or has prior affinity". Live 2026-09-27 over 39 spaces, with the scopes this server requests: every same-domain human member and nearly every sender carried it, and so did an external member and external senders in a space that admits guests. Apps never did. Twelve humans came back with no address, most of them in direct messages and likely accounts that are gone; People resolved none of them, nor the external member Chat did name. So Chat's address is used first and People only fills a gap |
-| `role` is silently ignored when adding a member | Google answers 200 and records ROLE_MEMBER. The tool dropped the argument and says to follow with `update_member_role`; the result reads the role off the answer, which is what made this visible. Live 2026-09-05 |
-| An umbrella scope satisfies every narrower scope split out of it | Verified against the discovery document. Without the table the server refuses calls Google allows, and refuses them for the people who paid the most for consent |
-| A person's token can quote, and cannot forward | The create-messages guide quotes with `chat.messages.create` under user auth. `quotedMessageMetadata.lastUpdateTime` must be the quoted message's latest, or the post fails, so the server reads it first. Live 2026-10-08: a REPLY quote posted and read back. FORWARD, GA on 2026-06-12, was refused with "Can't forward a message" three ways: a main-chat message into its own space, a thread reply into another thread of its space, and a message into another space. So `send_message` quotes a message in the same space only |
-| A search hit's read state may be left out when false | Google's JSON leaves a false boolean out, so an unread hit may carry no `read` field, the same as every hit without the read-state scope. The server reads one hit marked read, or `unread_only`, as proof the silent hits are unread, and says null otherwise. A scratch space cannot show which Google does: every message in it is the caller's own, and live 2026-10-08 a hit in a space just marked unread still came back read |
-| A person's token can post Markdown | The REST reference called `markupSyntax` output only on 2026-09-05. Discovery revision 20261005 calls it "Optional. Specifies how the server interprets the message `text`", and the release note of 2026-08-19 makes Markdown GA for messages created through the API. Live 2026-10-08: a Markdown post came back with its bold word in Chat's markup and its plain text without the asterisks |
-| The media upload protocol is only in the discovery document | `media.upload` is a POST to a different base with a JSON metadata part; the guide does not say so. `downloadUri` is documented as not for downloading, and is never fetched |
-| The Chat API has 54 methods and this server calls 50 | Discovery document, 2026-09-07. Two of the four left out are not choices: `spaces.completeImport` takes only `chat.import` and `spaces.messages.attachments.get` only `chat.bot`. The other two are — `spaces.create`, because `spaces.setup` does the same thing and adds the first members, and the PUT form of a message update, which would clear cards and attachments |
-| `chat.bot` cannot be granted to this server at all | Google: "This scope only supports app authentication with service accounts. You can't authenticate with user credentials or with domain-wide delegation using this scope." Checked 2026-09-08. It is the only scope `spaces.messages.attachments.get` accepts, so that method is out of reach for a per-user client and nothing is lost by it: a message already carries its `attachment` with the `attachmentDataRef`, and the bytes come from `media.download`, which accepts `chat.messages.readonly` |
-| A space's audience goes in a patch of its own | Discovery (revision 20260928), `spaces.patch`: `access_settings.audience` needs every other mask left out, a named space, a space manager, user authentication and no import mode. Masking it with no value removes the audience, which makes the space private. So `update_space` refuses an audience beside a name or description rather than sending two patches that could half land. Live 2026-10-03: the camelCase mask `accessSettings.audience` opened a space to `audiences/default` and the empty one made it private, each read back through `get_space` |
-| Who may set a space's audience is documented two ways | The guide "Make a space discoverable to a target audience" (updated 2026-09-23) asks for a super administrator; discovery asks only for a space manager. Not settled: the maintainer runs it as an administrator, and the tool description names only the space manager rule Google enforces in the reference |
-| `spaces.setup` takes `accessSettings.audience` | Its own reference never names it; only the target-audience guide says setup takes it. Live 2026-10-03: a space created with `audiences/default` read back `DISCOVERABLE`. So `create_space` keeps `audience` |
-| No API lists target audiences | Their ids come from the Admin console URL, `admin.google.com/ac/targetaudiences/{id}`, per the same guide. `audiences/default` is the organization's default. So `audience` takes an id and cannot offer choices |
-| `spaces.search` without admin access returns only joined spaces | The reference says results are "limited to spaces where the calling user is a joined member". The guide says only "spaces they have access to". Live 2026-10-08: a search with no name filter returned exactly the named spaces `list_spaces` returned. The tool had said it reached spaces the caller is not in |
-| Google pages and counts a space search only under admin access | Discovery revision 20261026, `SearchSpacesResponse`: `nextPageToken` and `totalSize` are each "Only populated when `useAdminAccess` is set to `true`". Read 2026-10-31. So `search_spaces`, which has no admin access since 9.0.0, takes no `page_token`, and its `next_page_token` and `total_size` are never set |
-| Nine Chat methods take `useAdminAccess`, and no others | Discovery revision 20261026 gives the parameter to spaces get, search, patch and delete and to members list, get, create, patch and delete; the admin-overview guide (updated 2026-10-09) names the same nine. Reads take `chat.admin.spaces.readonly` or `chat.admin.memberships.readonly`, or the umbrella beside each; writes take `chat.admin.spaces` or `chat.admin.memberships`. Read 2026-10-31. `TestAdminAccessRunsTheNineAdminMethodsAndRefusesTheRest` holds the list |
-| An administrator's space delete needs `chat.admin.delete` | Not `chat.admin.spaces`, which cannot delete. The spaces.delete reference (updated 2025-07-25) and discovery revision 20261026 agree. Read 2026-10-31. It is the one restricted administrator scope, so only the destructive flag asks for it |
-| An administrator's patch may change a name, the details and the permission settings | The spaces.patch reference (updated 2026-09-21) refuses `space_type`, `space_history_state`, `access_settings.audience` and `access_settings.access_permission_settings` under admin access. No page says the other three work, but a live run on 2026-10-31 changed a name, a description with the guidelines kept, and six permission settings in one patch, as `permission_settings.{key}` and `permissionSettings.{key}` alike. `permissionSettings.viewSpaceMembership` must go with `access_settings.access_permission_settings`, so it is left out |
-| An administrator reaches a space the caller is not in | Live, 2026-10-31. A space the run made and then left empty took an administrator's read, edit and member listing, and was gone 5 to 10 seconds after the leave: an administrator's read then got the 403, and an administrator's search no longer found it. A space with a second person in it was still there two minutes after an administrator removed the caller, and `admin_delete_space` deleted it. No page says Google deletes an empty space. So the live driver never leaves a space, and `admin_remove_member` is excused from it |
-| Who may reply changes only where members cannot post | Neither the Space reference nor the Chat Help Center says when `replyMessages` can change. Live, 2026-10-31: in a space where members post, Google refused it to the space's own manager as "the permission settings are immutable", even when the patch changed nothing, and refused it under admin access as "permission denied … or the resource doesn't exist". In a space created as `ANNOUNCEMENT_SPACE` it changed both ways, as the manager and as an administrator. A patch without `managersAllowed` is refused as "Invalid combination of permissions". So the server refuses `reply_messages` where `postMessages` gives members the right, before anything is sent |
-| An administrator's search must say whose spaces | The spaces.search reference: "`customer` is required when `useAdminAccess` is set to `true`", and `customers/my_customer` is its only value. This server sent `use_admin_access` without it until 2026-10-31, and the live driver had never run it. A live run on 2026-10-31 searched with the clause, every administrator filter and each order |
-| An administrator's member listing needs a member type filter | The members.list reference (updated 2025-07-16) requires `member.type = "HUMAN"` or `member.type != "BOT"` under admin access, and lists no apps. The server sends `member.type != "BOT"`, the one that can keep Google Group memberships, since a filter drops a group that does not match it. Whether `showInvited` works under admin access is not documented. Read 2026-10-31. A live run that day listed members with the filter; `showInvited` under admin access is still untested |
-| Google counts a space's name, description and guidelines in UTF-16 units | The Space reference (updated 2026-09-30) allows a description of 4,096 characters and guidelines of 5,000; Google's own refusal of a long name says 128. The 150 this server enforced on descriptions matched an old Ruby client library's docs. Live, 2026-10-31: 4,096 two-byte letters (8,192 bytes) were kept and 2,049 emoji (4,098 UTF-16 units) were refused, "Maximum length of the field is 4096"; guidelines and names went the same way at 5,000 and 128. So Google counts UTF-16 units, not bytes and not characters, and an emoji counts as two. The live driver writes and reads back a 4,096-unit description with emoji in it |
-| Members see an administrator's change, but not who made it | The admin-overview guide (updated 2026-10-09), "What users see in Chat": "The organization's administrator performed" the action, and it "does not identify the administrator". The Reports API's Chat events record `actor_type` ADMIN for a space's details, name, deletion and memberships; no event covers a permission change. Read 2026-10-31 |
-| One Admin console privilege covers an administrator's reads and writes | Admin Help a/answer/13369245: "Super admins have the manage chat and spaces privilege by default". The privilege list, a/answer/1219251, has no read-only form of it. So reads and writes part at the OAuth scope, not at the privilege. Read 2026-10-31 |
-| A desktop client's login can grant some scopes and not others | Google's native-app guide (updated 2026-10-30), step 6: "users may not grant your app access to all of them". The exceptions are "apps marked as Trusted" and Workspace Enterprise apps with domain-wide delegation, which "either receive all requested scopes or none". The granular-permissions page (updated 2026-10-30) ties `enable_granular_consent` to client ids "created before 2019", so login does not send it. Read 2026-10-31. This reverses a reading of the granular-permissions page earlier that day, which took it to say a desktop client gets the choice only with that parameter |
-| An Internal app needs no scope list on its consent screen | Google's configure-oauth-consent guide (updated 2026-09-03): "you only need to list scopes for apps used by people outside your Google Workspace organization", and for internal apps "scopes aren't listed on the consent screen". The setup guide said a scope off the screen is never granted; it now asks for the list on External apps only. Read 2026-10-31. Live the same day: an Internal app's token held 18 scopes its Data Access page does not list. Several have no broader scope listed there that could account for them, among them `chat.spaces`, `chat.delete`, `contacts.readonly` and the `chat.users` scopes |
-| Google writes a time it does not have as the Unix epoch | Live, 2026-10-31: an administrator's spaces.get answered `lastActiveTime` `1970-01-01T00:00:00Z` for a space whose search row gave a time in October 2026. The reference does not mention it. Every timestamp the server reads now takes the epoch as absent. `TestGetSpaceReadsTheEpochAsNoTime` holds it |
-| `destructiveHint` false means the tool only adds | The MCP schema (2025-11-25), `ToolAnnotations`: "If false, the tool performs only additive updates", and the default is true. So a tool that replaces or removes anything says true, a message edit and a removed reaction included, though it needs no flag here. Read 2026-10-31. The `Overwrite` kinds carried it then, on fifteen tools. Since 2026-11-01 they are the `Write` kinds and true is the default for a write; `TestOnlyToolsThatAddSayTheyAreNotDestructive` names each tool that says false |
-| Quotas: 15 reads and 1 write per second per user | Chat API limits page, 2026-09-05. The limiter defaults follow it |
-| A write with no idempotency key is retried on 429 only, not on 503 | `google/rpc/code.proto` defines UNAVAILABLE, which maps to HTTP 503, as transient but adds "it is not always safe to retry non-idempotent operations". A 503 on such a write is now as ambiguous as a 500. Read 2026-10-01; it reverses the earlier rule that a 503 meant Google turned the request away |
+go.mod's module path is read by one `modulePath`, which the registry
+entry and the bundle share.
 
-### Cloud Identity, for Google Groups
+Rejected: goreleaser's `mcp` block, for the reason above.
+Cost: publishing to the registry is a second workflow that runs after
+the release.
 
-| What | Verdict |
-|---|---|
-| Chat names a group by its Cloud Identity id | Chat discovery (revision 20260928): a group member's name is "a group in Cloud Identity Groups API. Format: groups/{group}", and `spaces.setup` says to find it with `groups.lookup`; a group's email is not accepted. So `find_group` asks Cloud Identity and hands the name to `add_member` unchanged |
-| `groups.lookup` turns an address into that name | Cloud Identity discovery (revision 20260930): `GET v1/groups:lookup?groupKey.id=<email>` answers `{"name": "groups/{id}"}`, and `groups.get` gives the group's `displayName` and its address in `groupKey.id` |
-| `cloud-identity.groups.readonly` is the narrowest scope that works | Both methods accept it, `cloud-identity.groups` and `cloud-platform`; the other two are wider. Google's scopes page gives it no tier. The setup guide says an ordinary user may call the API with their own OAuth sign-in |
-| Which groups a person can see is not documented per method | Google's help on group settings says a group's "Who can see group" decides who can find it, and lists "Group members" first. Live 2026-10-03: `groups.lookup` answers 403, not 404, for an address no group has, so a missing group and a hidden one look alike. `find_group` says it cannot tell which, rather than claiming either |
-| A group's direct members come from `groups.memberships.list` | Cloud Identity discovery (revision 20260930): it accepts `cloud-identity.groups.readonly`, and returns each member's address in `preferredMemberKey.id`, its roles and its type. `searchTransitiveMemberships` would reach nested members, but only Enterprise and Cloud Identity Premium accounts may call it and the rest get a 403. Google shows a group's members only to someone the group's own settings allow, so a refusal costs that group's row its members and nothing else |
-| Five Cloud Identity methods publish no scope | `customers.userinvitations.*` lists none in discovery revision 20260930. The coverage gate marks such a method `unreachable` with the reason `none published`, since there is no scope to name |
-| A group read asks only for the fields it reads | `fields=name,groupKey,displayName`, the `fields` system parameter every Google API takes (cloud.google.com/apis/docs/system-parameters, the page `prettyPrint` cites). A group also carries its parent, labels and timestamps, and every field decoded but not modeled is logged as schema drift, so without it each read raised four false alarms |
-| A disabled API answers 403 `SERVICE_DISABLED` | The AIP-193 `ErrorInfo` reason; the older frontend says `accessNotConfigured`. It was reported as a plain permission refusal, which points the person at the wrong fix, so it has its own message naming the setup page |
+### D-43 The bundle runs on every platform Claude Desktop does
 
-### MCP, and the clients that read it
+The bundle carries macOS, Windows and Linux. A manifest picks a binary
+by platform and has no key for the architecture, so every platform it
+claims has to work on both amd64 and arm64. macOS does through a
+universal binary, and Windows through amd64 under emulation. Linux has
+neither, so the bundle carries both Linux binaries and
+`server/launch-linux.sh`, which reads `uname -m` and execs the right one.
 
-| What | Verdict |
-|---|---|
-| A tool's `outputSchema` has no slot in the Messages API | A custom tool there takes `name`, `description`, `input_schema` and `input_examples`; there is no output-schema field, and the pricing note counts "tool names, descriptions, and schemas" in the `tools` parameter. Docs, 2026-09-17. MCP's own spec gives `outputSchema` to the client — "Clients SHOULD validate structured results against this schema" — so output-schema bytes are protocol traffic and client-side validation, not a measured cost in the model's context. What the model reads, and what the guidance says to write in full, is the tool description |
-| The schema generator inlines a nested type everywhere it appears | `github.com/google/jsonschema-go` models `$defs` and `$ref` but `For[T]()` emits neither: it errors on a cycle and never de-duplicates. Read at v0.4.3, 2026-09-17. So a type used twice on one tool is serialized twice, and `quote` carrying links and attachments cost 16.5 KB across the four message tools. Hand-writing the schemas would buy that back at the price of schemas that can drift from the Go types they describe |
-| A reply carries both halves | The spec asks a tool returning structured content to also return the serialized JSON in a text block. They are never the same bytes here: `content` is a compact rendering, `structuredContent` the machine one |
-| Claude Code forwards only `structuredContent` | Measured 2026-09-06 by asking the client through its own transcript, after google-docs-mcp found the same. So the rendering is invisible in that client — and claude.ai and ChatGPT show the text half, which is why both are still sent |
-| `anthropic/requiresUserInteraction` is a vendor key, and Claude Code holds it in every interactive mode | It appears nowhere in the MCP spec, which puts human-in-the-loop on the application: "the protocol itself does not mandate any specific user interaction model". Claude Code 2.1.199 or later prompts for a marked tool on every call in every interactive mode (default, acceptEdits, plan, auto, bypassPermissions), allow rules and hooks do not skip it, and from 2.1.246 it offers no "don't ask again". Where no prompt can be drawn it denies the call: dontAsk, `-p` without a permission host, `--permission-prompt-tool`. An Agent SDK host's `canUseTool` can approve it. Anthropic documents it for "tools whose permission prompt is itself the point". No other client reads it. Corrected 2026-10-23 from the family's approval evidence; this row said auto mode prompted for nothing, which was true before 2.1.199 |
-| VS Code prompts by `readOnlyHint`, not by `destructiveHint` | VS Code never reads `destructiveHint`: it prompts on every tool without `readOnlyHint: true`. Codex prompts by `destructiveHint` in its default tool mode, at source; claude.ai and ChatGPT document that it decides theirs. Family approval evidence, 2026-10-23. So `readOnlyHint` goes only on a tool that changes nothing, and `download_attachment`, which writes a local file, does not carry it |
-| A remembered approval covers a tool, never an argument | claude.ai, Codex, VS Code and Copilot remember "always allow" per tool or per server, and Claude Code's permission rules match an MCP argument only in a `--disallowedTools` deny rule. Hooks in Claude Code, Codex, VS Code and Copilot CLI see arguments and can deny or force a prompt, and Gemini CLI policy rules match them, but only where an operator writes one. Family approval evidence, 2026-10-23. So `force`, an outside invite and a manager role are tools of their own here |
-| A client can run a registered tool with nobody approving it | In every widely used client examined but ChatGPT a mode or a setting does: Claude Code's bypassPermissions, allow rules and auto mode, claude.ai's Always allow, Codex `--yolo`, VS Code's Allow all, Copilot CLI `--yolo`, Gemini CLI YOLO, Cursor's Run Everything. Only a tool carrying the mark is held in Claude Code. Family approval evidence, 2026-10-23. So the destructive tools are not registered unless the operator turns them on |
-| Strict inputs: a struct's schema refuses unknown properties | Which is right for a tool and wrong for a permission hook — a hook that refuses a payload it does not model fails in a place that implicates a different tool entirely |
-| A server can ask the person to confirm a write through form elicitation, on every protocol | The `ElicitRequestFormParams` type in the specification's `schema.ts` for 2025-06-18, 2025-11-25 and 2026-07-28, the 2026-07-28 multi-round-trip pattern, and the MCP Go SDK v1.8.0's `mcp/server.go`, read 2026-09-28. A result may carry `inputRequests` with a signed `requestState`; before 2026-07-28 the SDK sends `elicitation/create` itself and calls the handler again. `requestedSchema` may have no properties. The client answers "from the user or other sources", so an accept is never proof a person read anything. Held by tests on all three protocols |
-| A client draws an elicitation question as plain text | Refuted. VS Code builds it as `new MarkdownString(elicitation.message)`, untrusted, so emphasis, link text and HTML-like text draw and single line breaks join (`mcpElicitationService.ts`, `main` at 251bcf5f, 2026-09-29). Quoted text is a code span, and lines stand apart |
-| A required choice confirms better than an empty form | Declined for now. Codex accepts a form with no properties by itself under approval policy `never` with full access, and VS Code resolves a skipped question as `accept` (`codex-rs/codex-mcp/src/elicitation.rs` at c248f6d4; `mcpElicitationService.ts`). But in Claude Code 2.1.284 a choice list took the maintainer 60 seconds against 8 for the empty form, and read as confusing |
-| A tool the server confirms itself should carry the mark too | Refuted 2026-10-09, after the owner was asked twice for one delete in google-docs-mcp: the client prompted for the mark, then the server asked. No source recommends two hard gates for one call; GitHub's `delete_repository` and Supabase confirm with `destructiveHint` plus a form elicitation, and Claude Code's documentation scopes the mark to "tools whose permission prompt is itself the point". `tools/list` drops the mark, for a client that can ask, from the four tools that ask before every write (`AsksEveryCall`), and from `send_message` and `update_message` when `GCM_ASK_BEFORE_SEND` makes them ask every time. A send that asks only before `@all`, and a write that never asks, keep it, since there it is the only per-call prompt. The cost: outside auto mode, the mark stopped these four calls before they reached the server, with a prompt or, headless, a refusal. Now a Claude Code `Elicitation` hook that accepts confirms them alone, since such a hook can "respond programmatically, skipping the dialog entirely" (code.claude.com/docs/en/hooks, read 2026-10-09). Superseded by the row below; its "outside auto mode" is refuted for Claude Code 2.1.199 or later, which prompts for a marked tool in auto mode too |
-| The server should confirm a write with the person itself, through form elicitation | **Refuted 2026-10-22**, on documents and source, and the wording corrected 2026-10-23 against the family's approval evidence. The specification gives per-call approval to the client and never makes elicitation a consent control: the client may gather the answer "from the user or other sources". The servers that do confirm each pick their own class, from GitHub's one tool to Azure's 145 or so commands to every write in AWS Redshift's write mode, and GitHub, AWS's SAP server and the archived Dynatrace server have no off switch. The question is unreliable: a Claude Code `Elicitation` hook, once someone installs one, answers it with no dialog, and Codex in full access accepts a form with no fields by itself. By open user reports Anthropic has not answered, Claude Desktop's Code tab and the VS Code extension decline it without drawing it, Cowork leaves it undrawn until the call times out, and the Claude Code terminal shows the first three lines of its message (one report, against 2.1.301). No client's permission rules decide a question one by one: Claude Code reaches it only through hooks and `--permission-prompts none`, Codex governs elicitations as a class through its approval policy, and VS Code not at all. In the maintainers' own run of 2026-10-15, a question asked on every call expired while a chat server deleted 68 messages. So the server asks nobody now; the four rows above describe the question this replaces |
-| `tools/list` and `tools/call` see the same client capabilities | Not on 2026-07-28; found by review 2026-10-09 and kept as a known limit. From that protocol a client sends its capabilities with each request, and the Go SDK v1.8.0 reads the request's `_meta` before the session's. So a client can declare form elicitation to `tools/list` and none to `tools/call`, and get neither the mark nor a question. That gives a misbehaving client nothing it lacked: one that declares form elicitation can answer the question itself and accept without a person. Moot since 2026-10-22: the server asks nobody |
-| Stdout carries JSON-RPC frames only | Spec, transports/stdio. One stray `fmt.Println` corrupts the protocol, which is what the smoke test guards |
+Claude Desktop for Linux ships for x64 and arm64 both, and the client's
+own manifest schema lists `darwin`, `win32` and `linux`. Leaving Linux
+out serves nobody, and a single Linux binary fails for real people.
 
-### Releasing
+The platforms and their entry points come from one staged table.
+`compatibility.platforms` must be exactly the platforms the packer
+stages an entry point for, and `entry_point` is the file the default
+command runs.
 
-| What | Verdict |
-|---|---|
-| cosign 3 made `--bundle` required | The old `--output-signature` and `--output-certificate` silently produce nothing. Release notes, v3.0.1, after a sibling repository's release died on it |
-| Pinning an action does not pin what the action installs | So `cosign-release` and `syft-version` are pinned beside the SHAs. A half-pinned step reads exactly like a pinned one |
-| goreleaser's `mcp` block cannot publish an MCPB package | The registry requires `fileSha256` for that type and the block has exactly `registry_type`, `identifier` and `transport`. Read out of its config at v2.18.0 and again at v2.18.1 |
-| The registry enforces its MCPB rules in code, not in the published schema | A hash, a github.com or gitlab.com release-asset URL carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL before it accepts the entry — so the entry can only be published after the release exists |
-| A bundle install has a second approval behind the server, as Claude Code's ask rules are | **Refuted**, read 2026-10-23; Claude Desktop itself not probed. anthropics/mcpb `70fe3b34` and v2.1.2 declare the manifest's `tools` list for display, and nothing reads it at run time. Claude's connector docs: Desktop approves per tool, driven by the annotations, and "Always allow" skips the prompt "for that tool from now on". So every switch the bundle asks for defaults to the server's own, off, the bundle gate refuses one that does not, and the manifest lists no tools |
-| `privacy_policies` is optional for a bundle | **Refuted**. The manifest specification (anthropics/mcpb `70fe3b34`, MANIFEST.md) makes it "Required when the extension connects to external services (first- or third-party) that process user data". Neither the schema nor `mcpb validate` enforces it, so the bundle gate does. The manifest names Google's, https://policies.google.com/privacy, which answered 200 on 2026-10-24 |
-| Any `command` the specification shows runs from the bundle | **Refined**, read 2026-10-24; Claude Desktop not probed. anthropics/mcpb v2.1.2: MANIFEST.md L497 and L510-515 give a binary the command `server/my-server`, and L532 says `${__dirname}` "is replaced with the absolute path to the extension's directory"; `src/shared/config.ts` L118, L133 and L173-176 substitute variables in `command` and resolve no path. The specification shows a relative command once and never says what it is resolved against, and the reference host passes it to the spawn as written. `${__dirname}` is the one form whose meaning the specification fixes. The bundle gate requires every command to start with `${__dirname}/` and to name a staged program, as the committed manifest's do, and refuses a relative or absolute one; a probe of Claude Desktop's working directory would settle the relative form |
-| A platform override's `env` is merged into `mcp_config.env` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.env = platformConfig.env \|\| result.env`. An override's `env`, an empty `{}` included, replaces the base, so the settings would not reach that platform. The bundle gate refuses any `env` on an override |
-| A platform override's `args` are added to `mcp_config.args` | **Refuted**, read 2026-10-24: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, does `result.args = platformConfig.args \|\| result.args` and substitutes `${user_config.x}` into `args` as into `env`. An argument such as `--enable-destructive=true` reaches the server, and an override's `args`, an empty `[]` included, replaces the base. The bundle gate refuses an argument in `mcp_config.args` and any `args` on an override. The base keeps its `"args": []`, and the gate refuses it missing: only the reference host was read, and Claude Desktop without the key is not probed |
-| A required setting's default reaches the server when the person gives none | **Refuted** for the reference host, read 2026-10-24: anthropics/mcpb `src/shared/config.ts` at v2.1.2. `getMcpConfigForManifest` sets each key's `default` first ("First, add defaults from manifest") and then `Object.assign(mergedConfig, userConfig)`, so the person's value wins. `hasRequiredConfigMissing` reads a required key from `const config = userConfig \|\| {}`, the person's values alone, and one missing skips the launch. So a required key's default reaches the server only as a value the person gave, which Claude Desktop's install form may fill in from the default; Desktop is not probed. The bundle gate substitutes a required key's default too, holding the bundle to a person who accepts it unread |
-| A bundle setting the person leaves empty reaches the server empty | **Refuted** for an optional key with no default: the reference host, anthropics/mcpb `src/shared/config.ts` at v2.1.2, passes `${user_config.x}` through as written. A `""` default reaches the server as `""`, and a boolean as `"true"` or `"false"`. So every optional key has a default, and the bundle gate builds the configuration from the bundle's defaults and holds it to an unconfigured server's |
-| A `user_config` default reaches the server as written | **Refuted** for the specification, read 2026-10-24: anthropics/mcpb v2.1.2 MANIFEST.md L572 says a default "supports variable substitution", and L586-590 list `${HOME}`, `${DESKTOP}` and `${DOCUMENTS}` for one. The reference host, `src/shared/config.ts` at v2.1.2, builds its variables with the system directories first (L132-137) and each key's value, its default included, after them (L142-171), and replaces them in that order (L26), so a reference inside a substituted default is expanded only when its variable comes later. Claude Desktop is not probed. The defaults check expands none, so the bundle gate refuses a default holding `${` |
-| goreleaser refuses a tree a before hook dirtied | **Refuted**, read 2026-11-02: goreleaser v2.18.1 checks for a dirty tree once, in `internal/pipe/git/git.go` `validate`, and `internal/pipeline/pipeline.go` runs that pipe before the before hooks. So a hook that rewrites a tracked file builds the tag from files it does not hold, and Go stamps the binary modified; the before hooks only download and write what git ignores |
-| `defaults.run` covers every `run` step in a workflow | Most specific wins, and an explicit `shell: bash` also turns on pipefail. Without it a step on the Windows runner gets PowerShell, and the mangling shows up on the line that runs |
-| A commit footer's token is matched exactly, so `SCHEMA-CHANGE:` must be written in capitals | **Refuted**, read 2026-11-01: Conventional Commits 1.0.0, item 15, "The units of information that make up Conventional Commits MUST NOT be treated as case-sensitive by implementors, with the exception of BREAKING CHANGE which MUST be uppercase"; item 16, "BREAKING-CHANGE MUST be synonymous with BREAKING CHANGE". So `schema-ack` reads `SCHEMA-CHANGE:` in any case, and `BREAKING CHANGE:` and `BREAKING-CHANGE:` only in capitals |
-| A commit footer's value is one line, and a paragraph holding a line that is not `Token: value` is not a footer block | **Refuted**, read 2026-11-02: Conventional Commits 1.0.0, item 8, "Each footer MUST consist of a word token, followed by either a `:<space>` or `<space>#` separator"; item 10, "A footer's value MAY contain spaces and newlines, and parsing MUST terminate when the next valid footer token/separator pair is observed". So `schema-ack` reads a footer paragraph as one whose first line starts a footer, with either separator. Inside it, a line that starts a footer ends the value before it, and any other line continues that value, so a wrapped value counts, and a `Closes #12` footer beside it does not drop it. A `Token #value` footer counts toward the block but acknowledges nothing: item 12 writes `BREAKING CHANGE` with a colon and a space. A wrapped line that itself reads `word: ` starts a new footer, as item 10 says |
+Rejected: leaving Linux out, and one Linux binary, for the reasons
+above.
+Cost: the bundle carries a shell launcher, held to the staged files by
+the packer's tests.
 
-### Code signing
+### D-44 The bundle asks for every setting the server reads
 
-| What | Verdict |
-|---|---|
-| Smart App Control lets an unknown program run only when it is signed | Microsoft Learn, "Smart App Control", dated 2026-09-30, read 2026-11-02: when Microsoft's app intelligence cannot make a prediction, it "will still allow an app to run if it is signed with a certificate issued by a certificate authority (CA) within the Trusted Root Program", and "unknown, unsigned code are blocked by default". Every release is a new file with no reputation, so signing is what lets it run |
-| SignPath Foundation takes one project per application | Read 2026-11-02: SignPath/docs-product `8737c6af`, `docs/_data/editions.yml`, Open Source Code Signing: "OSS teams must apply for each project individually." So each sibling server applies on its own |
-| A signed program names the project and one version in its version resource | Read 2026-11-02: signpath.org/terms, marked draft, requires metadata restrictions on every signed binary, every product name attribute set to the project's name, and every product version attribute set to the same value. SignPath's reference (docs-product `8737c6af`, `artifact-configuration/reference.md`) lists `product-name`, `product-version`, `file-version`, `company-name`, `copyright` and `original-filename` for a `<pe-file>`, and does not say how a version is compared. So the strings hold the version exactly as the release names it, less the tag's v, and the fixed part its three numbers and a 0. telepresenceio/telepresence, a Go project SignPath Foundation signs, has the same shape: `build-aux/signpath/core.xml` restricts `product-version` to the tag without its v, and go-winres stamps that string. The first test-signing request settles it for this project |
-| The policy is on the home page and on every release page | Read 2026-11-02: signpath.org/terms, marked draft: a section or a link titled "Code signing policy", with the attribution, the team's roles and a privacy statement. The README is the home page, and the release footer links to its section |
-| goversioninfo writes a resource the Go linker takes on both Windows architectures | v1.7.0, tagged 2026-05-11 and the latest, MIT, with one dependency, akavel/rsrc v0.10.2, MIT. The `winres` tests link it into a windows/amd64 and a windows/arm64 program with Go 1.27.3 and read it back as Microsoft's VS_VERSIONINFO layout describes. Two runs at one version write identical bytes. A release rehearsal on 2026-11-02 showed the strings in both shipped programs, and the bundle's copy was the amd64 program byte for byte |
-| An ignored `.syso` leaves the build unmodified | Go stamps `vcs.modified` from `git status`, which leaves ignored files out. A release rehearsal from a clean commit on 2026-11-02 stamped `vcs.modified=false` with both files in place, and a second rehearsal built byte-identical Windows programs |
+The bundle asks for what a person sets in another client's
+configuration, each under the variable's name without `GCM_`,
+lowercased: `client_secret`, `profile`, `read_only`,
+`enable_destructive`, `toolsets` and `local_dir`.
 
-## Agent evals
+The bundle gate derives that list from `config.Vars`. It records every
+variable `Define` reads, and names those read outside it: the config
+directory, its opt-in and the refresh token. The gate asks for every
+one, less the removed ones and less each it gives a reason to leave out.
+A setting added later is asked for until the manifest asks or a reason
+is written, and a reason for a variable the server does not read is
+refused.
 
-`internal/evals`, behind a build tag and never in CI, scores whether a
-model can do the job through these tools: ten tasks, each against a
-scratch space the harness creates, each judged on the space read back
-afterward rather than on what the model said.
+A config test holds that every `GCM_` name the code spells, in every
+file and every test, is in that registry. Every reader goes through
+`config.Lookup`, which drops the spaces around a value, so spaces alone
+are unset. The profile field states `config.ProfileRule`, as the
+configuration page must, and the toolsets field lists every toolset in
+order.
 
-Two rules make the results mean anything. A task can declare itself
-**unreachable** — the world would not have permitted the end state —
-so it is skipped rather than scored against the model; both of this
-suite's first failures were checks that could never have passed, and one
-was found before it ever ran. And a tool result is written down only
-when the call that produced it named the scratch space, so a report can
-carry nothing from a real conversation.
+Rejected: a hand-kept list of bundle settings, which misses a setting
+added later.
+Cost: every new variable needs a bundle field or a written reason.
+
+### D-45 The bundle's defaults configure nothing
+
+A bundle install adds no approval behind the server's own (E-069).
+Claude Desktop approves per tool by the annotations, and "Always allow"
+skips the prompt from then on. So every switch the bundle asks for
+defaults to the server's own, off. The manifest lists no tools, since
+the settings change what registers, and carries no icon.
+
+The gate builds the configuration a person who accepts every default
+would get, and holds it to an unconfigured server's. A required field's
+default counts, since a host may fill it in (E-074). Every optional
+field has a default, since a host passes an empty one through
+unsubstituted (E-075). A default may not hold `${...}`, which a host may
+expand and the check does not (E-076), nor be a list or an object.
+
+The gate also starts every set of the switches and holds the sets the
+server refuses to a declared list, both ways. The list is empty:
+read-only wins over `enable_destructive` rather than refusing the pair,
+and both fields say so.
+
+`privacy_policies` names Google's policy, since the server sends data to
+Google, and the gate refuses an empty list (E-070).
+
+Rejected: defaults that turn on writes or deletes for a smoother
+install, since nothing behind the bundle asks again.
+Cost: a person who wants deletes turns them on in the install form.
+
+### D-46 The bundle passes settings by `env` alone
+
+`mcp_config.env` carries every setting, and `mcp_config.args` is
+present and empty. An argument would configure the server past the
+defaults check, since a host substitutes `${user_config.x}` into `args`
+as into `env` (E-073). A platform override's `env` or `args`, an empty
+one included, replaces the base rather than adding to it (E-072). So
+the gate refuses an argument, and any `env` or `args` on an override.
+
+Every command starts with `${__dirname}/` and names a staged program,
+the one form whose meaning the specification fixes (E-071). `LICENSE`
+and `README.md` are packed to be read, not run.
+
+The defaults check (D-45) reads `mcp_config.env` alone. That is sound
+only while these refusals hold, so relaxing either needs the defaults
+check to read the same.
+
+The gate refuses a key given twice in one object of the committed
+manifest, which its decode would merge while the schema and the host
+keep the last, and two keys that differ only in case.
+
+Rejected: platform overrides with settings of their own, which would
+leave the base settings off that platform.
+Cost: a platform cannot get a setting of its own.
+
+### D-47 Windows programs carry a version resource that git ignores
+
+Go writes no version resource, and code signing needs one. SignPath
+Foundation signs only a program whose resource names the project and
+carries the version it was asked to sign (E-078). Smart App Control
+blocks an unknown unsigned program, and every release is a new file
+with no reputation (E-077). The policy SignPath asks for is in the
+README and linked from every release (E-079); it also says what is
+signed.
+
+goreleaser's before hook runs `scripts/gates winres`, which writes one
+`.syso` per Windows architecture into `cmd/google-chat-mcp`, where the
+linker takes it. The resource holds the product name, from
+`server.Name`, and the release's version, in the fixed part and in the
+strings.
+
+The `.syso` files are gitignored. Committed, they would carry one
+release's version into every later build. Untracked and not ignored,
+they would stamp `vcs.modified=true` into the binary (E-080). goreleaser
+checks for a dirty tree before the before hooks run, so a hook that
+rewrote a tracked file would build the tag from files the tag does not
+hold (E-066). `make release-rehearse` removes the files after a local
+run.
+
+Rejected: committing the `.syso` files, for the reason above.
+Cost: a pre-release and its release share one fixed version, which only
+an installer compares; a `.syso` left by an interrupted goreleaser run
+stays until `make clean`.
+
+### D-48 Agent evals judge the space, never the model's account of it
+
+`internal/evals`, behind the `evals` build tag and never in CI, scores
+whether a model can do the job through these tools. Each task runs
+against a scratch space the harness creates, and is judged on the space
+read back afterward rather than on what the model said it did.
+
+A task can declare itself unreachable when the world would not permit
+the end state. It is then skipped rather than scored against the model.
+A check that could never pass measures the harness, not the model.
+
+The suite also records which half of a reply the client put in front of
+the model, which is how the rendering's reach is checked (D-13).
+
+Rejected: judging the model's final answer, which scores a claim rather
+than the result.
+Cost: a run needs a login, the `claude` CLI and real API spend, so the
+suite runs only by hand.
+
+### D-49 A live run writes down only what it created
+
+`make live` and `make evals` drive the shipped binary against a real
+account. Everything happens inside scratch spaces the run creates and
+deletes, so nothing it touches belongs to anybody. The live driver
+never leaves a space, since Google deletes a space its last member
+leaves (E-037).
+
+A step prints, and an eval saves, only what the run itself created. A
+tool result is written down only when the call that produced it named
+the scratch space, and `redact` holds that. A model that calls
+`list_spaces` or `search_people` gets rows about real conversations and
+real colleagues, which would otherwise land in a saved trace.
+
+No pattern can tell an invented space id from a real one, so the rule
+goes by where a value came from, not by its shape.
+
+Rejected: scrubbing transcripts by pattern, for the reason above.
+Cost: a failure seen in a real space cannot be replayed from the
+transcript.
+
+Next ID: D-50

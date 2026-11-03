@@ -25,14 +25,11 @@ install: ## go install the binary
 	CGO_ENABLED=0 $(GO) install -trimpath -ldflags="$(LDFLAGS)" ./cmd/google-chat-mcp
 
 # Rehearses the release: the six archives, built and thrown away. The
-# version is here rather than in CONTRIBUTING because a version in prose
-# is a copy, and the copy is what goes stale — the runbook named no
-# version at all, so a rehearsal ran whatever goreleaser was on the
-# maintainer's PATH, which on the machine this was found on was four
-# minor releases behind the one the tag uses. The pins gate holds this
-# and release.yml to the same version. The Windows version resource the
-# before hook writes is removed after, pass or fail, so a later Windows
-# build here does not carry the rehearsal's version.
+# goreleaser version is pinned here, never printed in a doc, so a
+# rehearsal cannot run whatever goreleaser is on the PATH. The pins gate
+# holds this and release.yml to the same version. The Windows version
+# resource the before hook writes is removed after, pass or fail, so a
+# later Windows build here does not carry the rehearsal's version.
 .PHONY: release-rehearse
 release-rehearse: ## Build the release archives locally, publishing nothing
 	go run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish; \
@@ -91,6 +88,10 @@ api-coverage: ## Every API method used on purpose or left out on purpose
 .PHONY: api-fields
 api-fields: ## Every published field modeled on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-fields
+
+.PHONY: docs
+docs: ## Every decision, evidence entry, citation and named path resolves
+	@$(GO) run ./scripts/gates docs
 
 # Not part of check: it fetches Google's discovery documents, and a gate
 # that fails when Google is slow is one people learn to rerun until it
@@ -161,7 +162,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes transcript api-coverage api-fields leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses pins classes transcript api-coverage api-fields docs leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

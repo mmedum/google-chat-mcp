@@ -14,6 +14,47 @@ create a Google OAuth client, log in once, and the refresh token stays in
 your OS keyring. Claude Code, Claude Desktop and any other MCP client can
 drive it.
 
+It is for one person who uses Google Chat, on a Workspace or a personal
+Google account, and wants an assistant to read and write Chat as them. You
+create your own OAuth client in Google Cloud once; on Workspace, your
+administrator has to allow user-managed OAuth clients. A Workspace
+administrator can also turn on a toolset that manages every named space in
+the organization.
+
+## Goals and non-goals
+
+Goals:
+
+- **Act as you.** Every call runs as the signed-in account, with its
+  access and nothing more.
+- **One binary per person.** It runs on your machine, as a subprocess of
+  your client, with your own OAuth client and token. Nothing is hosted or
+  shared.
+- **Safe by default.** What cannot be taken back is registered only when
+  you turn it on, read-only mode removes every write, and most writes can
+  be previewed with `dry_run`.
+- **Nothing added, nothing logged.** `send_message` posts the body
+  verbatim, and the logs never carry message text, addresses or search
+  terms.
+- **Keep working when Google changes.** An unknown field in a response is
+  logged by name, never fatal.
+
+Non-goals:
+
+- **A Chat app or bot.** There is no service account, no app
+  authentication and no domain-wide delegation, so it never posts as an
+  app or acts for another user.
+- **A hosted service.** It speaks stdio only, so Claude on the web and on
+  mobile cannot reach it.
+- **Reading other people's messages as an administrator.** The `admin`
+  toolset manages spaces and memberships. Google offers no administrator
+  access to messages.
+- **Filtering what a message says.** Message text reaches your client
+  verbatim, and this server cannot tell an instruction in it from a
+  sentence.
+- **Asking you before a call.** Your client approves each call; the server
+  asks nothing.
+
 ## Why google-chat-mcp
 
 Chat integrations are normally apps: they post as a bot, see only the
@@ -25,9 +66,9 @@ app with your name on it.
 That also puts the user-scoped half of Chat in reach, which an app
 identity cannot get to at all: your sidebar sections, how far you have
 read in a space or a thread, your availability and custom status, and
-your organization's custom emoji. Sixty-nine tools cover it, most writes
-take `dry_run`, and nothing is requested at login beyond the scopes the
-tools you are actually using need.
+your organization's custom emoji. Login asks for the administrator scopes
+only when you turn the admin toolset on, and only for read-only scopes
+under `GCM_READ_ONLY`.
 
 ## Install
 
@@ -159,13 +200,13 @@ binary's absolute path there if it is not on the app's `PATH`, or install
 the `.mcpb` bundle above and edit nothing.
 
 Every setting is an environment variable, listed in
-[`docs/configuration.md`](docs/configuration.md). The four worth
-knowing now: `GCM_READ_ONLY=true` leaves out every tool that changes anything in Chat,
+[`docs/configuration.md`](docs/configuration.md). These are worth
+knowing first: `GCM_READ_ONLY=true` leaves out every tool that changes anything in Chat,
 `GCM_ENABLE_DESTRUCTIVE=true` adds the tools that cannot be taken back,
 `GCM_PROFILE` lets one machine hold a work account and a personal one,
 and `GCM_LOCAL_DIR` names the one directory files may be written to and
 read from. Without that last one the server touches no files at all,
-and the three tools that move them say so.
+and the tools that move files say so.
 
 ## Tools
 
@@ -254,7 +295,7 @@ administrator access to those.
 | `admin_remove_member` | Remove a membership of any space, with `GCM_ENABLE_DESTRUCTIVE`. Already gone counts as success | `chat.admin.memberships` |
 | `admin_delete_space` | Delete any named space and everything in it, with `GCM_ENABLE_DESTRUCTIVE` | `chat.admin.delete`; `chat.admin.spaces.readonly` to check the name |
 
-Three resources carry the same content as the matching tools, for a
+These resources carry the same content as the matching tools, for a
 client that includes resources in its context:
 
 - `gchat://spaces/{space_id}`
@@ -350,7 +391,7 @@ client that includes resources in its context:
 MCP client ──stdio──► google-chat-mcp
                        ├── tools      one handler per tool; shapes the reply
                        ├── service    the rules: idempotency, degrading, search
-                       ├── gchat      REST client for Chat, People and OIDC
+                       ├── gchat      REST client for Chat, People, Cloud Identity and OIDC
                        ├── directory  email cache, so a page of messages costs one lookup
                        └── auth       refresh token → access token
 ```
@@ -362,10 +403,12 @@ size before the filter.
 
 ## Getting help
 
-If something does not work, run `google-chat-mcp doctor`. It checks the
-credentials, the granted scopes and what Google actually answers, and
-names what is missing — most first-run trouble is an API that was never
-enabled or a consent screen without you on it.
+If something does not work, run `google-chat-mcp status` and
+`google-chat-mcp doctor`. `status` says which account is signed in, where
+the token lives and which scopes it lacks. `doctor` calls Google and names
+each check that could not run, and why. Most first-run trouble is an API
+that was never enabled or a scope that was never granted.
+[`docs/troubleshooting.md`](docs/troubleshooting.md) has the fixes.
 
 If that does not explain it,
 [open an issue](https://github.com/mmedum/google-chat-mcp/issues). Never
@@ -376,7 +419,7 @@ Security problems go through [`SECURITY.md`](SECURITY.md), privately.
 ## Versioning
 
 Tool names and their output fields, and the resource templates, are
-stable within a major version. A change needing you to act — a new
+stable within a major version. A change needing you to act — an added
 scope, another login, a different command in your client config — is
 marked **Breaking:** in
 [`CHANGELOG.md`](CHANGELOG.md), which is also what each release's notes
@@ -386,30 +429,33 @@ are made from.
 
 ```bash
 make build     # the binary
-make test      # race detector, coverage floor
-make check     # everything CI runs
+make test      # race detector, with a coverage profile
+make cover     # the tests, then the coverage floor
+make check     # the gates CI runs
 ```
 
-`make check` is the definition of done: formatting, `go vet`,
-golangci-lint, race tests with a per-package coverage floor,
-`govulncheck`, a license check, a stdio smoke test, a schema diff against
-the released tool surface, an API-coverage gate that fails when a Google
-API method has no verdict on it or a call this server makes has no row,
-and a staleness gate that fails when this README, the docs or the
-changelog drift from the code.
+`make check` is the definition of done. Among its gates, the race tests
+hold each package to an 80% coverage floor, except `cmd/`, which has a
+lower floor of its own. [`CONTRIBUTING.md`](CONTRIBUTING.md#gates-that-must-pass)
+describes the others.
 
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — the request flow, the
-  package layout, the evidence log behind the conventions, and the
-  design decisions a contributor should not undo.
+  package layout, and the design decisions a contributor should not
+  undo.
+- [`docs/evidence.md`](docs/evidence.md) — what was verified about
+  Google's APIs and the MCP clients, and against which source.
 - [`docs/configuration.md`](docs/configuration.md) — every environment
   variable.
 - [`docs/gcp-setup.md`](docs/gcp-setup.md) — the Google Cloud project and
   OAuth client, step by step.
 - [`docs/security.md`](docs/security.md) — the threat model.
-- [`docs/runbook.md`](docs/runbook.md) — rotating or recovering
-  credentials.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — symptoms and
+  their fixes, then rotating the client secret, revoking access and
+  running two accounts.
+- [`docs/release.md`](docs/release.md) — how a release is cut and
+  checked.
 
 ## Contributing
 

@@ -514,10 +514,8 @@ const (
 
 // requireSpaceText bounds a space's name, description or guidelines by
 // Google's own limit, counted the way Google counts it: in UTF-16 code
-// units, so an emoji counts as two and an accented letter as one. Live
-// on 2026-10-31, Google kept 4,096 two-byte letters in a description
-// and refused 2,049 emoji, which are 4,098 units; names and guidelines
-// went the same way at 128 and 5,000.
+// units, so an emoji counts as two and an accented letter as one
+// (E-028).
 func requireSpaceText(field, value string, maximum int) error {
 	n := 0
 	for _, r := range value {
@@ -1028,7 +1026,7 @@ func (s *Service) UpdateSpacePermissions(ctx context.Context, in UpdateSpacePerm
 		// Who may reply changes only where members cannot post, as in an
 		// announcement space. Elsewhere Google refuses it for everyone,
 		// the space's own managers included, and under admin access as
-		// permission denied (live, 2026-10-31). A read that does not say
+		// permission denied (E-029). A read that does not say
 		// who may post refuses nothing: Google decides.
 		post := sp.Permissions.PostMessages
 		if post != nil && post.MembersAllowed && strings.TrimSpace(in.Set.ReplyMessages) != "" {

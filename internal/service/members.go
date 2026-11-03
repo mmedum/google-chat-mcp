@@ -539,9 +539,8 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 		return nil, directoryHint(subject+" is someone", Classify(err))
 	}
 	out.Name = membership.Name
-	// What Google recorded. It ignores a role given on create — asked
-	// for MANAGER against a live account on 2026-09-05, it recorded
-	// ROLE_MEMBER and said nothing — so the argument is gone and this
+	// What Google recorded. It ignores a role given on create and
+	// records ROLE_MEMBER (E-021), so the argument is gone and this
 	// reports the truth rather than the request.
 	out.Role = membership.Role
 	return out, nil
@@ -552,7 +551,7 @@ func (s *Service) addMember(ctx context.Context, in AddMemberInput, outside bool
 //
 // Someone added to a space can read what is already in it. Widening
 // that past the organization is its own tool, registered only with the
-// destructive ones (docs/architecture.md, "What a write may reach").
+// destructive ones (D-21).
 // Only a space that says it admits people from outside is checked
 // (admitsOutsiders). The address is looked up in the organization's
 // directory, its members only, since a contact an administrator shared
@@ -605,7 +604,7 @@ func hasEmail(p gchat.Person, email string) bool {
 //
 // Google invites a group's outside members into such a space, and
 // carries every later change to the group's membership into it
-// (docs/architecture.md, evidence log). So a group the organization owns
+// (E-020). So a group the organization owns
 // can bring in outsiders after the add, and no check at add time holds.
 // In a space that admits nobody from outside, Google leaves them out.
 func (s *Service) refuseGroup(ctx context.Context, space, group string) error {
@@ -692,11 +691,10 @@ func outsiderRefused(email, space, why string) error {
 // It adds people and never a Google Group, and never the caller: either
 // would put the signed-in account into a space it could not read
 // before, and from then on every tool here reads that space's messages
-// as the caller. This server never widens its own reach (the standard's
-// §3, "The model never widens its own reach"). A group the caller
-// belongs to would add the caller with it, and no check at add time can
-// see a later change to the group, which is why groups are refused
-// rather than checked.
+// as the caller. This server never widens its own reach (D-26, D-32).
+// A group the caller belongs to would add the caller with it, and no
+// check at add time can see a later change to the group, which is why
+// groups are refused rather than checked.
 //
 // The address is looked up once, and the one answer settles both
 // questions: whether it is someone in the organization, since Google

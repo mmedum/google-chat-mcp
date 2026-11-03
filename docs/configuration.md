@@ -18,8 +18,8 @@ else.
 | `GCM_PROFILE` | `--profile` | `default` | Which stored login to use. A profile keeps its own client secret path, account and token, so one machine can hold a work account and a personal one. A name is up to 64 characters from a to z, 0 to 9, - and _, starting with a letter or digit; capitals are read as lowercase, and any other name stops the server at start. |
 | `GCM_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn` or `error`. Logs go to stderr; stdout carries only MCP frames. |
 | `GCM_LOG_FORMAT` | `--log-format` | `json` | `json` or `text`. |
-| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. One registered tool does write, and only to your disk: `download_attachment` saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
-| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. `GCM_READ_ONLY` wins: with it on, none of them is registered. Off by default because a deleted Chat message has no trash behind it — the sibling Drive and Docs servers gate their *recoverable* deletes the same way. |
+| `GCM_READ_ONLY` | `--read-only` | `false` | Registers only the tools that do not change anything in Chat, and makes `login` ask for read-only scopes, so a token from a login run with it set cannot write either; one from an earlier login keeps its write scopes until you log in again. A write tool that is not registered cannot be called, whatever the client's permission mode. `download_attachment` stays registered and writes, but only to your disk: it saves a file into `GCM_LOCAL_DIR`, and it is not marked read-only. `get_space_notification_setting` is left out, since Google reads that setting only through a scope that writes it too. Leave `GCM_LOCAL_DIR` unset and this server touches nothing anywhere. Turning writes back on takes another `login`. |
+| `GCM_ENABLE_DESTRUCTIVE` | `--enable-destructive` | `false` | Registers the tools that cannot be taken back: `delete_message`, `delete_thread`, `delete_space`, `delete_custom_emoji`, `delete_section`, `remove_member`, `set_space_audience`, `promote_member` and `add_external_member`. With the `admin` toolset on, it also registers `admin_delete_space`, `admin_remove_member`, `admin_promote_member`, `admin_add_member` and `admin_update_space_permissions`. Without it they are not registered at all, so no client mode and no model can call them. Each call then says `confirm: true`. `GCM_READ_ONLY` wins: with it on, none of them is registered. Off by default because a deleted Chat message has no trash behind it. |
 | `GCM_TOOLSETS` | `--toolsets` | `all` | Comma-separated groups to register; `all` may be one of them. `core` is always included. The groups are `core`, `sections`, `pins`, `emoji`, `events`, `readstate`, `settings`, `availability` and `admin`. `all` means every group except `admin`, which has to be named, as in `all,admin`: its tools act on any space in the organization, spaces you are not a member of included, only a Workspace administrator can use them, and turning it on adds administrator scopes to what `login` asks for ([`gcp-setup.md`](gcp-setup.md) lists which). Its writes follow `GCM_READ_ONLY` and its destructive tools `GCM_ENABLE_DESTRUCTIVE`, like every other group's. |
 | `GCM_HTTP_TIMEOUT_SECONDS` | `--http-timeout` | `10s` | How long one call to Google may take. Accepts a duration (`10s`, `1m30s`) or a bare number of seconds. Between 1 second and 10 minutes. |
 | `GCM_HTTP_MAX_RETRIES` | `--http-max-retries` | `3` | Extra attempts after a 429 or 5xx, 0 to 10. A write is only retried when repeating it cannot post twice. |
@@ -29,30 +29,18 @@ else.
 | `GCM_PEOPLE_API_BASE` | `--people-api-base` | `https://people.googleapis.com/v1` | People API root, same reason. |
 | `GCM_CLOUD_IDENTITY_API_BASE` | `--cloud-identity-api-base` | `https://cloudidentity.googleapis.com/v1` | Cloud Identity API root, same reason. |
 | `GCM_CLIENT_SECRET` | `--client-secret` | *(from the profile)* | Path to the OAuth Desktop client JSON. `login` records this in the profile, so it is normally only passed once. |
-| `GCM_LOCAL_DIR` | `--local-dir` | *(unset)* | The one directory attachments are downloaded to and uploaded from. Unset means no file transfer at all: `download_attachment` and `upload_attachment` refuse and say so. Must be an absolute path — a relative one would mean whatever directory the MCP client happened to launch the server from. A download never overwrites, and an upload outside this directory is refused with the symlinks resolved first. |
+| `GCM_LOCAL_DIR` | `--local-dir` | *(unset)* | The one directory this server reads local files from and writes them to: `download_attachment` saves into it, and `upload_attachment` and `create_custom_emoji` read from it. Unset means no file transfer at all, and those tools refuse and say so. Must be an absolute path — a relative one would mean whatever directory the MCP client happened to launch the server from. A download never overwrites, and a path outside this directory is refused with the symlinks resolved first. |
 
 ### Removed settings
 
-A removed setting is refused at start unless it is unset or off
-(`false`, `0`, `no`, `off` or empty), because ignoring one would quietly
-leave the server otherwise than you set it. Off, it does nothing.
-
-`GCM_ALLOW_DESTRUCTIVE` and `--allow-destructive` are the destructive
-switch's names before 6.1.0, which renamed them `GCM_ENABLE_DESTRUCTIVE`
-and `--enable-destructive`. The old flag still parses and answers as its
-variable does, so the refusal names the new one, and `--help` lists it
-as removed. A setting renamed
-later goes the same way: the old name is removed, not kept beside the
-new one.
-
-The server no longer asks you before a write; your client approves each
-call. Three settings went with the question, and their flags are gone,
-so a flag left in your client's arguments stops the server from
-starting. `GCM_REQUIRE_PROMPT` and `GCM_ASK_BEFORE_SEND` are refused
-unless off, as above. `GCM_INTERACTION_HINT` is ignored: only
-`delete_space`, `set_space_audience` and `delete_custom_emoji` carry the
-mark now, and Claude Code refuses those three when nobody is at the
-keyboard. A headless run that set it to `false` to use them loses them.
+A removed setting stops the server at start unless it is unset or off
+(`false`, `0`, `no`, `off` or empty), because ignoring it would leave the
+server otherwise than you set it. Unset it, and do what the table's last
+column says. `--allow-destructive` answers as its variable does, and
+`--help` lists it as removed. The removed flags of the other settings
+are not recognized at all, so one left in your client's arguments stops
+the server too. The [CHANGELOG](../CHANGELOG.md) says which release took
+each one out.
 
 | Variable | Still accepted | Instead |
 |---|---|---|
@@ -71,7 +59,7 @@ The refresh token is looked up in this order, the same one `gh` uses.
    `google-chat-mcp` and the profile name as the account.
 3. A `0600` file in the profile directory, written at login only when
    the keyring was unavailable. `login` says so when it happens, and
-   `doctor` reports which of the three answered. On Windows that mode
+   `status` reports which source answered. On Windows that mode
    sets the read-only attribute and nothing else — the file is protected
    by the ACL it inherits, so the keyring is the meaningful answer there.
 

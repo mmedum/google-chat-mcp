@@ -25,7 +25,7 @@ const maxWitnessPages = 10
 // and a space's id tells the person reading it nothing. So the space's
 // name rides in the arguments, and it is checked here before anything is
 // written, dry runs included, so the prompt cannot name one space while
-// the call writes to another (§18, 2026-10-27).
+// the call writes to another (D-17).
 func (s *Service) checkSpace(ctx context.Context, space, witness string) error {
 	_, err := s.checkedSpace(ctx, space, witness, "")
 	return err

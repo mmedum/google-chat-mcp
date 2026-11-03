@@ -380,15 +380,27 @@ func readTest(t *testing.T, dump string) toolSurface {
 
 // initRepo makes the working directory a git repository whose commits
 // are Fixture's and never signed, with no global or system
-// configuration, so a person's hooks or signing never reach a test.
+// configuration, so a person's hooks or signing never reach a test. The
+// environment carries the settings, which costs no git process.
 func initRepo(t *testing.T) {
 	t.Helper()
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for key, value := range map[string]string{
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
+		"GIT_CONFIG_NOSYSTEM": "1",
+		// git reads $XDG_CONFIG_HOME/git/ignore even with the global
+		// configuration off.
+		"XDG_CONFIG_HOME":     t.TempDir(),
+		"GIT_AUTHOR_NAME":     "Fixture",
+		"GIT_AUTHOR_EMAIL":    "fixture@example.test",
+		"GIT_COMMITTER_NAME":  "Fixture",
+		"GIT_COMMITTER_EMAIL": "fixture@example.test",
+		"GIT_CONFIG_COUNT":    "1",
+		"GIT_CONFIG_KEY_0":    "commit.gpgsign",
+		"GIT_CONFIG_VALUE_0":  "false",
+	} {
+		t.Setenv(key, value)
+	}
 	gitRun(t, "init", "--quiet")
-	gitRun(t, "config", "user.email", "fixture@example.test")
-	gitRun(t, "config", "user.name", "Fixture")
-	gitRun(t, "config", "commit.gpgsign", "false")
 }
 
 // gitRun runs git in the working directory, failing the test on an error.

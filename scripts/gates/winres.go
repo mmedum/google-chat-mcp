@@ -15,8 +15,8 @@ import (
 
 // The Windows version resource, which code signing needs and Go does not
 // write. goreleaser's before hook runs this to write one .syso per
-// Windows architecture, where the linker takes it; docs/architecture.md,
-// Distribution, says why it is built this way and kept out of git.
+// Windows architecture, where the linker takes it. D-47 says why it is
+// built this way and kept out of git.
 
 // winresDir is the package goreleaser builds, which is where the linker
 // looks for the .syso files.

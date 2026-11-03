@@ -652,7 +652,7 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 		// ${__dirname} is the one path the specification fixes to the
 		// bundle. It shows a relative command once and never says what it
 		// is resolved against, and the reference host resolves no path
-		// (docs/architecture.md, the evidence log).
+		// (E-071).
 		rel, ok := strings.CutPrefix(command, dirnameRef)
 		switch {
 		case !ok:
@@ -1191,14 +1191,12 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 // the person supplies it and it is theirs either way. One with a default
 // is not: the reference host starts the server only with the person's
 // own value for it, but Claude Desktop's form may fill that in from the
-// default, and a person may accept it unread; the evidence log has the
-// source. A default that is a list or an object is not guessed at: its
+// default, and a person may accept it unread (E-074). A default that is a list or an object is not guessed at: its
 // variable is left out, and its key is in unreadable with what it is.
 //
 // It reads mcp_config.env alone. That is sound only because
 // settingProblems refuses an argument and an override's env; relaxing
-// either needs this to read the same (written down from a /code-review
-// high, in docs/architecture.md).
+// either needs this to read the same (D-46).
 func hostEnv(m bundleManifest, on ...string) (env, unreadable map[string]string) {
 	env, unreadable = map[string]string{}, map[string]string{}
 	for name, value := range m.Server.MCPConfig.Env {
@@ -1248,8 +1246,7 @@ func loadEnv(env map[string]string) (config.Config, error) {
 // has the host expand ${HOME} and the rest in a default, the reference
 // host expands some of what a substituted default holds by the order it
 // lists them, and this check expands none, so the server would start
-// with something it never built (docs/architecture.md, the evidence
-// log). defaultsErr is what the server refuses the defaults with, which
+// with something it never built (E-076). defaultsErr is what the server refuses the defaults with, which
 // decides whether refusalProblems starts the sets of switches.
 func defaultsProblems(m bundleManifest) (problems []string, defaultsErr error) {
 	for _, key := range slices.Sorted(maps.Keys(m.UserConfig)) {

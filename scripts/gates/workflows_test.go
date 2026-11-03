@@ -595,6 +595,7 @@ var ciRunsForTarget = map[string]string{
 	"leaks":        "TestNoBuildOutputInTheTree",
 	"api-coverage": "gates api-coverage",
 	"api-fields":   "gates api-fields",
+	"docs":         "gates docs",
 	"parity":       "TestMakeCheckAndCIRunTheSameGates",
 	"smoke":        "gates smoke",
 	"schema-diff":  "gates schema-diff",
@@ -603,13 +604,9 @@ var ciRunsForTarget = map[string]string{
 }
 
 // `make check` and CI are two lists in two files, and whoever adds a gate
-// is only ever editing one of them. Three of the four sibling servers had
-// them diverged, the local one usually ahead — so the build-tagged files
-// compiled on a maintainer's laptop and nowhere else. This repository had
-// it twice in one day: CI skipped `go vet -tags=evals`, and later built
-// the coverage profile over a narrower set than the Makefile did.
-//
-// §7b of the shared standard requires asserting the two run the same set.
+// is only ever editing one of them. When they diverge, the build-tagged
+// files compile on a maintainer's laptop and nowhere else, so this holds
+// the two to the same set.
 func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
 	root := repoRoot(t)
 	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))

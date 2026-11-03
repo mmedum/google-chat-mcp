@@ -230,9 +230,8 @@ type QuotedMessageMeta struct {
 // moment it was quoted.
 //
 // Sender is a display name, not a resource name and not the User object
-// the parent message carries: Google's "author name" is what it says,
-// read off a real reply-quote and a real forward on 2026-09-17. Nothing
-// downstream may treat it as an id.
+// the parent message carries: Google's "author name" is what it says
+// (E-010). Nothing downstream may treat it as an id.
 type QuotedMessageSnapshot struct {
 	Sender        string       `json:"sender,omitempty"`
 	Text          string       `json:"text,omitempty"`
@@ -244,7 +243,8 @@ type QuotedMessageSnapshot struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
-// ForwardedMeta is where a forwarded message came from.
+// ForwardedMeta is where a forwarded message came from: the space, and
+// for a direct message the other person's name (E-011).
 type ForwardedMeta struct {
 	// Chat publishes these as `space` and `spaceDisplayName` on
 	// ForwardedMetadata. This type carried a single `spaceName`, which the
@@ -301,10 +301,11 @@ type Annotation struct {
 // carries the anchor text in Text and the target only in this
 // annotation, so dropping it leaves a message that reads as a bare word.
 //
-// Type is Google's own word, from the discovery document read on
-// 2026-09-17: DRIVE_FILE, CHAT_SPACE, GMAIL_MESSAGE, MEET_SPACE or
-// CALENDAR_EVENT. A link to a single message is CHAT_SPACE with the
-// message named in ChatSpaceLink; there is no CHAT_MESSAGE.
+// Type is Google's own word (E-006): DRIVE_FILE, CHAT_SPACE,
+// GMAIL_MESSAGE, MEET_SPACE or CALENDAR_EVENT. A link to a single
+// message is CHAT_SPACE with the message named in ChatSpaceLink; there
+// is no CHAT_MESSAGE. Only the Chat client makes one, never the API
+// (E-007).
 type RichLinkMetadata struct {
 	Type              string                 `json:"richLinkType,omitempty"`
 	URI               string                 `json:"uri,omitempty"`

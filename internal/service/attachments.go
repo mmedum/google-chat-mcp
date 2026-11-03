@@ -91,9 +91,8 @@ func (s *Service) DownloadAttachment(ctx context.Context, in DownloadAttachmentI
 		Bytes: written,
 		// The attachment's own type first, and the transfer's only as a
 		// fallback. Google's media endpoint serves every download as
-		// application/octet-stream — checked live 2026-09-06 on a file
-		// whose attachment metadata said text/plain — so preferring
-		// what the transfer said threw the better answer away.
+		// application/octet-stream (E-004), so preferring what the
+		// transfer said threw the better answer away.
 		ContentType: cmp.Or(att.ContentType, media.ContentType),
 		ContentName: att.ContentName,
 		SHA256:      sum,

@@ -232,7 +232,7 @@ func IsAlreadyGone(err error) bool {
 
 // serviceDisabledReasons are how Google says the API a call uses is not
 // enabled on the OAuth client's project: the AIP-193 reason, and the
-// older frontend's.
+// older frontend's (E-050).
 var serviceDisabledReasons = []string{"SERVICE_DISABLED", "accessNotConfigured"}
 
 // IsServiceDisabled reports whether Google refused because the API is

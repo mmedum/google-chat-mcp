@@ -13,15 +13,15 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
-- The Windows programs carry a version resource: the product name, `google-chat-mcp`, and the release's version. Windows shows them under the file's properties, and code signing checks them.
-- The README has a code signing policy, and every release page links to it. The Windows programs are not signed yet.
+- Windows programs carry a version resource naming the product and the release's version, which Windows shows and code signing checks.
+- The README has a code signing policy, linked from every release page. The Windows programs are not signed yet.
 
 ### Changed
 
-- For contributors:
-  - CI fails a pull request that changes the tool surface, an annotation or a `_meta` mark included, unless a commit footer names each changed item. A break of something a release shipped needs `BREAKING CHANGE:`. Only the names before the first colon followed by white space in a footer's value count, separated by commas. A footer's value may run on over several lines, and a footer beside it, such as `Closes #12`, does not drop it; a `Token #value` footer acknowledges nothing. A gate that could not run says so.
-  - The schema diff compares the whole dump. It now fails on a removed resource template as it does on a removed tool, and reports a changed title, prompt or instruction.
-  - `--dump-schemas` carries the server's instructions in each mode: the default, with the destructive tools, and read-only. It lists fixed resources and prompts once the server has any.
+- `--dump-schemas` carries the server's instructions in each mode, and lists fixed resources and prompts once the server has any.
+- For contributors: a pull request that changes the tool surface needs a commit footer naming each changed item; `CONTRIBUTING.md` gives the syntax.
+- For contributors: the schema diff compares the whole dump, so a removed resource template fails as a removed tool does.
+- For contributors: `make check` runs a docs gate. Decisions and evidence carry IDs, and every citation must resolve; `CONTRIBUTING.md` explains.
 
 ## [9.1.1] - 2026-11-01
 

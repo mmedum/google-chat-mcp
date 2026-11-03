@@ -81,7 +81,7 @@ type spec struct {
 	// tool, so it asks the person on every call, in every interactive
 	// mode. Only for a tool whose prompt is itself the point: deleting a
 	// whole space or an emoji every message shares, and opening a space
-	// to an audience (docs/architecture.md, "What a write may reach").
+	// to an audience (D-25).
 	// Never on a delete done many times in a row. Only a Destructive
 	// tool may set it: the flag that registers the tool is the control,
 	// and the mark is one client's prompt on top of it.
@@ -139,8 +139,7 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	// administrator, on Google's useAdminAccess, and belongs to the admin
 	// toolset. The name is the rule because the name is what a client's
 	// prompt and its permission rules see: a remembered approval covers
-	// a whole tool, never an argument (docs/architecture.md,
-	// "Administrator access").
+	// a whole tool, never an argument (D-28).
 	admin := strings.HasPrefix(sp.Name, service.AdminToolPrefix)
 	if admin {
 		if sp.Toolset != "" && sp.Toolset != config.ToolsetAdmin {
@@ -163,8 +162,7 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 		// every call in every interactive mode, and denies it where no
 		// prompt can be drawn. That is the point for the few tools that
 		// carry it, and why nothing else does: every other write is the
-		// client's to approve (docs/architecture.md, "What a write may
-		// reach").
+		// client's to approve (D-25).
 		tool.Meta = mcp.Meta{interactionKey: true}
 	}
 	mcp.AddTool(s, tool, wrap(h, boolField[In]("dry_run"), confirm, sp.Name, admin))

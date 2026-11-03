@@ -1100,7 +1100,7 @@ func (d *driver) runStep(t testing.TB, s step) {
 // messageURL is the link Copy link puts on the clipboard in Chat: the
 // bare space, thread and message ids, and the query Chat appends.
 //
-// Read off a real one on 2026-09-17 rather than guessed. A message
+// Read off a real one rather than guessed (E-008). A message
 // created through the API is named {id}.{id} and the URL carries the
 // half before the dot, which is also the thread's id. The shape matters
 // because this step is asking whether Chat chips what it is given: a

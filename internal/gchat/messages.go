@@ -76,8 +76,7 @@ type SearchMessagesOptions struct {
 	//
 	// create_time, not createTime. The REST reference's own examples
 	// say createTime and Google answers "Invalid filter query" to it;
-	// the guide's snake_case spelling is the one that works. Found by
-	// running it, on 2026-09-05.
+	// the guide's snake_case spelling is the one that works (E-001).
 	Filter string
 	// OrderBy is "createTime desc" or "relevance desc". Empty takes
 	// Google's default, which is newest first.
@@ -143,7 +142,9 @@ func (c *Client) SearchMessages(ctx context.Context, o SearchMessagesOptions) (*
 type SendMessageRequest struct {
 	Text string `json:"text"`
 	// MarkupSyntax says how Google reads Text. Empty is Chat's own
-	// syntax; MarkupMarkdown is standard Markdown.
+	// syntax; MarkupMarkdown is standard Markdown, which a person's
+	// token may set though the REST reference calls it output only
+	// (E-015).
 	MarkupSyntax string `json:"markupSyntax,omitempty"`
 	// Thread is set when the message replies to an existing thread.
 	Thread *Thread `json:"thread,omitempty"`

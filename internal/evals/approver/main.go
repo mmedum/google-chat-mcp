@@ -32,7 +32,7 @@
 // approves it. That is the finding, and it is a fact about the CLI, not
 // about the harness. It is not absolute: an Agent SDK host answers the
 // same prompt in its own canUseTool callback, and can approve it there
-// (docs/architecture.md, evidence log).
+// (E-057).
 //
 // Two lessons kept here rather than in a commit message: a permission
 // hook must accept a payload it does not model, or it fails in a place
