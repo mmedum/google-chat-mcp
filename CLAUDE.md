@@ -61,7 +61,7 @@ or the auth wiring.
   which needs a commit footer naming each changed item of the tool
   surface (`CONTRIBUTING.md`).
 - New behavior has tests.
-- `/simplify` and `/code-review high` have run. A fixed finding is one
+- `/simplify` and `/code-review medium` have run. A fixed finding is one
   line in the commit body. A declined one goes in the PR body, or
   becomes a present-tense constraint comment at the line it protects.
   Never write findings into `docs/`.
