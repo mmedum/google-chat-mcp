@@ -112,7 +112,7 @@ surprises you.
   the server. The design assumes the process owner is you.
 - **Your own OAuth client, Cloud project and token file.** Protecting
   them is the job of the person who runs this server.
-  [`troubleshooting.md`](troubleshooting.md#tasks) says how to rotate the
+  [`docs/troubleshooting.md`](troubleshooting.md#tasks) says how to rotate the
   secret and revoke access.
 - **A tool doing what its registration allows.** A client or a model
   calling a registered tool under your credentials is the design. The
@@ -146,7 +146,7 @@ course, and a report about it is not a vulnerability.
 - **Your own Google app.** Each person creates their own OAuth client, so
   nobody else's rollout can revoke your access. Publishing it outside
   your Workspace brings Google's verification, as
-  [`troubleshooting.md`](troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment)
+  [`docs/troubleshooting.md`](troubleshooting.md#do-the-restricted-scopes-mean-a-security-assessment)
   explains.
 - **The scopes you grant.** A tool whose scope you declined returns a
   `[scope]` error naming it. That is a supported state, not a broken one.
