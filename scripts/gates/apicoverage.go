@@ -130,7 +130,9 @@ const (
 	verdictOut         = "out"
 	verdictUnreachable = "unreachable"
 	// noScopePublished is the reason on an unreachable row whose method
-	// publishes no scope to name.
+	// publishes no scope to name, as Cloud Identity's
+	// customers.userinvitations methods do.
+	// https://cloudidentity.googleapis.com/$discovery/rest?version=v1
 	noScopePublished = "none published"
 )
 

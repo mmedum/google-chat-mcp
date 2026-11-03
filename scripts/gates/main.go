@@ -188,7 +188,7 @@ func init() {
 		"docs": {
 			run:   docs,
 			arity: 1, runsIn: inCheck,
-			doc: "every decision, evidence entry, citation and named path resolves",
+			doc: "every decision, citation and named path resolves",
 		},
 		"api-diff": {
 			run:   apiDiff,

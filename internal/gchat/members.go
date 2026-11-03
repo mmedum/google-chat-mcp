@@ -27,10 +27,12 @@ type ListMembersOptions struct {
 // ListMembers returns one page of a space's memberships.
 //
 // Under admin access Google requires a member type filter, and takes
-// only member.type = "HUMAN" or member.type != "BOT" (members.list
-// reference, 2025-07-16). The second is the one that can keep Google
-// Group memberships, which a filter on HUMAN would drop: Google returns
-// a group only when it matches the filter.
+// only member.type = "HUMAN" or member.type != "BOT". The second is the
+// one that can keep Google Group memberships, which a filter on HUMAN
+// would drop: Google returns a group only when it matches the filter.
+// Whether ShowInvited works under admin access is untested. Checked by
+// the live step "an administrator lists the members".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.members/list
 func (c *Client) ListMembers(ctx context.Context, o ListMembersOptions) (*ListMembershipsResponse, error) {
 	q := pageQuery(o.PageSize, o.PageToken)
 	filter := o.Filter

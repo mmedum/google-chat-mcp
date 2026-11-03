@@ -3,9 +3,9 @@
 A Go MCP server that exposes Google Chat over stdio: one binary per
 person, per-user OAuth, nothing hosted. Why the code is the way it is
 lives in `docs/architecture.md`, one decision per `D-NN`. What we
-verified about Google lives in `docs/evidence.md`, one entry per
-`E-NNN`. Read the decision before changing the tool surface, the write
-path or the auth wiring.
+verified about Google lives in the comment at the line that depends on
+it. Read the decision before changing the tool surface, the write path
+or the auth wiring.
 
 ## Commands
 
@@ -51,7 +51,9 @@ path or the auth wiring.
 10. **Never commit to `main` or push.** Work on a branch; the owner
     pushes.
 11. **Never adopt a belief about Google without a primary source.**
-    Record what you verified, or found wrong, as an `E-NNN` entry.
+    Record what you verified, or found wrong, in the comment at the line
+    that depends on it, with the source link and the `make live` step
+    that checks it.
 
 ## Definition of done
 
@@ -72,10 +74,11 @@ path or the auth wiring.
 
 - **Green gates are not done.** Every fake in the unit suite is written
   from what we believe Google does, and only `make live` tests that
-  belief. A repeat delete answering with a tombstone is the example
-  (E-017).
+  belief. The example: Google answers a deleted message with a 200
+  tombstone, not a 404, so a repeat delete has to read the answer.
 - **An empty page is not the end of a listing.** Google applies the
-  page size before it filters (E-005).
+  page size before it filters, so a page can be empty and still carry a
+  token.
 - **A forbidigo settings block that fails to load leaves forbidigo on
   its defaults**, still firing and looking right. Check the message
   text when you verify it.

@@ -43,7 +43,9 @@ and `status` shows `token store: none` or `not signed in`.
 it has. Google ends a refresh token when you revoke access, when it goes
 unused for six months, or when an administrator restricts a scope it
 carries. On an External app in testing, every refresh token expires after
-seven days (E-081).
+seven days, as
+[Google's OAuth documentation](https://developers.google.com/identity/protocols/oauth2)
+says under "Refresh token expiration".
 
 **Fix (resolves it):** check that `status` shows the profile you expect,
 then run `login` again. For the seven-day expiry, logging in again is a

@@ -4,8 +4,8 @@ How `google-chat-mcp` is put together, and the decisions a contributor
 should not undo without a better reason than the one that put them
 here. Part 1 is the overview. Part 2, from [Decisions](#decisions), is
 one entry per decision, cited elsewhere by its D-ID. What was verified
-about Google's APIs and the clients lives in
-[evidence.md](evidence.md), cited by E-ID.
+about Google's APIs and the clients lives in the comment at the code
+that depends on it, with the source linked.
 
 ## Context
 
@@ -39,9 +39,9 @@ The server talks to Google through:
   `whoami`.
 
 It is not a Chat app. It acts as a person and never as a bot, so a
-method only an app can call is out of reach (E-041). It is not a hosted
-connector either, so Claude on the web and on mobile cannot reach it
-(D-01).
+method only an app can call is out of reach: Google grants `chat.bot`
+to service accounts alone. It is not a hosted connector either, so
+Claude on the web and on mobile cannot reach it (D-01).
 
 ## Quality goals
 
@@ -62,8 +62,9 @@ In priority order:
    (D-07, D-13).
 5. **Beliefs about the API are checked against the API.** Every fake in
    the unit suite is written from what we believe Google does. The live
-   run and the evidence entries are where the belief meets Google
-   (D-39, D-49).
+   run is where the belief meets Google, and the comment at the code
+   that depends on a belief links its source and names the live step
+   that checks it (D-39, D-49).
 
 ## Codemap
 
@@ -183,7 +184,7 @@ keyring, or in a `0600` file when no keyring answers. The profile in
 fewer than were asked for (D-37). At serve time the token source trades
 the refresh token for an access token and caches it until it expires.
 When Google refuses the refresh token it answers `invalid_grant`, and
-only signing in again fixes that (E-081).
+only signing in again fixes that.
 
 ## Invariants
 
@@ -260,10 +261,13 @@ real account, and is the only check that can show a belief wrong
 live step exercises. A change to the write path or a response shape
 gets a live run before it counts.
 
-**Documentation.** A decision lives once, in part 2 here, and evidence
-once, in [evidence.md](evidence.md). The docs gate holds every D-ID and
-E-ID citation to an entry that exists, and every "Held by" to a gate or
-test that exists. The staleness gate holds the README,
+**Documentation.** A decision lives once, in part 2 here. What was
+verified about Google lives in the comment at the line that depends on
+it: the behavior, the source link, where the source is wrong or silent,
+and the live step that checks it. A refuted belief goes at that line or
+in a decision's `Rejected:` line. The docs gate holds every D-ID
+citation to an entry that exists, and every "Held by" to a gate or test
+that exists. The staleness gate holds the README,
 [configuration.md](configuration.md) and the setup guide to the code.
 
 ## Decisions
@@ -319,6 +323,7 @@ test that exists. The staleness gate holds the README,
 | D-47 | Windows programs carry a version resource that git ignores | accepted | winres, TestWinresWritesWhereGoreleaserBuilds, TestReleaseHooksDoNotWriteIntoTheCheckout |
 | D-48 | Agent evals judge the space, never the model's account of it | accepted | evals |
 | D-49 | A live run writes down only what it created | accepted | transcript, live |
+| D-50 | Forward a message through `send_message` | rejected | — |
 
 ### D-01 One stdio binary per person, with nothing to host
 
@@ -442,10 +447,12 @@ a field Google adds cannot reach the model until someone decides it
 should.
 
 The output schemas are generated from those Go types by
-`github.com/google/jsonschema-go`. It inlines a nested type wherever it
-appears, so a type used twice on one tool is serialized twice (E-061).
-Those bytes are protocol traffic and client-side validation, not the
-model's context (E-060), so the duplication is accepted.
+[`github.com/google/jsonschema-go`](https://github.com/google/jsonschema-go).
+It emits no `$defs` or `$ref` and inlines a nested type wherever it
+appears, so a type used twice on one tool is serialized twice. Those
+bytes are protocol traffic and client-side validation, not the model's
+context: an Anthropic Messages API tool carries an input schema and no
+output schema. So the duplication is accepted.
 
 Every output field carries a schema description, so a client and a
 model reading the schema learn what the field means and when it is
@@ -474,8 +481,10 @@ On a pull request, `schema-ack` wants a commit footer naming each item
 of the surface that changed, annotations included, since a flipped hint
 changes whether a client asks. A break against the released surface
 needs a `BREAKING CHANGE:` footer, and ships as a major release with a
-new baseline. Footers are read as Conventional Commits defines them
-(E-067, E-068).
+new baseline. Footers are read as
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+defines them: a token in any case but `BREAKING CHANGE`, and a value
+that may run over several lines.
 
 Rejected: letting a rename through as an ordinary change, since a
 caller finds out only when its call fails.
@@ -493,8 +502,9 @@ a write that lands and then fails to decode reports an error for
 something that happened, which invites a duplicate.
 
 A read that models only part of a resource asks for that part through
-Google's `fields` parameter (E-049). A field it never reads then raises
-no false alarm, and the drift log stays worth reading.
+Google's [`fields` system parameter](https://cloud.google.com/apis/docs/system-parameters),
+which every Google API takes. A field it never reads then raises no
+false alarm, and the drift log stays worth reading.
 
 Rejected: strict decoding, for the reasons above.
 Cost: a renamed field reads as an absent value until the drift log or
@@ -548,14 +558,16 @@ case in each derivation; until it has one, the server panics at start.
 Annotations decide what a client prompts for, so they are exact.
 
 `readOnlyHint` goes only on a tool that changes nothing in Chat. VS
-Code ignores `destructiveHint` and prompts on every tool without
-`readOnlyHint` (E-054). So `download_attachment`, which writes a local
+Code's source ignores `destructiveHint` and prompts on every tool
+without `readOnlyHint`. So `download_attachment`, which writes a local
 file, does not carry it.
 
 `destructiveHint` is false only on a write that adds and replaces
-nothing, since the specification reads false as "only additive
-updates" (E-053). That is the adding kinds, and `download_attachment`,
-which never overwrites a file. Every other write says true, a message
+nothing, since the
+[specification](https://modelcontextprotocol.io/specification/2025-11-25/schema)
+reads false as "only additive updates" and defaults to true. That is
+the adding kinds, and `download_attachment`, which never overwrites a
+file. Every other write says true, a message
 edit or a removed reaction as much as a delete, so a new tool errs
 toward a prompt. Codex prompts by `destructiveHint`, and claude.ai and
 ChatGPT document that it decides theirs.
@@ -577,8 +589,9 @@ that is not registered cannot be called, by any client mode or any
 model.
 
 Every widely used client has a mode or a setting that runs a listed
-tool with nobody approving the call, and the MCP specification has
-clients treat annotations as untrusted (E-056). So a destructive tool's
+tool with nobody approving the call, and the
+[MCP specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+has clients treat annotations as untrusted. So a destructive tool's
 prompt cannot be the control; registration is.
 
 The default is off because a Chat delete cannot be undone. A Drive file
@@ -608,7 +621,8 @@ information, different presentation)", and names stringified JSON in
 
 Neither half can be dropped, because clients disagree about which one
 they show the model. Claude Code forwards only `structuredContent`
-(E-058), while claude.ai and ChatGPT show the text.
+([anthropics/claude-code#55677](https://github.com/anthropics/claude-code/issues/55677)),
+while claude.ai and ChatGPT show the text.
 
 `internal/tools/render.go` holds the renderings: one record per line,
 facts separated by " · ", and anything Google did not send left out.
@@ -647,7 +661,7 @@ rules, and other clients draw a prompt from the annotations (D-11). The
 server never asks a question of its own. It refuses the call, or makes
 the risky variant a tool of its own (D-16).
 
-A question through form elicitation is no consent control (E-059). The
+A question through form elicitation is no consent control. The
 specification lets the client answer it "from the user or other
 sources". A Claude Code hook can answer it with no dialog, and Codex in
 full access accepts an empty form by itself. Several clients decline it
@@ -665,10 +679,12 @@ unasked, which registration answers (D-12).
 
 ### D-16 A risky variant is a tool of its own
 
-A remembered approval covers a whole tool, never an argument value
-(E-055). Argument-level control exists only where an operator writes
-it, in a hook or a Gemini CLI policy rule. So a risky variant carried
-as an argument rides along unseen once its tool is always allowed.
+A remembered approval covers a whole tool, never an argument value:
+claude.ai, Codex, VS Code and Copilot remember "always allow" per tool
+or per server. Argument-level control exists only where an operator
+writes it, in a hook or a Gemini CLI policy rule. So a risky variant
+carried as an argument rides along unseen once its tool is always
+allowed.
 
 Each such variant is refused in the ordinary tool. Where it is wanted at
 all, it is a tool of its own, registered only with the destructive ones
@@ -702,7 +718,7 @@ written, dry runs included:
 - a named space by its display name;
 - a direct message by the other person's email, since Google's own
   lookup of the direct message with that address has to answer with
-  this space (E-031);
+  this space;
 - a group chat by the other members' emails, comma-separated in any
   order.
 
@@ -777,14 +793,14 @@ making it private again does not take back what they read.
 
 An audience goes in a patch of its own. Google refuses
 `accessSettings.audience` beside any other field, and masking it with
-no value makes the space private (E-023). So `update_space` refuses an
+no value makes the space private. So `update_space` refuses an
 audience beside a name or description, rather than sending two patches
 that could half land.
 
 No API lists target audiences, so `audience` takes an id from the Admin
-console, or `audiences/default` for the organization's default (E-025).
-The guide and discovery disagree about who may set one; the tool
-description names the space-manager rule the reference states (E-024).
+console, or `audiences/default` for the organization's default. The
+guide and discovery disagree about who may set one; the tool
+description names the space-manager rule the reference states.
 
 Rejected: an `audience` argument on `create_space` and `update_space`,
 which a remembered approval would carry unseen (D-16).
@@ -809,10 +825,11 @@ no lookup, since Google refuses the invite there itself.
 Every Google Group is refused into a space that admits outsiders,
 whatever the directory says of it. Google invites the group's outside
 members and carries every later change to the group into the space
-(E-020), so no check at add time holds. In a space that admits nobody
-from outside, Google leaves the group's outsiders out, and a group add
-is ordinary. A group is named by its Cloud Identity name, which
-`find_group` looks up from an address (E-044).
+([Chat Help](https://support.google.com/chat/answer/13535086)), so no
+check at add time holds. In a space that admits nobody from outside,
+Google leaves the group's outsiders out, and a group add is ordinary. A
+group is named by its Cloud Identity name, which `find_group` looks up
+from an address.
 
 `add_external_member` invites someone from outside, or a group, and is
 destructive. `create_space`, `create_group_chat` and
@@ -833,8 +850,8 @@ is destructive (D-12).
 member again, and refuses the other roles `[blocked]`.
 
 `add_member` takes no role. Google ignores a role given on create and
-records `ROLE_MEMBER` (E-021), so the result reports the role Google
-recorded rather than the one requested.
+records `ROLE_MEMBER` without a word, so the result reports the role
+Google recorded rather than the one requested.
 
 Rejected: a `role` on `update_member_role` that reaches `MANAGER`, which
 a remembered approval would carry unseen (D-16).
@@ -846,8 +863,9 @@ Cost: changing a role takes the tool that matches its direction.
 thread's replies are other people's messages, and they go only through
 `delete_thread`, a destructive tool of its own that sends `force=true`.
 
-Discovery says `force` deletes a message's threaded replies, and that
-without it a delete of a message with replies fails (E-019). It says
+[Discovery](https://chat.googleapis.com/$discovery/rest?version=v1)
+says `force` deletes a message's threaded replies, and that without it
+a delete of a message with replies fails. It says
 nothing of a root already deleted, and that state cannot be made through
 the API to probe it. So `delete_thread` takes a first message that reads
 as deleted without comparing its witness, sends `force=true`, and
@@ -868,8 +886,8 @@ alone therefore clears the space's guidelines.
 
 `update_space` reads the guidelines first and sends them back unchanged
 beside the new description. `admin_update_space` does the same, and an
-administrator's patch keeps them as the caller's does (E-036). The
-read is the one the space check makes anyway (D-17).
+administrator's patch keeps them as the caller's does. The read is the
+one the space check makes anyway (D-17).
 
 The guidelines are often other people's text, and a person changing a
 description does not expect the rules of the space to vanish with it.
@@ -884,8 +902,8 @@ the read and the patch.
 `delete_space`, `admin_delete_space`, `set_space_audience` and
 `delete_custom_emoji` carry `anthropic/requiresUserInteraction`, and no
 other tool does. Claude Code prompts for a marked tool on every call in
-every interactive mode, and denies it where no prompt can be drawn
-(E-057).
+every interactive mode, and denies it where no prompt can be drawn. The
+MCP specification never names the key, and no other client reads it.
 
 These are the tools whose prompt is itself the point. A space goes with
 every message in it, whether its manager deletes it or an administrator
@@ -948,11 +966,10 @@ Cost: the combination above is not available.
 
 A Workspace administrator can act on any space in the organization
 through Google's `useAdminAccess`, which the spaces and members methods
-take (E-032). Nothing reaches messages that way, and nothing creates a
-space. Every administrator call is its own `admin_` tool, reads
-included.
+take. Nothing reaches messages that way, and nothing creates a space.
+Every administrator call is its own `admin_` tool, reads included.
 
-A remembered approval covers a whole tool, never an argument (E-055). A
+A remembered approval covers a whole tool, never an argument (D-16). A
 flag on `get_space` or `update_space` would carry an administrator's
 reach under an approval given for the ordinary tool. Every other gate
 here works by leaving a tool unregistered, and a flag refused at call
@@ -961,10 +978,9 @@ time would be the one exception.
 `admin_search_spaces` is `search_spaces` with the administrator's reach
 and filters, and the two descriptions name each other. Without admin
 access a search finds only joined spaces, and Google pages and counts
-it only under admin access (E-026, E-027). Members see an
-administrator's change but not who made it (E-038). An administrator
-reaches a space the caller is not in, and Google deletes a space its
-last member leaves (E-037).
+it only under admin access. Members see that "the organization's
+administrator performed" a change, and not who
+([admin overview](https://developers.google.com/workspace/chat/admin-overview)).
 
 Rejected: a `use_admin_access` flag on the ordinary tools, for the
 reason above.
@@ -979,7 +995,7 @@ The `admin_` tools follow the kinds of their ordinary forms (D-10):
 - `admin_update_space` and `admin_update_member_role` are ordinary
   writes. An edit of a name, description or guidelines says what it
   replaced, so it can be put back. What an administrator's patch may
-  change is narrower than the caller's (E-036).
+  change is narrower than the caller's.
 - `admin_promote_member` and `admin_remove_member` are destructive, as
   their ordinary forms are.
 - `admin_update_space_permissions` is destructive, because widening a
@@ -1005,10 +1021,10 @@ destructive flag.
 `service.AsAdministrator`, which is `gchat.WithAdminAccess`. The client
 adds `useAdminAccess=true` and the administrator's scope to every Chat
 call made on that context. It adds the conditions Google sets on the
-admin form too: a search names `customer = "customers/my_customer"`
-(E-034), and a member listing filters on `member.type != "BOT"`
-(E-035). A Chat call with no administrator form is refused with
-`ErrNoAdminForm` before it leaves the process (E-032). People, Cloud
+admin form too: a search names `customer = "customers/my_customer"`,
+and a member listing filters on `member.type != "BOT"`. A Chat call
+with no administrator form is refused with `ErrNoAdminForm` before it
+leaves the process. People, Cloud
 Identity and OpenID Connect calls on the same path go as the caller,
 since none of them takes the parameter.
 
@@ -1051,7 +1067,7 @@ through this server.
 Adding yourself would let every tool here read the space as you, which
 is the model widening its own reach (D-26). A group you belong to would
 add you with it, and no check at add time sees a later change to the
-group (E-020). So `admin_add_member` adds people only.
+group. So `admin_add_member` adds people only.
 
 The caller's own address is compared first. Then the directory is asked
 once whose the address is. An address it does not know is refused,
@@ -1070,11 +1086,13 @@ With `admin` named, login asks for `chat.admin.spaces.readonly` and
 also asks for `chat.admin.spaces` and `chat.admin.memberships`. With
 `GCM_ENABLE_DESTRUCTIVE=true` as well, it asks for `chat.admin.delete`,
 the one restricted administrator scope, which deletes any space in the
-organization (E-033).
+organization.
 
-One Admin console privilege covers an administrator's reads and writes,
-with no read-only form (E-039). So reads and writes part at the OAuth
-scope, and the token holds no more than the switches allow.
+One Admin console privilege covers an administrator's reads and writes
+([Admin Help](https://support.google.com/a/answer/13369245)), and the
+[privilege list](https://support.google.com/a/answer/1219251) has no
+read-only form of it. So reads and writes part at the OAuth scope, and
+the token holds no more than the switches allow.
 
 None of the administrator scopes is in `scopes.All`, so nobody else's
 consent screen carries them. `chat.delete` stays requested whatever the
@@ -1093,11 +1111,13 @@ history" and "you may not delete this" the same way. So the refusal
 path reads the target back, and only a not-found answer counts as gone.
 A missing-scope 403 is never taken for gone.
 
-A deleted message reads back as a 200 tombstone, not a 404 (E-017).
-`delete_message` reads the message before it deletes, to compare its
-witness (D-18), so a repeat that finds a tombstone sends nothing at
-all. A deleted space answers 403, so "deleted" cannot be told from "not
-yours", and the refusal does not claim to know which (E-018).
+A deleted message reads back as a 200 tombstone, not a 404, which the
+[reference](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/delete)
+does not describe. `delete_message` reads the message before it
+deletes, to compare its witness (D-18), so a repeat that finds a
+tombstone sends nothing at all. A deleted space answers 403, so
+"deleted" cannot be told from "not yours", and the refusal does not
+claim to know which.
 
 `delete_section` succeeds on 404 only. Its 403 is a system section
 refusing deletion, and that is worth reporting.
@@ -1108,8 +1128,9 @@ Cost: a refused delete costs a second read.
 
 ### D-35 A People failure costs one field, never a row
 
-Chat sends a sender's or a member's address itself, and that answer
-wins (E-022). Its display name wins too: when Chat names an address,
+Chat sends a sender's or a member's address itself, external people
+included, and that answer wins. Its display name wins too: when Chat
+names an address,
 the name beside it is used over the People profile name. Only a user
 Chat sent no address for is looked up in People, and there the People
 name wins over Chat's. A user Chat sent an address but no name for is
@@ -1158,18 +1179,20 @@ Cost: switching modes means logging in again.
 Every Chat, People and Cloud Identity call names the scope it needs, and
 that scope is one login asks for. Reactions and reaction events name
 `chat.messages.readonly`, which discovery lists for both. A group read
-names `cloud-identity.groups.readonly`, the narrowest that works
-(E-045).
+names `cloud-identity.groups.readonly`, the narrowest that works.
 
 A missing-scope 403 becomes a `[scope]` error naming the scope URL and
 the command that fixes it, because Google's own message does not.
 
 `internal/scopes` records which umbrella scope satisfies which narrower
-one, checked against the discovery document (E-040). Without that table
+one, checked against the
+[discovery document](https://chat.googleapis.com/$discovery/rest?version=v1).
+Without that table
 the server refuses calls Google would allow, and refuses them for the
 people who paid the most for consent.
 
-A desktop client's login can grant some scopes and not others (E-042).
+A desktop client's login can grant some scopes and not others, per
+Google's [native-app guide](https://developers.google.com/identity/protocols/oauth2/native-app).
 So the profile records the scopes Google returned, not those requested,
 and `status` says which tools will fail.
 
@@ -1185,7 +1208,8 @@ Google answered, and only with an answer that means the request was
 turned away before it was applied. That is a 429 alone. The whole 5xx
 range is ambiguous: a 500 can follow a commit, a 502 or 504 comes from a
 gateway that never learned what the backend did, and a 503 is "not
-always safe to retry" (E-052).
+always safe to retry"
+([code.proto](https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto)).
 
 A write with an idempotency key is the exception, and it is declared
 rather than assumed. `send_message` carries a client-chosen message id,
@@ -1194,7 +1218,9 @@ transport failure or a 5xx. A server failure of a write that is not safe
 to repeat is marked as possibly applied, so the reply does not invite a
 blind retry.
 
-The limiters stay inside Google's per-user quota (E-051). They are per
+The limiters stay inside Google's
+[per-user quota](https://developers.google.com/workspace/chat/limits).
+They are per
 process and the quota is per user, so two clients on one account each
 take the whole allowance, and a 429 is still handled with backoff.
 
@@ -1221,8 +1247,7 @@ A `used` row is bound to its method: the verb and custom-method suffix
 in the client's request have to be the ones Google publishes. A method
 no requested scope authorizes is `unreachable`, derived from the scopes
 in the snapshot rather than argued in prose. `chat.bot` is a scope a
-person cannot hold (E-041), and some Cloud Identity methods publish none
-(E-048).
+person cannot hold, and some Cloud Identity methods publish none.
 
 `make api-diff` refetches the discovery documents and reports what
 changed, verb and path included. It reaches the network, so it is a
@@ -1242,9 +1267,10 @@ workflow's identity, and carries an SBOM per archive and build
 provenance. The README says how to verify each.
 
 Keyless signing leaves no private key to hold or leak. cosign 3 needs
-`--bundle`, and its older signature flags produce nothing (E-062).
+`--bundle`, and its older signature flags produce nothing
+([v3.0.1 release notes](https://github.com/sigstore/cosign/releases/tag/v3.0.1)).
 Pinning an action by SHA does not pin the tool it installs, so
-`cosign-release` and `syft-version` are pinned beside the SHAs (E-063).
+`cosign-release` and `syft-version` are pinned beside the SHAs.
 `make pins` holds every third-party tool to an exact version.
 
 There is nothing to host, so nothing else is published but the bundle
@@ -1282,10 +1308,11 @@ The MCP registry entry is written by `scripts/gates server-json` from
 the release's checksum file, and published with `mcp-publisher`.
 
 goreleaser's `mcp` block cannot publish an MCPB package, since it has
-no field for the hash the registry requires (E-064). The registry checks
-an MCPB entry in code: a hash, a release-asset URL on github.com or
-gitlab.com carrying "mcp", no `registryBaseUrl`, and a HEAD on the URL
-before it accepts the entry (E-065). So the entry can be published only
+no field for the hash the registry requires. The registry checks an
+MCPB entry in code, not in its published schema: a hash, a
+release-asset URL on github.com or gitlab.com carrying "mcp", no
+`registryBaseUrl`, and a HEAD on the URL before it accepts the entry.
+So the entry can be published only
 once the release exists, and from the same checksums the release signed.
 
 go.mod's module path is read by one `modulePath`, which the registry
@@ -1346,18 +1373,20 @@ Cost: every new variable needs a bundle field or a written reason.
 
 ### D-45 The bundle's defaults configure nothing
 
-A bundle install adds no approval behind the server's own (E-069).
-Claude Desktop approves per tool by the annotations, and "Always allow"
-skips the prompt from then on. So every switch the bundle asks for
-defaults to the server's own, off. The manifest lists no tools, since
-the settings change what registers, and carries no icon.
+A bundle install adds no approval behind the server's own: the
+[manifest's](https://github.com/anthropics/mcpb/blob/v2.1.2/MANIFEST.md)
+`tools` list is for display, Claude Desktop approves per tool by the
+annotations, and "Always allow" skips the prompt from then on. So
+every switch the bundle asks for defaults to the server's own, off. The
+manifest lists no tools, since the settings change what registers, and
+carries no icon.
 
 The gate builds the configuration a person who accepts every default
 would get, and holds it to an unconfigured server's. A required field's
-default counts, since a host may fill it in (E-074). Every optional
-field has a default, since a host passes an empty one through
-unsubstituted (E-075). A default may not hold `${...}`, which a host may
-expand and the check does not (E-076), nor be a list or an object.
+default counts, since a host may fill it in. Every optional field has a
+default, since a host passes an empty one through unsubstituted. A
+default may not hold `${...}`, which a host may expand and the check
+does not, nor be a list or an object.
 
 The gate also starts every set of the switches and holds the sets the
 server refuses to a declared list, both ways. The list is empty:
@@ -1365,7 +1394,9 @@ read-only wins over `enable_destructive` rather than refusing the pair,
 and both fields say so.
 
 `privacy_policies` names Google's policy, since the server sends data to
-Google, and the gate refuses an empty list (E-070).
+Google. The specification requires it of such a server, and the gate
+refuses an empty list, which neither the schema nor `mcpb validate`
+does.
 
 Rejected: defaults that turn on writes or deletes for a smoother
 install, since nothing behind the bundle asks again.
@@ -1376,12 +1407,13 @@ Cost: a person who wants deletes turns them on in the install form.
 `mcp_config.env` carries every setting, and `mcp_config.args` is
 present and empty. An argument would configure the server past the
 defaults check, since a host substitutes `${user_config.x}` into `args`
-as into `env` (E-073). A platform override's `env` or `args`, an empty
-one included, replaces the base rather than adding to it (E-072). So
-the gate refuses an argument, and any `env` or `args` on an override.
+as into `env`. A platform override's `env` or `args`, an empty one
+included, replaces the base rather than adding to it, in the
+[reference host](https://github.com/anthropics/mcpb/blob/v2.1.2/src/shared/config.ts).
+So the gate refuses an argument, and any `env` or `args` on an override.
 
 Every command starts with `${__dirname}/` and names a staged program,
-the one form whose meaning the specification fixes (E-071). `LICENSE`
+the one form whose meaning the specification fixes. `LICENSE`
 and `README.md` are packed to be read, not run.
 
 The defaults check (D-45) reads `mcp_config.env` alone. That is sound
@@ -1400,11 +1432,13 @@ Cost: a platform cannot get a setting of its own.
 
 Go writes no version resource, and code signing needs one. SignPath
 Foundation signs only a program whose resource names the project and
-carries the version it was asked to sign (E-078). Smart App Control
-blocks an unknown unsigned program, and every release is a new file
-with no reputation (E-077). The policy SignPath asks for is in the
-README and linked from every release (E-079); it also says what is
-signed.
+carries the version it was asked to sign
+([terms](https://signpath.org/terms)). Smart App Control blocks
+"unknown, unsigned code", and every release is a new file with no
+reputation
+([Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview)).
+The policy SignPath asks for is in the README and linked from every
+release; it also says what is signed.
 
 goreleaser's before hook runs `scripts/gates winres`, which writes one
 `.syso` per Windows architecture into `cmd/google-chat-mcp`, where the
@@ -1414,11 +1448,11 @@ strings.
 
 The `.syso` files are gitignored. Committed, they would carry one
 release's version into every later build. Untracked and not ignored,
-they would stamp `vcs.modified=true` into the binary (E-080). goreleaser
+they would stamp `vcs.modified=true` into the binary, since Go reads
+that from `git status`, which leaves ignored files out. goreleaser
 checks for a dirty tree before the before hooks run, so a hook that
 rewrote a tracked file would build the tag from files the tag does not
-hold (E-066). `make release-rehearse` removes the files after a local
-run.
+hold. `make release-rehearse` removes the files after a local run.
 
 Rejected: committing the `.syso` files, for the reason above.
 Cost: a pre-release and its release share one fixed version, which only
@@ -1450,7 +1484,7 @@ suite runs only by hand.
 account. Everything happens inside scratch spaces the run creates and
 deletes, so nothing it touches belongs to anybody. The live driver
 never leaves a space, since Google deletes a space its last member
-leaves (E-037).
+leaves within seconds, which no Google page says.
 
 A step prints, and an eval saves, only what the run itself created. A
 tool result is written down only when the call that produced it named
@@ -1465,4 +1499,28 @@ Rejected: scrubbing transcripts by pattern, for the reason above.
 Cost: a failure seen in a real space cannot be replayed from the
 transcript.
 
-Next ID: D-50
+### D-50 Forward a message through `send_message`
+
+`send_message` quotes a message and never forwards one. Google's
+[create-messages guide](https://developers.google.com/workspace/chat/create-messages)
+quotes through `chat.messages.create` under user authentication, and
+its release notes make the `FORWARD` quote type generally available. A
+person's token is refused all the same: Google answers "Can't forward a
+message" from main chat into the same space, between threads of one
+space, and into another space. A `REPLY` quote that carries the quoted
+message's latest `lastUpdateTime` posts and reads back.
+
+So `quote_message` takes a message from the space being posted to. The
+server reads its timestamp first, since Google refuses a stale one, and
+refuses a message from another space with the reason before anything
+is sent. A forward a person makes in the Chat client still reads back,
+with its source space and that space's display name.
+
+Rejected: a `FORWARD` quote type on `send_message`, or a
+`forward_message` tool, which Google refuses to every token this
+server can hold; falling back to a reply-quote, which posts something
+other than what was asked.
+Cost: sharing a message into another space is the person's to do in
+the Chat client.
+
+Next ID: D-51

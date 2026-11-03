@@ -112,15 +112,15 @@ These are worth knowing before they fail on you:
   nobody has decided about.
 
 - **The docs gate** holds the design docs to their IDs. A decision in
-  `docs/architecture.md` is `D-NN` and an evidence entry in
-  `docs/evidence.md` is `E-NNN`; an ID is never reused, and each file
-  ends with its `Next ID:` line. Cite them by ID, or a doc by
-  `docs/<file>.md#<heading-slug>`, never by section number. The gate
-  fails on a citation that does not resolve, a decision whose "Held by"
-  names a test or gate that does not exist, an evidence entry that
-  supports no decision and that nothing cites, a package missing from the
-  codemap, and a path, `make` target or gate a doc names that does not
-  exist.
+  `docs/architecture.md` is `D-NN`; an ID is never reused, and the file
+  ends with its `Next ID:` line. Cite a decision by ID, or a doc by
+  `docs/<file>.md#<heading-slug>`, never by section number. What you
+  verified about Google goes in the comment at the line that depends on
+  it, with the source link and the `make live` step that checks it,
+  never in a file of its own. The gate fails on a citation that does
+  not resolve, a decision whose "Held by" names a test or gate that does
+  not exist, a package missing from the codemap, and a path, `make`
+  target or gate a doc names that does not exist.
 
 For workflow edits, run
 `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.

@@ -199,7 +199,7 @@ jobs:
         run: go run ./scripts/gates api-coverage
       - name: every published field is modeled or left out on purpose
         run: go run ./scripts/gates api-fields
-      - name: every decision, evidence entry and citation resolves
+      - name: every decision, citation and named path resolves
         run: go run ./scripts/gates docs
       - name: stdio smoke
         run: go run ./scripts/gates smoke ./google-chat-mcp

@@ -48,7 +48,7 @@ func TestFailTagsAnUnclassifiedError(t *testing.T) {
 	}
 }
 
-// Only a write that adds says destructiveHint false (D-11): the Adding
+// Only a write that adds says destructiveHint false: the Adding
 // kinds, and download_attachment, which never overwrites a file. The
 // list is literal because that is a per-tool decision; a new write is a
 // Write, and says true, until somebody decides it only adds.
@@ -163,7 +163,7 @@ func TestOutputSchemaAnnotatesTimestamps(t *testing.T) {
 // its own packages from a dependency.
 const modulePath = "github.com/mmedum/google-chat-mcp/v9/"
 
-// The model never widens its own reach (D-26): no tool turns
+// The model never widens its own reach: no tool turns
 // a toolset on, lifts a refusal or edits what the operator set. The
 // server's settings are the environment, the profile internal/userconfig
 // writes and the token internal/credentials stores, all set outside the

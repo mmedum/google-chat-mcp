@@ -118,7 +118,7 @@ func connectTo(t *testing.T, s *mcp.Server) *mcp.ClientSession {
 	}
 	t.Cleanup(func() { _ = ss.Close() })
 
-	// The client can ask the person, and the server asks nobody (D-15):
+	// The client can ask the person, and the server asks nobody:
 	// every tool is called through such a client, so a question from any
 	// of them fails the test that made the call.
 	co := &mcp.ClientOptions{

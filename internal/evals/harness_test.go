@@ -17,7 +17,7 @@
 //
 // Traces and report.md land in $LIVE_OUT/evals, outside the repository.
 // A result is saved only when the call that produced it named the
-// scratch space; see redact. That is the rule for a live run (D-49):
+// scratch space; see redact. That is the rule for a live run:
 // what gets written down is only what the run itself created.
 package evals
 

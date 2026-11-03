@@ -154,7 +154,9 @@ func (c *Client) DeleteCustomEmoji(ctx context.Context, name string) error {
 //
 // Google always cascades: the space's messages and memberships go with
 // it. Its own words, and the reason this is the last thing in the tool
-// surface a caller should reach for.
+// surface a caller should reach for. An administrator's delete takes
+// chat.admin.delete, which chat.admin.spaces does not cover.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/delete
 func (c *Client) DeleteSpace(ctx context.Context, name string) error {
 	return c.deleteName(ctx, name, scopes.Delete, scopes.AdminDelete)
 }

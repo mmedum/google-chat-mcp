@@ -90,7 +90,7 @@ api-fields: ## Every published field modeled on purpose or left out on purpose
 	@$(GO) run ./scripts/gates api-fields
 
 .PHONY: docs
-docs: ## Every decision, evidence entry, citation and named path resolves
+docs: ## Every decision, citation and named path resolves
 	@$(GO) run ./scripts/gates docs
 
 # Not part of check: it fetches Google's discovery documents, and a gate

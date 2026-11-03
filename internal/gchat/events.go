@@ -148,7 +148,9 @@ func (c *Client) GetSpaceEvent(ctx context.Context, name string) (*SpaceEvent, e
 //
 // The spelling is event_types, plural, as the reference's own examples
 // have it; the same page's prose calls the field event_type, which
-// Google does not read (E-002).
+// Google does not read. Checked by the live step "space events are
+// listed".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.spaceEvents/list
 //
 // Only OR joins event types, and only AND joins a time bound to them,
 // which is why the types are parenthesized.

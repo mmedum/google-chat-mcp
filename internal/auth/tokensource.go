@@ -45,8 +45,9 @@ func (a *AccessTokens) Token(context.Context) (string, error) {
 // isInvalidGrant recognizes the one refusal that re-signing in fixes: a
 // revoked, expired or superseded refresh token. Google reports it as
 // invalid_grant, and no amount of retrying changes the answer. An
-// External app in Testing status gets one that expires in seven days
-// (E-081).
+// External app in Testing status is issued refresh tokens that expire in
+// seven days, which ends in this refusal too.
+// https://developers.google.com/identity/protocols/oauth2
 func isInvalidGrant(err error) bool {
 	var re *oauth2.RetrieveError
 	if errors.As(err, &re) {

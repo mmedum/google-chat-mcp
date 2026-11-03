@@ -82,7 +82,10 @@ func (s *Service) checkWitness(ctx context.Context, space string, sp *gchat.Spac
 
 // checkDirectMessage holds witness to the one other person in the direct
 // message space: Google's own lookup of the direct message with that
-// address has to answer with this space.
+// address, which answers with the one direct message between the caller
+// and that person (spaces.findDirectMessage), has to answer with this
+// space.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 func (s *Service) checkDirectMessage(ctx context.Context, space, witness string) error {
 	addr, err := requireEmail(spaceWitnessField, witness)
 	if err != nil {

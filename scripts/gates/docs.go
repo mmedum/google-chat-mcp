@@ -17,87 +17,68 @@ import (
 	"unicode"
 )
 
-// The docs gate checks references, not claims. Decision and evidence IDs,
-// every citation of one, every link to a heading, the codemap and the
-// paths the docs name all have to resolve. Whether the cited text is true
-// is for review and the live run.
+// The docs gate checks references, not claims. Decision IDs, every
+// citation of one, every link to a heading, the codemap, the paths the
+// docs name and the live steps the code names all have to resolve.
+// Whether the cited text is true is for review and the live run.
+//
+// Evidence has no IDs. What was verified upstream is stated at the line
+// that depends on it, with its source link, so an E- citation fails.
 
 // The files the docs gate reads besides the ones staleness names.
 const (
-	evidenceDocPath       = "docs/evidence.md"
 	agentFilePath         = "CLAUDE.md"
 	citationAllowlistPath = "testdata/citation-allowlist.txt"
 	makefilePath          = "Makefile"
 	golangciPath          = ".golangci.yml"
 )
 
-// idKind is one family of IDs. Its width is the fewest digits an ID is
-// written with, zero-padded: two or more after D-, three or more after E-.
-type idKind struct {
-	prefix string
-	width  int
-	what   string
-	// ref finds a citation; heading finds an entry, with its title.
-	ref, heading *regexp.Regexp
-}
-
-func newIDKind(prefix string, width int, what string) idKind {
-	return idKind{
-		prefix:  prefix,
-		width:   width,
-		what:    what,
-		ref:     regexp.MustCompile(fmt.Sprintf(`\b%s-\d+\b`, prefix)),
-		heading: regexp.MustCompile(fmt.Sprintf(`^### (%s-\S*)(?:[ \t]+(.*))?$`, prefix)),
-	}
-}
-
-var (
-	decisionID = newIDKind("D", 2, "a decision ID")
-	evidenceID = newIDKind("E", 3, "an evidence ID")
+// The live driver's package, and the type its step tables hold.
+const (
+	liveStepPackage = "internal/livecheck"
+	liveStepType    = "step"
 )
 
-// number is the number in a canonical ID, or -1 when id is not one.
-func (k idKind) number(id string) int {
-	digits, ok := strings.CutPrefix(id, k.prefix+"-")
+// A decision ID is D- and two or more digits, zero-padded.
+const decisionPattern = "D-NN"
+
+var (
+	decisionRef = regexp.MustCompile(`\bD-\d+\b`)
+	// decisionHeading finds an entry, with its title.
+	decisionHeading = regexp.MustCompile(`^### (D-\S*)(?:[ \t]+(.*))?$`)
+	evidenceRef     = regexp.MustCompile(`\bE-\d+\b`)
+)
+
+// decisionNumber is the number in a canonical decision ID, or -1 when id
+// is not one.
+func decisionNumber(id string) int {
+	digits, ok := strings.CutPrefix(id, "D-")
 	if !ok {
 		return -1
 	}
 	n, err := strconv.Atoi(digits)
-	if err != nil || n < 1 || k.text(n) != id {
+	if err != nil || n < 1 || decisionText(n) != id {
 		return -1
 	}
 	return n
 }
 
-func (k idKind) text(n int) string { return fmt.Sprintf("%s-%0*d", k.prefix, k.width, n) }
-
-// pattern is the ID's shape as a message spells it: D-NN, E-NNN.
-func (k idKind) pattern() string { return k.prefix + "-" + strings.Repeat("N", k.width) }
-
-// describe is the kind with the ID a malformed one should be: the same
-// number at the kind's width, or the first ID when it has no number.
-func (k idKind) describe(id string) string {
-	n, err := strconv.Atoi(strings.TrimPrefix(id, k.prefix+"-"))
-	if err != nil || n < 1 {
-		n = 1
-	}
-	return k.what + " like " + k.text(n)
-}
-
-// nextOn is the number a "Next ID:" line gives, or 0 when it is not one.
-func (k idKind) nextOn(line string) int {
-	id, ok := strings.CutPrefix(line, "Next ID: ")
-	if !ok {
-		return 0
-	}
-	return max(k.number(id), 0)
-}
+func decisionText(n int) string { return fmt.Sprintf("D-%02d", n) }
 
 var (
-	// A section number names nothing a reader can follow unless the line
-	// also says which document it numbers.
+	// A section number names nothing a reader can follow unless it says
+	// which document it numbers: an RFC named right before it, or a URL
+	// it sits in.
 	bareSection   = regexp.MustCompile(`§\s?\d+`)
-	namedDocument = regexp.MustCompile(`RFC \d+|http`)
+	sectionSource = regexp.MustCompile(`RFC \d+ ?§|https?://[^\s)>\]]+`)
+	// A pointer like client.go:238 or client.go:238:5 names the file.
+	lineSuffix = regexp.MustCompile(`:\d+(?::\d+)?$`)
+	// A comment cites live steps by their quoted names, listed with commas,
+	// "and" or "or".
+	liveStepCite = regexp.MustCompile(`\blive steps? ((?:"[^"]*"(?:,? and |,? or |, )?)+)`)
+	quotedName   = regexp.MustCompile(`"([^"]*)"`)
+	// YAML ends a line with a comment after white space.
+	trailingComment = regexp.MustCompile(`\s#`)
 
 	mdLink = regexp.MustCompile(`\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)`)
 	// A footnote, [^label]:, is not a link definition, though its text may
@@ -115,7 +96,6 @@ var (
 	entryEnd = regexp.MustCompile(`^#{1,3} `)
 
 	separatorRow = regexp.MustCompile(`^\|(\s*:?-+:?\s*\|)+$`)
-	verdictWord  = regexp.MustCompile(`^[A-Za-z]+`)
 	packageName  = regexp.MustCompile(`^((?:internal|cmd)/[^/\s]+)/?$`)
 	gatesCommand = regexp.MustCompile(`(?:^|\s|\./)scripts/gates\s+(\S+)`)
 	// A rule line: targets, a colon, and not the := of an assignment.
@@ -127,10 +107,8 @@ const supersededBy = "superseded by "
 var (
 	indexHeader = []string{"ID", "Decision", "Status", "Held by"}
 	// The last status is a pattern; validStatus reads it.
-	decisionStatuses = []string{"accepted", "rejected", "deprecated", supersededBy + decisionID.pattern()}
+	decisionStatuses = []string{"accepted", "rejected", "deprecated", supersededBy + decisionPattern}
 	decisionFields   = []string{"Rejected", "Cost"}
-	evidenceFields   = []string{"Supports", "Source says", "Observed", "Verdict", "Held by"}
-	evidenceVerdicts = []string{"confirmed", "contradicted", "refuted"}
 )
 
 // unfollowable marks a path token as a glob or a placeholder.
@@ -146,7 +124,7 @@ func docs(_ []string, stdout, stderr io.Writer) int {
 
 // docsProblems runs every check over the checkout in the working
 // directory. Later checks need what earlier ones read: the test names
-// from the Go pass, and the decisions and evidence the citations resolve to.
+// from the Go pass, and the decisions the citations resolve to.
 func docsProblems() []string {
 	files, err := checkoutFiles()
 	if err != nil {
@@ -156,10 +134,8 @@ func docsProblems() []string {
 	g.readGo()
 	g.readVocabulary()
 	g.readDecisions()
-	g.readEvidence()
 	g.readAllowlist()
 	g.checkCitations()
-	g.checkOrphans()
 	g.checkCodemap()
 	return g.problems
 }
@@ -208,13 +184,12 @@ type docsGate struct {
 	tests       map[string]bool
 	makeTargets map[string]bool
 	linters     map[string]bool
+	liveSteps   map[string]bool
 
-	// decisions and evidence stay nil when their document cannot be read,
+	// decisions stays nil when the architecture document cannot be read,
 	// so a citation of one is not also reported as unknown.
 	decisions map[string]*decision
-	evidence  map[string]*evidenceEntry
 
-	cited     map[string]bool
 	allowlist map[string]allowance
 	// bare counts each allowlisted file's bare section citations.
 	bare map[string]int
@@ -228,17 +203,17 @@ type sourceLine struct {
 
 func newDocsGate(files []string) *docsGate {
 	g := &docsGate{
-		files:    files,
-		present:  map[string]bool{},
-		dirs:     map[string]bool{},
-		reported: map[string]bool{},
-		proseOf:  map[string][]string{},
-		slugs:    map[string]map[string]bool{},
-		comments: map[string][]sourceLine{},
-		literals: map[string][]sourceLine{},
-		tests:    map[string]bool{},
-		cited:    map[string]bool{},
-		bare:     map[string]int{},
+		files:     files,
+		present:   map[string]bool{},
+		dirs:      map[string]bool{},
+		reported:  map[string]bool{},
+		proseOf:   map[string][]string{},
+		slugs:     map[string]map[string]bool{},
+		comments:  map[string][]sourceLine{},
+		literals:  map[string][]sourceLine{},
+		tests:     map[string]bool{},
+		liveSteps: map[string]bool{},
+		bare:      map[string]int{},
 	}
 	for _, f := range files {
 		g.present[f] = true
@@ -270,11 +245,15 @@ func (g *docsGate) at(file string, line int, format string, a ...any) {
 	g.fail("%s: %s", where, fmt.Sprintf(format, a...))
 }
 
-// malformed reports an ID not written at its kind's width. A heading or
-// index row is read twice, by its reader and the citation scan, and the
-// one wording lets fail report it once.
-func (g *docsGate) malformed(file string, line int, k idKind, id string) {
-	g.at(file, line, "%q is not written as %s", id, k.describe(id))
+// malformed reports a decision ID not written with two or more digits,
+// naming the ID it should be. A heading or index row is read twice, by its
+// reader and the citation scan, and the one wording lets fail report it once.
+func (g *docsGate) malformed(file string, line int, id string) {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "D-"))
+	if err != nil || n < 1 {
+		n = 1
+	}
+	g.at(file, line, "%q is not written as a decision ID like %s", id, decisionText(n))
 }
 
 func (g *docsGate) readFile(rel string) (string, bool) {
@@ -409,6 +388,9 @@ func (g *docsGate) readGo() {
 				}
 			}
 		}
+		if path.Dir(file) == liveStepPackage {
+			g.readLiveSteps(f)
+		}
 		if !strings.HasSuffix(file, "_test.go") {
 			g.literals[file] = stringLines(fset, f)
 			continue
@@ -422,6 +404,59 @@ func (g *docsGate) readGo() {
 	if read == 0 {
 		g.fail("no .go files read: this gate would be looking at nothing")
 	}
+	if len(g.liveSteps) == 0 {
+		g.at(liveStepPackage, 0, "no live steps read: a comment naming one would never match")
+	}
+}
+
+// readLiveSteps collects the name of each step in a []step literal. A
+// step built anywhere else, such as a unit test's fake, is not one the
+// live run takes.
+func (g *docsGate) readLiveSteps(f *ast.File) {
+	ast.Inspect(f, func(n ast.Node) bool {
+		table, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		if array, ok := table.Type.(*ast.ArrayType); !ok || !isIdent(array.Elt, liveStepType) {
+			return true
+		}
+		for _, elt := range table.Elts {
+			if name, ok := stepName(elt); ok {
+				g.liveSteps[name] = true
+			}
+		}
+		return false
+	})
+}
+
+// stepName is a step literal's name: its first field, or the field keyed
+// name.
+func stepName(elt ast.Expr) (string, bool) {
+	step, ok := elt.(*ast.CompositeLit)
+	if !ok || len(step.Elts) == 0 {
+		return "", false
+	}
+	value := step.Elts[0]
+	if _, keyed := value.(*ast.KeyValueExpr); keyed {
+		value = nil
+		for _, e := range step.Elts {
+			if kv, ok := e.(*ast.KeyValueExpr); ok && isIdent(kv.Key, "name") {
+				value = kv.Value
+			}
+		}
+	}
+	lit, ok := value.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	name, err := strconv.Unquote(lit.Value)
+	return name, err == nil
+}
+
+func isIdent(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
 }
 
 // stringLines is the value of every string literal in a file, by source
@@ -513,21 +548,8 @@ func (g *docsGate) holds(item string) bool {
 		g.makeTargets[item] || g.linters[item] || g.tests[item]
 }
 
-func (g *docsGate) checkHolders(file string, line int, id string, holders []string) {
-	if len(holders) == 0 {
-		g.at(file, line, "%s is held by nothing", id)
-		return
-	}
-	for _, h := range holders {
-		if !g.holds(h) {
-			g.at(file, line, "%s is held by %q, which is not live, review, a make target, "+
-				"a gates command, an enabled linter or a test function", id, h)
-		}
-	}
-}
-
-// listItems splits a comma-separated cell or line. The closing period of
-// a sentence and code quotes around an item are not part of it.
+// listItems splits a comma-separated cell. A closing period and code
+// quotes around an item are not part of it.
 func listItems(s string) []string {
 	parts := strings.Split(strings.TrimSuffix(strings.TrimSpace(s), "."), ",")
 	out := make([]string, 0, len(parts))
@@ -547,89 +569,15 @@ func orList(items []string) string {
 	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
 }
 
-// byNumber is a map's canonical IDs in numeric order.
-func byNumber[V any](m map[string]V) []string {
-	ids := slices.Collect(maps.Keys(m))
-	slices.SortFunc(ids, func(a, b string) int {
-		return cmp.Or(cmp.Compare(len(a), len(b)), strings.Compare(a, b))
-	})
-	return ids
-}
-
-// lastLines are the indexes of a document's last n non-blank lines, in
-// order, or nil when it has fewer.
-func lastLines(lines []string, n int) []int {
-	out := make([]int, 0, n)
-	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
-		if lines[i] != "" {
-			out = append(out, i)
-		}
-	}
-	if len(out) < n {
-		return nil
-	}
-	slices.Reverse(out)
-	return out
-}
-
-// field is one "Name: value" line of an entry. A zero line means the
-// entry has none.
-type field struct {
-	line  int
-	value string
-}
-
-// entryFields reads the first line of each named field in the entry
-// headed by lines[heading].
-func entryFields(lines []string, heading int, names ...string) map[string]field {
-	out := make(map[string]field, len(names))
+// hasField reports whether the entry headed by lines[heading] has a
+// "name:" line.
+func hasField(lines []string, heading int, name string) bool {
 	for j := heading + 1; j < len(lines) && !entryEnd.MatchString(lines[j]); j++ {
-		line := strings.TrimSpace(lines[j])
-		for _, name := range names {
-			if v, ok := strings.CutPrefix(line, name+":"); ok && out[name].line == 0 {
-				out[name] = field{j + 1, strings.TrimSpace(v)}
-			}
+		if strings.HasPrefix(strings.TrimSpace(lines[j]), name+":") {
+			return true
 		}
 	}
-	return out
-}
-
-// idTrailer is what a file's closing lines say about its IDs. Decisions
-// are never retired, so theirs has no retired set.
-type idTrailer struct {
-	next, nextLine int
-	retired        map[string]bool
-	retiredLine    int
-}
-
-// checkIDRange holds a file's IDs to its trailer: each is below Next ID,
-// and each number below it has an entry or is retired, so no ID returns.
-func (g *docsGate) checkIDRange(file string, k idKind, ids map[string]int, t idTrailer) {
-	nextText := k.text(t.next)
-	for _, id := range byNumber(ids) {
-		if k.number(id) >= t.next {
-			g.at(file, ids[id], "%s is not below Next ID %s", id, nextText)
-		}
-	}
-	for _, id := range byNumber(t.retired) {
-		if k.number(id) >= t.next {
-			g.at(file, t.retiredLine, "Retired lists %s, which is not below Next ID %s", id, nextText)
-		}
-	}
-	missing := "an ID is never deleted"
-	if t.retired != nil {
-		missing = "list it under Retired"
-	}
-	for n := 1; n < t.next; n++ {
-		id := k.text(n)
-		_, has := ids[id]
-		switch {
-		case has && t.retired[id]:
-			g.at(file, t.retiredLine, "%s is retired and still has an entry", id)
-		case !has && !t.retired[id]:
-			g.at(file, t.nextLine, "%s is below Next ID %s and is missing; %s", id, nextText, missing)
-		}
-	}
+	return false
 }
 
 // decision is one D-ID as its index row and its entry give it. A zero
@@ -644,7 +592,7 @@ type decision struct {
 }
 
 // lapsed reports whether a decision no longer holds. Only the architecture
-// document may cite it, and the evidence that supported it, which stays true.
+// document may cite it.
 func (d *decision) lapsed() bool {
 	return d.status == "deprecated" || strings.HasPrefix(d.status, supersededBy)
 }
@@ -653,7 +601,7 @@ func (d *decision) lapsed() bool {
 // successor exists is the citation check's, which reads the index too.
 func validStatus(s string) bool {
 	if successor, ok := strings.CutPrefix(s, supersededBy); ok {
-		return decisionID.number(successor) > 0
+		return decisionNumber(successor) > 0
 	}
 	return slices.Contains(decisionStatuses, s)
 }
@@ -673,9 +621,8 @@ func (g *docsGate) readDecisions() {
 	g.decisions = map[string]*decision{}
 	g.readDecisionIndex(lines)
 	g.readDecisionEntries(lines)
-	rows, firstLines := 0, map[string]int{}
-	for id, d := range g.decisions {
-		firstLines[id] = cmp.Or(d.line, d.entryLine)
+	rows := 0
+	for _, d := range g.decisions {
 		if d.line != 0 {
 			rows++
 		}
@@ -684,18 +631,42 @@ func (g *docsGate) readDecisions() {
 		g.at(architectureDocPath, 0, "no decisions in the index: this gate would be looking at nothing")
 	}
 
-	t := idTrailer{}
-	if last := lastLines(lines, 1); last != nil {
-		t.next, t.nextLine = decisionID.nextOn(lines[last[0]]), last[0]+1
+	last := len(lines) - 1
+	for last >= 0 && lines[last] == "" {
+		last--
 	}
-	if t.next == 0 {
-		g.at(architectureDocPath, t.nextLine, `the last line is not "Next ID: %s"`, decisionID.pattern())
+	next := 0
+	if last >= 0 {
+		if id, ok := strings.CutPrefix(lines[last], "Next ID: "); ok {
+			next = max(decisionNumber(id), 0)
+		}
 	}
-	for _, id := range byNumber(g.decisions) {
+	if next == 0 {
+		g.at(architectureDocPath, last+1, `the last line is not "Next ID: %s"`, decisionPattern)
+	}
+	ids := slices.Collect(maps.Keys(g.decisions))
+	slices.SortFunc(ids, func(a, b string) int { return cmp.Compare(decisionNumber(a), decisionNumber(b)) })
+	for _, id := range ids {
 		g.checkDecision(g.decisions[id])
 	}
-	if t.next > 0 {
-		g.checkIDRange(architectureDocPath, decisionID, firstLines, t)
+	if next > 0 {
+		g.checkNextID(ids, next, last+1)
+	}
+}
+
+// checkNextID holds the decisions to the Next ID line: each ID is below
+// it, and each number below it has a decision, so no ID returns.
+func (g *docsGate) checkNextID(ids []string, next, nextLine int) {
+	for _, id := range ids {
+		if decisionNumber(id) >= next {
+			d := g.decisions[id]
+			g.at(architectureDocPath, cmp.Or(d.line, d.entryLine), "%s is not below Next ID %s", id, decisionText(next))
+		}
+	}
+	for n := 1; n < next; n++ {
+		if id := decisionText(n); g.decisions[id] == nil {
+			g.at(architectureDocPath, nextLine, "%s is below Next ID %s and is missing; an ID is never deleted", id, decisionText(next))
+		}
 	}
 }
 
@@ -722,12 +693,29 @@ func (g *docsGate) readDecisionIndex(lines []string) {
 	}
 }
 
+// tableCells splits a table row at each pipe a backslash does not escape,
+// even inside a code span, and unescapes the rest
+// (https://github.github.com/gfm/#tables-extension-).
 func tableCells(row string) []string {
-	cells := strings.Split(strings.Trim(row, "|"), "|")
-	for i := range cells {
-		cells[i] = strings.TrimSpace(cells[i])
+	row = strings.TrimPrefix(strings.TrimSpace(row), "|")
+	if !strings.HasSuffix(row, `\|`) {
+		row = strings.TrimSuffix(row, "|")
 	}
-	return cells
+	var cells []string
+	var cell strings.Builder
+	for i := 0; i < len(row); i++ {
+		switch {
+		case strings.HasPrefix(row[i:], `\|`):
+			cell.WriteByte('|')
+			i++
+		case row[i] == '|':
+			cells = append(cells, strings.TrimSpace(cell.String()))
+			cell.Reset()
+		default:
+			cell.WriteByte(row[i])
+		}
+	}
+	return append(cells, strings.TrimSpace(cell.String()))
 }
 
 func (g *docsGate) readIndexRow(line int, row []string) {
@@ -736,8 +724,8 @@ func (g *docsGate) readIndexRow(line int, row []string) {
 		return
 	}
 	id := row[0]
-	if decisionID.number(id) < 0 {
-		g.malformed(architectureDocPath, line, decisionID, id)
+	if decisionNumber(id) < 0 {
+		g.malformed(architectureDocPath, line, id)
 		return
 	}
 	d := g.decision(id)
@@ -750,13 +738,13 @@ func (g *docsGate) readIndexRow(line int, row []string) {
 
 func (g *docsGate) readDecisionEntries(lines []string) {
 	for i, line := range lines {
-		m := decisionID.heading.FindStringSubmatch(line)
+		m := decisionHeading.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
 		id := m[1]
-		if decisionID.number(id) < 0 {
-			g.malformed(architectureDocPath, i+1, decisionID, id)
+		if decisionNumber(id) < 0 {
+			g.malformed(architectureDocPath, i+1, id)
 			continue
 		}
 		d := g.decision(id)
@@ -765,9 +753,8 @@ func (g *docsGate) readDecisionEntries(lines []string) {
 			continue
 		}
 		d.entryLine, d.entryTitle = i+1, m[2]
-		fields := entryFields(lines, i, decisionFields...)
 		for _, name := range decisionFields {
-			if fields[name].line == 0 {
+			if !hasField(lines, i, name) {
 				g.at(architectureDocPath, i+1, "%s has no %q line", id, name+":")
 			}
 		}
@@ -787,132 +774,21 @@ func (g *docsGate) checkDecision(d *decision) {
 	if !validStatus(d.status) {
 		g.at(architectureDocPath, d.line, "%s has status %q, want %s", d.id, d.status, orList(decisionStatuses))
 	}
-	holders := listItems(d.heldBy)
-	if !slices.Equal(holders, []string{"—"}) {
-		g.checkHolders(architectureDocPath, d.line, d.id, holders)
-	} else if d.status == "accepted" {
-		g.at(architectureDocPath, d.line, "%s is accepted and held by —; an accepted decision names what holds it", d.id)
-	}
-}
-
-// evidenceEntry is one E-ID. An entry with no home is an orphan: it backs
-// no decision, nothing cites it, and it refutes nothing of ours.
-type evidenceEntry struct {
-	line     int
-	refuted  bool
-	supports bool
-}
-
-func (g *docsGate) readEvidence() {
-	lines, ok := g.lines(evidenceDocPath)
-	if !ok {
-		return
-	}
-	g.evidence = map[string]*evidenceEntry{}
-	for i, line := range lines {
-		if m := evidenceID.heading.FindStringSubmatch(line); m != nil {
-			g.readEvidenceEntry(lines, i, m[1])
+	switch holders := listItems(d.heldBy); {
+	case slices.Equal(holders, []string{"—"}):
+		if d.status == "accepted" {
+			g.at(architectureDocPath, d.line, "%s is accepted and held by —; an accepted decision names what holds it", d.id)
 		}
-	}
-	if len(g.evidence) == 0 {
-		g.at(evidenceDocPath, 0, "no evidence entries: this gate would be looking at nothing")
-	}
-	g.checkEvidenceIDs(lines)
-}
-
-func (g *docsGate) readEvidenceEntry(lines []string, heading int, id string) {
-	if evidenceID.number(id) < 0 {
-		g.malformed(evidenceDocPath, heading+1, evidenceID, id)
-		return
-	}
-	if g.evidence[id] != nil {
-		g.at(evidenceDocPath, heading+1, "%s has two entries", id)
-		return
-	}
-	e := &evidenceEntry{line: heading + 1}
-	g.evidence[id] = e
-
-	fields := entryFields(lines, heading, evidenceFields...)
-	inOrder, last := true, 0
-	for _, name := range evidenceFields {
-		f := fields[name]
-		if f.line == 0 {
-			g.at(evidenceDocPath, e.line, "%s has no %q line", id, name+":")
-			continue
-		}
-		inOrder = inOrder && f.line > last
-		last = f.line
-	}
-	if !inOrder {
-		g.at(evidenceDocPath, e.line, "%s's lines are out of order; want %s", id, strings.Join(evidenceFields, ", "))
-	}
-	if f := fields["Supports"]; f.line != 0 {
-		e.supports = g.checkSupports(id, f)
-	}
-	if f := fields["Verdict"]; f.line != 0 {
-		word := verdictWord.FindString(f.value)
-		if !slices.Contains(evidenceVerdicts, word) {
-			g.at(evidenceDocPath, f.line, "%s's verdict is %q, want %s", id, word, orList(evidenceVerdicts))
-		}
-		e.refuted = word == "refuted"
-	}
-	if f := fields["Held by"]; f.line != 0 {
-		g.checkHolders(evidenceDocPath, f.line, id, listItems(f.value))
-	}
-}
-
-// checkSupports holds the shape of a Supports line and reports whether it
-// names a decision. Whether each D-ID exists is the citation check's,
-// which reads this line too.
-func (g *docsGate) checkSupports(id string, f field) bool {
-	items := listItems(f.value)
-	switch {
-	case len(items) == 0:
-		g.at(evidenceDocPath, f.line, "%s supports nothing; name D-IDs or none", id)
-		return false
-	case slices.Equal(items, []string{"none"}):
-		return false
-	}
-	for _, item := range items {
-		if decisionID.number(item) < 0 {
-			g.at(evidenceDocPath, f.line, "%s supports %q, which is not a D-ID or none", id, item)
-		}
-	}
-	return true
-}
-
-// checkEvidenceIDs reads the trailer, Retired and then Next ID, and holds
-// the entries to it.
-func (g *docsGate) checkEvidenceIDs(lines []string) {
-	shape := fmt.Sprintf(`the last two lines are not "Retired: …" and "Next ID: %s"`, evidenceID.pattern())
-	tail := lastLines(lines, 2)
-	if tail == nil {
-		g.at(evidenceDocPath, 0, "%s", shape)
-		return
-	}
-	retiredValue, isRetiredLine := strings.CutPrefix(lines[tail[0]], "Retired:")
-	t := idTrailer{
-		next: evidenceID.nextOn(lines[tail[1]]), nextLine: tail[1] + 1,
-		retired: map[string]bool{}, retiredLine: tail[0] + 1,
-	}
-	if !isRetiredLine || t.next == 0 {
-		g.at(evidenceDocPath, t.nextLine, "%s", shape)
-		return
-	}
-	if items := listItems(retiredValue); !slices.Equal(items, []string{"none"}) {
-		for _, r := range items {
-			if evidenceID.number(r) < 0 {
-				g.at(evidenceDocPath, t.retiredLine, "Retired lists %q, which is not written as %s", r, evidenceID.describe(r))
-				continue
+	case len(holders) == 0:
+		g.at(architectureDocPath, d.line, "%s is held by nothing", d.id)
+	default:
+		for _, h := range holders {
+			if !g.holds(h) {
+				g.at(architectureDocPath, d.line, "%s is held by %q, which is not live, review, a make target, "+
+					"a gates command, an enabled linter or a test function", d.id, h)
 			}
-			t.retired[r] = true
 		}
 	}
-	ids := map[string]int{}
-	for id, e := range g.evidence {
-		ids[id] = e.line
-	}
-	g.checkIDRange(evidenceDocPath, evidenceID, ids, t)
 }
 
 // allowance is an allowlist line: a file may keep count bare section
@@ -946,11 +822,10 @@ func (g *docsGate) readAllowlist() {
 	}
 }
 
-// isTrailer reports whether a line is one of the ID trailers, which name
-// the IDs that do not exist.
+// isTrailer reports whether a line is the decisions' Next ID line, which
+// names an ID that does not exist.
 func isTrailer(file, line string) bool {
-	return (file == architectureDocPath || file == evidenceDocPath) &&
-		(strings.HasPrefix(line, "Next ID:") || strings.HasPrefix(line, "Retired:"))
+	return file == architectureDocPath && strings.HasPrefix(line, "Next ID:")
 }
 
 // scanned is the range of a Markdown file's lines the citation scan
@@ -987,11 +862,89 @@ func (g *docsGate) checkCitations() {
 			for _, s := range g.literals[file] {
 				g.checkGoDocRefs(file, s.line, s.text, false)
 			}
+			g.checkLiveSteps(file, g.comments[file])
 		case strings.HasSuffix(file, ".md"):
 			g.checkMarkdown(file)
+		case isConfigFile(file):
+			if raw, ok := g.readFile(file); ok {
+				for _, c := range configComments(file, raw) {
+					g.checkLine(file, c.line, c.text)
+					g.checkGoDocRefs(file, c.line, c.text, true)
+				}
+			}
 		}
 	}
 	g.checkAllowlist()
+}
+
+// isConfigFile reports whether a file holds # comments the citation scan
+// reads as it reads a Go comment.
+func isConfigFile(file string) bool {
+	base := path.Base(file)
+	return base == "Makefile" || base == ".gitignore" || isYAML(file)
+}
+
+func isYAML(file string) bool {
+	return strings.HasSuffix(file, ".yml") || strings.HasSuffix(file, ".yaml")
+}
+
+// configComments is each # comment in a config file, by line: a line that
+// starts with #, and in YAML the end of a line after white space and #. A
+// " #" in a quoted YAML string is read too, which can only add a check.
+func configComments(file, raw string) []sourceLine {
+	var out []sourceLine
+	yaml := isYAML(file)
+	for i, line := range strings.Split(raw, "\n") {
+		if text := strings.TrimLeft(line, " \t"); strings.HasPrefix(text, "#") {
+			out = append(out, sourceLine{i + 1, text})
+		} else if at := trailingComment.FindStringIndex(line); yaml && at != nil {
+			out = append(out, sourceLine{i + 1, line[at[1]-1:]})
+		}
+	}
+	return out
+}
+
+// checkLiveSteps holds each live step a file's comments name to one the
+// live driver defines. A name wraps across comment lines, so adjacent
+// lines are read as one text.
+func (g *docsGate) checkLiveSteps(file string, comments []sourceLine) {
+	if len(g.liveSteps) == 0 {
+		return
+	}
+	for start := 0; start < len(comments); {
+		end := start + 1
+		for end < len(comments) && comments[end].line == comments[end-1].line+1 {
+			end++
+		}
+		g.checkLiveStepRun(file, comments[start:end])
+		start = end
+	}
+}
+
+// checkLiveStepRun checks one run of adjacent comment lines, reporting an
+// unknown name at the line its opening quote is on.
+func (g *docsGate) checkLiveStepRun(file string, run []sourceLine) {
+	var text strings.Builder
+	starts := make([]int, len(run))
+	for i, c := range run {
+		starts[i] = text.Len()
+		text.WriteString(strings.TrimSpace(strings.TrimPrefix(c.text, "//")))
+		text.WriteByte(' ')
+	}
+	joined := text.String()
+	if !strings.Contains(joined, "live step") {
+		return
+	}
+	for _, cite := range liveStepCite.FindAllStringSubmatchIndex(joined, -1) {
+		for _, q := range quotedName.FindAllStringSubmatchIndex(joined[cite[2]:cite[3]], -1) {
+			at := cite[2] + q[0]
+			name := strings.Join(strings.Fields(joined[cite[2]+q[2]:cite[2]+q[3]]), " ")
+			if !g.liveSteps[name] {
+				i, _ := slices.BinarySearch(starts, at+1)
+				g.at(file, run[i-1].line, "names the live step %q, which %s does not define", name, liveStepPackage)
+			}
+		}
+	}
 }
 
 func (g *docsGate) checkMarkdown(file string) {
@@ -1019,50 +972,44 @@ func (g *docsGate) checkMarkdown(file string) {
 // runs only on a line holding the literal it needs.
 func (g *docsGate) checkLine(file string, n int, text string) {
 	if strings.Contains(text, "D-") {
-		for _, id := range decisionID.ref.FindAllString(text, -1) {
+		for _, id := range decisionRef.FindAllString(text, -1) {
 			g.citeDecision(file, n, id)
 		}
 	}
 	if strings.Contains(text, "E-") {
-		for _, id := range evidenceID.ref.FindAllString(text, -1) {
-			g.citeEvidence(file, n, id)
+		for _, id := range evidenceRef.FindAllString(text, -1) {
+			g.at(file, n, "cites %s; evidence has no IDs: state the behavior at the line that depends on it, with its source link", id)
 		}
 	}
-	if !strings.Contains(text, "§") || namedDocument.MatchString(text) {
+	if !strings.Contains(text, "§") {
 		return
 	}
-	bare := bareSection.FindAllString(text, -1)
+	var bare []string
+	sources := sectionSource.FindAllStringIndex(text, -1)
+	for _, at := range bareSection.FindAllStringIndex(text, -1) {
+		if !slices.ContainsFunc(sources, func(s []int) bool { return s[0] <= at[0] && at[0] < s[1] }) {
+			bare = append(bare, text[at[0]:at[1]])
+		}
+	}
 	switch _, listed := g.allowlist[file]; {
 	case len(bare) == 0:
 	case listed:
 		g.bare[file] += len(bare)
 	default:
-		g.at(file, n, "cites a section by number (%s); cite a D-ID, an E-ID or docs/<file>.md#<slug>", bare[0])
+		g.at(file, n, "cites a section by number (%s); cite a D-ID, docs/<file>.md#<slug> or a source link", bare[0])
 	}
 }
 
 func (g *docsGate) citeDecision(file string, n int, id string) {
 	d := g.decisions[id]
 	switch {
-	case decisionID.number(id) < 0:
-		g.malformed(file, n, decisionID, id)
+	case decisionNumber(id) < 0:
+		g.malformed(file, n, id)
 	case g.decisions == nil:
 	case d == nil:
 		g.at(file, n, "cites %s, which is not a decision", id)
-	case file != architectureDocPath && file != evidenceDocPath && d.lapsed():
+	case file != architectureDocPath && d.lapsed():
 		g.at(file, n, "cites %s, which is %s", id, d.status)
-	}
-}
-
-func (g *docsGate) citeEvidence(file string, n int, id string) {
-	switch {
-	case evidenceID.number(id) < 0:
-		g.malformed(file, n, evidenceID, id)
-	case g.evidence == nil:
-	case g.evidence[id] == nil:
-		g.at(file, n, "cites %s, which is not an evidence entry", id)
-	case file != evidenceDocPath:
-		g.cited[id] = true
 	}
 }
 
@@ -1082,7 +1029,7 @@ func (g *docsGate) checkAllowlist() {
 			g.at(citationAllowlistPath, a.line, "lists %s at %d bare section citations, and it has %d; lower the count", p, a.count, have)
 		case have > a.count:
 			g.at(citationAllowlistPath, a.line, "lists %s at %d bare section citations, and it has %d; "+
-				"cite a D-ID, an E-ID or docs/<file>.md#<slug>", p, a.count, have)
+				"cite a D-ID, docs/<file>.md#<slug> or a source link", p, a.count, have)
 		}
 	}
 }
@@ -1105,11 +1052,13 @@ func (g *docsGate) checkGoDocRefs(file string, n int, text string, inComment boo
 	}
 }
 
-// checkLinks resolves a Markdown link relative to the file it is in.
+// checkLinks resolves a Markdown link relative to the file it is in. A
+// link written in a code span is an example, not a link.
 func (g *docsGate) checkLinks(file string, n int, text string) {
 	if !strings.Contains(text, "](") && !strings.Contains(text, "]:") {
 		return
 	}
+	text = codeSpanRe.ReplaceAllStringFunc(text, func(span string) string { return strings.Repeat(" ", len(span)) })
 	if m := mdLinkDef.FindStringSubmatch(text); m != nil {
 		g.checkLinkTarget(file, n, m[1])
 		return
@@ -1176,9 +1125,15 @@ func (g *docsGate) checkSpan(file string, n int, span string) {
 // checkPath holds a token to the tree when it starts at a top-level entry
 // of the checkout. Anything else is a name, not a path: a package, a
 // function, a resource id. A glob or a placeholder is not followable.
+// Sentence punctuation after a token and a :line pointer are not part of
+// the path.
 func (g *docsGate) checkPath(file string, n int, token string) {
+	if strings.ContainsAny(token, unfollowable) || strings.Contains(token, "...") {
+		return
+	}
+	token = strings.TrimRight(token, ".,;)")
 	p, slug, _ := strings.Cut(strings.TrimPrefix(token, "./"), "#")
-	if p == "" || strings.ContainsAny(p, unfollowable) || strings.Contains(p, "...") {
+	if p = lineSuffix.ReplaceAllString(p, ""); p == "" {
 		return
 	}
 	if first, _, _ := strings.Cut(p, "/"); !g.exists(first) {
@@ -1204,15 +1159,6 @@ func goPackage(p string) string {
 		return ""
 	}
 	return p[:slash+1+dot]
-}
-
-func (g *docsGate) checkOrphans() {
-	for _, id := range byNumber(g.evidence) {
-		if e := g.evidence[id]; !e.refuted && !e.supports && !g.cited[id] {
-			g.at(evidenceDocPath, e.line, "%s supports no decision and is cited nowhere outside %s; "+
-				"cite it where it is relied on", id, evidenceDocPath)
-		}
-	}
 }
 
 // checkCodemap holds the codemap to the tree: every package directly

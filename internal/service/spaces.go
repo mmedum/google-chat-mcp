@@ -514,8 +514,10 @@ const (
 
 // requireSpaceText bounds a space's name, description or guidelines by
 // Google's own limit, counted the way Google counts it: in UTF-16 code
-// units, so an emoji counts as two and an accented letter as one
-// (E-028).
+// units, so an emoji counts as two and an accented letter as one. The
+// reference says characters; 2,049 emoji in a description of 4,096 are
+// refused. Checked by the live step "the description changes".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces
 func requireSpaceText(field, value string, maximum int) error {
 	n := 0
 	for _, r := range value {
@@ -746,7 +748,13 @@ const maxSpaceGuidelines = 5000
 //
 // It makes a space private, and never opens one: that widens who can
 // read it, so it is set_space_audience's, behind the destructive flag.
-// Under admin access Google takes no audience at all.
+// Under admin access Google takes no audience at all. The reference
+// refuses the space type, the history state and both access settings to
+// an administrator and says nothing of the rest; a name, a description
+// and the guidelines go through. Checked by the live steps "an
+// administrator sets a name, a description and guidelines" and "the
+// guidelines survive the edit".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch
 func (s *Service) UpdateSpace(ctx context.Context, in UpdateSpaceInput) (*UpdateSpaceResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
@@ -898,7 +906,9 @@ type SpacePermissions struct {
 // Two of Google's settings are missing on purpose. Who may post is
 // output only. Who may see the member list must be sent with
 // accessSettings.access_permission_settings, which Google refuses under
-// admin access (spaces.patch reference, 2026-09-21).
+// admin access. Checked by the live step "an administrator narrows every
+// other permission".
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces/patch
 type permissionSetting struct {
 	name string
 	wire string
@@ -1025,9 +1035,10 @@ func (s *Service) UpdateSpacePermissions(ctx context.Context, in UpdateSpacePerm
 	if sp.Permissions != nil {
 		// Who may reply changes only where members cannot post, as in an
 		// announcement space. Elsewhere Google refuses it for everyone,
-		// the space's own managers included, and under admin access as
-		// permission denied (E-029). A read that does not say
-		// who may post refuses nothing: Google decides.
+		// the space's own managers included, as "the permission settings
+		// are immutable", and under admin access as permission denied.
+		// Neither the reference nor the Help Center says so. A read that
+		// does not say who may post refuses nothing: Google decides.
 		post := sp.Permissions.PostMessages
 		if post != nil && post.MembersAllowed && strings.TrimSpace(in.Set.ReplyMessages) != "" {
 			return nil, Invalidf("reply_messages changes only in a space where members cannot post, and members can post in %s "+

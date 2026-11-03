@@ -21,7 +21,7 @@ upgrading are marked **Breaking:** and say what to do.
 - `--dump-schemas` carries the server's instructions in each mode, and lists fixed resources and prompts once the server has any.
 - For contributors: a pull request that changes the tool surface needs a commit footer naming each changed item; `CONTRIBUTING.md` gives the syntax.
 - For contributors: the schema diff compares the whole dump, so a removed resource template fails as a removed tool does.
-- For contributors: `make check` runs a docs gate. Decisions and evidence carry IDs, and every citation must resolve; `CONTRIBUTING.md` explains.
+- For contributors: `make check` runs a docs gate. Decisions carry IDs, and every citation must resolve; `CONTRIBUTING.md` explains.
 
 ## [9.1.1] - 2026-11-01
 

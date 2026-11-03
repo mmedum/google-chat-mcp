@@ -31,8 +31,10 @@ func (s *Service) FindGroup(ctx context.Context, email string) (*Group, error) {
 	name, err := s.client.LookupGroup(ctx, email)
 	if err != nil {
 		// Google answers 403 for an address no group has and, as far as
-		// anyone outside can tell, for a group hidden from the caller
-		// (E-046). 404 gets the same explanation in case that changes.
+		// anyone outside can tell, for a group hidden from the caller; no
+		// reference says which. 404 gets the same explanation in case that
+		// changes. Checked by the live step "an unknown group address is
+		// refused as not visible".
 		class := ClassNotFound
 		switch {
 		case gchat.IsForbidden(err):

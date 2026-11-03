@@ -34,6 +34,10 @@ type LookupGroupNameResponse struct {
 }
 
 // LookupGroup turns a group's email address into its groups/{id} name.
+// Chat names a group member by that Cloud Identity name and refuses its
+// address, and spaces.setup says to find the name with groups.lookup.
+// Checked by the live step "a group's address turns into its id".
+// https://cloudidentity.googleapis.com/$discovery/rest?version=v1
 //
 // The address goes in the query, which errors and logs never carry, so a
 // failed lookup does not put it in a log line.
@@ -51,9 +55,11 @@ func (c *Client) LookupGroup(ctx context.Context, email string) (string, error) 
 }
 
 // groupFields is what this server reads off a group. Google's fields
-// system parameter trims the answer to it: a group also carries its
-// parent, labels and timestamps, which nothing reads, and every field
-// decoded but not modeled is reported as schema drift (E-049).
+// system parameter, which every Google API takes, trims the answer to
+// it: a group also carries its parent, labels and timestamps, which
+// nothing reads, and every field decoded but not modeled is reported as
+// schema drift.
+// https://cloud.google.com/apis/docs/system-parameters
 const groupFields = "name,groupKey,displayName"
 
 // GetGroup reads one group by its groups/{id} name.
@@ -96,9 +102,10 @@ type GroupMembershipsPage struct {
 // reads, as groupFields trims a group.
 const groupMembershipFields = "memberships(name,preferredMemberKey,roles(name),type),nextPageToken"
 
-// ListGroupMembers reads one page of a group's direct members. Google
-// shows them only to someone the group's own settings let see them, and
-// refuses the call otherwise (E-047).
+// ListGroupMembers reads one page of a group's direct members, each
+// address in preferredMemberKey.id. Google shows them only to someone
+// the group's own settings let see them, and refuses the call otherwise.
+// https://cloudidentity.googleapis.com/$discovery/rest?version=v1
 func (c *Client) ListGroupMembers(ctx context.Context, group string, pageSize int) (*GroupMembershipsPage, error) {
 	q := pageQuery(pageSize, "")
 	q.Set("fields", groupMembershipFields)

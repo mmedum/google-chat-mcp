@@ -389,6 +389,7 @@ func identityProblems(m bundleManifest, platforms []string) []string {
 // server the literal ${user_config.key}, which starts it with nonsense
 // in its configuration, so the manifest may not have any. A reference
 // user_config does not declare is checkManifest's to report.
+// https://github.com/anthropics/mcpb/blob/v2.1.2/src/shared/config.ts
 func alwaysSubstituted(m bundleManifest) []string {
 	var loose []string
 	for _, key := range m.references() {
@@ -651,8 +652,8 @@ func checkManifest(m bundleManifest, files []bundleFile) []string {
 		command := byPlatform[platform]
 		// ${__dirname} is the one path the specification fixes to the
 		// bundle. It shows a relative command once and never says what it
-		// is resolved against, and the reference host resolves no path
-		// (E-071).
+		// is resolved against, and the reference host resolves no path.
+		// https://github.com/anthropics/mcpb/blob/v2.1.2/MANIFEST.md
 		rel, ok := strings.CutPrefix(command, dirnameRef)
 		switch {
 		case !ok:
@@ -1091,6 +1092,8 @@ var fieldRules = map[string]fieldRule{
 // requires of a server that talks to a service processing user data,
 // and which neither the schema nor `mcpb validate` enforces. leftOut is
 // bundleLeftOut, or a test's.
+// https://github.com/anthropics/mcpb/blob/v2.1.2/MANIFEST.md
+// https://github.com/anthropics/mcpb/blob/v2.1.2/src/shared/config.ts
 func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 	registry := config.Vars()
 	vars := make(map[string]config.Var, len(registry))
@@ -1191,12 +1194,14 @@ func settingProblems(m bundleManifest, leftOut map[string]string) []string {
 // the person supplies it and it is theirs either way. One with a default
 // is not: the reference host starts the server only with the person's
 // own value for it, but Claude Desktop's form may fill that in from the
-// default, and a person may accept it unread (E-074). A default that is a list or an object is not guessed at: its
-// variable is left out, and its key is in unreadable with what it is.
+// default, and a person may accept it unread. A default that is a list
+// or an object is not guessed at: its variable is left out, and its key
+// is in unreadable with what it is.
 //
 // It reads mcp_config.env alone. That is sound only because
 // settingProblems refuses an argument and an override's env; relaxing
-// either needs this to read the same (D-46).
+// either needs this to read the same.
+// https://github.com/anthropics/mcpb/blob/v2.1.2/src/shared/config.ts
 func hostEnv(m bundleManifest, on ...string) (env, unreadable map[string]string) {
 	env, unreadable = map[string]string{}, map[string]string{}
 	for name, value := range m.Server.MCPConfig.Env {
@@ -1246,8 +1251,10 @@ func loadEnv(env map[string]string) (config.Config, error) {
 // has the host expand ${HOME} and the rest in a default, the reference
 // host expands some of what a substituted default holds by the order it
 // lists them, and this check expands none, so the server would start
-// with something it never built (E-076). defaultsErr is what the server refuses the defaults with, which
-// decides whether refusalProblems starts the sets of switches.
+// with something it never built. defaultsErr is what the server refuses
+// the defaults with, which decides whether refusalProblems starts the
+// sets of switches.
+// https://github.com/anthropics/mcpb/blob/v2.1.2/MANIFEST.md
 func defaultsProblems(m bundleManifest) (problems []string, defaultsErr error) {
 	for _, key := range slices.Sorted(maps.Keys(m.UserConfig)) {
 		if d, ok := m.UserConfig[key].Default.(string); ok && strings.Contains(d, "${") {

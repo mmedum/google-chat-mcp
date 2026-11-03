@@ -204,10 +204,9 @@ var adminSteps = []step{
 	}},
 
 	// The second scratch space, which an administrator deletes. The
-	// account stays in it: a space left empty is gone within seconds
-	// (live, 2026-10-31), so a run cannot leave one and then act on it.
-	// What an administrator does in a space the caller is not in was
-	// checked by hand that day, in a space with a second person in it.
+	// account stays in it: Google deletes a space left empty within
+	// seconds, so a run cannot leave one and then act on it. No step
+	// covers a space the caller is not in.
 	{"a second scratch space is made", "create_space", func(d *driver) {
 		name := fmt.Sprintf("%s admin %d (safe to delete)", spacePrefix, time.Now().Unix())
 		var made struct {
@@ -223,8 +222,8 @@ var adminSteps = []step{
 
 	// The delete, and its repeat. Google answers a deleted space with the
 	// 403 it gives a space the caller may not touch, under admin access
-	// too (live, 2026-10-31), so the repeat is refused [forbidden] rather
-	// than reported as deleted: false.
+	// too, so the repeat is refused [forbidden] rather than reported as
+	// deleted: false.
 	{"an administrator deletes a space", "admin_delete_space", func(d *driver) {
 		args := map[string]any{"space_id": adminSpace.id, "display_name": adminSpace.name, "confirm": true}
 		var first struct {

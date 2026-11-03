@@ -155,7 +155,7 @@ func TestMissingNamesWhatIsAbsent(t *testing.T) {
 	}
 }
 
-// A read-only server asks for a token that cannot write (D-36). The set
+// A read-only server asks for a token that cannot write. The set
 // is derived from the names, so this pins it to exactly the scopes that
 // can only read.
 func TestReadOnlyAsksForNothingThatWrites(t *testing.T) {

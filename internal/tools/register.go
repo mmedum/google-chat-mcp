@@ -81,10 +81,9 @@ type spec struct {
 	// tool, so it asks the person on every call, in every interactive
 	// mode. Only for a tool whose prompt is itself the point: deleting a
 	// whole space or an emoji every message shares, and opening a space
-	// to an audience (D-25).
-	// Never on a delete done many times in a row. Only a Destructive
-	// tool may set it: the flag that registers the tool is the control,
-	// and the mark is one client's prompt on top of it.
+	// to an audience. Never on a delete done many times in a row. Only a
+	// Destructive tool may set it: the flag that registers the tool is
+	// the control, and the mark is one client's prompt on top of it.
 	Marked bool
 	// WriteScope says the tool reads through a scope that can also
 	// write, because Google offers no read-only one for it. Read-only
@@ -92,7 +91,14 @@ type spec struct {
 	WriteScope bool
 }
 
-// annotations returns what a client shows for this kind.
+// annotations returns what a client shows for this kind (D-11).
+//
+// readOnlyHint goes only on a kind that changes nothing: VS Code ignores
+// destructiveHint and prompts on every tool without readOnlyHint. The
+// specification reads destructiveHint false as "only additive updates"
+// and defaults it to true, so only the adding kinds say false; Codex
+// prompts by it.
+// https://modelcontextprotocol.io/specification/2025-11-25/schema
 func (k Kind) annotations() *mcp.ToolAnnotations {
 	switch k {
 	case Read:
@@ -159,10 +165,12 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 	}
 	if sp.Marked {
 		// Claude Code (2.1.199 or later) prompts for a marked tool on
-		// every call in every interactive mode, and denies it where no
-		// prompt can be drawn. That is the point for the few tools that
-		// carry it, and why nothing else does: every other write is the
-		// client's to approve (D-25).
+		// every call in every interactive mode, past allow rules and
+		// hooks, and denies it where no prompt can be drawn. No other
+		// client reads the key, and the MCP specification never names it.
+		// That is the point for the few tools that carry it, and why
+		// nothing else does: every other write is the client's to approve
+		// (D-25).
 		tool.Meta = mcp.Meta{interactionKey: true}
 	}
 	mcp.AddTool(s, tool, wrap(h, boolField[In]("dry_run"), confirm, sp.Name, admin))
@@ -170,12 +178,14 @@ func register[In any, Out renderer](s *mcp.Server, d Deps, sp spec, h mcp.ToolHa
 
 // registers reports whether a tool is registered under cfg.
 //
-// A Destructive tool is left out unless GCM_ENABLE_DESTRUCTIVE is on.
-// Whatever a client does with a tool it lists, some mode of every
-// widely used client runs it with nobody approving the call, so a tool
-// that must not run unattended is not listed. It used to be registered
-// and refused at call time, which left Claude Code prompting for a
-// marked tool the server then refused.
+// A Destructive tool is left out unless GCM_ENABLE_DESTRUCTIVE is on
+// (D-12). Whatever a client does with a tool it lists, some mode of
+// every widely used client runs it with nobody approving the call, and
+// the specification has clients treat annotations as untrusted. So a
+// tool that must not run unattended is not listed. Registered and
+// refused at call time, it would leave Claude Code prompting for a
+// marked tool the server then refuses.
+// https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 func registers(sp spec, cfg config.Config) bool {
 	toolset := sp.Toolset
 	if toolset == "" {
@@ -278,6 +288,12 @@ var timeSchema = &jsonschema.ForOptions{
 }
 
 // outputSchema builds a tool's output schema with timestamps annotated.
+//
+// jsonschema.For emits no $defs or $ref: it inlines a nested type
+// wherever it appears, so a type used twice on one tool is serialized
+// twice (v0.4.3). That is protocol traffic, not the model's context: a
+// Messages API tool carries no output schema.
+// https://github.com/google/jsonschema-go
 //
 // It panics on failure because the only way to fail is a type this
 // server declares, which no input can change: a broken schema is a

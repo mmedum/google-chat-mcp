@@ -12,7 +12,6 @@ import (
 // The fixture checkout's paths, named once because most rows edit them.
 const (
 	fxArch      = "docs/architecture.md"
-	fxEvidence  = "docs/evidence.md"
 	fxRunbook   = "docs/runbook.md"
 	fxReadme    = "README.md"
 	fxAgent     = "CLAUDE.md"
@@ -21,6 +20,8 @@ const (
 	fxAllowlist = "testdata/citation-allowlist.txt"
 	fxGolangci  = ".golangci.yml"
 	fxMakefile  = "Makefile"
+	fxGitignore = ".gitignore"
+	fxSteps     = "internal/livecheck/steps_test.go"
 )
 
 // textLines is a file of these lines, so a fixture's line numbers can be
@@ -39,13 +40,14 @@ const (
 // docsFixture is a checkout the docs gate accepts as it stands. Between
 // them its files hold one of everything the gate must stay quiet about:
 // each kind of Held by item, a superseded decision cited only where that
-// is allowed, a refutation nobody cites, a retired evidence ID, a
-// repeated heading, an allowlisted bare section number, links to a file
-// and a directory, and citations in a fence, a string literal, a testdata
+// is allowed, a repeated heading, an allowlisted bare section number,
+// links to a file and a directory, live steps cited across comment lines,
+// config comments, and citations in a fence, a string literal, a testdata
 // page and a released changelog section.
 func docsFixture() map[string]string {
 	return map[string]string{
 		fxMakefile: textLines(
+			"# The checks CI runs (D-03).",
 			"check: lint docs",
 			"",
 			".PHONY: lint",
@@ -68,19 +70,42 @@ func docsFixture() map[string]string {
 			"      enable:",
 			"        - nilness",
 			"    misspell:",
-			"      locale: US",
+			"      locale: US # American English, as D-01 says",
 			"formatters:",
 			"  enable:",
 			"    - gofmt",
 		),
-		".gitignore": textLines("internal/generated/"),
-		"go.mod":     textLines("module example.com/fixture", "", "go 1.21"),
+		fxGitignore: textLines("internal/generated/", "# Generated, as docs/runbook.md#steps says (D-01)."),
+		"go.mod":    textLines("module example.com/fixture", "", "go 1.21"),
 		fxClient: textLines(
 			"package gchat",
 			"",
-			"// Retries back off (D-01), as measured in E-001.",
+			"// Retries back off (D-01), as measured live.",
 			"// A redirect is followed once, as RFC 9110 §15.4 allows.",
-			`func Retry() string { return "D-99, E-999 and §4 in a string are data" }`,
+			`func Retry() string { return "D-99 and §4 in a string are data" }`,
+			"",
+			"// Uploads are capped. Checked by the live",
+			`// step "a file uploads", and by the live steps "a repeat delete`,
+			`// reports nothing" and "a file uploads".`,
+			"func Upload() {}",
+		),
+		// One step by position, one by key, and a fake outside any table.
+		fxSteps: textLines(
+			"//go:build live",
+			"",
+			"package livecheck",
+			"",
+			"type step struct{ name, tool string }",
+			"",
+			"var steps = []step{",
+			`	{"a file uploads", "upload_attachment"},`,
+			"}",
+			"",
+			"var adminSteps = []step{",
+			`	{tool: "delete_message", name: "a repeat delete reports nothing"},`,
+			"}",
+			"",
+			`func fake() step { return step{"a fake step", "send_message"} }`,
 		),
 		"internal/gchat/client_test.go": textLines(
 			"package gchat",
@@ -113,7 +138,7 @@ func docsFixture() map[string]string {
 			"## Codemap",
 			"",
 			"- `internal/gchat` owns the REST client, in `internal/gchat/client.go`.",
-			"- `cmd/server` is the binary.",
+			"- `cmd/server` is the binary, and `internal/livecheck` drives it live.",
 			"",
 			"## Decisions",
 			"",
@@ -149,32 +174,6 @@ func docsFixture() map[string]string {
 			"",
 			"Next ID: D-04",
 		),
-		fxEvidence: textLines(
-			"# Evidence",
-			"",
-			"What was checked, against which source. Each entry says what holds it.",
-			"",
-			"## Google Chat API",
-			"",
-			"### E-001 A burst is answered with 429",
-			"",
-			"Supports: D-01",
-			`Source says: "429 means too many requests" ([limits](https://example.com/limits)).`,
-			"Observed: a burst of 100 writes returns 429; Chat API v1, 2026-10-03.",
-			"Verdict: confirmed — the reference describes it.",
-			"Held by: live",
-			"",
-			"### E-002 A retried write lands twice",
-			"",
-			"Supports: none",
-			"Source says: nothing",
-			"Observed: a retried write lands once; Chat API v1, 2026-10-03.",
-			"Verdict: refuted — each write carries a request id.",
-			"Held by: review",
-			"",
-			"Retired: E-003",
-			"Next ID: E-004",
-		),
 		fxRunbook: textLines(
 			"# Runbook",
 			"",
@@ -197,10 +196,10 @@ func docsFixture() map[string]string {
 			"Read the [decisions](docs/architecture.md#decisions) and [the second steps](docs/runbook.md#steps-1).",
 			"Code cites `docs/architecture.md#d-01-retries-back-off`.",
 			"A redirect is followed once, as RFC 9110 §15.4 allows.",
-			"The [spec](https://example.com/spec) §2 says so too.",
+			"The [spec](https://example.com/spec#§2) says so too.",
 			"",
 			"```text",
-			"§3, D-99, E-999 and [a link](nowhere.md) in a fence are an example.",
+			"§3, D-99 and [a link](nowhere.md) in a fence are an example.",
 			"```",
 		),
 		fxAgent: textLines(
@@ -329,8 +328,25 @@ func TestDocsGateAcceptsAConsistentCheckout(t *testing.T) {
 			replace(fxClient, "§15.4 allows.", "§15.4 allows, as README.md#fixture says.\n// Each retry is logged to retries.md."),
 		}, nil},
 		{"a bare file name in a Go string, and a doc path in a test's string", []docsEdit{
-			replace(fxClient, "E-999 and §4", "E-999, §4 and NOTES.md"),
+			replace(fxClient, "D-99 and §4", "D-99, §4 and NOTES.md"),
 			replace("internal/gchat/client_test.go", "_ = Retry()", `_ = Retry() + "docs/gone.md"`),
+		}, nil},
+		{"an escaped pipe in an index cell, unescaped to match the entry", []docsEdit{
+			replace(fxArch, "| D-03 | Retry three times |", "| D-03 | Retry `a \\| b` times |"),
+			replace(fxArch, "### D-03 Retry three times", "### D-03 Retry `a | b` times"),
+		}, nil},
+		{"a link written in a code span", []docsEdit{
+			replace(fxReadme, "says so too.", "says so too. Write `[x](docs/example.md#slug)` for a link."),
+		}, nil},
+		{"IDs in a YAML value, after a # with no space before it, and in a Makefile recipe", []docsEdit{
+			add(".github/workflows/ci.yml", textLines(
+				"name: ci",
+				"jobs:",
+				"  test:",
+				"    steps:",
+				"      - run: echo D-99 §4 https://example.com/#E-12",
+			)),
+			replace(fxMakefile, "\tgolangci-lint run", "\tgolangci-lint run\n\t@echo D-99"),
 		}, nil},
 	})
 }
@@ -399,6 +415,12 @@ func TestDocsGateHoldsDecisionIntegrity(t *testing.T) {
 			`docs/architecture.md:14: "D-3" is not written as a decision ID like D-03`,
 			"docs/architecture.md:33: D-03 has no index row",
 		}},
+		{"a pipe left unescaped in an index cell, even in a code span", []docsEdit{
+			replace(fxArch, "| D-03 | Retry three times |", "| D-03 | Retry `a | b` times |"),
+		}, []string{
+			"docs/architecture.md:14: an index row has 5 cells, want 4",
+			"docs/architecture.md:33: D-03 has no index row",
+		}},
 		{"an index with a column too many", []docsEdit{
 			replace(fxArch, "| Held by |\n| --- | --- | --- | --- |", "| Held by | Links |\n| --- | --- | --- | --- | --- |"),
 		}, []string{
@@ -433,9 +455,6 @@ func TestDocsGateHoldsHeldByToWhatExists(t *testing.T) {
 		{"a linter enabled only inside another linter's settings", []docsEdit{
 			replace(fxArch, "| forbidigo, lint, review |", "| nilness, lint, review |"),
 		}, []string{`docs/architecture.md:14: D-03 is held by "nilness", ` + notAHolder}},
-		{"an evidence entry held by a test that does not exist", []docsEdit{
-			replace(fxEvidence, "Held by: live", "Held by: TestGone"),
-		}, []string{`docs/evidence.md:13: E-001 is held by "TestGone", ` + notAHolder}},
 		{"an accepted decision held by a dash", []docsEdit{
 			replace(fxArch, "| forbidigo, lint, review |", "| — |"),
 		}, []string{"docs/architecture.md:14: D-03 is accepted and held by —; an accepted decision names what holds it"}},
@@ -445,81 +464,45 @@ func TestDocsGateHoldsHeldByToWhatExists(t *testing.T) {
 	})
 }
 
-func TestDocsGateHoldsEvidenceIntegrity(t *testing.T) {
-	const observed = "Observed: a burst of 100 writes returns 429; Chat API v1, 2026-10-03."
-	const source = `Source says: "429 means too many requests" ([limits](https://example.com/limits)).`
+// Evidence has no IDs: what was verified upstream is stated at the line
+// that depends on it. An E- citation fails wherever another citation is read.
+func TestDocsGateRefusesEvidenceIDs(t *testing.T) {
+	const noIDs = "; evidence has no IDs: state the behavior at the line that depends on it, with its source link"
 	checkDocsCases(t, []docsCase{
-		{"an ID with two entries", []docsEdit{
-			replace(fxEvidence, "Retired: E-003", "### E-001 Again\n\nRetired: E-003"),
-		}, []string{"docs/evidence.md:23: E-001 has two entries"}},
-		{"a line left out", []docsEdit{
-			replace(fxEvidence, observed+"\n", ""),
-		}, []string{`docs/evidence.md:7: E-001 has no "Observed:" line`}},
-		{"lines out of order", []docsEdit{
-			replace(fxEvidence, "Supports: D-01\n"+source+"\n", source+"\nSupports: D-01\n"),
-		}, []string{"docs/evidence.md:7: E-001's lines are out of order; want Supports, Source says, Observed, Verdict, Held by"}},
-		{"a verdict outside the set", []docsEdit{
-			replace(fxEvidence, "Verdict: confirmed", "Verdict: plausible"),
-		}, []string{`docs/evidence.md:12: E-001's verdict is "plausible", want confirmed, contradicted or refuted`}},
-		{"Supports naming what is not a decision ID", []docsEdit{
-			replace(fxEvidence, "Supports: D-01", "Supports: D-01, the retry rule"),
-		}, []string{`docs/evidence.md:9: E-001 supports "the retry rule", which is not a D-ID or none`}},
-		{"IDs at Next ID", []docsEdit{
-			replace(fxEvidence, "Next ID: E-004", "Next ID: E-002"),
-		}, []string{
-			"docs/evidence.md:15: E-002 is not below Next ID E-002",
-			"docs/evidence.md:23: Retired lists E-003, which is not below Next ID E-002",
-		}},
-		{"a retired ID that still has an entry", []docsEdit{
-			replace(fxEvidence, "Retired: E-003", "Retired: E-002, E-003"),
-		}, []string{"docs/evidence.md:23: E-002 is retired and still has an entry"}},
-		{"a deleted ID that is not retired", []docsEdit{
-			replace(fxEvidence, "Retired: E-003", "Retired: none"),
-		}, []string{"docs/evidence.md:24: E-003 is below Next ID E-004 and is missing; list it under Retired"}},
-		{"no Retired line", []docsEdit{
-			replace(fxEvidence, "Retired: E-003\n", ""),
-		}, []string{`docs/evidence.md:23: the last two lines are not "Retired: …" and "Next ID: E-NNN"`}},
-		{"no evidence document", []docsEdit{
-			drop(fxEvidence),
-		}, []string{"docs/evidence.md is missing"}},
-	})
-}
-
-func TestDocsGateFindsEvidenceWithNoHome(t *testing.T) {
-	entry := textLines(
-		"### E-004 A retry after 429 lands",
-		"",
-		"Supports: none",
-		"Source says: nothing",
-		"Observed: a retry after one second lands; Chat API v1, 2026-10-03.",
-		"Verdict: confirmed — as observed.",
-		"Held by: live",
-		"",
-		"Retired: E-003",
-		"Next ID: E-005",
-	)
-	const orphan = "docs/evidence.md:23: E-004 supports no decision and is cited nowhere outside docs/evidence.md; " +
-		"cite it where it is relied on"
-	checkDocsCases(t, []docsCase{
-		{"a confirmed entry that supports nothing and nobody cites", []docsEdit{
-			replace(fxEvidence, "Retired: E-003\nNext ID: E-004\n", entry),
-		}, []string{orphan}},
-		{"an entry cited only from the evidence document", []docsEdit{
-			replace(fxEvidence, "Retired: E-003\nNext ID: E-004\n", entry),
-			replace(fxEvidence, "returns 429; Chat API v1", "returns 429, unlike E-004; Chat API v1"),
-		}, []string{orphan}},
-		{"a contradiction that supports nothing and nobody cites", []docsEdit{
-			replace(fxEvidence, "Verdict: refuted", "Verdict: contradicted"),
-		}, []string{"docs/evidence.md:15: E-002 supports no decision and is cited nowhere outside docs/evidence.md; " +
-			"cite it where it is relied on"}},
-		{"an entry that supports a decision and nothing else cites", []docsEdit{
-			replace(fxClient, ", as measured in E-001.", "."),
+		{"an evidence ID in a Go comment", []docsEdit{
+			replace(fxClient, "as measured live.", "as measured in E-001."),
+		}, []string{"internal/gchat/client.go:3: cites E-001" + noIDs}},
+		{"an evidence ID in a doc, at any width", []docsEdit{
+			replace(fxArch, "Google answers a burst with 429, so", "Google answers a burst with 429 (E-12), so"),
+		}, []string{"docs/architecture.md:18: cites E-12" + noIDs}},
+		{"an evidence ID in a fenced block", []docsEdit{
+			replace(fxReadme, "§3, D-99 and", "§3, D-99, E-001 and"),
+		}, nil},
+		{"an evidence ID in a string literal", []docsEdit{
+			replace(fxClient, "D-99 and §4", "D-99, E-001 and §4"),
 		}, nil},
 	})
 }
 
+// A comment names the live step that checks it, and the name has to be a
+// step the live driver runs.
+func TestDocsGateHoldsLiveStepsToTheDriver(t *testing.T) {
+	const undefined = ", which internal/livecheck does not define"
+	checkDocsCases(t, []docsCase{
+		{"a name wrapped across comment lines", []docsEdit{
+			replace(fxClient, "// reports nothing\"", "// reports something\""),
+		}, []string{`internal/gchat/client.go:8: names the live step "a repeat delete reports something"` + undefined}},
+		{"the second name of a list", []docsEdit{
+			replace(fxClient, `and "a file uploads".`, `and "a file downloads".`),
+		}, []string{`internal/gchat/client.go:9: names the live step "a file downloads"` + undefined}},
+		{"a step built outside a step table", []docsEdit{
+			replace(fxClient, `step "a file uploads", and`, `step "a fake step", and`),
+		}, []string{`internal/gchat/client.go:8: names the live step "a fake step"` + undefined}},
+	})
+}
+
 func TestDocsGateResolvesCitations(t *testing.T) {
-	const bySlug = "cite a D-ID, an E-ID or docs/<file>.md#<slug>"
+	const bySlug = "cite a D-ID, docs/<file>.md#<slug> or a source link"
 	checkDocsCases(t, []docsCase{
 		{"a superseded decision cited from a Go comment", []docsEdit{
 			replace(fxClient, "(D-01)", "(D-02)"),
@@ -532,12 +515,6 @@ func TestDocsGateResolvesCitations(t *testing.T) {
 		{"an unknown decision cited twice on a line, reported once", []docsEdit{
 			replace(fxClient, "(D-01)", "(D-07, and D-07 again)"),
 		}, []string{"internal/gchat/client.go:3: cites D-07, which is not a decision"}},
-		{"an unknown decision on a Supports line", []docsEdit{
-			replace(fxEvidence, "Supports: D-01", "Supports: D-07"),
-		}, []string{"docs/evidence.md:9: cites D-07, which is not a decision"}},
-		{"a retired evidence ID cited from a doc", []docsEdit{
-			replace(fxReadme, "says so too.", "says so too, as E-003 did."),
-		}, []string{"README.md:6: cites E-003, which is not an evidence entry"}},
 		{"a link slug no heading has", []docsEdit{
 			replace(fxReadme, "docs/architecture.md#decisions", "docs/architecture.md#decision"),
 		}, []string{"README.md:3: links to docs/architecture.md#decision, and docs/architecture.md has no heading with that slug"}},
@@ -560,11 +537,20 @@ func TestDocsGateResolvesCitations(t *testing.T) {
 			replace(fxRunbook, "](architecture.md#codemap)", "](docs/architecture.md#codemap)"),
 		}, []string{"docs/runbook.md:5: links to docs/docs/architecture.md, which does not exist"}},
 		{"a docs citation in a Go comment to a file that does not exist", []docsEdit{
-			replace(fxClient, "as measured in E-001.", "as measured in E-001 and docs/retries.md#backoff."),
+			replace(fxClient, "as measured live.", "as measured live and in docs/retries.md#backoff."),
 		}, []string{"internal/gchat/client.go:3: cites docs/retries.md, which does not exist"}},
 		{"a bare section number in a Go comment", []docsEdit{
 			replace(fxClient, "as RFC 9110 §15.4 allows", "as §15.4 allows"),
 		}, []string{"internal/gchat/client.go:4: cites a section by number (§15); " + bySlug}},
+		{"a section number not right after an RFC or inside a URL on its line", []docsEdit{
+			replace(fxClient, "RFC 9110 §15.4 allows", "RFC 9110 allows and §15.4 says"),
+			replace(fxReadme, "RFC 9110 §15.4", "RFC 9110  §15.4"),
+			replace(fxReadme, "spec#§2) says", "spec) §2 says"),
+		}, []string{
+			"README.md:5: cites a section by number (§15); " + bySlug,
+			"README.md:6: cites a section by number (§2); " + bySlug,
+			"internal/gchat/client.go:4: cites a section by number (§15); " + bySlug,
+		}},
 		{"a bare section number in the changelog's Unreleased section", []docsEdit{
 			replace(fxChangelog, "as `docs/architecture.md#codemap` says.", "as §3 says."),
 		}, []string{"CHANGELOG.md:5: cites a section by number (§3); " + bySlug}},
@@ -573,19 +559,16 @@ func TestDocsGateResolvesCitations(t *testing.T) {
 		}, nil},
 		{"IDs written at the wrong width, in a Go comment and a doc", []docsEdit{
 			replace(fxClient, "(D-01)", "(D-1)"),
-			replace(fxReadme, "says so too.", "says so too, as E-0001 did."),
+			replace(fxReadme, "says so too.", "says so too, as D-001 did."),
 		}, []string{
-			`README.md:6: "E-0001" is not written as an evidence ID like E-001`,
+			`README.md:6: "D-001" is not written as a decision ID like D-01`,
 			`internal/gchat/client.go:3: "D-1" is not written as a decision ID like D-01`,
 		}},
-		{"a superseded decision cited from the evidence that supported it", []docsEdit{
-			replace(fxEvidence, "Supports: D-01", "Supports: D-01, D-02"),
-		}, nil},
 		{"a one-line code span in fence backticks opens no fence", []docsEdit{
 			replace(fxReadme, "says so too.\n", "says so too.\n```go``` is a span, not a fence.\nAs D-07 said.\n"),
 		}, []string{"README.md:8: cites D-07, which is not a decision"}},
 		{"a root doc in a Go comment that does not exist, or has no such heading", []docsEdit{
-			replace(fxClient, "as measured in E-001.", "as measured in E-001, RUNBOOK.md and README.md#retries."),
+			replace(fxClient, "as measured live.", "as measured live, RUNBOOK.md and README.md#retries."),
 		}, []string{
 			"internal/gchat/client.go:3: cites RUNBOOK.md, which does not exist",
 			"internal/gchat/client.go:3: cites README.md#retries, and README.md has no heading with that slug",
@@ -596,13 +579,34 @@ func TestDocsGateResolvesCitations(t *testing.T) {
 			"internal/gchat/client.go:5: names docs/setup.md, which does not exist",
 			"internal/gchat/client.go:5: names README.md#setup, and README.md has no heading with that slug",
 		}},
+		{"a comment line in each kind of config file", []docsEdit{
+			replace(fxMakefile, "(D-03)", "(D-3)"),
+			replace(fxGitignore, "#steps says", "#stairs says"),
+			add(".github/workflows/ci.yml", textLines(
+				"name: ci",
+				"jobs:",
+				"  test:",
+				"    steps:",
+				"      # Pinned, as E-12 found.",
+				"      - run: go test ./...",
+			)),
+			add(".goreleaser.yaml", textLines("version: 2", "# Archives follow §3.")),
+		}, []string{
+			".github/workflows/ci.yml:5: cites E-12; evidence has no IDs: state the behavior at the line that depends on it, with its source link",
+			".gitignore:2: cites docs/runbook.md#stairs, and docs/runbook.md has no heading with that slug",
+			".goreleaser.yaml:2: cites a section by number (§3); " + bySlug,
+			`Makefile:1: "D-3" is not written as a decision ID like D-03`,
+		}},
+		{"a trailing comment on a YAML line", []docsEdit{
+			replace(fxGolangci, "as D-01 says", "as D-07 says"),
+		}, []string{".golangci.yml:12: cites D-07, which is not a decision"}},
 	})
 }
 
 // The allowlist is a ratchet: each file's count of bare section citations
 // may only fall, and the list has to follow it down.
 func TestDocsGateHoldsTheAllowlistToItsCounts(t *testing.T) {
-	const bySlug = "cite a D-ID, an E-ID or docs/<file>.md#<slug>"
+	const bySlug = "cite a D-ID, docs/<file>.md#<slug> or a source link"
 	checkDocsCases(t, []docsCase{
 		{"a count that rises", []docsEdit{
 			replace(fxRunbook, "Back to [the first steps](#steps).", "Back to §1 and [the first steps](#steps)."),
@@ -632,10 +636,10 @@ func TestDocsGateHoldsTheCodemapToTheTree(t *testing.T) {
 		}, []string{`docs/architecture.md:3: "## Codemap" does not name internal/redact`}},
 		{"a directory named that holds no Go file", []docsEdit{
 			add("internal/assets/logo.txt", "a logo\n"),
-			replace(fxArch, "- `cmd/server` is the binary.", "- `cmd/server` is the binary.\n- `internal/assets` holds the logo."),
+			replace(fxArch, "drives it live.", "drives it live.\n- `internal/assets` holds the logo."),
 		}, []string{`docs/architecture.md:7: "## Codemap" names internal/assets, which holds no .go file`}},
 		{"a package the tree does not have", []docsEdit{
-			replace(fxArch, "- `cmd/server` is the binary.", "- `cmd/server` is the binary.\n- `internal/gone` was removed."),
+			replace(fxArch, "drives it live.", "drives it live.\n- `internal/gone` was removed."),
 		}, []string{"docs/architecture.md:7: names internal/gone, which does not exist"}},
 		{"no codemap heading", []docsEdit{
 			replace(fxArch, "## Codemap", "## Packages"),
@@ -663,6 +667,12 @@ func TestDocsGateHoldsPathsToTheRepository(t *testing.T) {
 		{"a link from the root to a directory that does not exist", []docsEdit{
 			replace(fxRunbook, "(/cmd/server)", "(/cmd/client)"),
 		}, []string{"docs/runbook.md:10: links to cmd/client, which does not exist"}},
+		{"a file:line pointer, with punctuation after it", []docsEdit{
+			replace(fxRunbook, "`internal/gchat/client.go`", "`(see internal/gchat/client.go:3:5),` and `internal/gchat/client.go:3`"),
+		}, nil},
+		{"a file:line pointer to a file that does not exist", []docsEdit{
+			replace(fxRunbook, "`internal/gchat/client.go`", "`internal/gchat/retry.go:12`"),
+		}, []string{"docs/runbook.md:6: names internal/gchat/retry.go:12, which does not exist"}},
 		{"a Go name in a package that exists", []docsEdit{
 			replace(fxRunbook, "`internal/gchat/client.go`", "`internal/gchat.Retry`"),
 		}, nil},
@@ -689,18 +699,29 @@ func TestDocsGateHoldsPathsToTheRepository(t *testing.T) {
 func TestDocsGateRefusesToReadNothing(t *testing.T) {
 	checkDocsCases(t, []docsCase{
 		{"no Go files", []docsEdit{
-			drop(fxClient), drop("internal/gchat/client_test.go"), drop("cmd/server/main.go"),
+			drop(fxClient), drop("internal/gchat/client_test.go"), drop("cmd/server/main.go"), drop(fxSteps),
 		}, []string{
 			"no .go files read: this gate would be looking at nothing",
+			"internal/livecheck: no live steps read: a comment naming one would never match",
 			`docs/architecture.md:12: D-01 is held by "TestRetry", which is not live, review, a make target, ` +
 				"a gates command, an enabled linter or a test function",
 			"docs/architecture.md:5: names internal/gchat/client.go, which does not exist",
+			"docs/architecture.md:6: names internal/livecheck, which does not exist",
 			"docs/runbook.md:6: links to internal/gchat/client.go, which does not exist",
 			"docs/runbook.md:6: names internal/gchat/client.go, which does not exist",
 			"docs/runbook.md:10: links to cmd/server, which does not exist",
 			"no package directories under internal/ or cmd/: the codemap check would be looking at nothing",
 			`docs/architecture.md:5: "## Codemap" names internal/gchat, which holds no .go file`,
 		}},
+		{"no step table, so no citation of a step is checked", []docsEdit{
+			add(fxSteps, textLines(
+				"package livecheck",
+				"",
+				"type step struct{ name string }",
+				"",
+				`var one = step{"a file uploads"}`,
+			)),
+		}, []string{"internal/livecheck: no live steps read: a comment naming one would never match"}},
 		{"an index with no rows", []docsEdit{
 			replace(fxArch, fxRow01+"\n"+fxRow02+"\n"+fxRow03+"\n", ""),
 		}, []string{
@@ -708,12 +729,6 @@ func TestDocsGateRefusesToReadNothing(t *testing.T) {
 			"docs/architecture.md:13: D-01 has no index row",
 			"docs/architecture.md:25: D-02 has no index row",
 			"docs/architecture.md:30: D-03 has no index row",
-		}},
-		{"no evidence entries", []docsEdit{
-			add(fxEvidence, textLines("# Evidence", "", "Retired: none", "Next ID: E-001")),
-		}, []string{
-			"docs/evidence.md: no evidence entries: this gate would be looking at nothing",
-			"internal/gchat/client.go:3: cites E-001, which is not an evidence entry",
 		}},
 		{"linters listed in flow style", []docsEdit{
 			replace(fxGolangci, "  enable:\n    - errcheck\n    - forbidigo # stdout carries only frames\n", "  enable: [errcheck, forbidigo]\n"),

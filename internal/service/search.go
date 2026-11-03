@@ -104,13 +104,19 @@ type SearchMatch struct {
 // snippet starts, so they shape a hit here rather than each in its own
 // loop: a field added to SearchMatch is filled once. A missing sender
 // or thread arrives empty, the way a listing keeps the row.
+//
+// A hit is the matched message itself: discovery has view gate only the
+// metadata around it, read and spaceMuteSetting. The live step "search
+// finds the message in this space" logs a hit that comes back without
+// the links its message has.
+// https://chat.googleapis.com/$discovery/rest?version=v1
 func searchMatch(m gchat.Message, at int) SearchMatch {
 	match := SearchMatch{
 		Name:       m.Name,
 		Text:       m.Text,
 		CreateTime: parseTime(m.CreateTime),
 		Snippet:    snippet(m.Text, at),
-		Links:      messageLinks(m.Annotations), // a hit carries them as a read does (E-009)
+		Links:      messageLinks(m.Annotations), // a hit carries them as a read does
 		Quote:      messageQuote(m.QuotedMessage),
 
 		MessageExtras: messageExtras(m),
@@ -320,7 +326,10 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 	resp, err := s.client.SearchMessages(ctx, gchat.SearchMessagesOptions{
 		// Always every space. Google refuses a single space as the
 		// parent — "Invalid parent. Specify 'spaces/-'" — and takes the
-		// space in the filter instead (E-003).
+		// space in the filter instead, which the reference does not say.
+		// Checked by the live step "search finds the message in this
+		// space".
+		// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/search
 		Parent:    gchat.AllSpaces,
 		Filter:    filter,
 		OrderBy:   orderBy,
@@ -368,11 +377,13 @@ func (s *Service) searchUpstream(ctx context.Context, in SearchMessagesInput) (*
 //
 // Google's JSON leaves a false boolean out, so an unread hit arrives with
 // no read field, as every hit does when the token lacks the read-state
-// scope (E-014). Two things tell them apart. unread_only matched only unread
+// scope. Two things tell them apart. unread_only matched only unread
 // messages. And Google reports read state for every hit or for none, so
 // one hit marked read says the scope is there and the silent ones are
 // unread. With neither, unread and unknown look the same, and the hit
-// says null.
+// says null. No live run sees an unread hit: every message in a scratch
+// space is the caller's own, and so reads as read.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/search
 func fillUnread(matches []SearchMatch, unreadOnly bool) {
 	known := unreadOnly
 	for _, m := range matches {

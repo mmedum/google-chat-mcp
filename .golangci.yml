@@ -37,7 +37,7 @@ linters:
       # write anything to stdout that is not a valid MCP message, and MAY
       # log to stderr. A stray print corrupts the JSON-RPC stream and the
       # client silently stops working, so the process's streams are named
-      # in exactly one place and forbidden everywhere else.
+      # in exactly one place and forbidden everywhere else (D-02).
       analyze-types: true
       forbid:
         - pattern: ^fmt\.Print.*$
@@ -45,9 +45,12 @@ linters:
         - pattern: ^os\.Stdout$
           msg: stdout carries only MCP JSON-RPC frames; take an io.Writer instead
         # The server asks the person nothing; the client approves each
-        # call (D-15 in docs/architecture.md). These are
-        # the two ways to ask: a form elicitation, and the input requests
-        # a result carries from protocol 2026-07-28.
+        # call (D-15). An elicitation is no consent control: the
+        # specification lets the client answer it "from the user or other
+        # sources", and a Claude Code hook or Codex in full access answers
+        # with no dialog. These are the two ways to ask: a form
+        # elicitation, and the input requests a result carries from
+        # protocol 2026-07-28.
         - pattern: \.Elicit$
           pkg: ^github\.com/modelcontextprotocol/go-sdk/mcp$
           msg: the server asks the person nothing; refuse the call, or make the risky variant its own tool

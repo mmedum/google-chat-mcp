@@ -444,8 +444,6 @@ describes the others.
 - [`docs/architecture.md`](docs/architecture.md) — the request flow, the
   package layout, and the design decisions a contributor should not
   undo.
-- [`docs/evidence.md`](docs/evidence.md) — what was verified about
-  Google's APIs and the MCP clients, and against which source.
 - [`docs/configuration.md`](docs/configuration.md) — every environment
   variable.
 - [`docs/gcp-setup.md`](docs/gcp-setup.md) — the Google Cloud project and
