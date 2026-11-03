@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-11-01",
+  "fetched": "2026-11-03",
   "apis": {
     "chat": {
       "customEmojis.create": {
@@ -280,6 +280,7 @@
         "verb": "GET",
         "path": "v1/{+parent}/reactions",
         "scopes": [
+          "https://www.googleapis.com/auth/chat.bot",
           "https://www.googleapis.com/auth/chat.messages",
           "https://www.googleapis.com/auth/chat.messages.reactions",
           "https://www.googleapis.com/auth/chat.messages.reactions.readonly",
