@@ -103,8 +103,6 @@ jobs:
           # go.mod, so the linter and the code it lints agree on the
           # language version. The prebuilt binary lags a new Go release.
           install-mode: goinstall
-      - name: parity
-        run: go test ./scripts/gates -run TestMakeCheckAndCIRunTheSameGates -count=1
       - name: go mod tidy is up to date
         run: |
           go mod tidy
@@ -134,20 +132,16 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
+      # The Makefile holds each command and its version, so `make check`
+      # runs exactly what this job runs.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+        run: make vuln
       - name: licenses
-        run: >
-          go run github.com/google/go-licenses/v2@v2.0.1 check ./...
-          --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
-      # Both run from source through the Go module proxy, like the steps
-      # above: an image pull from Docker Hub is rate limited for shared
-      # runners, and failed this job three times in a row on 2026-10-09
-      # without scanning anything.
+        run: make licenses
       - name: gitleaks
-        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 detect --source=. --redact --no-banner
+        run: make gitleaks
       - name: actionlint
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+        run: make actionlint
 
   # A pull request that changes the tool surface names each changed item
   # in a commit footer. It measures from the merge-base, which only a
@@ -191,6 +185,8 @@ jobs:
       - run: CGO_ENABLED=0 go build -trimpath -o google-chat-mcp ./cmd/google-chat-mcp
       - name: every third-party tool is pinned
         run: go run ./scripts/gates pins
+      - name: make check and CI run the same gates
+        run: go run ./scripts/gates parity
       - name: the error vocabulary is closed
         run: go run ./scripts/gates classes
       - name: the drivers redact their transcript

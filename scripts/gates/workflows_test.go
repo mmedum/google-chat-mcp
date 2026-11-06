@@ -1,9 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -265,6 +266,125 @@ func TestReleaseNotesAreWrittenOutsideTheCheckout(t *testing.T) {
 	}
 }
 
+// The attestation's subject-path is read only on a tag, so a file it
+// leaves out is published with no attestation while every rehearsal is
+// green.
+func TestTheReleaseAttestsEveryFileItPublishes(t *testing.T) {
+	subjects := actionInput(readRepoFile(t, releaseWorkflowPath), "actions/attest-build-provenance", "subject-path")
+	if subjects == "" {
+		t.Fatal("no subject-path under actions/attest-build-provenance in release.yml: this test is looking at nothing")
+	}
+	checksum := checksumName(readRepoFile(t, goreleaserConfigPath))
+	if checksum == "" {
+		t.Fatal("no checksum name_template in .goreleaser.yaml: this test is looking at nothing")
+	}
+	for _, p := range releaseSubjectProblems(subjects, checksum) {
+		t.Error(p)
+	}
+}
+
+// releaseSubjectProblems holds the attestation's subject-path to what a
+// release publishes: the archives, the bundle and the checksum file. The
+// action splits the value as CSV, at commas and newlines, so a list
+// separated by spaces is one glob
+// (https://github.com/actions/attest/blob/508db95dd578ae2727ebd6217d5ba78e4fbda05d/src/subject.ts#L303,
+// actions/attest v4.2.1, which attest-build-provenance v4.2.2 runs).
+func releaseSubjectProblems(subjects, checksum string) []string {
+	var problems []string
+	parts := strings.FieldsFunc(subjects, func(r rune) bool { return r == ',' || r == '\n' })
+	if slices.ContainsFunc(parts, func(p string) bool { return strings.ContainsAny(strings.TrimSpace(p), " \t") }) {
+		problems = append(problems, fmt.Sprintf("subject-path %q separates with a space, which is read as one "+
+			"glob; separate with commas or newlines", subjects))
+	}
+	for _, want := range []string{".tar.gz", ".zip", ".mcpb", checksum} {
+		if !slices.ContainsFunc(parts, func(p string) bool { return strings.Contains(p, want) }) {
+			problems = append(problems, fmt.Sprintf("subject-path %q does not name %s, so it carries no attestation",
+				subjects, want))
+		}
+	}
+	return problems
+}
+
+// actionInput is the value of one input of the first step that uses an
+// action, or empty when that step leaves it unset.
+func actionInput(workflow, action, key string) string {
+	for _, loc := range usesAnywhere.FindAllStringSubmatchIndex(workflow, -1) {
+		if workflow[loc[2]:loc[3]] == action {
+			value, _ := stepInput(stepBlock(workflow, loc[0]), key)
+			return value
+		}
+	}
+	return ""
+}
+
+// checksumName is the checksum file a goreleaser config names: the
+// name_template under its top-level checksum block.
+func checksumName(config string) string {
+	inChecksum := false
+	for _, line := range strings.Split(config, "\n") {
+		text := withoutYAMLComment(line)
+		if text == "" {
+			continue
+		}
+		if indentOf(line) == 0 {
+			inChecksum = text == "checksum:"
+			continue
+		}
+		if value, ok := strings.CutPrefix(text, "name_template:"); ok && inChecksum {
+			return strings.Trim(strings.TrimSpace(value), `"'`)
+		}
+	}
+	return ""
+}
+
+func TestReleaseSubjectProblems(t *testing.T) {
+	attest := func(with string) string {
+		return "jobs:\n  release:\n    steps:\n      - uses: actions/attest-build-provenance@" + zeroSHA +
+			"  # v4.2.2\n        with:\n" + with +
+			"      - uses: actions/upload-artifact@" + zeroSHA + "  # v7.0.2\n        with:\n          subject-path: dist/*.deb\n"
+	}
+	const all = "dist/*.tar.gz,dist/*.zip,dist/*.mcpb,dist/checksums.txt"
+	for _, tc := range []struct {
+		name, with string
+		want       []string
+	}{
+		{"a comma list naming every file", "          subject-path: \"" + all + "\"\n", nil},
+		{"a comma list with a trailing comment", "          subject-path: \"" + all + "\"  # what the release publishes\n", nil},
+		{"a block scalar, one glob a line",
+			"          subject-path: |\n            dist/*.tar.gz\n            dist/*.zip\n            dist/*.mcpb\n" +
+				"            dist/checksums.txt\n          show-summary: true\n", nil},
+		{"a list separated by spaces", "          subject-path: \"dist/*.tar.gz dist/*.zip dist/*.mcpb dist/checksums.txt\"\n",
+			[]string{`subject-path "dist/*.tar.gz dist/*.zip dist/*.mcpb dist/checksums.txt" separates with a space, ` +
+				"which is read as one glob; separate with commas or newlines"}},
+		{"the bundle left out", "          subject-path: dist/*.tar.gz,dist/*.zip,dist/checksums.txt\n",
+			[]string{`subject-path "dist/*.tar.gz,dist/*.zip,dist/checksums.txt" does not name .mcpb, so it carries no attestation`}},
+		{"the checksum file and the Windows archives left out", "          subject-path: dist/*.tar.gz,dist/*.mcpb\n",
+			[]string{
+				`subject-path "dist/*.tar.gz,dist/*.mcpb" does not name .zip, so it carries no attestation`,
+				`subject-path "dist/*.tar.gz,dist/*.mcpb" does not name checksums.txt, so it carries no attestation`,
+			}},
+		{"no subject-path in the attest step", "          show-summary: true\n",
+			[]string{
+				`subject-path "" does not name .tar.gz, so it carries no attestation`,
+				`subject-path "" does not name .zip, so it carries no attestation`,
+				`subject-path "" does not name .mcpb, so it carries no attestation`,
+				`subject-path "" does not name checksums.txt, so it carries no attestation`,
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subjects := actionInput(attest(tc.with), "actions/attest-build-provenance", "subject-path")
+			if got := releaseSubjectProblems(subjects, "checksums.txt"); !slices.Equal(got, tc.want) {
+				t.Errorf("problems\n got %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+	const config = "version: 2\nrelease:\n  name_template: \"{{ .Tag }}\"\nchecksum:\n# Signed by cosign.\n" +
+		"  name_template: \"SHA256SUMS\"  # the file cosign signs\n"
+	if got := checksumName(config); got != "SHA256SUMS" {
+		t.Errorf("checksumName = %q, want the checksum block's SHA256SUMS, its comments dropped", got)
+	}
+}
+
 // The release stage has to be on. It shipped disabled on purpose, so
 // that an early tag could not publish anything before the gates were
 // green, and turning it back on was a step of the first release rather
@@ -368,29 +488,22 @@ func TestReleaseHooksDoNotWriteIntoTheCheckout(t *testing.T) {
 // and the gate that had just been fixed reported the package as
 // completely uncovered.
 //
-// Nothing here checks the whole gate list against CI — that is the parity
-// gate google-sheets-mcp built and this repository has not. This holds
-// the one pair that has already broken.
+// The parity gate compares the two commands by their first words, which
+// a -coverpkg difference does not change. This holds the one flag that
+// has already broken, in what each side runs, as the parity gate reads it.
 func TestTheCoverageProfileIsBuiltTheSameWayInBothPlaces(t *testing.T) {
-	root := repoRoot(t)
-	find := func(rel string) string {
-		raw, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatal(err)
+	find := func(where, runs string) string {
+		_, rest, ok := strings.Cut(runs, "-coverpkg=")
+		if !ok {
+			t.Fatalf("no -coverpkg in what %s runs: this test is looking at nothing", where)
 		}
-		for _, line := range strings.Split(string(raw), "\n") {
-			if !strings.Contains(line, "-coverpkg=") {
-				continue
-			}
-			// The flag, up to the next space.
-			_, rest, _ := strings.Cut(line, "-coverpkg=")
-			return strings.Fields(rest)[0]
-		}
-		t.Fatalf("no -coverpkg in %s: this test is looking at nothing", rel)
-		return ""
+		// The flag, up to the next space.
+		return strings.Fields(rest)[0]
 	}
 
-	mk, ci := find("Makefile"), find(filepath.Join(".github", "workflows", "ci.yml"))
+	rules := parseMakefile(uncommented(readRepoFile(t, makefilePath)))
+	mk := find("`make test`", strings.Join(rules["test"].recipe, "\n"))
+	ci := find(ciWorkflowPath, executes(readRepoFile(t, ciWorkflowPath)))
 	if mk != ci {
 		t.Errorf("-coverpkg differs: Makefile has %q, ci.yml has %q. The floor then measures "+
 			"a different set of packages in each place, and the narrower one reports 0%% for "+
@@ -405,162 +518,6 @@ func TestTheCoverageProfileIsBuiltTheSameWayInBothPlaces(t *testing.T) {
 	}
 }
 
-// uncommented is a file with its comment lines removed.
-//
-// The parity gate reads two files as text, and a comment is text that
-// does not run. Commenting a step out to unblock a red build used to
-// leave the gate green — the exact divergence it exists to catch,
-// reached by typing one `#`. google-docs-mcp found this in their own
-// port; it reproduced here, on the stdio smoke step.
-func uncommented(file string) string {
-	var kept []string
-	for _, line := range strings.Split(file, "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
-			kept = append(kept, line)
-		}
-	}
-	return strings.Join(kept, "\n")
-}
-
-// executes is the part of a workflow that actually runs: the value of
-// every `run:` step, the lines of a block form included, and every
-// `uses:` reference.
-//
-// Both, not just `run:`. A gate here can be satisfied by an action —
-// `lint` is `uses: golangci/golangci-lint-action` and never appears on a
-// run line — so a rule that read `run:` alone would report a gate CI
-// runs as missing. google-docs-mcp can use the narrower rule because
-// their map is keyed on `go run ./scripts/gates NAME`, which only ever
-// appears on a run line; ours is keyed on tool names.
-//
-// Residual gap, written down rather than fixed: a step disabled by an
-// `if:` that is never true still reads as running. Seeing that needs a
-// YAML parser, and this file has no dependency worth adding for it.
-func executes(workflow string) string {
-	var out []string
-	blockIndent := -1
-	for _, raw := range strings.Split(workflow, "\n") {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			continue
-		}
-		indent := len(raw) - len(strings.TrimLeft(raw, " "))
-		// Inside a `run: |` block every deeper line is shell.
-		if blockIndent >= 0 {
-			if indent > blockIndent {
-				// A `#` here is a shell comment, which runs no more
-				// than a YAML one does.
-				if !strings.HasPrefix(trimmed, "#") {
-					out = append(out, trimmed)
-				}
-				continue
-			}
-			blockIndent = -1
-		}
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		// A list item puts the key two columns right of the dash.
-		key := strings.TrimPrefix(trimmed, "- ")
-		keyIndent := indent + len(trimmed) - len(key)
-		name, value, ok := strings.Cut(key, ":")
-		if !ok {
-			continue
-		}
-		value = strings.TrimSpace(value)
-		switch name {
-		case "run":
-			// `|`, `>`, and their chomping variants open a block. A
-			// `run:` with nothing after it does not: it is a mapping,
-			// which is what `defaults.run.shell` is. Treating that as a
-			// block emitted `shell: bash` — and every nested `name:` —
-			// into the text that says what runs, which is the same
-			// false-pass class this helper exists to remove.
-			if strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") {
-				blockIndent = keyIndent
-				continue
-			}
-			if value != "" {
-				out = append(out, value)
-			}
-		case "uses":
-			out = append(out, value)
-		}
-	}
-	return strings.Join(out, "\n")
-}
-
-func TestExecutesReadsOnlyWhatRuns(t *testing.T) {
-	const workflow = `name: ci
-jobs:
-  test:
-    steps:
-      - uses: actions/checkout@v7
-      - name: smoke
-        run: go run ./scripts/gates smoke ./google-chat-mcp
-      # - name: staleness
-      #   run: go run ./scripts/gates staleness ./google-chat-mcp
-      - name: licenses
-        run: >
-          go run github.com/google/go-licenses/v2 check ./...
-          --allowed_licenses=MIT
-      - name: several
-        run: |
-          go vet -tags=evals ./...
-          # go vet -tags=live ./...
-      - name: after the block
-        run: echo done
-defaults:
-  run:
-    shell: bash
-`
-	got := executes(workflow)
-	for _, want := range []string{
-		"actions/checkout@v7",
-		"go run ./scripts/gates smoke ./google-chat-mcp",
-		"go run github.com/google/go-licenses/v2 check ./...",
-		"--allowed_licenses=MIT",
-		"go vet -tags=evals ./...",
-		"echo done",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("executes dropped something that runs: %q\n%s", want, got)
-		}
-	}
-	// The two comments are the point of the whole helper.
-	for _, unwanted := range []string{"gates staleness", "go vet -tags=live"} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("executes kept a commented-out step: %q\n%s", unwanted, got)
-		}
-	}
-	// A block ends where the indentation says it does.
-	if strings.Contains(got, "name: after the block") {
-		t.Errorf("the block form swallowed the step after it:\n%s", got)
-	}
-	// `defaults.run` is a mapping, not a command. Reading it as a block
-	// puts `shell: bash` into the list of things that run.
-	if strings.Contains(got, "shell: bash") {
-		t.Errorf("a bare `run:` mapping was read as a block scalar:\n%s", got)
-	}
-}
-
-func TestUncommentedDropsCommentLines(t *testing.T) {
-	const makefile = "check: fmt smoke\n" +
-		"smoke: build\n" +
-		"\t@$(GO) run ./scripts/gates smoke $(BIN)\n" +
-		"# @$(GO) run ./scripts/gates staleness $(BIN)\n" +
-		"\t# a recipe comment reaches the shell and still runs nothing\n"
-	got := uncommented(makefile)
-	if !strings.Contains(got, "gates smoke") {
-		t.Errorf("uncommented dropped a live recipe line:\n%s", got)
-	}
-	for _, unwanted := range []string{"gates staleness", "a recipe comment"} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("uncommented kept %q:\n%s", unwanted, got)
-		}
-	}
-}
-
 // readRepoFile is one file from the repository root.
 func readRepoFile(t *testing.T, rel string) string {
 	t.Helper()
@@ -569,174 +526,4 @@ func readRepoFile(t *testing.T, rel string) string {
 		t.Fatal(err)
 	}
 	return string(raw)
-}
-
-// What CI must run for each target `make check` depends on.
-//
-// A map rather than a name comparison, because the two sides say the
-// same thing differently: `make cover` runs a script called
-// coverage-check.sh, `make live-surface` runs a Go test by name. That
-// mismatch is what google-sheets-mcp warned about — a gate comparing the
-// names alone reports phantom gaps and misses real ones.
-//
-// The map is hand-kept, which is the thing this document keeps warning
-// about, so its completeness is asserted rather than assumed: a target
-// with no entry fails, which forces a decision instead of a silent pass.
-var ciRunsForTarget = map[string]string{
-	"fmt":          "gofmt -l",
-	"vet":          "go vet ./...",
-	"lint":         "golangci-lint",
-	"cover":        "gates coverage",
-	"vuln":         "govulncheck",
-	"licenses":     "go-licenses",
-	"pins":         "gates pins",
-	"classes":      "gates classes",
-	"transcript":   "gates transcript",
-	"leaks":        "TestNoBuildOutputInTheTree",
-	"api-coverage": "gates api-coverage",
-	"api-fields":   "gates api-fields",
-	"docs":         "gates docs",
-	"parity":       "TestMakeCheckAndCIRunTheSameGates",
-	"smoke":        "gates smoke",
-	"schema-diff":  "gates schema-diff",
-	"live-surface": "-skip '^TestLive$'",
-	"staleness":    "gates staleness",
-}
-
-// `make check` and CI are two lists in two files, and whoever adds a gate
-// is only ever editing one of them. When they diverge, the build-tagged
-// files compile on a maintainer's laptop and nowhere else, so this holds
-// the two to the same set.
-func TestMakeCheckAndCIRunTheSameGates(t *testing.T) {
-	root := repoRoot(t)
-	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Only what runs: a commented-out step is not a step.
-	makefile := uncommented(string(mk))
-	workflow := executes(uncommented(string(ci)))
-
-	var targets []string
-	for _, line := range strings.Split(makefile, "\n") {
-		rest, ok := strings.CutPrefix(line, "check:")
-		if !ok {
-			continue
-		}
-		if i := strings.Index(rest, "##"); i >= 0 {
-			rest = rest[:i]
-		}
-		targets = strings.Fields(rest)
-		break
-	}
-	// Two empty lists compare equal, and a gate that passes because it
-	// read the wrong file is worse than no gate. google-drive-mcp's
-	// parity gate refuses the same way.
-	if len(targets) == 0 {
-		t.Fatal("no check: prerequisites found in the Makefile: this gate is looking at nothing")
-	}
-	if len(workflow) == 0 {
-		t.Fatal("ci.yml runs nothing: this gate is looking at nothing")
-	}
-
-	for _, target := range targets {
-		want, ok := ciRunsForTarget[target]
-		if !ok {
-			t.Errorf("`make check` runs %q and this gate does not know what CI runs for it. "+
-				"Add it to ciRunsForTarget, then make sure ci.yml actually runs it.", target)
-			continue
-		}
-		if !strings.Contains(workflow, want) {
-			t.Errorf("`make check` runs %q but ci.yml contains no %q, so the two disagree "+
-				"and a local green does not mean a green build", target, want)
-		}
-	}
-
-	// The other direction: an entry for a target that check no longer
-	// runs is a rule about nothing, and reads exactly like a rule that works.
-	checkRuns := map[string]bool{}
-	for _, target := range targets {
-		checkRuns[target] = true
-	}
-	for target := range ciRunsForTarget {
-		if !checkRuns[target] {
-			t.Errorf("ciRunsForTarget names %q, which `make check` no longer runs; drop it", target)
-		}
-	}
-
-	// Every command the registry says runs under `make check` has to
-	// reach both places too. That field is the single list
-	// google-drive-mcp arrived at after adding a gate to the dispatch,
-	// the Makefile and the workflow but not the usage text — so it is
-	// only worth having if something reads it.
-	for _, name := range commandsRunningIn(inCheck) {
-		if !strings.Contains(makefile, "gates "+name) {
-			t.Errorf("the registry marks %q a check gate and the Makefile never runs it", name)
-		}
-		if !strings.Contains(workflow, "gates "+name) {
-			t.Errorf("the registry marks %q a check gate and ci.yml never runs it", name)
-		}
-	}
-
-	// A pull request's own gates measure from its merge-base, which a
-	// local `make check` does not have. Each has to run in ci.yml, and no
-	// target `make check` runs may run it, under whatever name, since
-	// there it would measure the wrong range.
-	for _, name := range commandsRunningIn(inPR) {
-		if !strings.Contains(workflow, "gates "+name) {
-			t.Errorf("the registry marks %q a pull-request gate and ci.yml never runs it", name)
-		}
-		for _, target := range targets {
-			if strings.Contains(ciRunsForTarget[target], "gates "+name) {
-				t.Errorf("`make check` runs %q, which runs %q, a pull-request gate: "+
-					"it measures from the merge-base, so take it out of check", target, name)
-			}
-		}
-	}
-
-	// The release's own steps, which a bool could not describe. Each has
-	// to appear in the goreleaser config or the release workflow: those
-	// two files are the release, and a step dropped from them fails at a
-	// tag, in public, with the mistake already published.
-	// The workflow through executes, and the goreleaser config through
-	// uncommented alone: goreleaser is not workflow-shaped, and its
-	// hooks are `post:` and `before:` rather than `run:`. Dropping the
-	// comments is the half that carries here — a hook commented out is
-	// the same hazard as a step commented out.
-	// publish-mcp.yml is the third file the release runs through. It is
-	// called by release.yml and dispatchable on its own, because the
-	// registry entry can only be written after the release exists — so a
-	// release step may legitimately live there, and a check that knew
-	// only the other two would report a step that runs as a step that
-	// does not.
-	release := executes(uncommented(readRepoFile(t, filepath.Join(".github", "workflows", "release.yml")))) +
-		"\n" + executes(uncommented(readRepoFile(t, filepath.Join(".github", "workflows", "publish-mcp.yml")))) +
-		"\n" + uncommented(readRepoFile(t, ".goreleaser.yaml"))
-	for _, name := range commandsRunningIn(inRelease) {
-		if !strings.Contains(release, "gates "+name) {
-			t.Errorf("the registry marks %q a release step and no release file "+
-				"runs it", name)
-		}
-	}
-
-	// Build tags are the half that actually bit: a suite behind a tag
-	// compiles only where somebody vets it, and the Makefile is usually
-	// the side that remembers.
-	tags := map[string]bool{}
-	for _, m := range regexp.MustCompile(`vet -tags=([a-z]+)`).FindAllStringSubmatch(string(mk), -1) {
-		tags[m[1]] = true
-	}
-	if len(tags) == 0 {
-		t.Fatal("no tagged vet passes found in the Makefile: this half is looking at nothing")
-	}
-	for tag := range tags {
-		if !strings.Contains(workflow, "go vet -tags="+tag) {
-			t.Errorf("the Makefile vets -tags=%s and ci.yml does not, so those files compile "+
-				"only where someone runs make", tag)
-		}
-	}
 }

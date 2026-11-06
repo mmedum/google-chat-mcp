@@ -39,12 +39,11 @@ make check
 tagged suite, golangci-lint, and race tests with a coverage floor per
 package. The floor is 80%, except for `cmd/`, which has a lower one of its
 own printed on every run. The others include `govulncheck`, a license
-allow-list, a stdio smoke test, the schema diff, the API-coverage gate
-and the live driver's surface gate. A staleness gate fails when the
-README, `docs/` or the CHANGELOG drift from the code, and the docs gate
-when a citation does not resolve. CI runs the unit
-tests on Linux, macOS and Windows. It adds gitleaks and actionlint, and
-on a pull request `schema-ack`.
+allow-list, gitleaks, actionlint, a stdio smoke test, the schema diff,
+the API-coverage gate and the live driver's surface gate. A staleness
+gate fails when the README, `docs/` or the CHANGELOG drift from the code,
+and the docs gate when a citation does not resolve. CI runs the unit
+tests on Linux, macOS and Windows, and on a pull request `schema-ack`.
 
 These are worth knowing before they fail on you:
 
@@ -122,8 +121,7 @@ These are worth knowing before they fail on you:
   not exist, a package missing from the codemap, and a path, `make`
   target or gate a doc names that does not exist.
 
-For workflow edits, run
-`go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.
+For workflow edits, run `make actionlint`.
 
 ## Branch and commit conventions
 

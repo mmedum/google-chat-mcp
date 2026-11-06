@@ -339,16 +339,6 @@ func TestEveryCommandDeclaresWhereItRuns(t *testing.T) {
 				"manual for a query typed by hand.", name)
 		}
 	}
-	// Both pipelines have to hold something, or the parity gate that
-	// reads them is asserting nothing.
-	for _, w := range []struct {
-		name string
-		in   where
-	}{{"inCheck", inCheck}, {"inRelease", inRelease}, {"inPR", inPR}} {
-		if len(commandsRunningIn(w.in)) == 0 {
-			t.Errorf("no command runs in %s: the parity gate for it is looking at nothing", w.name)
-		}
-	}
 }
 
 // fakeServerDump names a schema dump. A test that needs a server binary

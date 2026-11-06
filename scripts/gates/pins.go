@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -25,11 +26,13 @@ import (
 //   - `go run module@latest` resolves to whatever shipped this morning
 //   - a container image with no tag, or `:latest`
 //
-// And one rule for a version that is pinned twice: the rehearsal and the
-// release must run the same goreleaser. Both pins are exact, so every
-// rule above passes while the two name different versions — which they
-// did, in prose, by four minor releases. A rehearsal that builds with a
-// different tool than the tag is a rehearsal of something else.
+// And one rule for a version that is pinned twice: a tool the Makefile
+// runs at a version is the version any workflow also writes for it. Both pins
+// are exact, so every rule above passes while the two name different
+// versions — which the rehearsal's goreleaser and the release's did, in
+// prose, by four minor releases. A rehearsal that builds with a different
+// tool than the tag is a rehearsal of something else, and a local lint or
+// scan passes on a version CI never runs.
 
 // A `uses:` line: the action, its ref, and whatever comment follows.
 var usesLine = regexp.MustCompile(`^\s*-?\s*uses:\s*([^\s@]+)@([^\s#]+)\s*(#.*)?$`)
@@ -49,8 +52,9 @@ var exactVersion = regexp.MustCompile(`^v?\d+\.\d+\.\d+[-.\w]*$`)
 // and reported the line as fine.
 var versionKey = regexp.MustCompile(`^\s*-?\s*([a-z0-9-]*(?:version|release)):\s*(.+?)\s*(?:#.*)?$`)
 
-// `go run module@version`, anywhere a command can appear.
-var goRunPin = regexp.MustCompile(`go run\s+([^\s@]+)@(\S+)`)
+// `go run module@version`, anywhere a command can appear, and the
+// Makefile's `$(GO) run`, which is the same command.
+var goRunPin = regexp.MustCompile(`(?:go|\$\(GO\)) run\s+([^\s@]+)@(\S+)`)
 
 // A container image in a docker command.
 var dockerImage = regexp.MustCompile(`docker run[^\n]*?\s([a-z0-9][\w.\-]*(?:/[\w.\-]+)+)(:(\S+))?`)
@@ -62,11 +66,18 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "gates: %v\n", err)
 		return 1
 	}
+	// Slash paths, as the other gates and their messages spell them on
+	// every platform, so a file is found by its path constant on Windows.
+	for i, f := range files {
+		files[i] = filepath.ToSlash(f)
+	}
 	// The Makefile runs pinned tools too, and `make check` is what CI
 	// runs, so a float here is a float in CI.
-	files = append(files, "Makefile")
+	files = append(files, makefilePath)
 
 	var problems []string
+	var workflowTools []toolPin
+	tools := map[string][]toolPin{}
 	examined, installers := 0, 0
 	for _, file := range files {
 		raw, err := os.ReadFile(file) //nolint:gosec // paths this gate chose
@@ -81,15 +92,17 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 		i, toolProblems := unpinnedTools(file, string(raw))
 		installers += i
 		problems = append(problems, toolProblems...)
+
+		tools[file] = toolPinsIn(file, string(raw))
+		if file != makefilePath {
+			workflowTools = append(workflowTools, tools[file]...)
+		}
 	}
 
 	// Zero findings and zero inputs look the same from here.
 	if examined == 0 {
 		_, _ = fmt.Fprintln(stderr, "gates: pins read no lines: this gate is looking at nothing")
 		return 1
-	}
-	if p := goreleaserAgrees(files); p != "" {
-		problems = append(problems, p)
 	}
 
 	// A classification table that matches nothing passes for the wrong
@@ -99,6 +112,13 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 			"table has drifted from the actions the workflows use\n", installers)
 		return 1
 	}
+	if n := toolCount(tools[makefilePath]); n < minMakefileTools {
+		_, _ = fmt.Fprintf(stderr, "gates: the Makefile runs %d tools at a version, fewer than %d: "+
+			"a tool runs from the PATH, or the `go run module@version` reader has stopped finding them\n", n, minMakefileTools)
+		return 1
+	}
+	problems = append(problems, missingPins(tools)...)
+	problems = append(problems, makefileToolProblems(tools[makefilePath], workflowTools)...)
 	if len(problems) > 0 {
 		for _, p := range problems {
 			_, _ = fmt.Fprintln(stderr, "gates: "+p)
@@ -110,75 +130,114 @@ func pins(_ []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// goreleaserAction is the action that runs goreleaser on a tag; the
-// `version:` under it is the release's pin.
-const goreleaserAction = "goreleaser/goreleaser-action@"
+// minMakefileTools is the fewest tools the Makefile may run at a version.
+// Fewer means a tool runs from the PATH or the reader has stopped finding
+// it. CI runs most of them through the same targets, so nothing else would
+// hold that tool to a version.
+const minMakefileTools = 6
 
-// goreleaserPin is a version and where it is written down.
-type goreleaserPin struct{ version, at string }
+// toolActions are the actions that run a tool the Makefile runs with `go
+// run`, each with the tool its `version` input pins. inMakeCheck says a
+// `make check` prerequisite runs the tool, which parity holds CI's action to.
+var toolActions = map[string]struct {
+	tool        string
+	inMakeCheck bool
+}{
+	"golangci/golangci-lint-action": {"golangci-lint", true},
+	// CI runs `goreleaser check`, and the Makefile runs goreleaser only in
+	// release-rehearse, which `make check` does not depend on.
+	"goreleaser/goreleaser-action": {"goreleaser", false},
+}
 
-// goreleaserPins reads one file for the two ways this repository names a
-// goreleaser: the rehearsal's `go run`, and the `version:` under the
-// action that runs it on a tag.
-func goreleaserPins(file, content string) (rehearse, release goreleaserPin) {
-	inAction := false
-	for i, line := range strings.Split(content, "\n") {
-		where := fmt.Sprintf("%s:%d", file, i+1)
-		if m := goRunPin.FindStringSubmatch(line); m != nil && strings.Contains(m[1], "goreleaser") {
-			rehearse = goreleaserPin{strings.TrimPrefix(m[2], "v"), where}
-		}
-		if strings.Contains(line, goreleaserAction) {
-			inAction = true
+// requiredPins are the tools a file must pin, so the version rule always
+// has both sides to compare: with one gone it would pass for the wrong
+// reason.
+var requiredPins = []struct{ file, tool, gone string }{
+	{makefilePath, "goreleaser", "the rehearsal target is gone, and nothing holds a local build to the version the tag uses"},
+	{releaseWorkflowPath, "goreleaser", "the release's goreleaser pin is gone"},
+}
+
+// toolPin is one place a tool's version is written.
+type toolPin struct{ tool, version, at string }
+
+// toolOf is the tool a `go run` module path runs: its last element, less
+// a major-version suffix, so github.com/google/go-licenses/v2 is
+// go-licenses.
+func toolOf(module string) string {
+	parts := strings.Split(module, "/")
+	for len(parts) > 1 && majorVersion.MatchString(parts[len(parts)-1]) {
+		parts = parts[:len(parts)-1]
+	}
+	return parts[len(parts)-1]
+}
+
+// toolPinsIn is every version a file pins a tool to: each `go run
+// module@version` outside a comment, and the version input of each step
+// that uses one of toolActions. The input is read from the step's own
+// block, as unpinnedTools reads it, and one left unset is that rule's to
+// report.
+func toolPinsIn(file, content string) []toolPin {
+	var out []toolPin
+	next := 0
+	for i, line := range strings.SplitAfter(content, "\n") {
+		start := next
+		next += len(line)
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		// The version belongs to the action it sits under, so the block
-		// ends at the next step. Without this, the version of whatever
-		// step comes next would be read as goreleaser's.
-		if strings.Contains(line, "- uses:") || strings.Contains(line, "- name:") {
-			inAction = false
+		for _, m := range goRunPin.FindAllStringSubmatch(line, -1) {
+			out = append(out, toolPin{toolOf(m[1]), strings.TrimPrefix(m[2], "v"), fmt.Sprintf("%s:%d", file, i+1)})
 		}
-		if m := versionKey.FindStringSubmatch(line); m != nil && inAction {
-			release = goreleaserPin{strings.TrimPrefix(m[2], "v"), where}
+		m := usesAnywhere.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		if action, ok := toolActions[m[1]]; ok {
+			if version, n := stepInput(stepBlock(content, start), "version"); version != "" {
+				out = append(out, toolPin{action.tool, strings.TrimPrefix(version, "v"), fmt.Sprintf("%s:%d", file, i+1+n)})
+			}
 		}
 	}
-	return rehearse, release
+	return out
 }
 
-// goreleaserVerdict compares the two pins, and says so when either is
-// missing: a rule with nothing to compare passes for the wrong reason,
-// which is how a version in prose went four minor releases stale.
-func goreleaserVerdict(rehearse, release goreleaserPin) string {
-	switch {
-	case rehearse.version == "":
-		return "no `go run ...goreleaser...@version` found: the rehearsal target is gone, " +
-			"and nothing holds a local build to the version the tag uses"
-	case release.version == "":
-		return "no version found under " + goreleaserAction + ": the release's goreleaser pin is gone"
-	case rehearse.version != release.version:
-		return fmt.Sprintf("%s rehearses with goreleaser %s, and %s releases with %s: "+
-			"a rehearsal has to build with the tool the tag will",
-			rehearse.at, rehearse.version, release.at, release.version)
+// missingPins is each of requiredPins its file does not hold.
+func missingPins(pinned map[string][]toolPin) []string {
+	var problems []string
+	for _, r := range requiredPins {
+		if !slices.ContainsFunc(pinned[r.file], func(p toolPin) bool { return p.tool == r.tool }) {
+			problems = append(problems, fmt.Sprintf("%s pins no %s at a version: %s", r.file, r.tool, r.gone))
+		}
 	}
-	return ""
+	return problems
 }
 
-// goreleaserAgrees holds the rehearsal and the release to one version.
-func goreleaserAgrees(files []string) string {
-	var rehearse, release goreleaserPin
-	for _, file := range files {
-		raw, err := os.ReadFile(file) //nolint:gosec // paths this gate chose
-		if err != nil {
-			return fmt.Sprintf("pins cannot read %s: %v", file, err)
-		}
-		r, rel := goreleaserPins(file, string(raw))
-		if r.version != "" {
-			rehearse = r
-		}
-		if rel.version != "" {
-			release = rel
+// toolCount is how many tools pins name, each once.
+func toolCount(pins []toolPin) int {
+	tools := map[string]bool{}
+	for _, p := range pins {
+		tools[p.tool] = true
+	}
+	return len(tools)
+}
+
+// makefileToolProblems holds each tool the Makefile runs at a version to
+// the version a workflow writes for it, where one does: an action's
+// version input, or a `go run` of its own. A tool CI reaches through its
+// make target has its one version in the Makefile, and parity holds CI to
+// running it.
+func makefileToolProblems(makefile, workflows []toolPin) []string {
+	var problems []string
+	for _, local := range makefile {
+		for _, ci := range workflows {
+			if ci.tool == local.tool && ci.version != local.version {
+				problems = append(problems, fmt.Sprintf("%s runs %s %s and %s pins %s: "+
+					"one tool, one version, or `make check` passes on a version CI never runs",
+					local.at, local.tool, local.version, ci.at, ci.version))
+			}
 		}
 	}
-	return goreleaserVerdict(rehearse, release)
+	return problems
 }
 
 // pinProblems is the rules, over one file's text. It returns what is
@@ -289,8 +348,10 @@ var (
 
 	// The same `uses:` line, matched over a whole file rather than one
 	// line at a time, because this rule has to read the step's `with:`
-	// block and a line does not carry one.
-	usesAnywhere = regexp.MustCompile(`(?m)^\s*-?\s*uses:\s*([^\s@]+)@[^\s#]+`)
+	// block and a line does not carry one. Its spaces are [ \t], never
+	// \s, which crosses a newline: a match would start on a blank line
+	// above the step, and stepBlock would read the steps below as its own.
+	usesAnywhere = regexp.MustCompile(`(?m)^[ \t]*-?[ \t]*uses:[ \t]*([^\s@]+)@[^\s#]+`)
 )
 
 // unpinnedTools reports every action whose tool is left to float, and
@@ -346,12 +407,40 @@ func indentOf(line string) int {
 	return len(line) - len(strings.TrimLeft(line, " \t"))
 }
 
-// namesAnyKey reports whether the step sets one of the given keys.
+// namesAnyKey reports whether the step sets one of the given keys to a
+// value.
 func namesAnyKey(block string, keys []string) bool {
-	for _, k := range keys {
-		if regexp.MustCompile(`(?mi)^\s*` + regexp.QuoteMeta(k) + `:\s*\S`).MatchString(block) {
-			return true
+	return slices.ContainsFunc(keys, func(k string) bool {
+		value, _ := stepInput(block, k)
+		return value != ""
+	})
+}
+
+// stepInput is the value a step's block sets key to, and the index of the
+// block's line that sets it. Quotes and a trailing comment are dropped, and a
+// block scalar's lines are joined with newlines. The value is empty when
+// the key is absent, or left empty or holding only a comment, which YAML
+// reads as null. A key matches as written, since YAML keys and environment
+// variables are case-sensitive.
+func stepInput(block, key string) (value string, line int) {
+	lines := strings.Split(block, "\n")
+	for i, ln := range lines {
+		raw, ok := strings.CutPrefix(strings.TrimSpace(ln), key+":")
+		if !ok {
+			continue
 		}
+		value = strings.Trim(withoutYAMLComment(raw), `"'`)
+		if !strings.HasPrefix(value, "|") && !strings.HasPrefix(value, ">") {
+			return value, i
+		}
+		var body []string
+		for _, next := range lines[i+1:] {
+			if strings.TrimSpace(next) != "" && indentOf(next) <= indentOf(ln) {
+				break
+			}
+			body = append(body, strings.TrimSpace(next))
+		}
+		return strings.TrimSpace(strings.Join(body, "\n")), i
 	}
-	return false
+	return "", 0
 }

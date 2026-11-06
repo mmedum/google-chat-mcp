@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -36,31 +37,35 @@ func releaseNotes(args []string, stdout, stderr io.Writer) int {
 
 // sectionFor returns the body under `## [version]`, without the blank
 // lines that top and tail it.
+func sectionFor(changelog, version string) string {
+	lines := strings.Split(changelog, "\n")
+	from, to := changelogSection(lines, version)
+	body := lines[from:to]
+	for len(body) > 0 && strings.TrimSpace(body[0]) == "" {
+		body = body[1:]
+	}
+	return joinTrimmed(body)
+}
+
+// changelogSection is the range of lines under `## [version]`, empty when
+// there is no such heading. The docs gate scans the [Unreleased] range it
+// gives, so the scan reads what a release note will say.
 //
 // It stops at the next heading and at the link footer. The footer is not
 // part of any section, but it follows the oldest one with no heading in
 // between — so without that second stop the oldest entry's notes end
 // with a block of compare links.
-func sectionFor(changelog, version string) string {
+func changelogSection(lines []string, version string) (from, to int) {
 	want := "## [" + version + "]"
-	var body []string
-	inside := false
-	for _, line := range strings.Split(changelog, "\n") {
-		switch {
-		case strings.HasPrefix(line, want):
-			inside = true
-			continue
-		case !inside:
-			continue
-		case strings.HasPrefix(line, "## "), isLinkDefinition(line):
-			return joinTrimmed(body)
-		case len(body) == 0 && strings.TrimSpace(line) == "":
-			// The blank lines under the heading.
-			continue
-		}
-		body = append(body, line)
+	start := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, want) })
+	if start < 0 {
+		return 0, 0
 	}
-	return joinTrimmed(body)
+	to = start + 1
+	for to < len(lines) && !strings.HasPrefix(lines[to], "## ") && !isLinkDefinition(lines[to]) {
+		to++
+	}
+	return start + 1, to
 }
 
 // joinTrimmed drops the blank lines at the end, so a section that runs to
