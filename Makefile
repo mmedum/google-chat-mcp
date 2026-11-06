@@ -9,9 +9,6 @@ COVER_MIN ?= 80
 # The range schema-ack measures on a local run; CI passes its own.
 PR_BASE_REF ?= origin/main
 PR_HEAD     ?= HEAD
-GOBIN    := $(shell $(GO) env GOPATH)/bin
-# Prefer tools installed with the current Go (go install ...@latest) over distro packages.
-export PATH := $(GOBIN):$(PATH)
 
 .PHONY: all
 all: check
@@ -32,7 +29,7 @@ install: ## go install the binary
 # later Windows build here does not carry the rehearsal's version.
 .PHONY: release-rehearse
 release-rehearse: ## Build the release archives locally, publishing nothing
-	go run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish; \
+	$(GO) run github.com/goreleaser/goreleaser/v2@v2.18.1 release --snapshot --clean --skip=sign,sbom,publish; \
 	status=$$?; $(RM) cmd/*/rsrc_windows_*.syso; exit $$status
 
 .PHONY: fmt
@@ -45,9 +42,11 @@ vet: ## go vet, including the tagged suites so they keep compiling
 	$(GO) vet -tags=evals ./...
 	$(GO) vet -tags=live ./...
 
+# The golangci-lint CI runs, at the version the pins gate holds to ci.yml,
+# rather than whichever one is on the PATH.
 .PHONY: lint
 lint:
-	golangci-lint run
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run
 
 .PHONY: test
 test: ## Unit tests with race detector and coverage
@@ -63,11 +62,21 @@ cover: test ## Enforce the coverage floor on core packages
 
 .PHONY: vuln
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
 .PHONY: licenses
 licenses:
-	go run github.com/google/go-licenses/v2@v2.0.1 check ./... --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
+	$(GO) run github.com/google/go-licenses/v2@v2.0.1 check ./... --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC
+
+# These two run from source through the Go module proxy, not as images:
+# Docker Hub rate-limits pulls from shared CI runners.
+.PHONY: gitleaks
+gitleaks: ## No credential in any commit
+	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 detect --source=. --redact --no-banner
+
+.PHONY: actionlint
+actionlint: ## Every workflow passes actionlint
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
 .PHONY: pins
 pins: ## Every third-party tool held to an exact version
@@ -100,19 +109,19 @@ docs: ## Every decision, citation and named path resolves
 api-diff: ## Refetch the API method list and report what changed (needs the network)
 	$(GO) run ./scripts/gates api-diff
 
-# Both of these already run under `cover`, as part of `go test ./...`.
-# Naming them costs a fraction of a second and buys two things: they
-# print in the check output, and they can be run alone while working on
-# what they guard. The shape is `live-surface`'s — a target that runs one
-# test by name — rather than a `gates` subcommand, which would mean a Go
-# program shelling out to `go test`.
+# This already runs under `cover`, as part of `go test ./...`. Naming it
+# costs a fraction of a second and buys two things: it prints in the
+# check output, and it can be run alone while working on what it guards.
+# The shape is `live-surface`'s — a target that runs one test by name —
+# rather than a `gates` subcommand, which would mean a Go program
+# shelling out to `go test`.
 .PHONY: leaks
 leaks: ## Nothing identifying a real account, and nothing compiled, in the tree
 	@$(GO) test ./internal/leakcheck -run 'TestTheRepositoryIsClean|TestNoBuildOutputInTheTree' -count=1
 
 .PHONY: parity
 parity: ## `make check` and CI run the same gates
-	@$(GO) test ./scripts/gates -run TestMakeCheckAndCIRunTheSameGates -count=1
+	@$(GO) run ./scripts/gates parity
 
 .PHONY: schemas
 schemas: build ## Dump tool schemas
@@ -162,7 +171,7 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses pins classes transcript api-coverage api-fields docs leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses gitleaks actionlint pins classes transcript api-coverage api-fields docs leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
 
 .PHONY: clean
 clean:

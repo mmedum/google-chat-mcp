@@ -12,6 +12,7 @@
 //
 //	go run ./scripts/gates classes
 //	go run ./scripts/gates pins
+//	go run ./scripts/gates parity
 //	go run ./scripts/gates api-coverage
 //	go run ./scripts/gates docs
 //	go run ./scripts/gates api-diff
@@ -175,6 +176,11 @@ func init() {
 			arity: 1, runsIn: inCheck,
 			doc: "every third-party tool held to an exact version",
 		},
+		"parity": {
+			run:   parity,
+			arity: 1, runsIn: inCheck,
+			doc: "`make check` and CI run the same gates",
+		},
 		"api-coverage": {
 			run:   apiCoverage,
 			arity: 1, runsIn: inCheck,
@@ -229,18 +235,6 @@ func init() {
 			doc: "the Windows version resource code signing checks, for each Windows architecture",
 		},
 	}
-}
-
-// commandsRunningIn are the commands one pipeline has to run, sorted.
-func commandsRunningIn(w where) []string {
-	out := make([]string, 0, len(commands))
-	for name, c := range commands {
-		if c.runsIn == w {
-			out = append(out, name)
-		}
-	}
-	slices.Sort(out)
-	return out
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

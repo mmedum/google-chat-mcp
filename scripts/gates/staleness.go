@@ -64,18 +64,26 @@ func mentions(doc, name string) bool {
 func staleness(args []string, stdout, stderr io.Writer) int {
 	bin := binaryArg(args)
 
-	var problems []string
+	// A finding exits 1. A document the gate cannot read, a binary it
+	// cannot run and a git call that fails leave a rule with no verdict,
+	// which is not a finding about the docs: it exits 2 when it is all
+	// there is.
+	var reported []string
+	findings := 0
 	fail := func(format string, a ...any) {
-		problems = append(problems, fmt.Sprintf(format, a...))
+		reported = append(reported, fmt.Sprintf(format, a...))
+		findings++
 	}
-	// A document that cannot be read is a failure of the gate, not a
-	// finding about the code, so it says so once in those words. The
-	// caller skips its block rather than walking an empty string and
-	// reporting every tool, variable and scope as undocumented.
+	noVerdict := func(format string, a ...any) {
+		reported = append(reported, fmt.Sprintf(format, a...))
+	}
+	// The caller skips the block of a document it cannot read rather than
+	// walking an empty string and reporting every tool, variable and scope
+	// as undocumented.
 	load := func(path string) (string, bool) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			fail("gates cannot read %s: %v", path, err)
+			noVerdict("gates cannot read %s: %v", path, err)
 			return "", false
 		}
 		return string(raw), true
@@ -85,7 +93,7 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 	if readme, ok := load(readmePath); ok {
 		shipped, err := shippedTools(bin)
 		if err != nil {
-			fail("%v", err)
+			noVerdict("%v", err)
 		} else {
 			documented := readmeToolNames(readme)
 			for _, name := range shipped {
@@ -111,8 +119,12 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 
 	// Any doc that states how many tools take dry_run has to state the
 	// number the server actually registers.
-	for _, p := range dryRunCountProblems(bin, load) {
-		fail("%s", p)
+	if found, err := dryRunCountProblems(bin, load); err != nil {
+		noVerdict("%v", err)
+	} else {
+		for _, p := range found {
+			fail("%s", p)
+		}
 	}
 
 	if configDoc, ok := load(configDocPath); ok {
@@ -134,12 +146,12 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 	// Source that changed since the last release has to be written down.
 	switch tag, err := lastTag(); {
 	case err != nil:
-		fail("%v", err)
+		noVerdict("%v", err)
 	case tag != "":
 		changed, err := sourceChangedSince(tag)
 		switch {
 		case err != nil:
-			fail("%v", err)
+			noVerdict("%v", err)
 		case changed:
 			if changelog, ok := load(changelogPath); ok {
 				if p := changelogProblem(changelog, tag); p != "" {
@@ -149,11 +161,21 @@ func staleness(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	if len(problems) > 0 {
-		for _, p := range problems {
-			_, _ = fmt.Fprintln(stderr, "gates: "+p)
-		}
+	return stalenessVerdict(reported, findings, stdout, stderr)
+}
+
+// stalenessVerdict prints what the gate reported and exits 1 for a
+// finding, 2 when it reported only what it could not judge, and 0 when it
+// reported nothing.
+func stalenessVerdict(reported []string, findings int, stdout, stderr io.Writer) int {
+	for _, p := range reported {
+		_, _ = fmt.Fprintln(stderr, "gates: "+p)
+	}
+	switch {
+	case findings > 0:
 		return 1
+	case len(reported) > 0:
+		return 2
 	}
 	_, _ = fmt.Fprintln(stdout, "staleness ok")
 	return 0
@@ -207,10 +229,10 @@ func toolNamesIn(d *dump) []string {
 // the server registered twenty-five, and both had been wrong since the
 // port. A reader deciding whether a write is previewable is reading that
 // sentence.
-func dryRunCountProblems(bin string, load func(string) (string, bool)) []string {
+func dryRunCountProblems(bin string, load func(string) (string, bool)) ([]string, error) {
 	shipped, err := dryRunCount(bin)
 	if err != nil {
-		return []string{err.Error()}
+		return nil, err
 	}
 	var problems []string
 	for _, path := range []string{readmePath, architectureDocPath} {
@@ -226,7 +248,7 @@ func dryRunCountProblems(bin string, load func(string) (string, bool)) []string 
 			}
 		}
 	}
-	return problems
+	return problems, nil
 }
 
 // countedTools matches a sentence that states how many tools do
@@ -402,14 +424,16 @@ func lastTag() (string, error) {
 // sourceChangedSince reports whether anything that ships differs from the
 // tag.
 //
-// Tests are excluded because a change confined to _test.go files cannot
-// change what the binary does, and CONTRIBUTING says an internal change
-// with no user-visible effect gets no entry. Without the exclusion the
-// gate demands a release note for a test, and the only way to satisfy it
-// is to write one that lies about what shipped.
+// Tests and their testdata are excluded because a change confined to them
+// cannot change what the binary does, and CONTRIBUTING says an internal
+// change with no user-visible effect gets no entry. Without the exclusion
+// the gate demands a release note for a test, and the only way to satisfy
+// it is to write one that lies about what shipped. A testdata file ships
+// only through a //go:embed outside a test, which
+// TestNoShippedCodeEmbedsATestdataFile refuses.
 func sourceChangedSince(tag string) (bool, error) {
 	err := exec.Command("git", "diff", "--quiet", tag, "--",
-		"cmd", "internal", ":(exclude)*_test.go").Run()
+		"cmd", "internal", ":(exclude)*_test.go", ":(exclude)*/testdata/*").Run()
 	if err == nil {
 		return false, nil
 	}
