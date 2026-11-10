@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -28,9 +29,17 @@ import (
 // The files the docs gate reads besides the ones staleness names.
 const (
 	agentFilePath = "CLAUDE.md"
-	makefilePath  = "Makefile"
 	golangciPath  = ".golangci.yml"
 )
+
+// docsTrailingComment is the blank and # that start a trailing comment in
+// a YAML or Makefile line.
+var docsTrailingComment = regexp.MustCompile(`\s#`)
+
+// indentOf is how far a line is indented, in blanks and tabs.
+func indentOf(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " \t"))
+}
 
 // The live driver's package, and the type its step tables hold.
 const (
@@ -161,11 +170,14 @@ func (g *docsGate) report(stdout, stderr io.Writer) int {
 	return 0
 }
 
-// checkoutFiles is every file git tracks or would commit, as it is on
-// disk, sorted. A new doc is untracked until the commit that adds it, and
-// the gate has to read it before that commit, as CI will after it.
-func checkoutFiles() ([]string, error) {
-	out, err := git("ls-files", "-z", "--cached", "--others", "--exclude-standard")
+// checkoutFiles is docsFiles for the working directory.
+func checkoutFiles() ([]string, error) { return docsFiles(".") }
+
+// docsFiles is every file git tracks or would commit under root, as it is
+// on disk, sorted. A new doc is untracked until the commit that adds it,
+// and the gate has to read it before that commit, as CI will after it.
+func docsFiles(root string) ([]string, error) {
+	out, err := git("-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +185,7 @@ func checkoutFiles() ([]string, error) {
 	files := make([]string, 0, len(listed))
 	for _, f := range listed {
 		// A file deleted in the worktree stays listed until it is staged.
-		if _, err := os.Lstat(f); f != "" && err == nil {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f))); f != "" && err == nil {
 			files = append(files, f)
 		}
 	}
@@ -335,6 +347,15 @@ func prose(doc string) []string {
 		}
 	}
 	return lines
+}
+
+// headingLevel is the level of an ATX heading line, or 0 for any other
+// line (https://spec.commonmark.org/0.31.2/#atx-headings).
+func headingLevel(line string) int {
+	if !atxHeading.MatchString(line) {
+		return 0
+	}
+	return len(line) - len(strings.TrimLeft(line, "#"))
 }
 
 // fenceMarker is the run of three or more backticks or tildes a line opens
@@ -865,7 +886,7 @@ func (g *docsGate) scanned(file string, lines []string) (from, to int) {
 		return 0, len(lines)
 	}
 	raw, _ := g.readFile(file)
-	return changelogSection(strings.Split(raw, "\n"), "Unreleased")
+	return readChangelog(raw).section("Unreleased")
 }
 
 func (g *docsGate) checkCitations() {
@@ -1050,10 +1071,8 @@ func (g *docsGate) checkMarkdown(file string) {
 		// A code span under [Unreleased]'s Removed heading names what the
 		// release takes away, so it need not exist. A deeper heading sits
 		// inside that section and leaves it as it is.
-		if m := atxHeading.FindStringSubmatch(line); file == changelogPath && m != nil {
-			if level := strings.IndexFunc(line, func(r rune) bool { return r != '#' }); level == 2 || level == 3 {
-				removed = level == 3 && strings.TrimSpace(m[1]) == "Removed"
-			}
+		if level := headingLevel(line); file == changelogPath && (level == 2 || level == 3) {
+			removed = level == 3 && strings.TrimSpace(atxHeading.FindStringSubmatch(line)[1]) == "Removed"
 		}
 		if isTrailer(file, line) {
 			continue

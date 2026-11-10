@@ -32,11 +32,13 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -44,7 +46,36 @@ import (
 	"github.com/mmedum/google-chat-mcp/v9/internal/scopes"
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	// Every command reads the repository from its root, so it runs the same
+	// from any directory under it.
+	root, err := moduleRoot()
+	if err == nil {
+		err = os.Chdir(root)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "gates: "+couldNotRun{err}.Error())
+		os.Exit(2)
+	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// moduleRoot walks up from the working directory to the directory
+// holding go.mod, which main runs every command from.
+func moduleRoot() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		if filepath.Dir(dir) == dir {
+			return "", fmt.Errorf("no go.mod in %s or above it", cwd)
+		}
+	}
+}
 
 // command is one thing this program does.
 type command struct {
@@ -172,12 +203,12 @@ func init() {
 			doc: "every GCM_ variable the server reads",
 		},
 		"pins": {
-			run:   pins,
+			run:   errorCommand(pins),
 			arity: 1, runsIn: inCheck,
 			doc: "every third-party tool held to an exact version",
 		},
 		"parity": {
-			run:   parity,
+			run:   errorCommand(parity),
 			arity: 1, runsIn: inCheck,
 			doc: "`make check` and CI run the same gates",
 		},
@@ -464,7 +495,7 @@ func schemaDiffBinary(bin string, stdout, stderr io.Writer) int {
 	// commit, where it proves the baseline was recorded rather than
 	// relabeled, and it holds until the next change, which the staleness
 	// gate makes put something under [Unreleased].
-	if want == "" || sectionFor(changelog, "Unreleased") != "" {
+	if want == "" || readChangelog(changelog).entries("Unreleased") > 0 {
 		return 0
 	}
 	same, err := sameSurface(baselinePath, dumpPath)
@@ -605,4 +636,41 @@ func argAt(args []string, i int) string {
 		return args[i]
 	}
 	return ""
+}
+
+// errorCommand runs a gate that reports through its error under the
+// registry's calling convention: a refusal exits 1 and a gate that could
+// not run exits 2, each with its message on stderr.
+func errorCommand(gate func(io.Writer, []string) error) func([]string, io.Writer, io.Writer) int {
+	return func(args []string, stdout, stderr io.Writer) int {
+		if err := gate(stdout, args[1:]); err != nil {
+			_, _ = fmt.Fprintf(stderr, "gates: %s: %v\n", args[0], err)
+			return exitCode(err)
+		}
+		return 0
+	}
+}
+
+// couldNotRun is a gate that reached no verdict: a build or a git call
+// failed. Its message says so, and it exits 2, where a refusal exits 1.
+type couldNotRun struct{ err error }
+
+func (e couldNotRun) Error() string { return "could not run: " + e.err.Error() }
+func (e couldNotRun) Unwrap() error { return e.err }
+
+// floorProblems is a problem when a gate read fewer of what than least:
+// found nothing and looked at nothing print the same sentence otherwise.
+func floorProblems(what string, read, least int) []string {
+	if read >= least {
+		return nil
+	}
+	return []string{fmt.Sprintf("read %d %s, want at least %d: the reader is not seeing its input", read, what, least)}
+}
+
+// exitCode is the status a gate's error exits with.
+func exitCode(err error) int {
+	if errors.As(err, new(couldNotRun)) {
+		return 2
+	}
+	return 1
 }

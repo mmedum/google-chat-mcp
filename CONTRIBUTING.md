@@ -56,7 +56,7 @@ These are worth knowing before they fail on you:
   instructions. A client decides from those whether to ask, so a
   reviewer has to see them. The baseline holds the surface of the
   CHANGELOG's newest release, and the diff fails when it holds any
-  other. With nothing under `[Unreleased]`, the build is that release,
+  other. With no entry under `[Unreleased]`, the build is that release,
   so its surface must match the baseline exactly. The release commit
   records the baseline with `make schema-baseline VERSION=vX.Y.Z`. That
   refuses a build that drops a tool or an output field, and a build
@@ -154,6 +154,10 @@ Every user-visible change gets an entry under `## [Unreleased]` in
 `CHANGELOG.md`, in the same pull request that makes the change. Leave out
 changes only contributors see, unless they must act on them.
 
+- **An entry is a bullet at the margin.** The staleness gate counts
+  nothing else, and nothing in fenced code. It wants one when a commit
+  since the newest release tag changes what the binary is built from,
+  the bundle manifest, or go.mod's lines other than `require` and `tool`.
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   set and nothing else: Added, Changed, Deprecated, Removed, Fixed and
   Security, in that order. Not `Internal`, not `Documented`, not a

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -159,16 +160,26 @@ func TestWinresIsByteIdenticalAcrossRuns(t *testing.T) {
 // builds, for the architectures it builds, and only if git ignores it:
 // an untracked file that is not ignored stamps the binary modified.
 func TestWinresWritesWhereGoreleaserBuilds(t *testing.T) {
-	// A Windows checkout has CRLF line ends, and each want below ends at
-	// its line's end.
-	config := strings.ReplaceAll(uncommented(readRepoFile(t, ".goreleaser.yaml")), "\r\n", "\n")
-	for _, want := range []string{
-		"main: ./" + winresDir + "\n",
-		"binary: " + server.Name + "\n",
-		"goarch: [" + strings.Join(winresArches, ", ") + "]\n",
+	// The repository's ignore rules alone: a personal excludes file must
+	// not make the check pass.
+	isolateGit(t)
+	g := parseGoreleaser(readRepoFile(t, parityGoreleaser))
+	if len(g.refused) > 0 {
+		t.Fatalf("%s: %q", parityGoreleaser, g.refused)
+	}
+	build := map[string][]string{}
+	for _, v := range g.values {
+		if key, ok := strings.CutPrefix(v.keys, "builds."); ok {
+			build[key] = append(build[key], v.value)
+		}
+	}
+	for key, want := range map[string][]string{
+		"main":   {"./" + winresDir},
+		"binary": {server.Name},
+		"goarch": winresArches,
 	} {
-		if !strings.Contains(config, want) {
-			t.Errorf(".goreleaser.yaml has no %q", strings.TrimSpace(want))
+		if !slices.Equal(build[key], want) {
+			t.Errorf("%s: builds.%s is %q, want %q", parityGoreleaser, key, build[key], want)
 		}
 	}
 	for _, arch := range winresArches {

@@ -768,11 +768,11 @@ func TestDocsGateResolvesCitations(t *testing.T) {
 // under any other heading, is held.
 func TestDocsGateHoldsTheUnreleasedSection(t *testing.T) {
 	const entry = "- Retries back off (D-01), as `docs/architecture.md#codemap` says.\n"
-	fenced := entry + "- As D-07 decided.\n\n```text\n## a heading in an example\n```\n\n- After the fence, D-98 is not in the release note.\n"
+	fenced := entry + "- As D-07 decided.\n\n```text\n## a heading in an example\n```\n\n- After the fence, D-98 is in the release note too.\n"
 	checkDocsCases(t, []docsCase{
-		{"a heading in a fence ends the section, as release-notes ends it", []docsEdit{
+		{"a heading in a fence is an example, and the section runs on past it, as release-notes reads it", []docsEdit{
 			replace(fxChangelog, entry, fenced),
-		}, []string{"CHANGELOG.md:6: cites D-07, which is not a decision"}},
+		}, []string{"CHANGELOG.md:6: cites D-07, which is not a decision", "CHANGELOG.md:12: cites D-98, which is not a decision"}},
 		{"a path, a make target and a gate the release removes", []docsEdit{
 			replace(fxChangelog, entry, entry+"\n### Removed\n\n- `internal/legacy/client.go`, `make legacy` and `scripts/gates legacy`.\n"),
 		}, nil},
@@ -793,8 +793,8 @@ func TestDocsGateHoldsTheUnreleasedSection(t *testing.T) {
 		}},
 	})
 	notes := sectionFor(strings.Replace(docsFixture()[fxChangelog], entry, fenced, 1), "Unreleased")
-	if !strings.Contains(notes, "D-07") || strings.Contains(notes, "D-98") {
-		t.Errorf("release-notes lifts %q, want the lines through D-07 and none after the fenced heading", notes)
+	if !strings.Contains(notes, "D-07") || !strings.Contains(notes, "D-98") {
+		t.Errorf("release-notes lifts %q, want the lines through D-98, past the fenced heading", notes)
 	}
 }
 
@@ -990,7 +990,7 @@ func TestDocsGateNeedsAGitCheckout(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := run([]string{"docs"}, &out, &errOut)
 	stdout, problems := out.String(), gatesProblems(t, errOut.String())
-	if code != 1 || stdout != "" || len(problems) != 1 || !strings.HasPrefix(problems[0], "git ls-files") {
+	if code != 1 || stdout != "" || len(problems) != 1 || !strings.HasPrefix(problems[0], "git -C . ls-files") {
 		t.Errorf("exit %d, stdout %q, problems %q; want 1, nothing and one git ls-files failure", code, stdout, problems)
 	}
 }

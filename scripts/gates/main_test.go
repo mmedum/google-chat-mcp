@@ -10,6 +10,31 @@ import (
 	"testing"
 )
 
+// Every command runs from the module root, found from any directory under
+// it, and with no go.mod above there is none to run from.
+func TestModuleRootIsTheDirectoryHoldingGoMod(t *testing.T) {
+	root, err := filepath.EvalSymlinks(docsTree(t, map[string]string{
+		"go.mod": "module example.com/m\n", "internal/a/go.txt": "not a module\n",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, from := range []string{root, filepath.Join(root, "internal", "a")} {
+		t.Chdir(from)
+		if got, err := moduleRoot(); err != nil || got != root {
+			t.Errorf("from %s: moduleRoot() = %q, %v; want %q", from, got, err, root)
+		}
+	}
+	bare, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(bare)
+	if got, err := moduleRoot(); err == nil || !strings.HasPrefix(err.Error(), "no go.mod in "+bare+" or above it") {
+		t.Errorf("moduleRoot() = %q, %v; want no go.mod found", got, err)
+	}
+}
+
 // write puts a schema dump in a temp file and returns its path.
 func write(t *testing.T, name, body string) string {
 	t.Helper()
@@ -435,6 +460,18 @@ func TestSchemaDiffBinary(t *testing.T) {
 		{
 			name: "unreleased work adds a tool", unreleased: added,
 			baseline: surface("v1.0.0"), dump: withFindSpace("dev"), code: 0,
+		},
+		// An entry is a bullet at the margin outside a fence, as the
+		// staleness gate counts one.
+		{
+			name: "only a heading under [Unreleased], and the build adds a tool", unreleased: "### Added",
+			baseline: surface("v1.0.0"), dump: withFindSpace("dev"), code: 1,
+			out: "FAIL: nothing is under [Unreleased], so this build is v1.0.0, and its surface differs from the baseline",
+		},
+		{
+			name: "only a fenced bullet under [Unreleased], and the build adds a tool", unreleased: "```\n" + added + "\n```",
+			baseline: surface("v1.0.0"), dump: withFindSpace("dev"), code: 1,
+			out: "FAIL: nothing is under [Unreleased], so this build is v1.0.0, and its surface differs from the baseline",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
