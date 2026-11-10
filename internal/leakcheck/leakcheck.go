@@ -57,8 +57,9 @@ var (
 	// around it to key on.
 	subject = regexp.MustCompile(`(?:^|[^0-9])([0-9]{21})(?:[^0-9]|$)`)
 
-	// An OAuth client id, and the host every profile photo comes from.
-	googleIdentifier = regexp.MustCompile(`[0-9]{6,}-[a-z0-9]{16,}\.apps\.googleusercontent\.com|lh[0-9]\.googleusercontent\.com`)
+	// An OAuth client id, and the host every profile photo comes from. A
+	// host is read in any case (RFC 4343), so both match theirs in any case.
+	googleIdentifier = regexp.MustCompile(`[0-9]{6,}-[a-z0-9]{16,}(?i:\.apps\.googleusercontent\.com)|(?i:lh[0-9]\.googleusercontent\.com)`)
 
 	spaceID = regexp.MustCompile(`spaces/([A-Za-z0-9._-]+)`)
 

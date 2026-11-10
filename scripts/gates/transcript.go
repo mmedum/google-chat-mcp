@@ -148,7 +148,9 @@ func transcriptCheck(w io.Writer) error {
 // writes it saw and what is wrong with them.
 func transcriptProblems(file string) (int, []string, error) {
 	fset := token.NewFileSet()
-	parsed, err := parser.ParseFile(fset, file, nil, 0)
+	// A slash path opens on Windows too, and makes a position in a
+	// message read the same on every OS.
+	parsed, err := parser.ParseFile(fset, filepath.ToSlash(file), nil, 0)
 	if err != nil {
 		return 0, nil, err
 	}

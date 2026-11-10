@@ -25,7 +25,9 @@ func TestWhatMustNeverLand(t *testing.T) {
 		{"an address at a domain someone owns", `contact janedoe@acmecorp.example.io for access`},
 		{"a real-looking account id", `"user_sub": "104857306291748362915"`},
 		{"an OAuth client id", `487210396518-k2v9qf0x7mt4hzr8p1lw6cye3dsjb5na.apps.googleusercontent.com`},
+		{"an OAuth client id, its host in mixed case", `487210396518-k2v9qf0x7mt4hzr8p1lw6cye3dsjb5na.Apps.GoogleUserContent.com`},
 		{"a profile photo", `"picture_url": "https://lh3.googleusercontent.com/a/ACg8ocJx=s96-c"`},
+		{"a profile photo, its host in capitals", `"picture_url": "https://LH3.GOOGLEUSERCONTENT.COM/a/x"`},
 		{"a space id off a real account", `space := "spaces/AAQAk7Rf2Xw"`},
 		{"a message id, which carries its space", `"spaces/AAQAk7Rf2Xw/messages/abc.def"`},
 	} {

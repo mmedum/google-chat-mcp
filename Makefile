@@ -50,11 +50,26 @@ lint:
 
 .PHONY: test
 test: ## Unit tests with race detector and coverage
+	$(GO) test -race -coverpkg=./cmd/...,./internal/... -coverprofile=cov.out -covermode=atomic ./...
+
 # LEAKCHECK_HISTORY scans the commits a push would add, which the tree
 # scan cannot see: an identifier committed and edited out later is still
 # published. "all" widens it to every commit, for deciding whether the
 # published past needs rewriting.
-	LEAKCHECK_HISTORY=1 $(GO) test -race -coverpkg=./cmd/...,./internal/... -coverprofile=cov.out -covermode=atomic ./...
+.PHONY: leaks-history
+leaks-history: ## Nothing identifying a real account in the commits a push would add
+	LEAKCHECK_HISTORY=1 $(GO) test ./internal/leakcheck/ -run TestTheHistoryIsClean -v
+
+.PHONY: tidy
+tidy: ## go.mod and go.sum are what `go mod tidy` would write
+	$(GO) mod tidy -diff
+
+# The release config is only ever exercised by a tag, and by then the
+# mistake is public; this catches a config-level one, such as an unknown
+# key or a build id nothing refers to.
+.PHONY: goreleaser-check
+goreleaser-check: ## The release config is valid
+	$(GO) run github.com/goreleaser/goreleaser/v2@v2.18.1 check
 
 .PHONY: cover
 cover: test ## Enforce the coverage floor on core packages
@@ -70,9 +85,14 @@ licenses:
 
 # These two run from source through the Go module proxy, not as images:
 # Docker Hub rate-limits pulls from shared CI runners.
+#
+# gitleaks walks `git log --all` unless --log-opts names the commits
+# (https://github.com/gitleaks/gitleaks/blob/v8.30.1/sources/git.go#L90-L94),
+# and CI's full clone holds every pushed branch, so this scans HEAD's
+# history alone. CI checks out the whole history for it.
 .PHONY: gitleaks
-gitleaks: ## No credential in any commit
-	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 detect --source=. --redact --no-banner
+gitleaks: ## No credential in HEAD's history
+	$(GO) run github.com/zricethezav/gitleaks/v8@v8.30.1 git --log-opts=HEAD . --config .gitleaks.toml --redact --no-banner
 
 .PHONY: actionlint
 actionlint: ## Every workflow passes actionlint
@@ -171,8 +191,19 @@ live: build ## Drive the shipped binary against a real account
 	$(GO) test -tags=live ./internal/livecheck -v -count=1 -timeout 20m
 
 .PHONY: check
-check: fmt vet lint cover vuln licenses gitleaks actionlint pins classes transcript api-coverage api-fields docs leaks parity smoke schema-diff live-surface staleness ## Everything CI runs
+check: fmt vet lint cover vuln licenses gitleaks actionlint pins classes transcript api-coverage api-fields docs leaks parity smoke schema-diff live-surface staleness tidy leaks-history goreleaser-check ## Everything CI runs
 
 .PHONY: clean
 clean:
 	$(RM) $(BIN) cov.out schemas.json cmd/*/rsrc_windows_*.syso
+
+# Lookups a maintainer runs by hand; nothing in a pipeline needs them.
+.PHONY: config-vars scopes tool-names mcpb-manifest
+config-vars: ## Print every GCM_ variable the server reads (manual)
+	@$(GO) run ./scripts/gates config-vars
+scopes: ## Print every OAuth scope the server can request (manual)
+	@$(GO) run ./scripts/gates scopes
+tool-names: schemas ## Print the tool names in the schema dump (manual)
+	@$(GO) run ./scripts/gates tool-names schemas.json
+mcpb-manifest: ## Print the bundle manifest with VERSION in it (manual)
+	@$(GO) run ./scripts/gates mcpb-manifest $(VERSION)
