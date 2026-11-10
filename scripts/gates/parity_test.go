@@ -34,7 +34,9 @@ var parityRepoRoot = func() string {
 	return root
 }()
 
-// parityRepo is the repository's own parity inputs, as text.
+// parityRepo is the repository's own parity inputs, as text, CRLF read as
+// LF: a Windows checkout writes CRLF, and the rows' edits are LF.
+// TestParityGate reads the files as checked out.
 func parityRepo(t *testing.T) map[string]string {
 	t.Helper()
 	files := map[string]string{}
@@ -43,7 +45,7 @@ func parityRepo(t *testing.T) map[string]string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files[f] = string(data)
+		files[f] = strings.ReplaceAll(string(data), "\r\n", "\n")
 	}
 	return files
 }
