@@ -20,8 +20,13 @@ func isolateGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
 	}
+	config := t.TempDir()
+	// A gate's go command keeps telemetry under XDG_CONFIG_HOME on Linux and
+	// can still be writing when the temporary directory is removed; mode
+	// "off" stops it (https://go.dev/doc/telemetry#config).
+	put(t, config, "go/telemetry/mode", "off")
 	for k, v := range map[string]string{"GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1",
-		"XDG_CONFIG_HOME": t.TempDir(), "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.com",
+		"XDG_CONFIG_HOME": config, "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.com",
 		"GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.com",
 		// Command-scope pairs, which every config file yields to:
 		// https://git-scm.com/docs/git-config#Documentation/git-config.txt-GITCONFIGCOUNT
