@@ -20,40 +20,49 @@ or the auth wiring.
 
 ## Hard rules
 
-1. **Never commit anything internal.** No organization names, space or
-   message ids, account emails, Cloud project ids, OAuth client ids or
-   secrets, and no content from real conversations: not in fixtures,
-   commit messages or logs. A made-up id says so: `spaces/AAAAspace1`,
-   never `spaces/AAAQ`. `internal/leakcheck` fails the build (D-04).
-2. **Never write to stdout outside `main`.** Stdout carries only MCP
-   JSON-RPC frames, and logs go to stderr through `slog` (D-02).
-   forbidigo holds it, with `scripts/` excluded.
-3. **Never log the payload**: message text, addresses, display names,
-   tokens or search terms. Method, tool, resource id, outcome and
-   duration are fine (D-03).
-4. **Never alter what `send_message` posts.** No prefix, no suffix
+1. **Keep everything internal out of commits**, because the repository
+   is public. That means organization names, space or message ids,
+   account emails, Cloud project ids, OAuth client ids, secrets and
+   content from real conversations, in fixtures, commit messages and
+   committed logs alike. A made-up id says so: `spaces/AAAAspace1`, not
+   `spaces/AAAQ`. `internal/leakcheck` fails the build (D-04).
+2. **Write to stdout only in `main`.** Stdout carries only MCP JSON-RPC
+   frames, because a stray print corrupts the stream. Logs go to stderr
+   through `slog` (D-02). forbidigo holds it, with `scripts/` excluded.
+3. **Log the call, not the payload.** Method, tool, resource id, outcome
+   and duration are fine. Leave out message text, addresses, display
+   names, tokens and search terms, because a debug log is still a file
+   someone shares when asking for help (D-03).
+4. **Post exactly the text `send_message` is given**, with no prefix and
+   no suffix, because the message goes out under the person's name
    (D-14).
-5. **Never add a dry run that works by convention.** The flag puts the
-   call on a context `internal/gchat` refuses to write under (D-09).
-6. **Never register a tool outside `register`** (D-10). Never make a
-   risky variant an argument: it is a tool of its own (D-16), and so is
-   every administrator call (D-28). The server asks the person nothing
+5. **Enforce a dry run in `internal/gchat`, not by convention.** The
+   flag puts the call on a context `internal/gchat` refuses to write
+   under, because a forgotten preview branch posts for real (D-09).
+6. **Register every tool through `register`** (D-10). Give a risky
+   variant its own tool rather than an argument (D-16), and every
+   administrator call its own tool too (D-28), because a remembered
+   approval covers a whole tool. The server asks the person nothing
    (D-15), and the `requiresUserInteraction` mark stays on the tools
    D-25 names.
-7. **Never send the same JSON twice in a reply.** `structuredContent`
-   follows the output schema, and `content` is a readable rendering
-   (D-13).
-8. **Never import `google.golang.org/api`.** Extend the wire types in
-   `internal/gchat` (D-05).
-9. **Never rename a released tool or drop an output field**, nor change
-   a resource template's URI. `scripts/gates schema-diff` fails on one;
-   adding is fine (D-07).
-10. **Never commit to `main` or push.** Work on a branch; the owner
-    pushes.
-11. **Never adopt a belief about Google without a primary source.**
-    Record what you verified, or found wrong, in the comment at the line
-    that depends on it, with the source link and the `make live` step
-    that checks it.
+7. **Send the JSON once in a reply, beside a readable rendering.**
+   `structuredContent` follows the output schema, and `content` renders
+   the same facts as text. Neither half can be dropped. Keep the JSON
+   out of `content`, because the JSON in both halves spends the model's
+   context twice (D-13).
+8. **Extend the wire types in `internal/gchat` rather than importing
+   `google.golang.org/api`**, because that package drags in gRPC and
+   telemetry for a handful of JSON calls (D-05).
+9. **Keep a released tool's name and output fields, and a resource
+   template's URI**, because clients, saved permission rules and models
+   address and read them by name or URI. `scripts/gates schema-diff`
+   fails on a rename, a dropped field or a changed URI; adding is fine
+   (D-07).
+10. **Commit on a branch, not `main`, and leave pushing to the owner.**
+11. **Back every belief about Google with a primary source.** Record
+    what you verified, or found wrong, in the comment at the line that
+    depends on it, with the source link and the `make live` step that
+    checks it.
 
 ## Definition of done
 
@@ -64,7 +73,7 @@ or the auth wiring.
 - `/simplify` and `/code-review medium` have run. A fixed finding is one
   line in the commit body. A declined one goes in the PR body, or
   becomes a present-tense constraint comment at the line it protects.
-  Never write findings into `docs/`.
+  Keep findings out of `docs/`.
 - The schema diff has been read for anything breaking.
 - Anything touching the write path or an API response shape has had a
   `make live` run. A release also needs `make api-diff`
@@ -82,13 +91,13 @@ or the auth wiring.
 - **A forbidigo settings block that fails to load leaves forbidigo on
   its defaults**, still firing and looking right. Check the message
   text when you verify it.
-- **Do not write a count into a doc** unless a gate checks it.
-- **Never delete a decision or reuse an ID.** Supersede or deprecate
-  it, and take the next ID from the file's `Next ID:` line.
+- **Write a count into a doc only when a gate checks it.**
+- **Supersede or deprecate a decision rather than deleting it.** Take
+  the next ID from the file's `Next ID:` line rather than reusing one.
 
 ## Writing
 
 Plain and short, everywhere: lead with the outcome, one idea per
 sentence, no narration of the investigation. History goes in commit
-messages. The CHANGELOG rules in `CONTRIBUTING.md` are not optional,
+messages. Follow the CHANGELOG rules in `CONTRIBUTING.md` exactly,
 because `release.yml` lifts the section verbatim into the release notes.
