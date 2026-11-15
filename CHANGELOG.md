@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Security
+
+- Built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054) in `net/http`, which `govulncheck` found reachable: an HTTP/1 server could crash on a header race.
+
 ## [9.1.2] - 2026-11-03
 
 ### Added

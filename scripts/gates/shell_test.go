@@ -158,7 +158,7 @@ func TestGoValueFlagsAreTheFlagsTheHelpGivesAValue(t *testing.T) {
 		}
 	}
 	// The help leaves out three debug flags that take a value
-	// (https://github.com/golang/go/blob/go1.27.3/src/cmd/go/internal/work/build.go#L358-L361).
+	// (https://github.com/golang/go/blob/go1.27.4/src/cmd/go/internal/work/build.go#L358-L361).
 	for _, name := range []string{"debug-actiongraph", "debug-runtime-trace", "debug-trace"} {
 		value[name] = true
 	}

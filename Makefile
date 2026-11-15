@@ -55,10 +55,11 @@ test: ## Unit tests with race detector and coverage
 # LEAKCHECK_HISTORY scans the commits a push would add, which the tree
 # scan cannot see: an identifier committed and edited out later is still
 # published. "all" widens it to every commit, for deciding whether the
-# published past needs rewriting.
+# published past needs rewriting. -count=1 because the test cache cannot
+# see a new commit and would replay a pass from before it.
 .PHONY: leaks-history
 leaks-history: ## Nothing identifying a real account in the commits a push would add
-	LEAKCHECK_HISTORY=1 $(GO) test ./internal/leakcheck/ -run TestTheHistoryIsClean -v
+	LEAKCHECK_HISTORY=1 $(GO) test -count=1 ./internal/leakcheck/ -run TestTheHistoryIsClean -v
 
 .PHONY: tidy
 tidy: ## go.mod and go.sum are what `go mod tidy` would write
