@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.1.3] - 2026-11-15
+
 ### Security
 
 - Built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054) in `net/http`, which `govulncheck` found reachable: an HTTP/1 server could crash on a header race.
@@ -854,7 +856,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.2...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.3...HEAD
+[9.1.3]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.2...v9.1.3
 [9.1.2]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...v9.1.2
 [9.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...v9.1.1
 [9.1.0]: https://github.com/mmedum/google-chat-mcp/compare/v9.0.0...v9.1.0
