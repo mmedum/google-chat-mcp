@@ -40,7 +40,7 @@ jobs:
           # A build never pushes, so the token has no business staying
           # in .git/config where a later step could read it.
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
       - run: go build ./...
@@ -65,7 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
       - run: git fetch --no-tags origin main:refs/remotes/origin/main
@@ -84,7 +84,7 @@ jobs:
           # A build never pushes, so the token has no business staying
           # in .git/config where a later step could read it.
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
       - name: gofmt
@@ -127,7 +127,7 @@ jobs:
           # gitleaks scans HEAD's whole history, so a shallow clone would
           # hide a credential a commit added and a later one removed.
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
           # A cache of its own, keyed by the Makefile that pins these tools
@@ -165,7 +165,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
       - name: schema change acknowledged
@@ -183,7 +183,7 @@ jobs:
           # in .git/config where a later step could read it.
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
         with:
           go-version-file: go.mod
       # Built as `make build` builds it, which is how schema-ack builds
