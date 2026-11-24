@@ -153,6 +153,11 @@ func init() {
 			arity: 1, maxArity: 2, args: "[BINARY]", runsIn: inCheck,
 			doc: "the released tool surface, which a change may add to and never drop from",
 		},
+		"changelog": {
+			run:   func(a []string, o, e io.Writer) int { return changelogEntryCommand(a[1], a[2], o, e) },
+			arity: 3, args: "BASE HEAD", runsIn: inPR,
+			doc: "a change to what users get adds an entry under [Unreleased], unless it cuts a release or only bumps required modules, the MCP SDK excepted",
+		},
 		"schema-ack": {
 			run:   func(a []string, o, e io.Writer) int { return schemaAckCommand(a[1], a[2], o, e) },
 			arity: 3, args: "BASE HEAD", runsIn: inPR,

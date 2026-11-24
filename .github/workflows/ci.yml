@@ -150,8 +150,9 @@ jobs:
         run: make actionlint
 
   # A pull request that changes the tool surface names each changed item
-  # in a commit footer. It measures from the merge-base, which only a
-  # pull request has, so it is not in `make check`.
+  # in a commit footer, and one that changes what users get adds a
+  # CHANGELOG entry. Both measure from the merge-base, which only a pull
+  # request has, so they are not in `make check`.
   pr:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -170,6 +171,8 @@ jobs:
           go-version-file: go.mod
       - name: schema change acknowledged
         run: go run ./scripts/gates schema-ack "$PR_BASE_REF" "$PR_HEAD"
+      - name: CHANGELOG entry
+        run: go run ./scripts/gates changelog "$PR_BASE_REF" "$PR_HEAD"
 
   # The gates that need a built binary: it has to speak MCP over stdio
   # without credentials, keep its tool surface, and match the docs.
