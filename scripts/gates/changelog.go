@@ -1,17 +1,21 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
 )
 
-// changelogBuild are the files outside staleness's shipped set that
-// change what is released: the bundle's launcher and the release build.
+// changelogBuild are the files outside the shipped set that change what
+// is released: the bundle's launcher and the release build.
 var changelogBuild = []string{filepath.ToSlash(launcherSource), ".goreleaser.yaml"}
 
 // changelogNotedModules need an entry whenever their version moves: the
@@ -80,9 +84,9 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 	// counts, a bump of the MCP SDK included.
 	goModCounted := slices.Contains(watched, "go.mod")
 	if n <= 0 && texts[0] == texts[1] && !goModCounted {
-		// Only the newest commit's footer counts: it is the one that ends
-		// the squashed commit's message, where staleness reads it later.
-		message, err := git("log", "-1", "--format=%B", head)
+		// Only the newest commit's footer counts, since it ends the squashed
+		// commit's message; a merge from the base branch is not that commit.
+		message, err := git("log", "-1", "--no-merges", "--format=%B", head)
 		if err != nil {
 			return err
 		}
@@ -106,9 +110,9 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 
 // changelogWatched are the changed files that change what users get.
 // bumpOnly says go.mod changed and was left out as a dependency bump. The
-// binary's packages are read from the checkout for the host's platform, as
-// staleness reads them, so the checkout has to be head or CI's merge commit
-// of it, and a package only another platform imports is not counted.
+// binary's packages are read from the checkout for the host's platform, so
+// the checkout has to be head or CI's merge commit of it, and a package only
+// another platform imports is not counted.
 func changelogWatched(base, head string, files []string) (watched []string, bumpOnly bool, err error) {
 	var shipped *shippedSource
 	for _, f := range files {
@@ -200,4 +204,105 @@ func releaseCut(base, head changelogDoc) string {
 		}
 	}
 	return ""
+}
+
+// shippedSource is what the binary is built from in this module, on this
+// platform: its package directories and the files they embed, each
+// slash-separated from the module root.
+type shippedSource struct{ dirs, embeds map[string]bool }
+
+// has reports whether a file is one users get: any file but a test in one
+// of the binary's package directories, an embedded file, or the bundle's
+// manifest. The README and LICENSE the bundle carries are docs, so they
+// count for nothing. Every file of a package directory counts: the go
+// command builds a package from assembly, a .syso and C as well as Go
+// (`go help filetype`). A package counts by its directory, so a file of
+// it another platform builds counts, and so does one removed from it. The
+// packages are the host's, in the checkout: a package only another
+// platform's files import, or a directory the head removes whole, is not
+// one.
+func (s *shippedSource) has(file string) bool {
+	return file == filepath.ToSlash(manifestSource) || s.embeds[file] ||
+		!strings.HasSuffix(file, "_test.go") && s.dirs[path.Dir(file)]
+}
+
+// listShipped asks the go command what ./cmd/... is built from in the
+// module at dir. A package of another module is a dependency, which
+// go.mod's require lines name.
+func listShipped(dir string) (*shippedSource, error) {
+	const what = "go list -deps ./cmd/..."
+	cmd := exec.Command("go", "list", "-deps", "-json=Dir,EmbedFiles,Module", "./cmd/...")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	switch {
+	case errors.As(err, &exit):
+		return nil, fmt.Errorf("%s: %s", what, strings.TrimSpace(string(exit.Stderr)))
+	case err != nil:
+		return nil, fmt.Errorf("%s: %w", what, err)
+	}
+	s := &shippedSource{dirs: map[string]bool{}, embeds: map[string]bool{}}
+	for dec := json.NewDecoder(bytes.NewReader(out)); dec.More(); {
+		var p struct {
+			Dir        string
+			EmbedFiles []string
+			Module     *struct {
+				Main bool
+				Dir  string
+			}
+		}
+		if err := dec.Decode(&p); err != nil {
+			return nil, fmt.Errorf("%s: %w", what, err)
+		}
+		if p.Module == nil || !p.Module.Main {
+			continue
+		}
+		rel, err := filepath.Rel(p.Module.Dir, p.Dir)
+		if err != nil {
+			return nil, err
+		}
+		pkg := filepath.ToSlash(rel)
+		s.dirs[pkg] = true
+		for _, f := range p.EmbedFiles {
+			s.embeds[path.Join(pkg, f)] = true
+		}
+	}
+	// An empty listing is not reading the binary, and would excuse every
+	// change.
+	if len(s.dirs) == 0 {
+		return nil, fmt.Errorf("%s named no package of this module, so it is not reading the binary", what)
+	}
+	return s, nil
+}
+
+// goModBuildLines is a go.mod's lines, each trimmed and the blank ones
+// dropped, without its require and tool directives, a block's included
+// (https://go.dev/ref/mod#go-mod-file-require). A tool directive adds a
+// package `go tool` runs (https://go.dev/ref/mod#go-mod-file-tool). ( is a
+// token of its own, so `require(` opens a block as `require (` does, and
+// `require ()` is an empty block that opens nothing
+// (https://go.dev/ref/mod#go-mod-file-lexical).
+func goModBuildLines(text string) string {
+	var kept []string
+	inBlock := false
+	for _, line := range strings.Split(text, "\n") {
+		// A comment may follow any token, so `require ( // direct` still
+		// opens a block (https://go.dev/ref/mod#go-mod-file-lexical).
+		code, _, _ := strings.Cut(line, "//")
+		fields := strings.Fields(code)
+		verb, paren := "", false
+		if len(fields) > 0 {
+			verb, _, paren = strings.Cut(fields[0], "(")
+		}
+		switch {
+		case inBlock:
+			inBlock = len(fields) == 0 || !strings.HasPrefix(fields[0], ")")
+		case len(fields) == 0:
+		case verb == "require" || verb == "tool":
+			inBlock = paren && fields[0] == verb+"(" || len(fields) == 2 && fields[1] == "("
+		default:
+			kept = append(kept, strings.Join(fields, " "))
+		}
+	}
+	return strings.Join(kept, "\n")
 }

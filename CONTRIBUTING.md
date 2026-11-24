@@ -155,19 +155,18 @@ Every user-visible change gets an entry under `## [Unreleased]` in
 `CHANGELOG.md`, in the same pull request that makes the change. Leave out
 changes only contributors see, unless they must act on them.
 
-- **An entry is a bullet at the margin.** The staleness gate counts
-  nothing else, and nothing in fenced code. It wants one when a commit
-  since the newest release tag changes what the binary is built from,
-  the bundle's manifest or launcher, `.goreleaser.yaml`, or go.mod's
-  lines other than `require` and `tool`. On a pull request that makes
-  such a change, or bumps the MCP SDK, the `changelog` gate wants at
-  least one entry more under `[Unreleased]` than the merge-base holds.
-  A bump of any other module needs none; one that fixes an advisory is
-  found at release time (`docs/release.md`).
+- **An entry is a bullet at the margin.** The `changelog` gate counts
+  nothing else, and nothing in fenced code. On a pull request that
+  changes what the binary is built from, the bundle's manifest or
+  launcher, `.goreleaser.yaml`, go.mod's lines other than `require` and
+  `tool`, or the MCP SDK's version, it wants at least one entry more
+  under `[Unreleased]` than the merge-base holds. A bump of any other
+  module needs none; one that fixes an advisory is found at release time
+  (`docs/release.md`).
 - **A change nobody using the server can see**, such as a refactor, ends
   a commit's message with a footer that says why:
-  `Changelog: none, the text is unchanged line for line`. Both gates
-  accept it from the newest commit, whose footer ends the squashed
+  `Changelog: none, the text is unchanged line for line`. The gate
+  accepts it from the newest commit, whose footer ends the squashed
   commit's message, so put it there, and split a user-visible change
   into its own pull request. The footer waives nothing when the
   CHANGELOG changed, when go.mod changed outside its require lines, or
