@@ -734,7 +734,8 @@ func TestGetMemberNamesWhatItIs(t *testing.T) {
 func TestListMembersPrefersTheAddressChatSent(t *testing.T) {
 	page := `{"memberships":[
 	  {"name":"spaces/AAAAspace1/members/AAAAmember1","state":"JOINED","member":{"name":"users/AAAAuser1","displayName":"Jane Doe","type":"HUMAN","email":"jane.doe@example.com"}},
-	  {"name":"spaces/AAAAspace1/members/AAAAmember2","state":"JOINED","member":{"name":"users/AAAAuser2","displayName":"John Doe","type":"HUMAN"}}
+	  {"name":"spaces/AAAAspace1/members/AAAAmember2","state":"JOINED","member":{"name":"users/AAAAuser2","displayName":"John Doe","type":"HUMAN"}},
+	  {"name":"spaces/AAAAspace1/members/AAAAmember3","state":"JOINED","member":{"name":"users/AAAAapp1","displayName":"Helper","type":"BOT"}}
 	]}`
 	var asked []string
 	lookup := people("john.doe@example.com", "John D.")
@@ -754,7 +755,7 @@ func TestListMembersPrefersTheAddressChatSent(t *testing.T) {
 		t.Errorf("second = %+v, want the directory's answer", got[1])
 	}
 	if len(asked) != 1 || asked[0] != "people/AAAAuser2" {
-		t.Errorf("People was asked about %v, want only the member Chat left empty", asked)
+		t.Errorf("People was asked about %v, want only the person Chat left empty, never the Chat app", asked)
 	}
 }
 

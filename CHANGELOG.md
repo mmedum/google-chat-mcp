@@ -13,7 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Fixed
 
-- A write to a group chat with a Chat app in it is no longer refused as `[stale]`; `list_members` and `get_member` report an app as `kind: BOT` (#91).
+- Writes to a group chat with a Chat app in it are no longer refused as `[stale]`; member tools report an app as `kind: BOT` (#91).
 
 ## [9.1.3] - 2026-11-15
 

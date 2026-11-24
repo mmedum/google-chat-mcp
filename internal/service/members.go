@@ -164,10 +164,10 @@ func (s *Service) ListMembers(ctx context.Context, in ListMembersInput) (*Member
 	for _, m := range resp.Memberships {
 		row, known := memberRow(m, people, groups)
 		if !known {
-			// Neither a person nor a group: Google has added a third
-			// kind of member. Dropping the row is the only honest
-			// answer, but a short list reads as a small space, so the
-			// count says otherwise.
+			// Neither a person, a Chat app nor a group: Google has
+			// added another kind of member. Dropping the row is the
+			// only honest answer, but a short list reads as a small
+			// space, so the count says otherwise.
 			unparsed++
 			continue
 		}
@@ -320,7 +320,7 @@ func memberRow(m gchat.Membership, people map[string]directory.Person, groups ma
 		Affiliation: narrowEnum(m.Affiliation, affiliations, ""),
 	}
 	switch {
-	case m.Member != nil && m.Member.Type == gchat.MemberTypeBot:
+	case m.Member.IsBot():
 		row.Kind = KindBot
 		row.Name = m.Member.Name
 		row.DisplayName = m.Member.DisplayName
