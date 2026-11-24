@@ -462,8 +462,8 @@ func stalenessNewestRelease(tags []string) string {
 // at dir changes what users get: a file shippedSource has, a file in
 // changelogBuild, or go.mod outside its require and tool lines. Commits are
 // compared, as CI sees them, one at a time: a commit that says
-// `Changelog: none, <why>` counts for nothing, as the changelog gate reads
-// it. A merge commit brings in commits that are read on their own.
+// `Changelog: none, <why>` counts only for a go.mod change, which no footer
+// waives, as the changelog gate reads it. A merge commit brings in commits that are read on their own.
 func shippedChangedSince(dir, since string) (bool, error) {
 	revs, err := git("-C", dir, "rev-list", "--no-merges", since+"..HEAD")
 	if err != nil {
@@ -475,9 +475,7 @@ func shippedChangedSince(dir, since string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if changelogWaiver([]string{message}) != "" {
-			continue
-		}
+		waived := changelogWaiver([]string{message}) != ""
 		out, err := git("-C", dir, "diff", rev+"^", rev, "--name-only", "--no-renames", "-z")
 		if err != nil {
 			return false, err
@@ -490,6 +488,9 @@ func shippedChangedSince(dir, since string) (bool, error) {
 					return changed, err
 				}
 			default:
+				if waived {
+					continue
+				}
 				if shipped == nil {
 					if shipped, err = listShipped(dir); err != nil {
 						return false, err

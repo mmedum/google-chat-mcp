@@ -57,6 +57,12 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 			message: "refactor\n\nChangelog: none, the text is unchanged line for line"},
 		{name: "a Changelog: None footer in another case", files: code, message: "refactor\n\nChangelog: None, a rename"},
 		{name: "a Changelog: none footer with no reason", files: code, message: "refactor\n\nChangelog: none", refused: true},
+		{name: "a footer whose word ends with a period", files: code, message: "refactor\n\nChangelog: none. internal rename only"},
+		{name: "a footer in the reference form", files: code, message: "refactor\n\nChangelog #none, a rename", refused: true},
+		{name: "a footer beside an entry under a released heading", message: "refactor\n\nChangelog: none, a rename",
+			files: withEntry(code, clUnreleased+strings.Replace(clReleased, "- The first tool.\n", "- The first tool.\n- Late.\n", 1)), refused: true},
+		{name: "a bump of the MCP SDK with a footer", prep: map[string]string{"go.mod": gomod + sdk}, message: "refactor\n\nChangelog: none, a rename",
+			files: map[string]string{"go.mod": gomod + strings.Replace(sdk, "v1.8.0", "v1.9.0", 1)}, refused: true},
 		{name: "a Changelog footer whose word only starts with none", files: code,
 			message: "change\n\nChangelog: nonetheless user-visible", refused: true},
 		{name: "a shipped file whose name git quotes", files: map[string]string{"internal/a/naïve notes.md": "x\n"}, refused: true},
@@ -126,7 +132,8 @@ func TestGoModBuildLinesReadsPastAnEmptyBlock(t *testing.T) {
 
 // staleness reads the waiver the changelog gate reads: after a release, a
 // commit that says `Changelog: none, <why>` leaves [Unreleased] free to be
-// empty, and a later commit without it does not.
+// empty, and a later commit without it does not. No footer waives a go.mod
+// change that counts.
 func TestStalenessHonorsTheChangelogWaiver(t *testing.T) {
 	base := stalenessRepo(t)
 	commit := func(dir, message string) {
@@ -142,5 +149,18 @@ func TestStalenessHonorsTheChangelogWaiver(t *testing.T) {
 	commit(dir, "a user-visible change")
 	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
 		t.Errorf("after a commit without the waiver, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
+	}
+
+	// No footer waives a go.mod change staleness counts.
+	dir = stalenessCopy(t, base)
+	raw, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stalenessWrite(t, dir, map[string]string{"go.mod": strings.Replace(string(raw), "go 1.21", "go 1.22", 1)})
+	stalenessGit(t, dir, "add", "-A")
+	stalenessGit(t, dir, "commit", "-q", "-m", "build\n\nChangelog: none, only the go line")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
+		t.Errorf("after a waived go line change, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
 	}
 }

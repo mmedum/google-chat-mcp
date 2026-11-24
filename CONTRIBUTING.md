@@ -167,9 +167,11 @@ changes only contributors see, unless they must act on them.
 - **A change nobody using the server can see**, such as a refactor, ends
   a commit's message with a footer that says why:
   `Changelog: none, the text is unchanged line for line`. Both gates
-  accept it. It covers the whole pull request, which lands as one
-  squashed commit, so split a user-visible change into its own pull
-  request.
+  accept it. Every commit in the pull request counts, and it lands as
+  one squashed commit, so split a user-visible change into its own pull
+  request. The footer waives nothing when the CHANGELOG changed or go.mod
+  changed in a way the gates count, so a fix to a released entry goes in
+  its own pull request too.
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   set and nothing else: Added, Changed, Deprecated, Removed, Fixed and
   Security, in that order. Not `Internal`, not `Documented`, not a
