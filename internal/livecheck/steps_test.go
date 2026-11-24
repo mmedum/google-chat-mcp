@@ -433,6 +433,20 @@ var steps = []step{
 		})
 	}},
 
+	{"a thread is marked read", "mark_thread_read", func(d *driver) {
+		if d.thread == "" {
+			d.t.Skip("no thread id was returned")
+		}
+		var out struct {
+			Name         string `json:"name"`
+			LastReadTime string `json:"last_read_time"`
+		}
+		d.into(d.must("mark_thread_read", map[string]any{"space_id": d.space, "thread_name": d.thread}), &out)
+		if !strings.HasSuffix(out.Name, "/threadReadState") || out.LastReadTime == "" {
+			d.t.Errorf("mark_thread_read recorded %s at %s, want the thread read state Google recorded", d.redact(out.Name), d.redact(out.LastReadTime))
+		}
+	}},
+
 	{"an edit replaces the body", "update_message", func(d *driver) {
 		d.must("update_message", map[string]any{
 			"message_name": d.posted, "text": liveEditBody,

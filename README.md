@@ -236,6 +236,7 @@ and the tools that move files say so.
 | `get_space_read_state` | How far you have read in a space | `chat.users.readstate.readonly` |
 | `get_thread_read_state` | How far you have read in a thread | `chat.users.readstate.readonly` |
 | `mark_space_read` | Clear a space's unread badge, for you only | `chat.users.readstate` |
+| `mark_thread_read` | Mark a thread's replies read, for you only | `chat.users.readstate` |
 | `mark_space_unread` | Rewind your read mark, for you only | `chat.users.readstate` |
 | `list_space_events` | What changed in a space over the last 28 days | the read scope of each event type asked for |
 | `get_space_event` | One of those changes by resource name | `chat.spaces.readonly` |
@@ -304,7 +305,7 @@ client that includes resources in its context:
 
 ## Safety
 
-- **`dry_run` on 36 write tools.** It returns the request body that
+- **`dry_run` on 37 write tools.** It returns the request body that
   would have been sent, and the call cannot write: the flag puts the
   request on a context the HTTP client refuses to write under, so a
   tool that forgot its own preview branch fails loudly instead of

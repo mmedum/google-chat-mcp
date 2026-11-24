@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Added
+
+- `mark_thread_read` marks a thread's replies read for you; `mark_space_read` clears only a space's top-level messages (#95).
+
 ### Changed
 
 - For contributors: a pull request that changes what ships adds a CHANGELOG entry, or a `Changelog: none` footer; the `changelog` gate checks it.

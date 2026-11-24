@@ -44,6 +44,7 @@ import (
 var excusedOptions = map[string]string{
 	"add_member.space_display_name":                        "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
 	"mark_space_read.space_display_name":                   "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
+	"mark_thread_read.space_display_name":                  "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
 	"mark_space_unread.space_display_name":                 "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
 	"update_space.space_display_name":                      "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",
 	"update_space_notification_setting.space_display_name": "sent on every call: driver.try fills in the scratch space's tracked name, and send_message's wrong-name step holds the check",

@@ -420,7 +420,7 @@ func isNameRune(r rune) bool {
 // space_id. TestEveryToolThatNamesASpaceIsFilledIn holds it to the
 // surface.
 var namesItsSpace = map[string]bool{
-	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true,
+	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true, "mark_thread_read": true,
 	"move_space_to_section": true, "send_message": true, "update_space": true,
 	"update_space_notification_setting": true, "upload_attachment": true,
 	"admin_add_member": true, "admin_update_space": true, "admin_update_space_permissions": true,

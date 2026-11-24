@@ -263,6 +263,48 @@ func (s *Service) setReadState(ctx context.Context, in MarkReadInput, at time.Ti
 	return out, nil
 }
 
+// MarkThreadReadInput names a thread to mark read.
+type MarkThreadReadInput struct {
+	Space  string
+	Thread string
+	// SpaceDisplayName says which space Space is, as a person would name
+	// it; checkSpace holds it to the space before anything is written.
+	SpaceDisplayName string
+	DryRun           bool
+}
+
+// MarkThreadRead marks a thread as read up to now. A space's read mark
+// covers only its top-level messages, so a thread's replies need their
+// own. Google coerces a future time to the request's own, so "now" says
+// "all of it".
+func (s *Service) MarkThreadRead(ctx context.Context, in MarkThreadReadInput) (*MarkReadResult, error) {
+	space, err := requireSpace(in.Space)
+	if err != nil {
+		return nil, err
+	}
+	thread, err := requireThread(space, in.Thread)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
+		return nil, err
+	}
+	at := time.Now()
+	out := &MarkReadResult{LastReadTime: at, DryRun: in.DryRun}
+	if in.DryRun {
+		return out, nil
+	}
+	got, err := s.client.UpdateThreadReadState(ctx, thread, at.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, Classify(err)
+	}
+	out.Name = got.Name
+	if recorded := parseTime(got.LastReadTime); !recorded.IsZero() {
+		out.LastReadTime = recorded
+	}
+	return out, nil
+}
+
 // Notification settings, narrowed to Google's own vocabulary.
 var (
 	notificationSettings = []string{"ALL", "MAIN_CONVERSATIONS", "FOR_YOU", "OFF"}

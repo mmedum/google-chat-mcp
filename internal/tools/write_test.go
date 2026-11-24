@@ -95,6 +95,7 @@ func TestEveryDryRunWritesNothing(t *testing.T) {
 		{"pin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
 		{"unpin_message", map[string]any{"message_name": "spaces/A/messages/1"}, false},
 		{"mark_space_read", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup"}, true},
+		{"mark_thread_read", map[string]any{"space_id": "spaces/A", "thread_name": "spaces/A/threads/T", "space_display_name": "Team standup"}, true},
 		{"mark_space_unread", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "from_time": "2026-01-02T03:04:05Z"}, true},
 		{"update_space_notification_setting", map[string]any{"space_id": "spaces/A", "space_display_name": "Team standup", "mute_setting": "MUTED"}, true},
 		{"set_availability", map[string]any{"state": "AWAY"}, false},

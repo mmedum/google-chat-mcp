@@ -106,6 +106,26 @@ func (c *Client) GetThreadReadState(ctx context.Context, thread string) (*Thread
 	return &out, err
 }
 
+// UpdateThreadReadState moves the caller's read mark in a thread. thread
+// is "spaces/{s}/threads/{t}" and lastReadTime is RFC 3339. Google's rule:
+// a time at or after the latest message's create time marks the thread
+// read, and a future time is coerced to the request's own time.
+// https://chat.googleapis.com/$discovery/rest?version=v1
+// (users.spaces.threads.updateThreadReadState); live step "a thread is
+// marked read".
+func (c *Client) UpdateThreadReadState(ctx context.Context, thread, lastReadTime string) (*ThreadReadState, error) {
+	var out ThreadReadState
+	err := c.do(ctx, request{
+		method: "PATCH",
+		name:   MeSpaces + "/" + threadPath(thread),
+		path:   "threadReadState",
+		query:  url.Values{"updateMask": {"lastReadTime"}},
+		body:   &ThreadReadState{LastReadTime: lastReadTime},
+		scope:  scopes.ReadState,
+	}, &out)
+	return &out, err
+}
+
 // GetSpaceNotificationSetting returns the caller's notification choice
 // for a space. space is "spaces/{id}".
 func (c *Client) GetSpaceNotificationSetting(ctx context.Context, space string) (*SpaceNotificationSetting, error) {
