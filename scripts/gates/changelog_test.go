@@ -116,10 +116,31 @@ func TestGoModBuildLinesReadsPastAnEmptyBlock(t *testing.T) {
 	if goModBuildLines(base) == goModBuildLines(strings.Replace(base, "./a", "./b", 1)) {
 		t.Error("a replace after `require ()` was swallowed")
 	}
-	for _, opener := range []string{"require (", "require("} {
+	for _, opener := range []string{"require (", "require(", "require ( // direct"} {
 		gomod := "module m\n\n" + opener + "\n\texample.com/a v1.0.0\n)\n"
 		if goModBuildLines(gomod) != goModBuildLines(strings.Replace(gomod, "v1.0.0", "v1.1.0", 1)) {
 			t.Errorf("a bump inside `%s` counted as a build change", opener)
 		}
+	}
+}
+
+// staleness reads the waiver the changelog gate reads: after a release, a
+// commit that says `Changelog: none, <why>` leaves [Unreleased] free to be
+// empty, and a later commit without it does not.
+func TestStalenessHonorsTheChangelogWaiver(t *testing.T) {
+	base := stalenessRepo(t)
+	commit := func(dir, message string) {
+		stalenessWrite(t, dir, map[string]string{"internal/a/b.go": "package a\n\n// " + message + "\n"})
+		stalenessGit(t, dir, "add", "-A")
+		stalenessGit(t, dir, "commit", "-q", "-m", message)
+	}
+	dir := stalenessCopy(t, base)
+	commit(dir, "refactor\n\nChangelog: none, a rename")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 0 {
+		t.Errorf("after a waived commit, checkChangelog() = %q, %v; want no problem", got, err)
+	}
+	commit(dir, "a user-visible change")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
+		t.Errorf("after a commit without the waiver, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
 	}
 }
