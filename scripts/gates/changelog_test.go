@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 		name string
 		// prep is committed on main before the topic branches off.
 		prep, files map[string]string
+		message     string
 		refused     bool
 	}{
 		{name: "shipped code with an entry", files: withEntry(code, clWritten+clReleased)},
@@ -47,6 +49,16 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 			files: withEntry(code, strings.Replace(clWritten, "A second tool.", "A second tool, renamed.", 1)+clReleased), refused: true},
 		{name: "shipped code with a version heading and no entries under it",
 			files: withEntry(code, clUnreleased+clNextEmpty+clReleased), refused: true},
+		{name: "an entry under a new version heading, [Unreleased] empty before",
+			files: withEntry(code, clUnreleased+clNext+clReleased), refused: true},
+		{name: "the bundle's launcher with no entry", files: map[string]string{"packaging/mcpb/launch-linux.sh": "#!/bin/sh\n"}, refused: true},
+		{name: "the release build with no entry", files: map[string]string{".goreleaser.yaml": "version: 2\n"}, refused: true},
+		{name: "a refactor with a Changelog: none footer", files: code,
+			message: "refactor\n\nChangelog: none, the text is unchanged line for line"},
+		{name: "a Changelog: None footer in another case", files: code, message: "refactor\n\nChangelog: None, a rename"},
+		{name: "a Changelog: none footer with no reason", files: code, message: "refactor\n\nChangelog: none", refused: true},
+		{name: "a Changelog footer whose word only starts with none", files: code,
+			message: "change\n\nChangelog: nonetheless user-visible", refused: true},
 		{name: "a shipped file whose name git quotes", files: map[string]string{"internal/a/naïve notes.md": "x\n"}, refused: true},
 		{name: "a dependency bump", files: map[string]string{"go.mod": strings.Replace(gomod, "dep v1.0.0", "dep v1.1.0", 1)}},
 		{name: "a go line change", files: map[string]string{"go.mod": strings.Replace(gomod, "go 1.21", "go 1.22", 1)}, refused: true},
@@ -61,12 +73,17 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 				stalenessChange(t, dir, tc.prep)
 			}
 			stalenessGit(t, dir, "checkout", "-q", "-b", "topic")
-			stalenessChange(t, dir, tc.files)
+			stalenessWrite(t, dir, tc.files)
+			stalenessGit(t, dir, "add", "-A")
+			stalenessGit(t, dir, "commit", "-q", "-m", cmp.Or(tc.message, "change"))
 			// The base branch moves on with shipped code and its own entry;
 			// measured from the merge-base, neither is the topic's.
 			stalenessGit(t, dir, "checkout", "-q", "main")
 			stalenessChange(t, dir, map[string]string{"internal/a/c.go": "package a\n",
 				changelogPath: strings.Replace(clUnreleased, "## [Unreleased]\n\n", "## [Unreleased]\n\n- Main's own.\n\n", 1) + clReleased})
+			// The gate reads the binary's packages from the checkout, which
+			// CI has at the head.
+			stalenessGit(t, dir, "checkout", "-q", "topic")
 			var out strings.Builder
 			err := changelogEntry("main", "topic", &out)
 			var r refusal
@@ -89,5 +106,41 @@ func TestGoModNotedRequires(t *testing.T) {
 	want := []string{"github.com/modelcontextprotocol/go-sdk v1.8.0", "github.com/modelcontextprotocol/go-sdk v1.9.0"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("goModNotedRequires = %q, want %q", got, want)
+	}
+}
+
+// An empty `require ()` opens no block, so a replace after it is still
+// read; `require(` and `require (` each open one.
+func TestGoModBuildLinesReadsPastAnEmptyBlock(t *testing.T) {
+	const base = "module m\n\nrequire ()\n\nreplace example.com/a => ./a\n"
+	if goModBuildLines(base) == goModBuildLines(strings.Replace(base, "./a", "./b", 1)) {
+		t.Error("a replace after `require ()` was swallowed")
+	}
+	for _, opener := range []string{"require (", "require(", "require ( // direct"} {
+		gomod := "module m\n\n" + opener + "\n\texample.com/a v1.0.0\n)\n"
+		if goModBuildLines(gomod) != goModBuildLines(strings.Replace(gomod, "v1.0.0", "v1.1.0", 1)) {
+			t.Errorf("a bump inside `%s` counted as a build change", opener)
+		}
+	}
+}
+
+// staleness reads the waiver the changelog gate reads: after a release, a
+// commit that says `Changelog: none, <why>` leaves [Unreleased] free to be
+// empty, and a later commit without it does not.
+func TestStalenessHonorsTheChangelogWaiver(t *testing.T) {
+	base := stalenessRepo(t)
+	commit := func(dir, message string) {
+		stalenessWrite(t, dir, map[string]string{"internal/a/b.go": "package a\n\n// " + message + "\n"})
+		stalenessGit(t, dir, "add", "-A")
+		stalenessGit(t, dir, "commit", "-q", "-m", message)
+	}
+	dir := stalenessCopy(t, base)
+	commit(dir, "refactor\n\nChangelog: none, a rename")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 0 {
+		t.Errorf("after a waived commit, checkChangelog() = %q, %v; want no problem", got, err)
+	}
+	commit(dir, "a user-visible change")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
+		t.Errorf("after a commit without the waiver, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
 	}
 }

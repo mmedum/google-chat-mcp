@@ -69,7 +69,8 @@ or the auth wiring.
 - `make check` passes. On a pull request CI also runs `schema-ack`,
   which needs a commit footer naming each changed item of the tool
   surface, and `changelog`, which needs an entry under `[Unreleased]`
-  when what users get changes (`CONTRIBUTING.md`).
+  when what users get changes, or a `Changelog: none` footer
+  (`CONTRIBUTING.md`).
 - New behavior has tests.
 - `/simplify` and `/code-review medium` have run. A fixed finding is one
   line in the commit body. A declined one goes in the PR body, or

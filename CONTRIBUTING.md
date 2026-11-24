@@ -158,12 +158,18 @@ changes only contributors see, unless they must act on them.
 - **An entry is a bullet at the margin.** The staleness gate counts
   nothing else, and nothing in fenced code. It wants one when a commit
   since the newest release tag changes what the binary is built from,
-  the bundle manifest, or go.mod's lines other than `require` and `tool`.
-  On a pull request that makes such a change, or bumps the MCP SDK, the
-  `changelog` gate wants at least one entry more under `[Unreleased]`
-  than the merge-base holds. A bump of any other module needs
-  none; one that fixes an advisory is found at release time
-  (`docs/release.md`).
+  the bundle's manifest or launcher, `.goreleaser.yaml`, or go.mod's
+  lines other than `require` and `tool`. On a pull request that makes
+  such a change, or bumps the MCP SDK, the `changelog` gate wants at
+  least one entry more under `[Unreleased]` than the merge-base holds.
+  A bump of any other module needs none; one that fixes an advisory is
+  found at release time (`docs/release.md`).
+- **A change nobody using the server can see**, such as a refactor, ends
+  a commit's message with a footer that says why:
+  `Changelog: none, the text is unchanged line for line`. Both gates
+  accept it. It covers the whole pull request, which lands as one
+  squashed commit, so split a user-visible change into its own pull
+  request.
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   set and nothing else: Added, Changed, Deprecated, Removed, Fixed and
   Security, in that order. Not `Internal`, not `Documented`, not a

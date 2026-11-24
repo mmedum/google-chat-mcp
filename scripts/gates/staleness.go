@@ -458,31 +458,46 @@ func stalenessNewestRelease(tags []string) string {
 	return newest
 }
 
-// shippedChangedSince reports whether the commits since..HEAD of the
-// checkout at dir change what users get: a file shippedSource has, or
-// go.mod outside its require and tool lines. Commits are compared, as CI
-// sees them.
+// shippedChangedSince reports whether a commit since..HEAD of the checkout
+// at dir changes what users get: a file shippedSource has, a file in
+// changelogBuild, or go.mod outside its require and tool lines. Commits are
+// compared, as CI sees them, one at a time: a commit that says
+// `Changelog: none, <why>` counts for nothing, as the changelog gate reads
+// it. A merge commit brings in commits that are read on their own.
 func shippedChangedSince(dir, since string) (bool, error) {
-	out, err := git("-C", dir, "diff", since+"..HEAD", "--name-only", "--no-renames", "-z")
+	revs, err := git("-C", dir, "rev-list", "--no-merges", since+"..HEAD")
 	if err != nil {
 		return false, err
 	}
 	var shipped *shippedSource
-	for _, file := range strings.Split(out, "\x00") {
-		switch file {
-		case "":
-		case "go.mod":
-			if changed, err := goModChangedSince(dir, since); err != nil || changed {
-				return changed, err
-			}
-		default:
-			if shipped == nil {
-				if shipped, err = listShipped(dir); err != nil {
-					return false, err
+	for _, rev := range strings.Fields(revs) {
+		message, err := git("-C", dir, "log", "-1", "--format=%B", rev)
+		if err != nil {
+			return false, err
+		}
+		if changelogWaiver([]string{message}) != "" {
+			continue
+		}
+		out, err := git("-C", dir, "diff", rev+"^", rev, "--name-only", "--no-renames", "-z")
+		if err != nil {
+			return false, err
+		}
+		for _, file := range strings.Split(out, "\x00") {
+			switch file {
+			case "":
+			case "go.mod":
+				if changed, err := goModChangedBetween(dir, rev+"^", rev); err != nil || changed {
+					return changed, err
 				}
-			}
-			if shipped.has(file) {
-				return true, nil
+			default:
+				if shipped == nil {
+					if shipped, err = listShipped(dir); err != nil {
+						return false, err
+					}
+				}
+				if shipped.has(file) || slices.Contains(changelogBuild, file) {
+					return true, nil
+				}
 			}
 		}
 	}
@@ -558,15 +573,15 @@ func listShipped(dir string) (*shippedSource, error) {
 	return s, nil
 }
 
-// goModChangedSince reports whether go.mod at HEAD in the checkout at dir
-// differs from since's outside its require and tool lines: a go, toolchain
+// goModChangedBetween reports whether go.mod at to in the checkout at dir
+// differs from from's outside its require and tool lines: a go, toolchain
 // or replace line changes what the binary is built with.
-func goModChangedSince(dir, since string) (bool, error) {
-	before, err := git("-C", dir, "show", since+":go.mod")
+func goModChangedBetween(dir, from, to string) (bool, error) {
+	before, err := git("-C", dir, "show", from+":go.mod")
 	if err != nil {
 		return false, err
 	}
-	after, err := git("-C", dir, "show", "HEAD:go.mod")
+	after, err := git("-C", dir, "show", to+":go.mod")
 	if err != nil {
 		return false, err
 	}
@@ -577,13 +592,17 @@ func goModChangedSince(dir, since string) (bool, error) {
 // dropped, without its require and tool directives, a block's included
 // (https://go.dev/ref/mod#go-mod-file-require). A tool directive adds a
 // package `go tool` runs (https://go.dev/ref/mod#go-mod-file-tool). ( is a
-// token of its own, so `require(` opens a block as `require (` does
+// token of its own, so `require(` opens a block as `require (` does, and
+// `require ()` is an empty block that opens nothing
 // (https://go.dev/ref/mod#go-mod-file-lexical).
 func goModBuildLines(text string) string {
 	var kept []string
 	inBlock := false
 	for _, line := range strings.Split(text, "\n") {
-		fields := strings.Fields(line)
+		// A comment may follow any token, so `require ( // direct` still
+		// opens a block (https://go.dev/ref/mod#go-mod-file-lexical).
+		code, _, _ := strings.Cut(line, "//")
+		fields := strings.Fields(code)
 		verb, paren := "", false
 		if len(fields) > 0 {
 			verb, _, paren = strings.Cut(fields[0], "(")
@@ -593,7 +612,7 @@ func goModBuildLines(text string) string {
 			inBlock = len(fields) == 0 || !strings.HasPrefix(fields[0], ")")
 		case len(fields) == 0:
 		case verb == "require" || verb == "tool":
-			inBlock = paren || len(fields) > 1 && strings.HasPrefix(fields[1], "(")
+			inBlock = paren && fields[0] == verb+"(" || len(fields) == 2 && fields[1] == "("
 		default:
 			kept = append(kept, strings.Join(fields, " "))
 		}
