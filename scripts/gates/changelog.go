@@ -78,20 +78,27 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 	// The waiver is read only when the CHANGELOG is untouched, so a footer
 	// cannot hide a misplaced entry, and never for a go.mod change the gate
 	// counts, a bump of the MCP SDK included.
-	if n <= 0 && texts[0] == texts[1] && !slices.Contains(watched, "go.mod") {
-		log, err := git("log", "--format=%B%x00", base+".."+head)
+	goModCounted := slices.Contains(watched, "go.mod")
+	if n <= 0 && texts[0] == texts[1] && !goModCounted {
+		// Only the newest commit's footer counts: it is the one that ends
+		// the squashed commit's message, where staleness reads it later.
+		message, err := git("log", "-1", "--format=%B", head)
 		if err != nil {
 			return err
 		}
-		if reason := changelogWaiver(strings.Split(log, "\x00")); reason != "" {
+		if reason := changelogWaiver(message); reason != "" {
 			_, _ = fmt.Fprintf(w, "changelog ok: %d shipped file(s) changed, and a commit says no entry is needed: %s\n", len(watched), reason)
 			return nil
 		}
 	}
 	if n <= 0 {
+		hint := " If nothing a user sees changed, leave the CHANGELOG as it is and end the newest commit's message " +
+			"with `Changelog: none, <why>`."
+		if goModCounted {
+			hint = " A go.mod change outside its require lines, or a bump of the MCP SDK, always needs one."
+		}
 		return refusal{fmt.Sprintf("%d shipped file(s) changed (%s) and no entry was added under ## [Unreleased], "+
-			"which the next release's notes are cut from. If nothing a user sees changed, leave the CHANGELOG as it is "+
-			"and end a commit's message with `Changelog: none, <why>`", len(watched), strings.Join(watched[:min(3, len(watched))], ", "))}
+			"which the next release's notes are cut from.%s", len(watched), strings.Join(watched[:min(3, len(watched))], ", "), hint)}
 	}
 	_, _ = fmt.Fprintf(w, "changelog ok: %d shipped file(s) changed, %d entries added under [Unreleased]\n", len(watched), n)
 	return nil
@@ -152,26 +159,25 @@ func goModNotedRequires(text string) []string {
 	return noted
 }
 
-// changelogWaiver is the reason a commit footer gives for needing no
-// entry: `Changelog: none, <why>`, the token and the word in any case, the
-// word ended by anything but a letter. A footer with no reason, or in the
+// changelogWaiver is the reason a commit message's footer gives for
+// needing no entry: `Changelog: none, <why>`, the token and the word in any
+// case. The word ends at a character that cannot be part of a word, so
+// `none.` counts and `none_yet` does not. A footer with no reason, or in the
 // `Changelog #` reference form, waives nothing.
-func changelogWaiver(messages []string) string {
-	notLetter := func(r rune) bool { return !unicode.IsLetter(r) }
-	for _, message := range messages {
-		for _, f := range footers(message) {
-			if f.ref || !strings.EqualFold(f.token, "Changelog") {
-				continue
-			}
-			text := strings.TrimSpace(f.text)
-			end := strings.IndexFunc(text, notLetter)
-			if end < 0 || !strings.EqualFold(text[:end], "none") {
-				continue
-			}
-			rest := strings.TrimLeftFunc(text[end:], func(r rune) bool { return notLetter(r) && !unicode.IsDigit(r) })
-			if reason := strings.Join(strings.Fields(rest), " "); reason != "" {
-				return reason
-			}
+func changelogWaiver(message string) string {
+	wordChar := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
+	for _, f := range footers(message) {
+		if f.ref || !strings.EqualFold(f.token, "Changelog") {
+			continue
+		}
+		text := strings.TrimSpace(f.text)
+		end := strings.IndexFunc(text, func(r rune) bool { return !wordChar(r) })
+		if end < 0 || !strings.EqualFold(text[:end], "none") {
+			continue
+		}
+		rest := strings.TrimLeftFunc(text[end:], func(r rune) bool { return !wordChar(r) })
+		if reason := strings.Join(strings.Fields(rest), " "); reason != "" {
+			return reason
 		}
 	}
 	return ""

@@ -35,7 +35,13 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 		prep, files map[string]string
 		message     string
 		refused     bool
+		// first, when set, is an earlier commit's message on the topic.
+		first string
 	}{
+		{name: "a footer only in an earlier commit", files: code, message: "refactor, part two",
+			first: "refactor\n\nChangelog: none, a rename", refused: true},
+		{name: "a footer whose word runs on with an underscore", files: code,
+			message: "change\n\nChangelog: none_yet, user-visible fix pending", refused: true},
 		{name: "shipped code with an entry", files: withEntry(code, clWritten+clReleased)},
 		{name: "shipped code with no entry", files: code, refused: true},
 		{name: "shipped code with an entry under a released heading",
@@ -79,6 +85,9 @@ func TestTheChangelogGateWantsAnEntryPerPullRequest(t *testing.T) {
 				stalenessChange(t, dir, tc.prep)
 			}
 			stalenessGit(t, dir, "checkout", "-q", "-b", "topic")
+			if tc.first != "" {
+				stalenessGit(t, dir, "commit", "-q", "--allow-empty", "-m", tc.first)
+			}
 			stalenessWrite(t, dir, tc.files)
 			stalenessGit(t, dir, "add", "-A")
 			stalenessGit(t, dir, "commit", "-q", "-m", cmp.Or(tc.message, "change"))
@@ -162,5 +171,34 @@ func TestStalenessHonorsTheChangelogWaiver(t *testing.T) {
 	stalenessGit(t, dir, "commit", "-q", "-m", "build\n\nChangelog: none, only the go line")
 	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
 		t.Errorf("after a waived go line change, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
+	}
+
+	// Nor an MCP SDK bump.
+	dir = stalenessCopy(t, base)
+	sdk := string(raw) + "\nrequire github.com/modelcontextprotocol/go-sdk v1.8.0\n"
+	stalenessWrite(t, dir, map[string]string{"go.mod": sdk})
+	stalenessGit(t, dir, "add", "-A")
+	stalenessGit(t, dir, "commit", "-q", "-m", "the SDK at v1.8.0\n\nChangelog: none, setup")
+	stalenessGit(t, dir, "tag", "v0.9.5")
+	stalenessWrite(t, dir, map[string]string{"go.mod": strings.Replace(sdk, "v1.8.0", "v1.9.0", 1)})
+	stalenessGit(t, dir, "add", "-A")
+	stalenessGit(t, dir, "commit", "-q", "-m", "bump\n\nChangelog: none, only the SDK")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
+		t.Errorf("after a waived MCP SDK bump, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
+	}
+
+	// Nor a commit that also edits the CHANGELOG, where the entry it adds
+	// would land under a released heading.
+	dir = stalenessCopy(t, base)
+	cl, err := os.ReadFile(filepath.Join(dir, changelogPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stalenessWrite(t, dir, map[string]string{"internal/a/b.go": "package a\n\n// renamed\n",
+		changelogPath: strings.Replace(string(cl), "- The first tool.\n", "- The first tool.\n- Late.\n", 1)})
+	stalenessGit(t, dir, "add", "-A")
+	stalenessGit(t, dir, "commit", "-q", "-m", "refactor\n\nChangelog: none, a rename")
+	if got, err := checkChangelog(dir); err != nil || len(got) != 1 || got[0] != clEmpty {
+		t.Errorf("after a waived commit that edits the CHANGELOG, checkChangelog() = %q, %v; want %q", got, err, clEmpty)
 	}
 }
