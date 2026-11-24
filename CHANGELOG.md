@@ -11,6 +11,10 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+### Changed
+
+- For contributors: a pull request that changes what ships adds a CHANGELOG entry; the `changelog` gate checks it.
+
 ## [9.1.4] - 2026-11-24
 
 ### Fixed

@@ -33,18 +33,19 @@ func changelogEntryCommand(baseRef, head string, stdout, stderr io.Writer) int {
 // staleness's CHANGELOG rule counts: a file shippedSource has, or go.mod
 // outside its require lines; a bump of a module in changelogNotedModules
 // counts too. It measures from the merge-base, so a base branch that moved
-// on is not this pull request's change, and a release cut, which adds a
-// version heading, passes.
+// on is not this pull request's change. [Unreleased] has to hold more
+// entries than at the merge-base, so an edited entry adds nothing; a
+// release cut passes.
 func changelogEntry(baseRef, head string, w io.Writer) error {
 	base, err := git("merge-base", baseRef, head)
 	if err != nil {
 		return err
 	}
-	changed, err := git("diff", "--name-only", "--no-renames", base, head)
+	changed, err := git("diff", "--name-only", "--no-renames", "-z", base, head)
 	if err != nil {
 		return err
 	}
-	files := strings.Fields(changed)
+	files := strings.FieldsFunc(changed, func(r rune) bool { return r == 0 })
 	watched, bumpOnly, err := changelogWatched(base, head, files)
 	if err != nil {
 		return err
@@ -67,12 +68,12 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 		}
 		docs[i] = readChangelog(text)
 	}
-	if cut := addedVersion(docs[0], docs[1]); cut != "" {
-		_, _ = fmt.Fprintf(w, "changelog ok: a release cut, adding ## [%s]\n", cut)
+	if cut := releaseCut(docs[0], docs[1]); cut != "" {
+		_, _ = fmt.Fprintf(w, "changelog ok: a release cut, moving [Unreleased] under ## [%s]\n", cut)
 		return nil
 	}
-	n := addedEntries(docs[0], docs[1])
-	if n == 0 {
+	n := docs[1].entries("Unreleased") - docs[0].entries("Unreleased")
+	if n <= 0 {
 		return refusal{fmt.Sprintf("%d shipped file(s) changed (%s) and no entry was added under ## [Unreleased], "+
 			"which the next release's notes are cut from", len(watched), strings.Join(watched[:min(3, len(watched))], ", "))}
 	}
@@ -81,7 +82,9 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 }
 
 // changelogWatched are the changed files that change what users get.
-// bumpOnly says go.mod changed and was left out as a dependency bump.
+// bumpOnly says go.mod changed and was left out as a dependency bump. The
+// binary's packages are read from the checkout, as staleness reads them,
+// so the checkout has to be head or CI's merge commit of it.
 func changelogWatched(base, head string, files []string) (watched []string, bumpOnly bool, err error) {
 	var shipped *shippedSource
 	for _, f := range files {
@@ -91,7 +94,7 @@ func changelogWatched(base, head string, files []string) (watched []string, bump
 					return nil, false, err
 				}
 			}
-			if shipped.has(f) && !strings.Contains("/"+f, "/testdata/") {
+			if shipped.has(f) {
 				watched = append(watched, f)
 			}
 			continue
@@ -132,42 +135,18 @@ func goModNotedRequires(text string) []string {
 	return noted
 }
 
-// addedVersion is the first version heading head has and base does not.
-func addedVersion(base, head changelogDoc) string {
+// releaseCut is the version heading head adds when it moves base's
+// [Unreleased] entries under it: the new section holds at least as many
+// entries as base's [Unreleased], and at least one. A heading added with
+// fewer is not a cut, and the pull request is judged by its entries.
+func releaseCut(base, head changelogDoc) string {
 	for _, h := range head.versions() {
-		if !slices.ContainsFunc(base.versions(), func(b changelogHeading) bool { return b.label == h.label }) {
+		if slices.ContainsFunc(base.versions(), func(b changelogHeading) bool { return b.label == h.label }) {
+			continue
+		}
+		if n := head.entries(h.label); n > 0 && n >= base.entries("Unreleased") {
 			return h.label
 		}
 	}
 	return ""
-}
-
-// addedEntries counts the entries under [Unreleased] at head that it does
-// not hold at base, so an entry under a released heading counts nothing.
-func addedEntries(base, head changelogDoc) int {
-	had := map[string]int{}
-	for _, e := range base.entryLines("Unreleased") {
-		had[e]++
-	}
-	n := 0
-	for _, e := range head.entryLines("Unreleased") {
-		if had[e] > 0 {
-			had[e]--
-			continue
-		}
-		n++
-	}
-	return n
-}
-
-// entryLines are the lines entries counts in a section.
-func (c changelogDoc) entryLines(label string) []string {
-	from, to := c.section(label)
-	var out []string
-	for _, line := range c.prose[from:to] {
-		if strings.HasPrefix(line, "- ") {
-			out = append(out, strings.TrimSpace(line))
-		}
-	}
-	return out
 }

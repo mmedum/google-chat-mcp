@@ -159,8 +159,9 @@ changes only contributors see, unless they must act on them.
   nothing else, and nothing in fenced code. It wants one when a commit
   since the newest release tag changes what the binary is built from,
   the bundle manifest, or go.mod's lines other than `require` and `tool`.
-  On a pull request, the `changelog` gate wants a new entry for each such
-  change, and for a bump of the MCP SDK. A bump of any other module needs
+  On a pull request that makes such a change, or bumps the MCP SDK, the
+  `changelog` gate wants at least one entry more under `[Unreleased]`
+  than the merge-base holds. A bump of any other module needs
   none; one that fixes an advisory is found at release time
   (`docs/release.md`).
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
