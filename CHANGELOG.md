@@ -14,7 +14,7 @@ upgrading are marked **Breaking:** and say what to do.
 ### Fixed
 
 - Writes to a group chat with a Chat app in it are no longer refused as `[stale]`; member tools report an app as `kind: BOT` (#91).
-- A group chat member with no address, such as a deleted user, is named by `users/{id}` in `space_display_name` (#93).
+- A deleted or hidden group chat member is named by `users/{id}` in `space_display_name`, so writes to that chat work again (#93).
 
 ## [9.1.3] - 2026-11-15
 

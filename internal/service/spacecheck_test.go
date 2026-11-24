@@ -12,6 +12,10 @@ import (
 // it as a member of type BOT with no email.
 const appMember = "(app)"
 
+// deletedMember stands for a person Chat marks isAnonymous, deleted or
+// hidden, and sends no address for.
+const deletedMember = "(deleted)"
+
 // spaceWorld answers the reads checkSpace makes: the space itself, the
 // direct message with an address, the members, and who the caller is.
 func spaceWorld(space, dmWith string, members ...string) http.HandlerFunc {
@@ -29,6 +33,11 @@ func spaceWorld(space, dmWith string, members ...string) http.HandlerFunc {
 		case strings.HasSuffix(p, "/members"):
 			rows := make([]string, 0, len(members))
 			for i, email := range members {
+				if email == deletedMember {
+					rows = append(rows, fmt.Sprintf(`{"name":"spaces/A/members/%d","state":"JOINED",`+
+						`"member":{"name":"users/%d","type":"HUMAN","isAnonymous":true}}`, i, 111+i*111))
+					continue
+				}
 				if email == appMember {
 					rows = append(rows, fmt.Sprintf(`{"name":"spaces/A/members/%d","state":"JOINED",`+
 						`"member":{"name":"users/app%d","type":"BOT","displayName":"Helper"}}`, i, i))
@@ -73,10 +82,12 @@ func TestCheckSpaceHoldsTheNameToTheSpace(t *testing.T) {
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
 		{name: "a group chat naming a stranger", space: group, witness: "jane@example.com, john@example.com, eve@example.com",
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
-		{name: "a group chat with a member who has no address, by that member's id", space: group,
-			witness: "jane@example.com, users/333", members: []string{"me@example.com", "jane@example.com", ""}},
-		{name: "a group chat with a member who has no address, by the others alone", space: group,
-			witness: "jane@example.com", members: []string{"me@example.com", "jane@example.com", ""}, wantErr: ClassStale},
+		{name: "a group chat with a deleted member, by that member's id", space: group,
+			witness: "jane@example.com, users/333", members: []string{"me@example.com", "jane@example.com", deletedMember}},
+		{name: "a group chat with a deleted member, by the others alone", space: group,
+			witness: "jane@example.com", members: []string{"me@example.com", "jane@example.com", deletedMember}, wantErr: ClassStale},
+		{name: "a group chat with a person whose address did not resolve, by their id", space: group,
+			witness: "jane@example.com, users/333", members: []string{"me@example.com", "jane@example.com", ""}, wantErr: ClassStale},
 		{name: "a group chat with a Chat app, by its people", space: group, witness: "jane@example.com, john@example.com",
 			members: []string{"me@example.com", appMember, "jane@example.com", "john@example.com"}},
 		{name: "a group chat with a Chat app, missing someone", space: group, witness: "jane@example.com",
@@ -96,15 +107,15 @@ func TestCheckSpaceHoldsTheNameToTheSpace(t *testing.T) {
 	}
 }
 
-// The refusal is how a caller learns to name a member Chat gives no
-// address for, so it lists that member by id, never as an empty string.
-func TestCheckSpaceNamesAMemberWithoutAnAddressByID(t *testing.T) {
+// The refusal is how a caller learns to name a deleted member, so it
+// lists that member by id, never as an empty string.
+func TestCheckSpaceNamesADeletedMemberByID(t *testing.T) {
 	s := newService(t, spaceWorld(`{"name":"spaces/A","spaceType":"GROUP_CHAT"}`, "",
-		"me@example.com", "jane@example.com", ""))
+		"me@example.com", "jane@example.com", deletedMember))
 	err := s.checkSpace(context.Background(), "spaces/A", "jane@example.com")
 	assertClass(t, err, ClassStale)
 	if msg := err.Error(); !strings.Contains(msg, "with jane@example.com, users/333,") || !strings.Contains(msg, "users/{id}") {
-		t.Errorf("refusal = %q, want it to list users/333 and say a member with no address is named by users/{id}", msg)
+		t.Errorf("refusal = %q, want it to list users/333 and say a deleted member is named by users/{id}", msg)
 	}
 }
 

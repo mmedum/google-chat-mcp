@@ -105,8 +105,9 @@ func (s *Service) checkDirectMessage(ctx context.Context, space, witness string)
 
 // checkMembers holds witness to the people in a group chat, or a space
 // with no name, other than the caller: the same addresses, in any order.
-// A person Chat gives no address for, such as a deleted user
-// (User.isAnonymous), is named by users/{id}.
+// A member Chat marks isAnonymous, deleted or hidden, and gives no
+// address for is named by users/{id}. No make live step covers it: the
+// driver cannot make a deleted member.
 // https://developers.google.com/workspace/chat/api/reference/rest/v1/User
 func (s *Service) checkMembers(ctx context.Context, space, witness string) error {
 	me, err := s.callerID(ctx)
@@ -126,7 +127,7 @@ func (s *Service) checkMembers(ctx context.Context, space, witness string) error
 			case m.Kind != KindHuman:
 			case m.Name == me:
 				mine = strings.ToLower(m.Email)
-			case m.Email == "":
+			case m.Email == "" && m.Anonymous:
 				others = append(others, strings.ToLower(m.Name))
 				byID = true
 			default:
@@ -150,7 +151,7 @@ func (s *Service) checkMembers(ctx context.Context, space, witness string) error
 	}
 	hint := ""
 	if byID {
-		hint = ", and a member Chat gives no address for as its users/{id}, as listed here"
+		hint = ", and a deleted or hidden member as its users/{id}, as listed here"
 	}
 	return Failf(ClassStale, "%s is a conversation with %s, not %s, so it is not the one this call meant; nothing was "+
 		"changed. Pass %s as the other members' email addresses, comma-separated%s", space,
