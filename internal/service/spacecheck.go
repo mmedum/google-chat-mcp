@@ -105,13 +105,17 @@ func (s *Service) checkDirectMessage(ctx context.Context, space, witness string)
 
 // checkMembers holds witness to the people in a group chat, or a space
 // with no name, other than the caller: the same addresses, in any order.
+// A member Chat marks isAnonymous, deleted or hidden, and gives no
+// address for is named by users/{id}. No make live step covers it: the
+// driver cannot make a deleted member.
+// https://developers.google.com/workspace/chat/api/reference/rest/v1/User
 func (s *Service) checkMembers(ctx context.Context, space, witness string) error {
 	me, err := s.callerID(ctx)
 	if err != nil {
 		return err
 	}
 	var others []string
-	mine := ""
+	mine, byID := "", false
 	token := ""
 	for range maxWitnessPages {
 		page, err := s.ListMembers(ctx, ListMembersInput{Space: space, Limit: maxMemberLimit, PageToken: token})
@@ -123,6 +127,9 @@ func (s *Service) checkMembers(ctx context.Context, space, witness string) error
 			case m.Kind != KindHuman:
 			case m.Name == me:
 				mine = strings.ToLower(m.Email)
+			case m.Email == "" && m.Anonymous:
+				others = append(others, strings.ToLower(m.Name))
+				byID = true
 			default:
 				others = append(others, strings.ToLower(m.Email))
 			}
@@ -142,7 +149,11 @@ func (s *Service) checkMembers(ctx context.Context, space, witness string) error
 	if slices.Equal(slices.Compact(others), slices.Compact(given)) {
 		return nil
 	}
+	hint := ""
+	if byID {
+		hint = ", and a deleted or hidden member as its users/{id}, as listed here"
+	}
 	return Failf(ClassStale, "%s is a conversation with %s, not %s, so it is not the one this call meant; nothing was "+
-		"changed. Pass %s as the other members' email addresses, comma-separated", space,
-		strings.Join(others, ", "), strings.Join(given, ", "), spaceWitnessField)
+		"changed. Pass %s as the other members' email addresses, comma-separated%s", space,
+		strings.Join(others, ", "), strings.Join(given, ", "), spaceWitnessField, hint)
 }

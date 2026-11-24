@@ -62,8 +62,11 @@ type Member struct {
 	// sent none; for a group, Cloud Identity's. It is empty for anyone
 	// none of them named.
 	Email string
-	Role  string
-	State string
+	// Anonymous is Chat's isAnonymous: the user is deleted or their
+	// profile is not visible to the caller.
+	Anonymous bool
+	Role      string
+	State     string
 	// Affiliation is INTERNAL, EXTERNAL or MANAGED_EXTERNAL, and empty
 	// when Google said nothing.
 	Affiliation string
@@ -328,6 +331,7 @@ func memberRow(m gchat.Membership, people map[string]directory.Person, groups ma
 		person := people[m.Member.Name]
 		row.Kind = KindHuman
 		row.Name = m.Member.Name
+		row.Anonymous = m.Member.IsAnonymous
 		row.Email = person.Email
 		row.DisplayName = person.DisplayName
 	case m.GroupMember != nil:
