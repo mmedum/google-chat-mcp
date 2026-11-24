@@ -31,7 +31,7 @@ reported there and not at `HEAD`, find the change that cleared it. When
 that change is such a bump, the advisory gets its entry under Security.
 
 ```bash
-git worktree add ../google-chat-mcp-prev "$(git describe --tags --abbrev=0)"
+git worktree add ../google-chat-mcp-prev "$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*')"
 make -C ../google-chat-mcp-prev vuln
 git worktree remove ../google-chat-mcp-prev
 ```
