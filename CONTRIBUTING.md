@@ -159,9 +159,12 @@ changes only contributors see, unless they must act on them.
   nothing else, and nothing in fenced code. It wants one when a commit
   since the newest release tag changes what the binary is built from,
   the bundle manifest, or go.mod's lines other than `require` and `tool`.
-  On a pull request that makes such a change, or bumps the MCP SDK, the
-  `changelog` gate wants at least one entry more under `[Unreleased]`
-  than the merge-base holds. A bump of any other module needs
+  On a pull request that makes such a change, changes the bundle's
+  launcher or `.goreleaser.yaml`, or bumps the MCP SDK, the `changelog`
+  gate wants at least one entry more under `[Unreleased]` than the
+  merge-base holds. A change nobody using the server can see, such as a
+  refactor, ends a commit's message with a footer that says why:
+  `Changelog: none, the text is unchanged line for line`. A bump of any other module needs
   none; one that fixes an advisory is found at release time
   (`docs/release.md`).
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)

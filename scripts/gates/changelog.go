@@ -4,9 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 )
+
+// changelogBuild are the files outside staleness's shipped set that
+// change what is released: the bundle's launcher and the release build.
+var changelogBuild = []string{filepath.ToSlash(launcherSource), ".goreleaser.yaml"}
 
 // changelogNotedModules need an entry whenever their version moves: the
 // MCP SDK decides what the protocol does, and a client sees that.
@@ -29,13 +34,8 @@ func changelogEntryCommand(baseRef, head string, stdout, stderr io.Writer) int {
 }
 
 // changelogEntry refuses a pull request that changes what users get
-// without adding an entry under [Unreleased]. What users get is what
-// staleness's CHANGELOG rule counts: a file shippedSource has, or go.mod
-// outside its require lines; a bump of a module in changelogNotedModules
-// counts too. It measures from the merge-base, so a base branch that moved
-// on is not this pull request's change. [Unreleased] has to hold more
-// entries than at the merge-base, so an edited entry adds nothing; a
-// release cut passes.
+// without adding an entry under [Unreleased], measured from the merge-base
+// so a base branch that moved on is not this pull request's change.
 func changelogEntry(baseRef, head string, w io.Writer) error {
 	base, err := git("merge-base", baseRef, head)
 	if err != nil {
@@ -52,7 +52,7 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 	}
 	switch {
 	case len(watched) == 0 && bumpOnly:
-		_, _ = fmt.Fprintf(w, "changelog: %d files changed, go.mod only in the modules it requires; "+
+		_, _ = fmt.Fprintf(w, "changelog: %d files changed, none shipped, and go.mod only in its require lines; "+
 			"a dependency bump needs no entry\n", len(files))
 		return nil
 	case len(watched) == 0:
@@ -72,10 +72,20 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "changelog ok: a release cut, moving [Unreleased] under ## [%s]\n", cut)
 		return nil
 	}
+	// More entries than at the merge-base, so an edited entry adds nothing.
 	n := docs[1].entries("Unreleased") - docs[0].entries("Unreleased")
 	if n <= 0 {
+		log, err := git("log", "--format=%B%x00", base+".."+head)
+		if err != nil {
+			return err
+		}
+		if reason := changelogWaiver(strings.Split(log, "\x00")); reason != "" {
+			_, _ = fmt.Fprintf(w, "changelog ok: %d shipped file(s) changed, and a commit says no entry is needed: %s\n", len(watched), reason)
+			return nil
+		}
 		return refusal{fmt.Sprintf("%d shipped file(s) changed (%s) and no entry was added under ## [Unreleased], "+
-			"which the next release's notes are cut from", len(watched), strings.Join(watched[:min(3, len(watched))], ", "))}
+			"which the next release's notes are cut from. If nothing a user sees changed, end a commit's message with "+
+			"`Changelog: none, <why>`", len(watched), strings.Join(watched[:min(3, len(watched))], ", "))}
 	}
 	_, _ = fmt.Fprintf(w, "changelog ok: %d shipped file(s) changed, %d entries added under [Unreleased]\n", len(watched), n)
 	return nil
@@ -83,8 +93,9 @@ func changelogEntry(baseRef, head string, w io.Writer) error {
 
 // changelogWatched are the changed files that change what users get.
 // bumpOnly says go.mod changed and was left out as a dependency bump. The
-// binary's packages are read from the checkout, as staleness reads them,
-// so the checkout has to be head or CI's merge commit of it.
+// binary's packages are read from the checkout for the host's platform, as
+// staleness reads them, so the checkout has to be head or CI's merge commit
+// of it, and a package only another platform imports is not counted.
 func changelogWatched(base, head string, files []string) (watched []string, bumpOnly bool, err error) {
 	var shipped *shippedSource
 	for _, f := range files {
@@ -94,7 +105,7 @@ func changelogWatched(base, head string, files []string) (watched []string, bump
 					return nil, false, err
 				}
 			}
-			if shipped.has(f) {
+			if shipped.has(f) || slices.Contains(changelogBuild, f) {
 				watched = append(watched, f)
 			}
 			continue
@@ -135,16 +146,41 @@ func goModNotedRequires(text string) []string {
 	return noted
 }
 
+// changelogWaiver is the reason a commit footer gives for needing no
+// entry: `Changelog: none, <why>`, the token and the word in any case. A
+// footer with no reason after "none" waives nothing.
+func changelogWaiver(messages []string) string {
+	for _, message := range messages {
+		for _, f := range footers(message) {
+			if !strings.EqualFold(f.token, "Changelog") {
+				continue
+			}
+			text := strings.TrimSpace(f.text)
+			end := strings.IndexAny(text, ",;:-— \n")
+			if end < 0 {
+				continue
+			}
+			if reason := strings.TrimSpace(strings.TrimLeft(text[end:], ",;:-— ")); strings.EqualFold(text[:end], "none") && reason != "" {
+				return reason
+			}
+		}
+	}
+	return ""
+}
+
 // releaseCut is the version heading head adds when it moves base's
-// [Unreleased] entries under it: the new section holds at least as many
-// entries as base's [Unreleased], and at least one. A heading added with
-// fewer is not a cut, and the pull request is judged by its entries.
+// [Unreleased] entries under it: base's [Unreleased] held some, head's
+// holds none, and the new section holds at least as many as base's did.
 func releaseCut(base, head changelogDoc) string {
+	had := base.entries("Unreleased")
+	if had == 0 || head.entries("Unreleased") > 0 {
+		return ""
+	}
 	for _, h := range head.versions() {
 		if slices.ContainsFunc(base.versions(), func(b changelogHeading) bool { return b.label == h.label }) {
 			continue
 		}
-		if n := head.entries(h.label); n > 0 && n >= base.entries("Unreleased") {
+		if head.entries(h.label) >= had {
 			return h.label
 		}
 	}

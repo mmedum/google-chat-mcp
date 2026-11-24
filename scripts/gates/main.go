@@ -156,7 +156,7 @@ func init() {
 		"changelog": {
 			run:   func(a []string, o, e io.Writer) int { return changelogEntryCommand(a[1], a[2], o, e) },
 			arity: 3, args: "BASE HEAD", runsIn: inPR,
-			doc: "a change to what users get adds an entry under [Unreleased], unless it cuts a release or only bumps required modules, the MCP SDK excepted",
+			doc: "a change to what users get adds an entry under [Unreleased]; a release cut, a bump of required modules other than the MCP SDK, and a Changelog: none footer need none",
 		},
 		"schema-ack": {
 			run:   func(a []string, o, e io.Writer) int { return schemaAckCommand(a[1], a[2], o, e) },

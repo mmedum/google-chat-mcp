@@ -13,7 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Changed
 
-- For contributors: a pull request that changes what ships adds a CHANGELOG entry; the `changelog` gate checks it.
+- For contributors: a pull request that changes what ships adds a CHANGELOG entry, or a `Changelog: none` footer; the `changelog` gate checks it.
 
 ## [9.1.4] - 2026-11-24
 

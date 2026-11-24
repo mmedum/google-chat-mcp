@@ -577,7 +577,8 @@ func goModChangedSince(dir, since string) (bool, error) {
 // dropped, without its require and tool directives, a block's included
 // (https://go.dev/ref/mod#go-mod-file-require). A tool directive adds a
 // package `go tool` runs (https://go.dev/ref/mod#go-mod-file-tool). ( is a
-// token of its own, so `require(` opens a block as `require (` does
+// token of its own, so `require(` opens a block as `require (` does, and
+// `require ()` is an empty block that opens nothing
 // (https://go.dev/ref/mod#go-mod-file-lexical).
 func goModBuildLines(text string) string {
 	var kept []string
@@ -593,7 +594,7 @@ func goModBuildLines(text string) string {
 			inBlock = len(fields) == 0 || !strings.HasPrefix(fields[0], ")")
 		case len(fields) == 0:
 		case verb == "require" || verb == "tool":
-			inBlock = paren || len(fields) > 1 && strings.HasPrefix(fields[1], "(")
+			inBlock = paren && fields[0] == verb+"(" || len(fields) == 2 && fields[1] == "("
 		default:
 			kept = append(kept, strings.Join(fields, " "))
 		}
