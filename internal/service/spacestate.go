@@ -201,8 +201,8 @@ type MarkReadInput struct {
 type MarkReadResult struct {
 	Name string
 	// LastReadTime is what Google recorded, which is not always what
-	// was asked for: marking read is coerced back to the newest
-	// message's own time.
+	// was asked for: marking a space read is coerced back to the newest
+	// message's own time, and marking a thread read to the request's.
 	LastReadTime time.Time
 	Unread       bool
 	DryRun       bool
@@ -256,11 +256,17 @@ func (s *Service) setReadState(ctx context.Context, in MarkReadInput, at time.Ti
 	if err != nil {
 		return nil, Classify(err)
 	}
-	out.Name = got.Name
-	if recorded := parseTime(got.LastReadTime); !recorded.IsZero() {
-		out.LastReadTime = recorded
+	return out.recorded(got.Name, got.LastReadTime), nil
+}
+
+// recorded is the result with what Google recorded: the read state's name,
+// and its time when Google sent one.
+func (r *MarkReadResult) recorded(name, lastReadTime string) *MarkReadResult {
+	r.Name = name
+	if at := parseTime(lastReadTime); !at.IsZero() {
+		r.LastReadTime = at
 	}
-	return out, nil
+	return r
 }
 
 // MarkThreadReadInput names a thread to mark read.
@@ -275,8 +281,9 @@ type MarkThreadReadInput struct {
 
 // MarkThreadRead marks a thread as read up to now. A space's read mark
 // covers only its top-level messages, so a thread's replies need their
-// own. Google coerces a future time to the request's own, so "now" says
-// "all of it".
+// own. It sends a time a day ahead, which Google coerces to the request's
+// own time, so a local clock that runs slow cannot leave the newest reply
+// unread.
 func (s *Service) MarkThreadRead(ctx context.Context, in MarkThreadReadInput) (*MarkReadResult, error) {
 	space, err := requireSpace(in.Space)
 	if err != nil {
@@ -289,7 +296,7 @@ func (s *Service) MarkThreadRead(ctx context.Context, in MarkThreadReadInput) (*
 	if err := s.checkSpace(ctx, space, in.SpaceDisplayName); err != nil {
 		return nil, err
 	}
-	at := time.Now()
+	at := time.Now().Add(24 * time.Hour)
 	out := &MarkReadResult{LastReadTime: at, DryRun: in.DryRun}
 	if in.DryRun {
 		return out, nil
@@ -298,11 +305,7 @@ func (s *Service) MarkThreadRead(ctx context.Context, in MarkThreadReadInput) (*
 	if err != nil {
 		return nil, Classify(err)
 	}
-	out.Name = got.Name
-	if recorded := parseTime(got.LastReadTime); !recorded.IsZero() {
-		out.LastReadTime = recorded
-	}
-	return out, nil
+	return out.recorded(got.Name, got.LastReadTime), nil
 }
 
 // Notification settings, narrowed to Google's own vocabulary.

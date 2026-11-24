@@ -438,12 +438,32 @@ var steps = []step{
 			d.t.Skip("no thread id was returned")
 		}
 		var out struct {
-			Name         string `json:"name"`
-			LastReadTime string `json:"last_read_time"`
+			Name         string    `json:"name"`
+			LastReadTime time.Time `json:"last_read_time"`
 		}
+		d.threadMarked = time.Now()
 		d.into(d.must("mark_thread_read", map[string]any{"space_id": d.space, "thread_name": d.thread}), &out)
-		if !strings.HasSuffix(out.Name, "/threadReadState") || out.LastReadTime == "" {
-			d.t.Errorf("mark_thread_read recorded %s at %s, want the thread read state Google recorded", d.redact(out.Name), d.redact(out.LastReadTime))
+		// The tool sends a time a day ahead; Google records the request's
+		// own time instead, so what comes back is not in the future.
+		if !strings.HasSuffix(out.Name, "/threadReadState") || out.LastReadTime.After(time.Now().Add(time.Minute)) {
+			d.t.Errorf("mark_thread_read recorded %s at %s, want the thread read state at the call's own time",
+				d.redact(out.Name), d.redact(out.LastReadTime.Format(time.RFC3339)))
+		}
+	}},
+
+	// A later exchange, so the read state comes from Google's store rather
+	// than the write's own answer.
+	{"the thread reads as read", "get_thread_read_state", func(d *driver) {
+		if d.thread == "" || d.threadMarked.IsZero() {
+			d.t.Skip("the thread was not marked read")
+		}
+		var out struct {
+			LastReadTime time.Time `json:"last_read_time"`
+		}
+		d.into(d.must("get_thread_read_state", map[string]any{"space_id": d.space, "thread_name": d.thread}), &out)
+		if out.LastReadTime.Before(d.threadMarked.Add(-time.Minute)) {
+			d.t.Errorf("the thread's read mark is %s, before the call that marked it read at %s",
+				d.redact(out.LastReadTime.Format(time.RFC3339)), d.redact(d.threadMarked.Format(time.RFC3339)))
 		}
 	}},
 

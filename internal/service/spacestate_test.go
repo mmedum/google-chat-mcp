@@ -212,6 +212,11 @@ func TestMarkThreadReadReportsWhatGoogleRecorded(t *testing.T) {
 	if mask != "lastReadTime" || body["lastReadTime"] == nil {
 		t.Errorf("updateMask = %q, body = %v; want lastReadTime in both", mask, body)
 	}
+	// A time ahead of now, which Google coerces to the request's own, so a
+	// slow local clock cannot leave the newest reply unread.
+	if sent, _ := time.Parse(time.RFC3339, fmt.Sprint(body["lastReadTime"])); !sent.After(time.Now()) {
+		t.Errorf("sent lastReadTime %v, want a time ahead of now", body["lastReadTime"])
+	}
 	if !got.LastReadTime.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) || got.Unread {
 		t.Errorf("result = %+v, want what Google recorded, marked read", got)
 	}

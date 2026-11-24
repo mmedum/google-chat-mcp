@@ -75,7 +75,10 @@ type driver struct {
 	// quoted is the message posted quoting posted.
 	quoted string
 	thread string
-	member string
+	// threadMarked is when mark_thread_read was called, which the read
+	// back holds the recorded mark to.
+	threadMarked time.Time
+	member       string
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string

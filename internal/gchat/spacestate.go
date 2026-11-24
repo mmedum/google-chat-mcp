@@ -111,8 +111,8 @@ func (c *Client) GetThreadReadState(ctx context.Context, thread string) (*Thread
 // a time at or after the latest message's create time marks the thread
 // read, and a future time is coerced to the request's own time.
 // https://chat.googleapis.com/$discovery/rest?version=v1
-// (users.spaces.threads.updateThreadReadState); live step "a thread is
-// marked read".
+// (users.spaces.threads.updateThreadReadState); the live steps "a thread is
+// marked read" and "the thread reads as read" check both halves.
 func (c *Client) UpdateThreadReadState(ctx context.Context, thread, lastReadTime string) (*ThreadReadState, error) {
 	var out ThreadReadState
 	err := c.do(ctx, request{

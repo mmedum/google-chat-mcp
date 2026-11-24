@@ -13,7 +13,7 @@ upgrading are marked **Breaking:** and say what to do.
 
 ### Added
 
-- `mark_thread_read` marks a thread's replies read for you; `mark_space_read` clears only a space's top-level messages (#95).
+- `mark_thread_read` marks a thread's replies read for you, which `mark_space_read` does not cover (#95).
 
 ### Changed
 
