@@ -460,10 +460,12 @@ func stalenessNewestRelease(tags []string) string {
 
 // shippedChangedSince reports whether a commit since..HEAD of the checkout
 // at dir changes what users get: a file shippedSource has, a file in
-// changelogBuild, or go.mod outside its require and tool lines. Commits are
-// compared, as CI sees them, one at a time: a commit that says
-// `Changelog: none, <why>` counts for nothing, as the changelog gate reads
-// it. A merge commit brings in commits that are read on their own.
+// changelogBuild, go.mod outside its require and tool lines, or the MCP
+// SDK's version. Commits are compared one at a time, as they land. A
+// commit that ends with `Changelog: none, <why>` and leaves the CHANGELOG
+// as it is counts for nothing but a go.mod change, which no footer waives,
+// as the changelog gate reads it. A merge commit brings in commits that
+// are read on their own.
 func shippedChangedSince(dir, since string) (bool, error) {
 	revs, err := git("-C", dir, "rev-list", "--no-merges", since+"..HEAD")
 	if err != nil {
@@ -475,13 +477,11 @@ func shippedChangedSince(dir, since string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if changelogWaiver([]string{message}) != "" {
-			continue
-		}
 		out, err := git("-C", dir, "diff", rev+"^", rev, "--name-only", "--no-renames", "-z")
 		if err != nil {
 			return false, err
 		}
+		waived := changelogWaiver(message) != "" && !slices.Contains(strings.Split(out, "\x00"), changelogPath)
 		for _, file := range strings.Split(out, "\x00") {
 			switch file {
 			case "":
@@ -490,6 +490,9 @@ func shippedChangedSince(dir, since string) (bool, error) {
 					return changed, err
 				}
 			default:
+				if waived {
+					continue
+				}
 				if shipped == nil {
 					if shipped, err = listShipped(dir); err != nil {
 						return false, err
@@ -574,8 +577,9 @@ func listShipped(dir string) (*shippedSource, error) {
 }
 
 // goModChangedBetween reports whether go.mod at to in the checkout at dir
-// differs from from's outside its require and tool lines: a go, toolchain
-// or replace line changes what the binary is built with.
+// differs from from's outside its require and tool lines, or in a module
+// changelogNotedModules names: a go, toolchain or replace line changes what
+// the binary is built with, and the MCP SDK what a client sees.
 func goModChangedBetween(dir, from, to string) (bool, error) {
 	before, err := git("-C", dir, "show", from+":go.mod")
 	if err != nil {
@@ -585,7 +589,8 @@ func goModChangedBetween(dir, from, to string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return goModBuildLines(before) != goModBuildLines(after), nil
+	return goModBuildLines(before) != goModBuildLines(after) ||
+		!slices.Equal(goModNotedRequires(before), goModNotedRequires(after)), nil
 }
 
 // goModBuildLines is a go.mod's lines, each trimmed and the blank ones
