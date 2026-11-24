@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.1.4] - 2026-11-24
+
 ### Fixed
 
 - Writes to a group chat with a Chat app in it are no longer refused as `[stale]`; member tools report an app as `kind: BOT` (#91).
@@ -861,7 +863,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.3...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.4...HEAD
+[9.1.4]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.3...v9.1.4
 [9.1.3]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.2...v9.1.3
 [9.1.2]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...v9.1.2
 [9.1.1]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.0...v9.1.1
