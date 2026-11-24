@@ -720,7 +720,9 @@ written, dry runs included:
   lookup of the direct message with that address has to answer with
   this space;
 - a group chat by the other members' emails, comma-separated in any
-  order.
+  order. A person Chat gives no address for, such as a deleted user, is
+  named by `users/{id}`, which the refusal lists. A Chat app is not
+  named.
 
 A mismatch is `[stale]` and changes nothing. The prompt therefore cannot
 name one space while the call writes to another. A space this account

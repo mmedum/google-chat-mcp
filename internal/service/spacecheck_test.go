@@ -73,6 +73,10 @@ func TestCheckSpaceHoldsTheNameToTheSpace(t *testing.T) {
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
 		{name: "a group chat naming a stranger", space: group, witness: "jane@example.com, john@example.com, eve@example.com",
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
+		{name: "a group chat with a member who has no address, by that member's id", space: group,
+			witness: "jane@example.com, users/333", members: []string{"me@example.com", "jane@example.com", ""}},
+		{name: "a group chat with a member who has no address, by the others alone", space: group,
+			witness: "jane@example.com", members: []string{"me@example.com", "jane@example.com", ""}, wantErr: ClassStale},
 		{name: "a group chat with a Chat app, by its people", space: group, witness: "jane@example.com, john@example.com",
 			members: []string{"me@example.com", appMember, "jane@example.com", "john@example.com"}},
 		{name: "a group chat with a Chat app, missing someone", space: group, witness: "jane@example.com",
@@ -89,6 +93,18 @@ func TestCheckSpaceHoldsTheNameToTheSpace(t *testing.T) {
 			}
 			assertClass(t, err, tc.wantErr)
 		})
+	}
+}
+
+// The refusal is how a caller learns to name a member Chat gives no
+// address for, so it lists that member by id, never as an empty string.
+func TestCheckSpaceNamesAMemberWithoutAnAddressByID(t *testing.T) {
+	s := newService(t, spaceWorld(`{"name":"spaces/A","spaceType":"GROUP_CHAT"}`, "",
+		"me@example.com", "jane@example.com", ""))
+	err := s.checkSpace(context.Background(), "spaces/A", "jane@example.com")
+	assertClass(t, err, ClassStale)
+	if msg := err.Error(); !strings.Contains(msg, "with jane@example.com, users/333,") || !strings.Contains(msg, "users/{id}") {
+		t.Errorf("refusal = %q, want it to list users/333 and say a member with no address is named by users/{id}", msg)
 	}
 }
 
