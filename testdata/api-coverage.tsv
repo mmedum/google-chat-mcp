@@ -85,6 +85,7 @@ chat	users.spaces.getSpaceReadState	used	Client.GetSpaceReadState
 chat	users.spaces.spaceNotificationSetting.get	used	Client.GetSpaceNotificationSetting
 chat	users.spaces.spaceNotificationSetting.patch	used	Client.UpdateSpaceNotificationSetting
 chat	users.spaces.threads.getThreadReadState	used	Client.GetThreadReadState
+chat	users.spaces.threads.updateThreadReadState	out	mark_space_read marks the whole space read; a tool that marks one thread read is issue #95, and until it ships nothing here calls this
 chat	users.spaces.updateSpaceReadState	used	Client.UpdateSpaceReadState
 cloudidentity	allowlistedDomains.create	unreachable	https://www.googleapis.com/auth/cloud-identity.allowlisteddomains
 cloudidentity	allowlistedDomains.delete	unreachable	https://www.googleapis.com/auth/cloud-identity.allowlisteddomains
