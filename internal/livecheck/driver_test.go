@@ -75,7 +75,10 @@ type driver struct {
 	// quoted is the message posted quoting posted.
 	quoted string
 	thread string
-	member string
+	// threadMarked is when mark_thread_read was called, which the read
+	// back holds the recorded mark to.
+	threadMarked time.Time
+	member       string
 	// email is this account's own address, which remove_reaction needs:
 	// a reaction belongs to a person, so removing one says whose.
 	email string
@@ -420,7 +423,7 @@ func isNameRune(r rune) bool {
 // space_id. TestEveryToolThatNamesASpaceIsFilledIn holds it to the
 // surface.
 var namesItsSpace = map[string]bool{
-	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true,
+	"add_external_member": true, "add_member": true, "mark_space_read": true, "mark_space_unread": true, "mark_thread_read": true,
 	"move_space_to_section": true, "send_message": true, "update_space": true,
 	"update_space_notification_setting": true, "upload_attachment": true,
 	"admin_add_member": true, "admin_update_space": true, "admin_update_space_permissions": true,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -189,6 +190,56 @@ func TestNotificationUpdateChecksItsArguments(t *testing.T) {
 	}
 }
 
+// Marking a thread read patches the caller's thread read state with a time
+// and reports what Google recorded.
+func TestMarkThreadReadReportsWhatGoogleRecorded(t *testing.T) {
+	var method, path, mask string
+	var body map[string]any
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path, mask = r.Method, r.URL.Path, r.URL.Query().Get("updateMask")
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		fmt.Fprint(w, `{"name":"users/123/spaces/AAAAspace1/threads/AAAAthread1/threadReadState","lastReadTime":"2026-01-02T03:04:05Z"}`)
+	})
+	got, err := s.MarkThreadRead(context.Background(), MarkThreadReadInput{
+		SpaceDisplayName: "Team", Space: "spaces/AAAAspace1", Thread: "spaces/AAAAspace1/threads/AAAAthread1",
+	})
+	if err != nil {
+		t.Fatalf("MarkThreadRead: %v", err)
+	}
+	if method != http.MethodPatch || !strings.HasSuffix(path, "users/me/spaces/AAAAspace1/threads/AAAAthread1/threadReadState") {
+		t.Errorf("request = %s %s, want PATCH .../users/me/spaces/AAAAspace1/threads/AAAAthread1/threadReadState", method, path)
+	}
+	if mask != "lastReadTime" || body["lastReadTime"] == nil {
+		t.Errorf("updateMask = %q, body = %v; want lastReadTime in both", mask, body)
+	}
+	// A time ahead of now, which Google coerces to the request's own, so a
+	// slow local clock cannot leave the newest reply unread.
+	if sent, _ := time.Parse(time.RFC3339, fmt.Sprint(body["lastReadTime"])); !sent.After(time.Now()) {
+		t.Errorf("sent lastReadTime %v, want a time ahead of now", body["lastReadTime"])
+	}
+	if !got.LastReadTime.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) || got.Unread {
+		t.Errorf("result = %+v, want what Google recorded, marked read", got)
+	}
+}
+
+// A thread of another space, or a space named otherwise, is refused before
+// anything is written.
+func TestMarkThreadReadChecksItsArguments(t *testing.T) {
+	s := newNamedService(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("%s %s reached Google", r.Method, r.URL.Path)
+		}
+	})
+	_, err := s.MarkThreadRead(context.Background(), MarkThreadReadInput{
+		SpaceDisplayName: "Team", Space: "spaces/AAAAspace1", Thread: "spaces/AAAAspace2/threads/AAAAthread1",
+	})
+	assertClass(t, err, ClassInvalid)
+	_, err = s.MarkThreadRead(context.Background(), MarkThreadReadInput{
+		SpaceDisplayName: "Another space", Space: "spaces/AAAAspace1", Thread: "spaces/AAAAspace1/threads/AAAAthread1",
+	})
+	assertClass(t, err, ClassStale)
+}
+
 // A value Google adds later must not fail the answer it arrived on.
 func TestNotificationEnumsDegrade(t *testing.T) {
 	s := newService(t, ok(`{"name":"x","notificationSetting":"WHEN_THE_MOON_IS_FULL","muteSetting":"SORT_OF"}`))
@@ -221,6 +272,12 @@ func TestSpaceStateDryRunsSendNothing(t *testing.T) {
 		Space:            "spaces/AAAAspace1", DryRun: true,
 	}); err != nil {
 		t.Errorf("mark read: %v", err)
+	}
+	if _, err := s.MarkThreadRead(context.Background(), MarkThreadReadInput{
+		SpaceDisplayName: "Team", Space: "spaces/AAAAspace1",
+		Thread: "spaces/AAAAspace1/threads/AAAAthread1", DryRun: true,
+	}); err != nil {
+		t.Errorf("mark thread read: %v", err)
 	}
 	got, err := s.UpdateSpaceNotificationSetting(context.Background(), UpdateNotificationInput{
 		SpaceDisplayName: "Team",

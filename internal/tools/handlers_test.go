@@ -312,6 +312,7 @@ var toolArgs = map[string]map[string]any{
 	"get_space_read_state":              {"space_id": "spaces/AAAAspace1"},
 	"get_thread_read_state":             {"space_id": "spaces/AAAAspace1", "thread_name": "spaces/AAAAspace1/threads/AAAAthread1"},
 	"mark_space_read":                   {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "dry_run": true},
+	"mark_thread_read":                  {"space_id": "spaces/AAAAspace1", "thread_name": "spaces/AAAAspace1/threads/AAAAthread1", "space_display_name": "Team standup", "dry_run": true},
 	"mark_space_unread":                 {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "from_time": "2026-01-02T03:04:05Z", "dry_run": true},
 	"get_space_notification_setting":    {"space_id": "spaces/AAAAspace1"},
 	"update_space_notification_setting": {"space_id": "spaces/AAAAspace1", "space_display_name": "Team standup", "mute_setting": "MUTED", "dry_run": true},

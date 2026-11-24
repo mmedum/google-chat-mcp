@@ -68,6 +68,14 @@ type MarkSpaceReadInput struct {
 	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
 }
 
+// MarkThreadReadInput names a thread to mark read.
+type MarkThreadReadInput struct {
+	SpaceID          string `json:"space_id" jsonschema:"the thread's space, spaces/{id}"`
+	ThreadName       string `json:"thread_name" jsonschema:"the thread, spaces/{space}/threads/{thread}, from a message's thread_id"`
+	SpaceDisplayName string `json:"space_display_name" jsonschema:"what the space is called, so the prompt that approves this call names it: a named space by its name as list_spaces shows it, a direct message by the other person's email, a group chat by the other members' emails, comma-separated. Checked against the space before anything is written; a call naming another space is refused"`
+	DryRun           bool   `json:"dry_run,omitempty" jsonschema:"check the arguments without changing anything"`
+}
+
 // MarkSpaceUnreadInput names a space and where to rewind to.
 type MarkSpaceUnreadInput struct {
 	SpaceID          string `json:"space_id" jsonschema:"the space, spaces/{id}"`
@@ -79,7 +87,7 @@ type MarkSpaceUnreadInput struct {
 // MarkReadOutput is where the read mark now stands.
 type MarkReadOutput struct {
 	Name         string    `json:"name" jsonschema:"the read state's resource name; empty after a dry run"`
-	LastReadTime time.Time `json:"last_read_time" jsonschema:"the mark Google recorded, which is not always what was asked for: marking read is pulled back to the newest message's own time"`
+	LastReadTime time.Time `json:"last_read_time" jsonschema:"the mark Google recorded, which is not always what was asked for: marking a space read is pulled back to the newest message's own time, and marking a thread read to the call's own time"`
 	Unread       bool      `json:"unread" jsonschema:"true when this call rewound the mark rather than clearing it"`
 	DryRun       bool      `json:"dry_run" jsonschema:"true when nothing was changed"`
 }
@@ -199,6 +207,22 @@ func registerSpaceState(s *mcp.Server, d Deps) {
 		Toolset: config.ToolsetReadState,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkSpaceReadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
 		got, err := d.Service.MarkSpaceRead(ctx, service.MarkReadInput{Space: in.SpaceID, SpaceDisplayName: in.SpaceDisplayName, DryRun: in.DryRun})
+		if err != nil {
+			return nil, MarkReadOutput{}, err
+		}
+		return nil, markRead(got), nil
+	})
+
+	register(s, d, spec{
+		Name: "mark_thread_read",
+		Description: "Mark one thread as read up to now, for you and nobody else. mark_space_read covers a space's " +
+			"top-level messages only, so a thread's replies need this.",
+		Kind:    Write,
+		Toolset: config.ToolsetReadState,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in MarkThreadReadInput) (*mcp.CallToolResult, MarkReadOutput, error) {
+		got, err := d.Service.MarkThreadRead(ctx, service.MarkThreadReadInput{
+			Space: in.SpaceID, Thread: in.ThreadName, SpaceDisplayName: in.SpaceDisplayName, DryRun: in.DryRun,
+		})
 		if err != nil {
 			return nil, MarkReadOutput{}, err
 		}
