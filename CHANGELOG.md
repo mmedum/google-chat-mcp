@@ -11,6 +11,8 @@ upgrading are marked **Breaking:** and say what to do.
 
 ## [Unreleased]
 
+## [9.2.0] - 2026-11-24
+
 ### Added
 
 - `mark_thread_read` marks a thread's replies read for you, which `mark_space_read` does not cover (#95).
@@ -871,7 +873,8 @@ subprocess of your client, and talks to Google Chat as you.
 - **An MCP registry entry**, `io.github.mmedum/google-chat-mcp`, pointing at
   that bundle and carrying the hash clients check before installing.
 
-[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.4...HEAD
+[Unreleased]: https://github.com/mmedum/google-chat-mcp/compare/v9.2.0...HEAD
+[9.2.0]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.4...v9.2.0
 [9.1.4]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.3...v9.1.4
 [9.1.3]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.2...v9.1.3
 [9.1.2]: https://github.com/mmedum/google-chat-mcp/compare/v9.1.1...v9.1.2
