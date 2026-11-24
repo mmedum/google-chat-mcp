@@ -10,11 +10,11 @@ import (
 
 // MemberOutput is one row of a space's membership.
 type MemberOutput struct {
-	Kind string `json:"kind" jsonschema:"HUMAN for a person, GROUP for a Google Group whose members are in the space through it"`
+	Kind string `json:"kind" jsonschema:"HUMAN for a person, BOT for a Chat app, GROUP for a Google Group whose members are in the space through it"`
 	// The membership and the member are different resources, and the
 	// three tools that change a membership need the first one.
 	MembershipName string  `json:"membership_name" jsonschema:"the membership's own resource name, spaces/{space}/members/{member}. get_member, update_member_role and remove_member, and their admin_ forms, take THIS, not member_id"`
-	MemberID       string  `json:"member_id" jsonschema:"who the membership is for: users/{id} for a person, groups/{id} for a group"`
+	MemberID       string  `json:"member_id" jsonschema:"who the membership is for: users/{id} for a person or a Chat app, groups/{id} for a group"`
 	DisplayName    *string `json:"display_name" jsonschema:"what to call them, or null when Google gave no name"`
 	Email          *string `json:"email" jsonschema:"the person's or the group's email address; null when neither Chat, the People API nor Cloud Identity named one"`
 	Role           string  `json:"role" jsonschema:"ROLE_MEMBER, ROLE_MANAGER, ROLE_ASSISTANT_MANAGER, or ROLE_UNSPECIFIED for a role this server does not recognize"`

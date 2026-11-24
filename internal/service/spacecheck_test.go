@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+// appMember stands for a Chat app in spaceWorld's members: Google lists
+// it as a member of type BOT with no email.
+const appMember = "(app)"
+
 // spaceWorld answers the reads checkSpace makes: the space itself, the
 // direct message with an address, the members, and who the caller is.
 func spaceWorld(space, dmWith string, members ...string) http.HandlerFunc {
@@ -25,6 +29,11 @@ func spaceWorld(space, dmWith string, members ...string) http.HandlerFunc {
 		case strings.HasSuffix(p, "/members"):
 			rows := make([]string, 0, len(members))
 			for i, email := range members {
+				if email == appMember {
+					rows = append(rows, fmt.Sprintf(`{"name":"spaces/A/members/%d","state":"JOINED",`+
+						`"member":{"name":"users/app%d","type":"BOT","displayName":"Helper"}}`, i, i))
+					continue
+				}
 				rows = append(rows, fmt.Sprintf(`{"name":"spaces/A/members/%d","state":"JOINED",`+
 					`"member":{"name":"users/%d","type":"HUMAN","email":%q}}`, i, 111+i*111, email))
 			}
@@ -64,6 +73,10 @@ func TestCheckSpaceHoldsTheNameToTheSpace(t *testing.T) {
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
 		{name: "a group chat naming a stranger", space: group, witness: "jane@example.com, john@example.com, eve@example.com",
 			members: []string{"me@example.com", "jane@example.com", "john@example.com"}, wantErr: ClassStale},
+		{name: "a group chat with a Chat app, by its people", space: group, witness: "jane@example.com, john@example.com",
+			members: []string{"me@example.com", appMember, "jane@example.com", "john@example.com"}},
+		{name: "a group chat with a Chat app, missing someone", space: group, witness: "jane@example.com",
+			members: []string{"me@example.com", appMember, "jane@example.com", "john@example.com"}, wantErr: ClassStale},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newService(t, spaceWorld(tc.space, tc.dmWith, tc.members...))

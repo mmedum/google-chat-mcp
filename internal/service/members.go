@@ -20,12 +20,14 @@ const (
 	maxMemberLimit     = 200
 )
 
-// MemberKind says whether a membership is a person or a Google Group.
+// MemberKind says whether a membership is a person, a Chat app or a
+// Google Group.
 type MemberKind string
 
 // Member kinds.
 const (
 	KindHuman MemberKind = "HUMAN"
+	KindBot   MemberKind = "BOT"
 	KindGroup MemberKind = "GROUP"
 )
 
@@ -318,6 +320,10 @@ func memberRow(m gchat.Membership, people map[string]directory.Person, groups ma
 		Affiliation: narrowEnum(m.Affiliation, affiliations, ""),
 	}
 	switch {
+	case m.Member != nil && m.Member.Type == gchat.MemberTypeBot:
+		row.Kind = KindBot
+		row.Name = m.Member.Name
+		row.DisplayName = m.Member.DisplayName
 	case m.Member != nil:
 		person := people[m.Member.Name]
 		row.Kind = KindHuman
