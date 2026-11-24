@@ -149,6 +149,11 @@ type User struct {
 	Email string `json:"email,omitempty"`
 }
 
+// IsBot reports whether u is a Chat app, which no directory resolves.
+func (u *User) IsBot() bool {
+	return u != nil && u.Type == MemberTypeBot
+}
+
 // Membership is a person's or group's place in a space.
 type Membership struct {
 	Name        string `json:"name"`

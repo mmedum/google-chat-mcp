@@ -126,7 +126,8 @@ server asks the People API, and that lookup can come back empty without
 failing. Treat a null email as "not resolved", never as "has no email".
 
 - **A Chat app, or an account that is gone.** Chat sends no address for
-  these, and the People API cannot fill one in. Nothing fixes it.
+  these, and the People API cannot fill one in. Nothing fixes it. A
+  member row for a Chat app carries `kind: BOT`.
 - **`directory.readonly` not granted.** Same-domain colleagues resolve
   once it is; without it, close to nothing does.
 - **The lookup failed.** A 403, 429 or 5xx from the People API costs only

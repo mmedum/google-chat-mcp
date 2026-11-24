@@ -345,10 +345,11 @@ func (s *Service) mergePeople(users []*gchat.User, lookup func([]string) map[str
 	} else {
 		// A second pass, so a user named with an address on one row
 		// and without on another is not looked up only for the answer
-		// to be thrown away. Resolve drops empty and repeated ids.
+		// to be thrown away. A Chat app is never looked up. Resolve
+		// drops empty and repeated ids.
 		lookups := make([]string, 0, len(users))
 		for _, u := range users {
-			if p, ok := fromChat[userOf(u)]; ok && p.DisplayName != "" {
+			if p, ok := fromChat[userOf(u)]; (ok && p.DisplayName != "") || u.IsBot() {
 				continue
 			}
 			lookups = append(lookups, userOf(u))

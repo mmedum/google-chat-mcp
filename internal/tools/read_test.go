@@ -222,19 +222,23 @@ func TestGetMessageThroughASession(t *testing.T) {
 func TestListMembersThroughASession(t *testing.T) {
 	const page = `{"memberships":[
 	  {"name":"spaces/A/members/1","state":"JOINED","role":"ROLE_MEMBER","member":{"name":"users/1","displayName":"Jane Doe"}},
-	  {"name":"spaces/A/members/2","state":"JOINED","role":"ROLE_MEMBER","groupMember":{"name":"groups/G1"}}
+	  {"name":"spaces/A/members/2","state":"JOINED","role":"ROLE_MEMBER","groupMember":{"name":"groups/G1"}},
+	  {"name":"spaces/A/members/3","state":"JOINED","role":"ROLE_MEMBER","member":{"name":"users/9","type":"BOT","displayName":"Helper"}}
 	]}`
 	cs := session(t, chatAndPeople(body(page), personHit))
 	var out MemberListOutput
 	call(t, cs, "list_members", map[string]any{"space_id": "spaces/A"}, &out)
-	if len(out.Result) != 2 {
+	if len(out.Result) != 3 {
 		t.Fatalf("list_members = %+v", out)
 	}
-	if out.Result[0].Kind != "HUMAN" || out.Result[1].Kind != "GROUP" {
-		t.Errorf("kinds = %q, %q", out.Result[0].Kind, out.Result[1].Kind)
+	if out.Result[0].Kind != "HUMAN" || out.Result[1].Kind != "GROUP" || out.Result[2].Kind != "BOT" {
+		t.Errorf("kinds = %q, %q, %q, want HUMAN, GROUP, BOT", out.Result[0].Kind, out.Result[1].Kind, out.Result[2].Kind)
 	}
-	if out.Result[1].Email != nil {
-		t.Error("a group has no email")
+	if out.Result[1].Email != nil || out.Result[2].Email != nil {
+		t.Error("a group and a Chat app have no email")
+	}
+	if app := out.Result[2]; app.DisplayName == nil || *app.DisplayName != "Helper" || app.MemberID != "users/9" {
+		t.Errorf("Chat app row = %+v, want users/9 named Helper", app)
 	}
 }
 

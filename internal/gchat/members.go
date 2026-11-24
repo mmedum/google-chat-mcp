@@ -71,6 +71,12 @@ const adminMemberFilter = `member.type != "BOT"`
 // can add. Chat apps are added by an administrator, not through this.
 const MemberTypeHuman = "HUMAN"
 
+// MemberTypeBot is a membership's member.type for a Chat app, which
+// Chat lists as a member with no email. User.type is TYPE_UNSPECIFIED,
+// HUMAN or BOT ("Chat app user").
+// https://chat.googleapis.com/$discovery/rest?version=v1
+const MemberTypeBot = "BOT"
+
 // The roles a membership can hold. Google's spelling, used unchanged
 // from the wire to the tool surface.
 const (
