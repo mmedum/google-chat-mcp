@@ -220,7 +220,7 @@ func TestParityCatchesDivergence(t *testing.T) {
 		}},
 		{name: "a check only CI runs", edits: []docsEdit{
 			replace(fxCI, classes, classes+"      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...\n"),
-		}, want: []string{".github/workflows/ci.yml:198 runs `go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...` and `make check` does not"}},
+		}, want: []string{".github/workflows/ci.yml:201 runs `go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...` and `make check` does not"}},
 		{name: "make check formats with another command", edits: []docsEdit{
 			replace(fxMakefile, `@out=$$(gofmt -l .); if [ -n "$$out" ]`, `@out=$$(gofmt -l .); if test -n "$$out"`),
 		}, want: nil},
@@ -383,7 +383,7 @@ func TestParityRefusesACommandWhoseFailureMakeIgnores(t *testing.T) {
 		}},
 		{name: "a CI line that runs a gate in the background", edits: []docsEdit{
 			replace(fxCI, "        run: go run ./scripts/gates classes\n", "        run: go run ./scripts/gates classes 2>&1 &\n"),
-		}, want: []string{".github/workflows/ci.yml:197 runs `go run ./scripts/gates classes 2>&1 &`, where & runs a command in the background, " +
+		}, want: []string{".github/workflows/ci.yml:200 runs `go run ./scripts/gates classes 2>&1 &`, where & runs a command in the background, " +
 			"where its failure is never seen, so a failing check passes"}},
 		{name: "a CI line that turns the shell's -e off", edits: []docsEdit{
 			replace(fxCI, "      - run: git fetch --no-tags origin main:refs/remotes/origin/main\n", "      - run: set +e\n"),
@@ -503,7 +503,7 @@ func TestParityReadsWhatRuns(t *testing.T) {
 		{"a step the workflow reader does not read", []docsEdit{
 			replace(fxCI, classes, "      - {name: classes, run: go run ./scripts/gates classes}\n"),
 		}, nil, []string{
-			".github/workflows/ci.yml:196: an item of steps: is not a block mapping; write it one key a line",
+			".github/workflows/ci.yml:199: an item of steps: is not a block mapping; write it one key a line",
 			notInCI,
 		}},
 		{"a gate named only in a recipe's comment", []docsEdit{
@@ -532,9 +532,9 @@ func TestParityHoldsAGateCallsArguments(t *testing.T) {
 		{"a binary the Makefile names apart from CI's", []docsEdit{
 			replace(fxMakefile, "BIN      ?= ./google-chat-mcp", "BIN      ?= ./old/google-chat-mcp"),
 		}, nil, []string{
-			".github/workflows/ci.yml:207 calls the smoke gate with `./google-chat-mcp` and `make check` never does",
-			".github/workflows/ci.yml:209 calls the schema-diff gate with `./google-chat-mcp` and `make check` never does",
-			".github/workflows/ci.yml:219 calls the staleness gate with `./google-chat-mcp` and `make check` never does",
+			".github/workflows/ci.yml:210 calls the smoke gate with `./google-chat-mcp` and `make check` never does",
+			".github/workflows/ci.yml:212 calls the schema-diff gate with `./google-chat-mcp` and `make check` never does",
+			".github/workflows/ci.yml:222 calls the staleness gate with `./google-chat-mcp` and `make check` never does",
 			"`make schema-diff` calls the schema-diff gate with `./old/google-chat-mcp` and ci.yml never does",
 			"`make smoke` calls the smoke gate with `./old/google-chat-mcp` and ci.yml never does",
 			"`make staleness` calls the staleness gate with `./old/google-chat-mcp` and ci.yml never does",
@@ -545,7 +545,7 @@ func TestParityHoldsAGateCallsArguments(t *testing.T) {
 		{"the binary written without ./", []docsEdit{
 			replace(fxCI, "run: go run ./scripts/gates smoke ./google-chat-mcp\n", "run: go run ./scripts/gates smoke google-chat-mcp\n"),
 		}, nil, []string{
-			".github/workflows/ci.yml:207 calls the smoke gate with `google-chat-mcp` and `make check` never does",
+			".github/workflows/ci.yml:210 calls the smoke gate with `google-chat-mcp` and `make check` never does",
 			"`make smoke` calls the smoke gate with `./google-chat-mcp` and ci.yml never does",
 		}},
 		{"the binary written as another path to the same file", []docsEdit{

@@ -25,6 +25,17 @@ says whether this server uses it.
 `make release-rehearse` builds the archives locally and publishes
 nothing. It needs only the Go toolchain.
 
+Run `govulncheck` on the previous tag. A dependency bump other than the
+MCP SDK carries no CHANGELOG entry of its own. For each advisory
+reported there and not at `HEAD`, find the change that cleared it. When
+that change is such a bump, the advisory gets its entry under Security.
+
+```bash
+git worktree add ../google-chat-mcp-prev "$(git describe --tags --abbrev=0)"
+make -C ../google-chat-mcp-prev vuln
+git worktree remove ../google-chat-mcp-prev
+```
+
 ## Steps
 
 1. Land a `release: cut vX.Y.Z` commit on `main`. It moves

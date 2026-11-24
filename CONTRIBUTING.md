@@ -43,7 +43,8 @@ allow-list, gitleaks, actionlint, a stdio smoke test, the schema diff,
 the API-coverage gate and the live driver's surface gate. A staleness
 gate fails when the README, `docs/` or the CHANGELOG drift from the code,
 and the docs gate when a citation does not resolve. CI runs the unit
-tests on Linux, macOS and Windows, and on a pull request `schema-ack`.
+tests on Linux, macOS and Windows, and on a pull request `schema-ack`
+and `changelog`.
 
 These are worth knowing before they fail on you:
 
@@ -158,6 +159,11 @@ changes only contributors see, unless they must act on them.
   nothing else, and nothing in fenced code. It wants one when a commit
   since the newest release tag changes what the binary is built from,
   the bundle manifest, or go.mod's lines other than `require` and `tool`.
+  On a pull request that makes such a change, or bumps the MCP SDK, the
+  `changelog` gate wants at least one entry more under `[Unreleased]`
+  than the merge-base holds. A bump of any other module needs
+  none; one that fixes an advisory is found at release time
+  (`docs/release.md`).
 - **Sections** are the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   set and nothing else: Added, Changed, Deprecated, Removed, Fixed and
   Security, in that order. Not `Internal`, not `Documented`, not a
